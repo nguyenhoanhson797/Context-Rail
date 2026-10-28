@@ -112,6 +112,13 @@ def test_builtin_small_pack_matches_pinned_values(tmp_path: Path) -> None:
         "decision": ("record", ("decision",), {}),
         "event": ("record", ("event",), {}),
         "check": ("check", (), {}),
+        "charter": ("policy", (), {}),
+        "vision": ("note", (), {}),
+        "wont": ("note", (), {}),
+        "skill": ("note", (), {}),
+        "cto": ("actor", (), {}),
+        "profile": ("actor", (), {}),
+        "fix": ("item", (), {}),
     }
     assert set(p.presets) == set(expected)
     for name, (primitive, tags, fields) in expected.items():
@@ -136,10 +143,16 @@ def test_builtin_pack_ships_body_templates() -> None:
         "packs", "small", "templates"
     )
     assert sorted(entry.name for entry in templates.iterdir()) == [
+        "charter.md",
         "check.md",
+        "goal.md",
         "item.md",
         "note.md",
         "record.md",
+        "scope.md",
+        "vision.md",
+        "wont.md",
+        "work-order.md",
     ]
 
 

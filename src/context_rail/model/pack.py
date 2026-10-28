@@ -15,7 +15,11 @@ from typing import Any, NoReturn
 from context_rail.core.util import load_yaml
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
-from context_rail.model.primitives import CATEGORIES, PRIMITIVES
+from context_rail.model.primitives import (
+    CATEGORIES,
+    PACK_POLICY_KEYS,
+    PRIMITIVES,
+)
 
 __all__ = [
     "PACK_KEYS",
@@ -29,7 +33,7 @@ __all__ = [
 
 PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
 PRESET_KEYS = ("primitive", "tags", "fields", "template")
-POLICY_KEYS = ("stuck_hours", "retries")
+POLICY_KEYS = PACK_POLICY_KEYS
 PACK_VERSION = 1
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
 

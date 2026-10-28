@@ -20,4 +20,11 @@ presets:
   decision:   {primitive: record, tags: [decision]}
   event:      {primitive: record, tags: [event]}
   check:      {primitive: check,  tags: []}
+  charter:    {primitive: policy, tags: []}
+  vision:     {primitive: note,   tags: []}
+  wont:       {primitive: note,   tags: []}
+  skill:      {primitive: note,   tags: []}
+  cto:        {primitive: actor,  tags: []}
+  profile:    {primitive: actor,  tags: []}
+  fix:        {primitive: item,   tags: []}
 policy: {stuck_hours: 24, retries: 1}
