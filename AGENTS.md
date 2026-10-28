@@ -10,6 +10,8 @@ repository is a clean rebuild. The legacy v1/v2 code lives in the sibling
 
 - Design: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
 - Current plan: `docs/superpowers/plans/2026-10-28-v3-stage-1a-engine-core.md`
+- Plan amendments: `docs/superpowers/plans/2026-10-28-v3-stage-1a-amendments.md`, which
+  win over the plan where they differ.
 
 Work the plan task by task, in order. If the plan and the code disagree, or a
 step cannot be done as written, stop and report it rather than improvising a
