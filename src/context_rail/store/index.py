@@ -223,6 +223,8 @@ class Index:
                 entries = sorted(handle, key=lambda entry: entry.name)
             for entry in entries:
                 rel = prefix + entry.name
+                if _is_linked_dir(entry):
+                    continue
                 if entry.is_symlink():
                     if not _inside(root, entry) or entry.is_dir():
                         continue
@@ -367,11 +369,31 @@ def _record_at(doc: Doc) -> int | None:
     return int(stamp.timestamp() * 1000)
 
 
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
 def _inside(root: Path, entry: os.DirEntry[str]) -> bool:
     try:
         return Path(entry.path).resolve().is_relative_to(root)
     except OSError:
         return False
+
+
+def _is_linked_dir(entry: os.DirEntry[str]) -> bool:
+    """True when a directory entry is a symlink, junction or other reparse point.
+
+    ``DirEntry.is_symlink`` misses Windows junctions and ``Path.is_junction``
+    only exists from Python 3.12, so the reparse-point file attribute decides.
+    """
+    if not entry.is_dir():
+        return False
+    if entry.is_symlink():
+        return True
+    try:
+        info = entry.stat(follow_symlinks=False)
+    except OSError:
+        return True
+    return bool(getattr(info, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def _connect(path: Path, busy_timeout_ms: int) -> sqlite3.Connection:

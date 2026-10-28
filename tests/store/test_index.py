@@ -19,6 +19,7 @@ from context_rail.model.pack import Pack, load_pack
 from context_rail.store.doc import record_digest
 from context_rail.store.index import INDEX_SCHEMA, Index, IndexBusy, SyncStats
 from context_rail.store.location import index_path
+from context_rail.store.query import find
 from helpers import touch_doc
 
 _SRC = Path(__file__).resolve().parents[2] / "src"
@@ -70,9 +71,78 @@ def opened(
         index.close()
 
 
+OUTSIDE_DOC = b"""---
+primitive: item
+preset: task
+title: Escaped
+status: todo
+tags: [task]
+created: '2026-10-28T00:00:00Z'
+updated: '2026-10-28T00:00:00Z'
+---
+# Escaped
+
+A valid document outside the store that must stay unindexed: zonk.
+"""
+
+CYCLE_CHILD = """
+import json
+import sys
+from pathlib import Path
+
+from context_rail.model.pack import load_pack
+from context_rail.store.index import Index
+
+store = Path(sys.argv[1])
+index = Index.open(store, load_pack("small", store))
+stats = index.sync()
+paths = sorted(row[0] for row in index.conn.execute("SELECT path FROM docs"))
+print(json.dumps({"added": stats.added, "skipped": stats.skipped, "paths": paths}))
+index.close()
+"""
+
+
 def count(index: Index, sql: str, params: tuple[object, ...] = ()) -> int:
     assert index.conn is not None
     return index.conn.execute(sql, params).fetchone()[0]
+
+
+def outside_store(root: Path) -> Path:
+    """A folder outside the store holding one valid, searchable document."""
+    outside = Path(root) / "outside"
+    (outside / "items" / "task").mkdir(parents=True)
+    (outside / "items" / "task" / "escaped.md").write_bytes(OUTSIDE_DOC)
+    return outside
+
+
+def junction(link: Path, target: Path) -> None:
+    """Create a real Windows directory junction, skipping where unsupported."""
+    if os.name != "nt":
+        pytest.skip("directory junctions are a Windows feature")
+    link.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        pytest.skip(f"cannot create a junction: {(proc.stderr or proc.stdout).strip()}")
+
+
+def symlink(link: Path, target: Path, *, directory: bool = False) -> None:
+    """Create a symlink, skipping on machines without the privilege."""
+    try:
+        os.symlink(target, link, target_is_directory=directory)
+    except OSError as exc:
+        pytest.skip(f"cannot create a symlink: {exc}")
+
+
+def drop(link: Path) -> None:
+    """Remove a link itself, never its target."""
+    with contextlib.suppress(OSError):
+        os.rmdir(link)
+    with contextlib.suppress(OSError):
+        os.unlink(link)
 
 
 def test_open_creates_a_wal_database_without_parsing_documents(store_factory):
@@ -434,3 +504,166 @@ def test_index_lives_under_the_git_dir(git_repo_with_worktree):
     assert main_path.is_relative_to(store.parent / ".git")
     assert not main_path.is_relative_to(store)
     assert worktree_path != main_path
+
+
+def test_junction_to_outside_directory_is_not_indexed(store_factory, tmp_path):
+    store = store_factory(docs=10)
+    link = store / "items" / "task" / "linked"
+    junction(link, outside_store(tmp_path))
+    try:
+        with opened(store) as index:
+            stats = index.sync()
+            assert (stats.added, stats.skipped) == (10, 0)
+            paths = [row[0] for row in index.conn.execute("SELECT path FROM docs")]
+            assert not any(path.startswith("items/task/linked/") for path in paths)
+            assert (
+                count(index, "SELECT count(*) FROM docs_fts WHERE body LIKE '%zonk%'")
+                == 0
+            )
+            assert find(index, text="zonk")["items"] == []
+    finally:
+        drop(link)
+
+
+def test_junction_cycle_sync_terminates(store_factory):
+    store = store_factory(docs=10)
+    link = store / "items" / "task" / "loop"
+    junction(link, store)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_SRC)
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", CYCLE_CHILD, str(store)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+    finally:
+        drop(link)
+    assert "Traceback" not in proc.stderr
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert (result["added"], result["skipped"]) == (10, 0)
+    assert not [path for path in result["paths"] if "loop" in path]
+
+
+def test_junction_to_inside_directory_is_still_skipped(store_factory):
+    store = store_factory(docs=10)
+    link = store / "items" / "task" / "echo"
+    junction(link, store / "notes")
+    try:
+        with opened(store) as index:
+            stats = index.sync()
+            assert (stats.added, stats.skipped) == (10, 0)
+            assert (
+                count(
+                    index,
+                    "SELECT count(*) FROM docs WHERE path LIKE 'items/task/echo/%'",
+                )
+                == 0
+            )
+    finally:
+        drop(link)
+
+
+def test_junction_detection_works_without_python_312_helpers(
+    store_factory, tmp_path, monkeypatch
+):
+    monkeypatch.delattr(os.path, "isjunction", raising=False)
+
+    def unavailable(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("Path.is_junction is unavailable before Python 3.12")
+
+    monkeypatch.setattr(Path, "is_junction", unavailable)
+    store = store_factory(docs=10)
+    link = store / "items" / "task" / "linked"
+    junction(link, outside_store(tmp_path))
+    try:
+        with opened(store) as index:
+            assert index.sync().added == 10
+            assert (
+                count(
+                    index,
+                    "SELECT count(*) FROM docs WHERE path LIKE 'items/task/linked/%'",
+                )
+                == 0
+            )
+    finally:
+        drop(link)
+
+
+def test_contained_file_symlink_is_indexed(store_factory):
+    store = store_factory(docs=10)
+    link = store / "items" / "task" / "alias.md"
+    symlink(link, store / "items" / "task" / "t0.md")
+    try:
+        with opened(store) as index:
+            assert index.sync().added == 11
+            assert (
+                count(
+                    index,
+                    "SELECT count(*) FROM docs WHERE path = 'items/task/alias.md'",
+                )
+                == 1
+            )
+    finally:
+        drop(link)
+
+
+def test_escaping_file_symlink_is_not_indexed(store_factory, tmp_path):
+    outside = outside_store(tmp_path)
+    store = store_factory(docs=10)
+    link = store / "items" / "task" / "escaped.md"
+    symlink(link, outside / "items" / "task" / "escaped.md")
+    try:
+        with opened(store) as index:
+            assert index.sync().added == 10
+            assert (
+                count(
+                    index,
+                    "SELECT count(*) FROM docs WHERE path = 'items/task/escaped.md'",
+                )
+                == 0
+            )
+            assert find(index, text="zonk")["items"] == []
+    finally:
+        drop(link)
+
+
+def test_directory_symlink_to_outside_is_not_traversed(store_factory, tmp_path):
+    store = store_factory(docs=10)
+    link = store / "items" / "task" / "linked"
+    symlink(link, outside_store(tmp_path), directory=True)
+    try:
+        with opened(store) as index:
+            stats = index.sync()
+            assert (stats.added, stats.skipped) == (10, 0)
+            assert (
+                count(
+                    index,
+                    "SELECT count(*) FROM docs WHERE path LIKE 'items/task/linked/%'",
+                )
+                == 0
+            )
+    finally:
+        drop(link)
+
+
+def test_contained_directory_symlink_is_not_traversed(store_factory):
+    store = store_factory(docs=10)
+    link = store / "items" / "task" / "alias"
+    symlink(link, store / "notes", directory=True)
+    try:
+        with opened(store) as index:
+            stats = index.sync()
+            assert (stats.added, stats.skipped) == (10, 0)
+            assert (
+                count(
+                    index,
+                    "SELECT count(*) FROM docs WHERE path LIKE 'items/task/alias/%'",
+                )
+                == 0
+            )
+    finally:
+        drop(link)
