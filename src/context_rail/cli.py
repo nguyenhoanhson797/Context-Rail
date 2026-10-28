@@ -83,6 +83,23 @@ def _flag(param: Param) -> str:
     return "--" + param.name.replace("_", "-")
 
 
+def _emit(result: dict) -> None:
+    """Write one Result envelope as UTF-8 bytes, whatever the console declares.
+
+    A redirected stream can be any legacy code page (cp1252 here); JSON is UTF-8,
+    so the bytes go to the binary buffer instead of through a lossy codec.
+    """
+    payload = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is None:
+        sys.stdout.write(payload)
+        sys.stdout.flush()
+        return
+    sys.stdout.flush()
+    buffer.write(payload.encode("utf-8"))
+    buffer.flush()
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one command and return the process exit code."""
     try:
@@ -102,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         store=namespace.store,
         actor=namespace.actor,
     )
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    _emit(result)
     if result.get("ok") is True:
         return 0
     code = (result.get("error") or {}).get("code")

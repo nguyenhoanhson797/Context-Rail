@@ -47,7 +47,11 @@ def executable(items: list[ItemRow]) -> list[str]:
 
 
 def blocked(items: list[ItemRow]) -> dict[str, str]:
-    """Slug to the reason it cannot proceed: its status, or its first open dependency."""
+    """Slug to the reason it cannot proceed: its status, or its first open dependency.
+
+    Every item with an open dependency gets an entry, finished items included, so
+    a caller reporting what is blocked must drop ``FINISHED_CATEGORIES`` itself.
+    """
     categories = {item.slug: item.category for item in items}
     reasons: dict[str, str] = {}
     for item in items:

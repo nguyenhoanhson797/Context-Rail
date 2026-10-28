@@ -13,6 +13,7 @@ import pytest
 from context_rail.core.util import dump_frontmatter
 from context_rail.gateway.gateway import invoke
 from context_rail.store.doc import record_digest
+from context_rail.store.location import local_dir
 from context_rail.store.write import repair
 
 _REPO_SRC = Path(__file__).resolve().parents[2] / "src"
@@ -156,3 +157,31 @@ def test_repair_after_a_later_replace_leaves_complete_bytes(store_factory, crash
     payload = dict(records[0])
     digest = payload.pop("digest")
     assert digest == record_digest(payload)
+
+
+def test_kill_during_intent_publication_is_repairable(store_factory):
+    store = store_factory(docs=20)
+    assert invoke("doctor", {}, store=store)["value"]["counts"]["error"] == 0
+
+    proc = run_child_commit_with_crash(store, crash_at=1)
+    assert proc.returncode == 9, proc.stderr
+
+    intents = local_dir(store) / "intents"
+    stale = sorted(path.name for path in intents.iterdir())
+    assert len(stale) == 1
+    assert stale[0].endswith(".tmp") and ".json." in stale[0]
+
+    doctor = invoke("doctor", {}, store=store)
+    assert doctor["value"]["counts"]["error"] >= 1
+    assert [issue["code"] for issue in doctor["value"]["issues"]] == ["intent_pending"]
+    for rel in _TARGETS:
+        assert not (store / rel).exists(), rel
+
+    completed = repair(store)
+
+    assert completed == {"completed": [], "unrecoverable": []}
+    assert list(intents.iterdir()) == []
+    for rel in _TARGETS:
+        assert not (store / rel).exists(), rel
+    assert list((store / "items/task").glob("*.tmp")) == []
+    assert invoke("doctor", {}, store=store)["value"]["counts"]["error"] == 0

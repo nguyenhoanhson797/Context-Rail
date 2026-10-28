@@ -163,6 +163,36 @@ def test_pre_write_refusals_write_nothing(store_factory):
     assert not (store.parent / "escape.md").exists()
 
 
+#: True on a filesystem that treats ``A.md`` and ``a.md`` as one file.
+_CASE_INSENSITIVE = os.path.normcase("A.md") == os.path.normcase("a.md")
+
+
+@pytest.mark.skipif(
+    not _CASE_INSENSITIVE, reason="this filesystem tells case variants apart"
+)
+def test_case_variant_duplicate_targets_are_refused_before_any_effect(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+    before = _snapshot(store)
+
+    with pytest.raises(WriteRefused) as excinfo:
+        commit(
+            store,
+            manifest,
+            [
+                Op("items/task/a.md", b"one", "absent"),
+                Op("ITEMS/task/A.md", b"two", "absent"),
+            ],
+            None,
+            actor="cto",
+        )
+
+    assert excinfo.value.code == "VALIDATION_FAILED"
+    assert excinfo.value.details == {"path": "ITEMS/task/A.md"}
+    assert _snapshot(store) == before
+    assert list(store.rglob("*.tmp")) == []
+
+
 def test_escape_is_forbidden(store_factory):
     store = store_factory()
     manifest = load_manifest(store)
@@ -660,6 +690,100 @@ def test_repair_retains_unsupported_and_corrupt_intents(store_factory):
         }
     assert unsupported.exists()
     assert corrupt.exists()
+
+
+def test_repair_clears_stale_publication_temps_only(store_factory):
+    store = store_factory()
+    folder = _intents_dir(store)
+    folder.mkdir(parents=True)
+    stale = folder / "01JSTALE00000000000000000.json.4f2a1c9d.tmp"
+    stale.write_text("{}", encoding="utf-8")
+    published = folder / "01JCORRUPT000000000000000.json"
+    published.write_text("not json{", encoding="utf-8")
+
+    report = repair(store)
+
+    assert report["completed"] == []
+    assert report["unrecoverable"] == [
+        {"intent": "01JCORRUPT000000000000000", "path": None}
+    ]
+    assert not stale.exists()
+    assert published.exists()
+
+
+def test_missing_staged_temp_is_a_refusal_and_keeps_the_intent(
+    store_factory, monkeypatch
+):
+    store = store_factory()
+    manifest = load_manifest(store)
+    staged = write_module._stage_temps
+    first, second = "items/task/a.md", "items/task/b.md"
+
+    def stage_without_last(store_path, targets, intent_id):
+        staged(store_path, targets[:-1], intent_id)
+
+    monkeypatch.setattr(write_module, "_stage_temps", stage_without_last)
+
+    with pytest.raises(WriteRefused) as excinfo:
+        commit(
+            store,
+            manifest,
+            [Op(first, b"one", "absent"), Op(second, b"two", "absent")],
+            None,
+            actor="cto",
+        )
+
+    assert excinfo.value.code == "INVALID_STATE"
+    assert excinfo.value.details == {"path": second}
+    assert (store / first).read_bytes() == b"one"
+    assert not (store / second).exists()
+    intents = list(_intents_dir(store).glob("*.json"))
+    assert len(intents) == 1
+
+    report = repair(store)
+
+    intent_id = json.loads(intents[0].read_text(encoding="utf-8"))["intent_id"]
+    assert report["completed"] == []
+    assert report["unrecoverable"] == [{"intent": intent_id, "path": second}]
+    assert intents[0].exists()
+
+
+def test_replace_oserror_is_a_refusal_and_repair_completes(store_factory, monkeypatch):
+    store = store_factory()
+    manifest = load_manifest(store)
+    first, second = "items/task/a.md", "items/task/b.md"
+    real_replace = os.replace
+    calls = 0
+
+    def failing_replace(source, target):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OSError(5, "injected replace fault")
+        return real_replace(source, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "replace", failing_replace)
+        with pytest.raises(WriteRefused) as excinfo:
+            commit(
+                store,
+                manifest,
+                [Op(first, b"one", "absent"), Op(second, b"two", "absent")],
+                None,
+                actor="cto",
+            )
+
+    assert excinfo.value.code == "INVALID_STATE"
+    assert excinfo.value.details == {"path": second}
+    assert (store / first).read_bytes() == b"one"
+    assert not (store / second).exists()
+    assert len(list(_intents_dir(store).glob("*.json"))) == 1
+
+    report = repair(store)
+
+    assert report["unrecoverable"] == []
+    assert (store / second).read_bytes() == b"two"
+    assert list(_intents_dir(store).glob("*")) == []
 
 
 def test_repair_recreates_a_missing_record(store_factory):

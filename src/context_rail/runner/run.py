@@ -85,7 +85,8 @@ def run(
         raise PathEscape(f"{cwd} is outside {confine_to}")
     child_env = _child_env(env_allow, extra_env)
     secrets = _secret_values(extra_env)
-    head_cap, tail_cap, marker = _budgets(max_output)
+    cap = max(0, max_output)
+    head_cap, tail_cap, marker = _budgets(cap)
     digest = hashlib.sha256()
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="ctx-rail-run-") as temporary:
@@ -124,7 +125,7 @@ def run(
         stderr = _Capture(secrets, head_cap, tail_cap, digest)
         _reduce(stdout_path, stdout, secrets)
         _reduce(stderr_path, stderr, secrets)
-        bounded = _assemble(max_output, head_cap, tail_cap, marker, stdout, stderr)
+        bounded = _assemble(cap, head_cap, tail_cap, marker, stdout, stderr)
     return {
         "exit": exit_code,
         "timed_out": timed_out,
@@ -325,6 +326,8 @@ def _assemble(
 
 def _fit(out, err, cap: int) -> tuple[bytes, bytes]:
     """Shrink the pair to ``cap`` bytes when a marker landed on a short tail."""
+    if cap <= 0:
+        return b"", b""
     overflow = len(out) + len(err) - cap
     if overflow <= 0:
         return bytes(out), bytes(err)

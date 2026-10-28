@@ -45,6 +45,14 @@ def test_blocked_status_takes_precedence_and_reports_first_unfinished_dependency
     assert blocked(items) == {"x": "status", "z": "depends_on:a", "w": "depends_on:m"}
 
 
+def test_blocked_reports_finished_items_for_the_caller_to_drop():
+    items = [row("open"), row("done", "done", depends_on=("open",)),
+             row("dropped", "dropped", depends_on=("open",)),
+             row("halted", "blocked")]
+    assert blocked(items) == {"done": "depends_on:open", "dropped": "depends_on:open",
+                              "halted": "status"}
+
+
 def test_stuck():
     items = [ItemRow("a", "active", (), (), 0), ItemRow("b", "active", (), (), 9_000), ItemRow("c", "not_started", (), (), None)]
     assert stuck(items, now_ms=10_000, stuck_ms=5_000) == ["a"]

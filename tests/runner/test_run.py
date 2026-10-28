@@ -255,6 +255,24 @@ def test_output_bounded(tmp_path: Path) -> None:
     assert result["omitted_bytes"] >= 1000000 - 24000
 
 
+@pytest.mark.parametrize("cap", [-1, 0])
+@pytest.mark.timeout(60)
+def test_nonpositive_max_output_returns_no_output(tmp_path: Path, cap: int) -> None:
+    source = (
+        "import sys\n"
+        "sys.stdout.write('A' * 5000)\n"
+        "sys.stderr.write('Z' * 5000)\n"
+    )
+    result = run(
+        _python(source), cwd=tmp_path, confine_to=tmp_path, timeout=TIMEOUT, max_output=cap
+    )
+    assert result["exit"] == 0
+    assert result["timed_out"] is False
+    assert result["stdout"] == ""
+    assert result["stderr"] == ""
+    assert result["omitted_bytes"] == 10000
+
+
 def test_multibyte_output_stays_valid_utf8(tmp_path: Path) -> None:
     source = (
         "import sys\n"

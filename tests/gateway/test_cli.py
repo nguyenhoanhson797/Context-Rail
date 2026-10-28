@@ -190,3 +190,72 @@ def test_cli_main_maps_results_to_exit_codes(tmp_path, capsys, args, code):
     else:
         assert exit_code == 1
         assert payload["error"]["code"] == code
+
+
+def _cli(
+    cwd: Path, *args: str, env: dict[str, str]
+) -> subprocess.CompletedProcess[bytes]:
+    command = [sys.executable, "-m", "context_rail", *args]
+    return subprocess.run(command, cwd=cwd, capture_output=True, env=env)
+
+
+def test_cli_status_excludes_finished_dependents(tmp_path):
+    _init(tmp_path)
+    assert run_cli(tmp_path, "--actor", "cto", "add", "task", "open").returncode == 0
+    for title in ("waits", "scrapped", "still-waiting"):
+        added = run_cli(
+            tmp_path, "--actor", "cto", "add", "task", title, "--rel", "depends_on=open"
+        )
+        assert added.returncode == 0, added.stdout
+
+    for status in ("doing", "done"):
+        etag = _json(run_cli(tmp_path, "show", "waits"))["value"]["doc"]["etag"]
+        moved = run_cli(tmp_path, "--actor", "cto", "move", "waits", status, "--expect", etag)
+        assert moved.returncode == 0, moved.stdout
+    etag = _json(run_cli(tmp_path, "show", "scrapped"))["value"]["doc"]["etag"]
+    dropped = run_cli(
+        tmp_path, "--actor", "cto", "move", "scrapped", "dropped", "--expect", etag
+    )
+    assert dropped.returncode == 0, dropped.stdout
+
+    status = _json(run_cli(tmp_path, "status"))
+
+    assert status["value"]["blocked"] == {"still-waiting": "depends_on:open"}
+    assert status["value"]["counts"]["done"] == 1
+    assert status["value"]["counts"]["dropped"] == 1
+    assert status["value"]["omitted"]["blocked"] == 0
+
+
+def test_cli_emits_unicode_json_on_a_redirected_legacy_stream(tmp_path):
+    _init(tmp_path)
+    body_file = tmp_path / "body.md"
+    body_file.write_text("Corps é漢\n", encoding="utf-8")
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONPATH": str(SRC_DIR)}
+    env.pop("RAIL_ACTOR", None)
+
+    added = _cli(
+        tmp_path,
+        "--actor",
+        "cto",
+        "add",
+        "task",
+        "Café 漢",
+        "--body-file",
+        str(body_file),
+        env=env,
+    )
+
+    assert added.returncode == 0, added.stderr.decode("utf-8", "replace")
+    assert added.stderr == b""
+    payload = json.loads(added.stdout.decode("utf-8"))
+    assert payload["ok"] is True
+    slug = payload["value"]["slug"]
+
+    shown = _cli(tmp_path, "show", slug, env=env)
+
+    assert shown.returncode == 0, shown.stderr.decode("utf-8", "replace")
+    text = shown.stdout.decode("utf-8")
+    assert text.count('"ok"') == 1
+    value = json.loads(text)["value"]
+    assert value["doc"]["title"] == "Café 漢"
+    assert value["body"] == "Corps é漢\n"

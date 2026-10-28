@@ -72,7 +72,14 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
     runnable = sorted(set(structure.executable(items)))
     stalled = sorted(set(structure.stuck(items, _now_ms(), _stuck_ms(ctx))))
-    held = sorted(structure.blocked(items).items())
+    finished = {
+        slug for slug, category in rows if category in structure.FINISHED_CATEGORIES
+    }
+    held = sorted(
+        (slug, reason)
+        for slug, reason in structure.blocked(items).items()
+        if slug not in finished
+    )
     executable_page, executable_omitted = _page(runnable)
     blocked_page, blocked_omitted = _page(held)
     stuck_page, stuck_omitted = _page(stalled)

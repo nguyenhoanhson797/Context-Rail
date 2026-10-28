@@ -251,6 +251,7 @@ def repair(store: Path) -> dict[str, Any]:
             return {"completed": completed, "unrecoverable": unrecoverable}
         for path in sorted(folder.glob("*.json")):
             _repair_intent(store, path, completed, unrecoverable)
+        _discard_intent_temps(folder)
     return {"completed": completed, "unrecoverable": unrecoverable}
 
 
@@ -277,7 +278,12 @@ def resolve_unique(ix: Index, slug: str) -> str:
 
 
 def _plan_ops(store: Path, ops: Sequence[Op]) -> list[_Target]:
-    """Validate, confine and normalize every operation; refuse duplicates."""
+    """Validate, confine and normalize every operation; refuse duplicates.
+
+    Duplicate identity is the confined filesystem path under ``os.path.normcase``,
+    so two spellings of one file on a case-insensitive volume are refused before
+    anything is written. Messages keep the caller's relative spelling.
+    """
     if isinstance(ops, (str, bytes)) or not isinstance(ops, Sequence):
         raise WriteRefused("VALIDATION_FAILED", "operations must be a sequence of Op")
     local = local_dir(store).resolve()
@@ -299,15 +305,16 @@ def _plan_ops(store: Path, ops: Sequence[Op]) -> list[_Target]:
                 {"path": op.path, "expected": expect},
             )
         rel = _normalize(op.path)
-        if rel in seen:
-            raise WriteRefused(
-                "VALIDATION_FAILED", f"{rel!r} is written twice", {"path": rel}
-            )
-        seen.add(rel)
         try:
             path = confine(store, op.path)
         except PathEscape as exc:
             raise WriteRefused("FORBIDDEN", str(exc), {"path": op.path}) from exc
+        identity = os.path.normcase(os.fspath(path))
+        if identity in seen:
+            raise WriteRefused(
+                "VALIDATION_FAILED", f"{rel!r} is written twice", {"path": rel}
+            )
+        seen.add(identity)
         if path == local or path.is_relative_to(local):
             raise WriteRefused(
                 "FORBIDDEN", f"{rel!r} is local state, not store content", {"path": rel}
@@ -609,7 +616,7 @@ def _replace_targets(targets: list[_Target], intent_id: str) -> None:
                 pass
             continue
         tmp = target.path.with_name(f"{target.path.name}.{intent_id}.tmp")
-        _replace(tmp, target.path)
+        _replace(tmp, target.path, target.rel)
 
 
 def _create_record(planned: _Record) -> None:
@@ -657,6 +664,21 @@ def _intents_dir(store: Path) -> Path:
     return local_dir(store) / _INTENTS_DIR
 
 
+def _discard_intent_temps(folder: Path) -> None:
+    """Remove intent-publication temps that no published intent can resume.
+
+    Only ``<id>.json.<rand>.tmp`` files are publication debris (a kill before the
+    intent's own replace). Intents that did publish stay for the intent pass to
+    complete or report, including unsupported and corrupt ones.
+    """
+    for stale in folder.glob("*.json.*.tmp"):
+        try:
+            stale.unlink()
+        except OSError:
+            # A vanished temp needs no cleanup; a held one is retried next repair.
+            continue
+
+
 def _current_etag(path: Path, rel: str) -> str:
     if path.is_dir():
         raise WriteRefused("VALIDATION_FAILED", f"{rel!r} is a directory", {"path": rel})
@@ -666,16 +688,31 @@ def _current_etag(path: Path, rel: str) -> str:
         return ABSENT
 
 
-def _replace(tmp: Path, target: Path) -> None:
+def _replace(tmp: Path, target: Path, rel: str) -> None:
+    """Atomically swap a staged file in, as a refusal rather than a raw OSError.
+
+    The published intent stays on disk, so a later repair rolls the remaining
+    operations forward (or reports the ones whose data is gone).
+    """
     for attempt in range(_REPLACE_RETRIES):
         try:
             os.replace(tmp, target)
             return
-        except PermissionError:
+        except PermissionError as exc:
             # Antivirus and open readers hold Windows targets briefly.
             if attempt == _REPLACE_RETRIES - 1:
-                raise
+                raise WriteRefused(
+                    "INVALID_STATE",
+                    f"{rel!r} could not be replaced: {exc}",
+                    {"path": rel},
+                ) from exc
             time.sleep(0.05 * (attempt + 1))
+        except OSError as exc:
+            raise WriteRefused(
+                "INVALID_STATE",
+                f"{rel!r} could not be replaced: {exc}",
+                {"path": rel},
+            ) from exc
 
 
 # ── repair internals ──────────────────────────────────────────────────────
@@ -818,7 +855,10 @@ def _roll_op_forward(store: Path, intent_id: str, op: dict[str, Any]) -> str | N
         return rel
     if etag(tmp.read_bytes()) != op["after_etag"]:
         return rel
-    _replace(tmp, target)
+    try:
+        _replace(tmp, target, rel)
+    except WriteRefused:
+        return rel
     return None
 
 

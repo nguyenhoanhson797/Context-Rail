@@ -827,6 +827,94 @@ def test_status_caps_each_list_at_twenty(tmp_path):
     assert status["omitted"]["stuck"] == 0
 
 
+def test_status_blocked_drops_finished_dependents_and_keeps_blocked_items(tmp_path):
+    store = _init(tmp_path)
+    assert is_ok(invoke("add", {"preset": "task", "title": "open"}, store=store))
+    for title in ("waits", "scrapped", "still-waiting", "halted"):
+        assert is_ok(
+            invoke(
+                "add",
+                {"preset": "task", "title": title, "rel": ["depends_on=open"]},
+                store=store,
+            )
+        )
+
+    for status in ("doing", "done"):
+        assert is_ok(
+            invoke(
+                "move",
+                {"slug": "waits", "status": status, "expect": _etag(store, "waits")},
+                store=store,
+                actor="cto",
+            )
+        )
+    assert is_ok(
+        invoke(
+            "move",
+            {"slug": "scrapped", "status": "dropped", "expect": _etag(store, "scrapped")},
+            store=store,
+            actor="cto",
+        )
+    )
+    assert is_ok(
+        invoke(
+            "move",
+            {"slug": "halted", "status": "doing", "expect": _etag(store, "halted")},
+            store=store,
+            actor="cto",
+        )
+    )
+    assert is_ok(
+        invoke(
+            "move",
+            {"slug": "halted", "status": "blocked", "expect": _etag(store, "halted")},
+            store=store,
+            actor="cto",
+        )
+    )
+
+    status = invoke("status", {}, store=store)["value"]
+
+    assert status["blocked"] == {
+        "halted": "status",
+        "still-waiting": "depends_on:open",
+    }
+    assert status["counts"]["done"] == 1
+    assert status["counts"]["dropped"] == 1
+    assert status["omitted"]["blocked"] == 0
+
+
+def test_status_blocked_omits_finished_items_before_capping(tmp_path):
+    store = _init(tmp_path)
+    _write_doc(store, "items/task/open.md", _task_front("open"))
+    for index in range(1, 23):
+        _write_doc(
+            store,
+            f"items/task/waiting-{index:02d}.md",
+            _task_front(f"waiting-{index:02d}", depends_on="open"),
+        )
+    for finished in ("done", "dropped"):
+        _write_doc(
+            store,
+            f"items/task/retired-{finished}.md",
+            _task_front(f"retired-{finished}", status=finished, depends_on="open"),
+        )
+    _write_doc(
+        store,
+        "items/task/halted.md",
+        _task_front("halted", status="blocked", depends_on="open"),
+    )
+    assert is_ok(invoke("reindex", {}, store=store))
+
+    status = invoke("status", {}, store=store)["value"]
+
+    expected = ["halted", *[f"waiting-{index:02d}" for index in range(1, 20)]]
+    assert list(status["blocked"]) == expected
+    assert status["blocked"]["halted"] == "status"
+    assert not any(slug.startswith("retired-") for slug in status["blocked"])
+    assert status["omitted"]["blocked"] == 3
+
+
 def test_status_stuck_follows_factual_activity(tmp_path):
     store = _init(tmp_path)
     assert is_ok(invoke("add", {"preset": "goal", "title": "Auth"}, store=store))
