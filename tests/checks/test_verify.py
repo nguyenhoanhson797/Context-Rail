@@ -537,6 +537,61 @@ def test_verdict_and_confirm_are_refused_outside_human_mode(
     assert still_valid["value"]["passed"] is True
 
 
+def test_evidence_is_refused_outside_evidence_and_human_modes(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    record = latest_record(store, "doc.created")["id"]
+    specs = {
+        "real-proof": {
+            "schema": 1,
+            "mode": "evidence",
+            "acceptance": False,
+            "evidence": [record],
+        },
+        "smoke": cmd_payload([sys.executable, "-c", "0"], ["src/**/*.py"]),
+        "readme": {
+            "schema": 1,
+            "mode": "exists",
+            "acceptance": False,
+            "exists": ["README.md"],
+            "inputs": ["README.md"],
+        },
+        "peer-review": {"schema": 1, "mode": "review", "acceptance": False},
+        "signoff": {"schema": 1, "mode": "human", "acceptance": False},
+    }
+    for slug, payload in specs.items():
+        declared = declare(store, tmp_path, slug, payload)
+        assert is_ok(declared), (slug, declared)
+
+    for slug in ("smoke", "readme", "peer-review"):
+        refused = invoke(
+            "verify", {"target": slug, "evidence": [record]}, store=store, actor="cto"
+        )
+        assert refused["error"]["code"] == "VALIDATION_FAILED", (slug, refused)
+    assert verdict_records(store) == []
+
+    proof = invoke(
+        "verify", {"target": "real-proof", "evidence": [record]}, store=store, actor="cto"
+    )
+    assert is_ok(proof), proof
+    assert proof["value"]["passed"] is True
+
+    signed = invoke(
+        "verify",
+        {
+            "target": "signoff",
+            "verdict": "pass",
+            "confirm": "PASS signoff",
+            "evidence": [record],
+        },
+        store=store,
+        actor="human",
+    )
+    assert is_ok(signed), signed
+    assert signed["value"]["passed"] is True
+
+
 def test_a_hand_written_invalid_glob_makes_reads_and_verify_unknown(
     git_approved_store: Any, tmp_path: Path
 ) -> None:

@@ -22,6 +22,7 @@ from context_rail.gateway.handlers.common import (
     slug_of_path,
     template_body,
     unique_slug,
+    validate_field_values,
 )
 from context_rail.kernel import gates
 from context_rail.kernel.lifecycle import category_of, check_transition
@@ -46,6 +47,7 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         raise WriteRefused("VALIDATION_FAILED", "a document needs a title")
     relations = parse_relations(args["rel"])
     fields = parse_set_values(args["set"])
+    validate_field_values(fields)
     for generated in ("title", "tags"):
         if generated in fields:
             raise WriteRefused(
@@ -191,6 +193,7 @@ def _add_record(
 def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Change fields, tags or body; never status, identity or a record."""
     values = parse_set_values(args["set"])
+    validate_field_values(values)
     edits = args["tag"]
     if "tags" in values and edits:
         raise WriteRefused(

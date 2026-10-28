@@ -173,6 +173,65 @@ def test_a_syntactically_invalid_input_glob_is_refused(
     assert not (store / "checks" / "bad-glob.md").exists()
 
 
+def test_a_generic_write_cannot_store_an_invalid_input_glob(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    spec = spec_file(
+        tmp_path,
+        "smoke.json",
+        cmd_spec([sys.executable, "-c", "0"], ["src/**/*.py"]),
+    )
+    assert is_ok(
+        invoke(
+            "check",
+            {
+                "slug": "smoke",
+                "target": "feature-a",
+                "spec_file": str(spec),
+                "expect": "absent",
+            },
+            store=store,
+            actor="cto",
+        )
+    )
+    path = store / "checks" / "smoke.md"
+    before = sha256(path)
+    etag = invoke("show", {"slug": "smoke"}, store=store)["value"]["doc"]["etag"]
+    records = len(list((store / "records").rglob("*.json")))
+    broken = 'inputs=["src/[z-a].py"]'
+
+    for actor in ("cto", "human"):
+        refused = invoke(
+            "update",
+            {"slug": "smoke", "expect": etag, "set": [broken]},
+            store=store,
+            actor=actor,
+        )
+        assert refused["error"]["code"] == "VALIDATION_FAILED", (actor, refused)
+        assert sha256(path) == before
+        assert len(list((store / "records").rglob("*.json"))) == records
+
+    added = invoke(
+        "add", {"preset": "task", "title": "Bad globs", "set": [broken]}, store=store
+    )
+    assert added["error"]["code"] == "VALIDATION_FAILED", added
+    assert not (store / "items" / "task" / "bad-globs.md").exists()
+
+    shown = invoke("show", {"slug": "smoke"}, store=store)["value"]
+    assert shown["doc"]["fields"]["inputs"] == ["src/**/*.py"]
+
+    valid = invoke(
+        "update",
+        {"slug": "smoke", "expect": etag, "set": ['inputs=["src/app.py"]']},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(valid), valid
+    updated = invoke("show", {"slug": "smoke"}, store=store)["value"]
+    assert updated["doc"]["fields"]["inputs"] == ["src/app.py"]
+
+
 def test_shell_text_and_missing_inputs_are_refused(
     git_approved_store: Any, tmp_path: Path
 ) -> None:

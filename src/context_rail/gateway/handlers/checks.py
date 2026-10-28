@@ -60,6 +60,8 @@ DEFAULT_TIMEOUT_S = 120
 EMPTY_DIGEST = "sha256:" + sha256_hex(b"")
 HUMAN_VERDICTS = ("pass", "fail")
 SHELL_MODES = ("cmd", "exists")
+#: The modes whose verification may carry a supplied ``--evidence`` list.
+EVIDENCE_MODES = ("evidence", "human")
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 _RECORD_ID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 _EXECUTABLE_MODES = ("cmd", "exists", "evidence", "review")
@@ -202,12 +204,19 @@ def verify(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 f"a verdict is not valid for mode {rows[0]['mode']!r}",
                 {"check": rows[0]["slug"], "mode": rows[0]["mode"]},
             )
-    elif supplied["evidence"] and not single:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            "evidence applies to one Check",
-            {"target": target},
-        )
+    elif supplied["evidence"]:
+        if not single:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "evidence applies to one Check",
+                {"target": target},
+            )
+        if rows[0]["mode"] not in EVIDENCE_MODES:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"evidence is not valid for mode {rows[0]['mode']!r}",
+                {"check": rows[0]["slug"], "mode": rows[0]["mode"]},
+            )
     key = args["key"]
     worktree = _resolve_worktree(ctx, args.get("worktree"))
     results: list[dict[str, Any]] = []

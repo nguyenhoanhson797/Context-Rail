@@ -14,6 +14,7 @@ from context_rail.kernel import rights
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import RELATIONS
 from context_rail.store.doc import Doc, parse_doc
+from context_rail.store.git_index import invalid_glob
 from context_rail.store.index import Index
 from context_rail.store.write import WriteRefused, resolve_unique
 
@@ -24,6 +25,32 @@ if TYPE_CHECKING:
 MANAGED_KEYS = frozenset(
     {"slug", "path", "id", "digest", "created", "updated", "primitive", "preset", "status"}
 )
+
+
+def validate_field_values(fields: dict[str, Any]) -> None:
+    """Refuse field values that the written document could not carry back.
+
+    Both checks run before any bytes move: a non-boolean acceptance would leave
+    a Check that no longer parses, and an uncompilable input glob would leave
+    every read of its proof at ``unknown``.
+    """
+    if "acceptance" in fields and not isinstance(fields["acceptance"], bool):
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "acceptance must be true or false",
+            {"key": "acceptance"},
+        )
+    declared = fields.get("inputs")
+    if not isinstance(declared, (list, tuple)):
+        return
+    for glob in declared:
+        problem = invalid_glob(glob) if isinstance(glob, str) else None
+        if problem is not None:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"{glob!r} is not a valid input glob: {problem}",
+                {"inputs": glob},
+            )
 
 
 def protected_change(

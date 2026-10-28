@@ -212,6 +212,89 @@ def test_human_conversion_to_acceptance_needs_the_slug_phrase(approved_store: Pa
         assert after["protected_hashes"][rel] == before["protected_hashes"][rel]
 
 
+def test_a_generic_acceptance_value_must_be_boolean(approved_store: Path) -> None:
+    store = approved_store
+    _write_check(store, "signoff", "chase-overdue", acceptance=False)
+    before = _digest(store, "checks/signoff.md")
+    approval = invoke("show", {"slug": "charter"}, store=store)["value"]["approval"]
+    etag = invoke("show", {"slug": "signoff"}, store=store)["value"]["doc"]["etag"]
+    records = _record_count(store)
+    assert approval["state"] == "approved"
+
+    for actor in ("cto", "human"):
+        refused = invoke(
+            "update",
+            {"slug": "signoff", "set": ['acceptance="true"'], "expect": etag},
+            store=store,
+            actor=actor,
+        )
+        assert refused["error"]["code"] == "VALIDATION_FAILED", (actor, refused)
+        assert _digest(store, "checks/signoff.md") == before
+        assert _record_count(store) == records
+
+    added = invoke(
+        "add",
+        {
+            "preset": "check",
+            "title": "Odd signoff",
+            "set": ['acceptance="true"'],
+            "rel": ["verifies=chase-overdue"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert added["error"]["code"] == "VALIDATION_FAILED", added
+    assert not (store / "checks" / "odd-signoff.md").exists()
+
+    shown = invoke("show", {"slug": "signoff"}, store=store)["value"]
+    assert shown["doc"]["fields"]["acceptance"] is False
+    after = invoke("show", {"slug": "charter"}, store=store)["value"]["approval"]
+    assert after["state"] == "approved"
+    assert after["snapshot_digest"] == approval["snapshot_digest"]
+
+
+def test_a_repeated_acceptance_title_uses_the_resolved_slug(approved_store: Path) -> None:
+    store = approved_store
+    args = {
+        "preset": "check",
+        "title": "Accept login",
+        "set": ["acceptance=true"],
+        "rel": ["verifies=chase-overdue"],
+    }
+
+    first = invoke(
+        "add", {**args, "confirm": "APPROVE accept-login"}, store=store, actor="human"
+    )
+    assert is_ok(first), first
+    assert (store / "checks" / "accept-login.md").is_file()
+    records = _record_count(store)
+
+    for phrase in (
+        "APPROVE accept-login",
+        "APPROVE accept-login-3",
+        "APPROVE accept-logn",
+        None,
+    ):
+        attempt = dict(args)
+        if phrase is not None:
+            attempt["confirm"] = phrase
+        refused = invoke("add", attempt, store=store, actor="human")
+        assert refused["error"]["code"] == "VALIDATION_FAILED", (phrase, refused)
+        assert refused["error"]["details"]["confirm"] == "APPROVE accept-login-2"
+        assert not (store / "checks" / "accept-login-2.md").exists()
+        assert _record_count(store) == records
+
+    second = invoke(
+        "add", {**args, "confirm": "APPROVE accept-login-2"}, store=store, actor="human"
+    )
+
+    assert is_ok(second), second
+    assert second["value"]["path"] == "checks/accept-login-2.md"
+    assert (store / "checks" / "accept-login-2.md").is_file()
+    protected = invoke("show", {"slug": "charter"}, store=store)["value"]["approval"]
+    assert "checks/accept-login-2.md" in protected["protected_hashes"]
+
+
 def test_cto_cannot_create_an_acceptance_check_through_add(approved_store: Path) -> None:
     store = approved_store
     records = _record_count(store)

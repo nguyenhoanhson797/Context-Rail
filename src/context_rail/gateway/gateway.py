@@ -284,10 +284,12 @@ def _confirmation_target(
     tool: Tool, params: dict[str, Any], context: Context
 ) -> str | None:
     if tool.name == "add":
-        from context_rail.core.util import slugify
+        from context_rail.gateway.handlers.common import unique_slug
 
         title = params.get("title")
-        return slugify(title) if isinstance(title, str) and title.strip() else None
+        if not (isinstance(title, str) and title.strip()):
+            return None
+        return unique_slug(context.index, title)
     if tool.name == "relocate":
         from context_rail.gateway.handlers.common import relocate_confirmation
 
