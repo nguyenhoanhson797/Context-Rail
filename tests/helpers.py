@@ -10,7 +10,7 @@ import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ from context_rail.store.doc import record_digest
 _REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 _STARTUP_TIMEOUT = 120.0
 _JOIN_TIMEOUT = 30.0
+DEFAULT_FAKE_BEHAVIORS = ("success",)
 
 
 def run_cli(
@@ -60,6 +61,70 @@ def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     if proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {proc.stderr.strip()}")
     return proc
+
+
+def process_alive(pid: int) -> bool:
+    """True while the OS still lists ``pid`` as a running process."""
+    if os.name == "nt":
+        listed = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        return str(pid) in listed.stdout
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def write_fake_droid(root: Path, behaviors: Sequence[Any]) -> Path:
+    """Install the scripted fake droid under ``root`` and return its script."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    source = Path(__file__).resolve().parent / "fakes" / "droid.py"
+    script = root / "fake-droid.py"
+    script.write_bytes(source.read_bytes())
+    (root / "fake-droid.json").write_text(
+        json.dumps({"behaviors": list(behaviors)}), encoding="utf-8", newline="\n"
+    )
+    (root / "fake-droid-cursor.json").write_text(
+        '{"launches": 0}', encoding="utf-8", newline="\n"
+    )
+    return script
+
+
+class FakeDroid:
+    """A scripted fake ``droid`` installed under one temporary root."""
+
+    def __init__(self, root: Path, behaviors: Sequence[Any]) -> None:
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.script = write_fake_droid(self.root, behaviors)
+
+    def set_behaviors(self, behaviors: Sequence[Any]) -> "FakeDroid":
+        """Replace the scripted behaviors and rewind the behavior cursor."""
+        write_fake_droid(self.root, behaviors)
+        return self
+
+    def log(self) -> list[dict[str, Any]]:
+        """One record per launch, in order: argv, env, prompt and session id."""
+        path = self.root / "fake-droid-argv.jsonl"
+        if not path.is_file():
+            return []
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    def session_ids(self) -> list[str]:
+        """The session id each launch reported, in order."""
+        return [str(row.get("session_id")) for row in self.log()]
 
 
 def write_record(

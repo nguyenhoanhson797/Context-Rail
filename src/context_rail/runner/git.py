@@ -16,6 +16,8 @@ from context_rail.runner.run import run
 from context_rail.store.write import WriteRefused
 
 __all__ = [
+    "CAPTURE_LIMIT",
+    "capture_changes",
     "git",
     "ls_files",
     "ls_files_staged",
@@ -24,6 +26,7 @@ __all__ = [
 ]
 
 DEFAULT_TIMEOUT = 120.0
+CAPTURE_LIMIT = 200
 
 
 def git(
@@ -105,6 +108,73 @@ def rev_parse_head(cwd: Path, confine_to: Path) -> str:
     """The exact ``HEAD`` commit ``cwd`` points at."""
     result = _checked(["rev-parse", "--verify", "HEAD"], cwd=cwd, confine_to=confine_to)
     return result["stdout"].strip()
+
+
+def capture_changes(
+    *,
+    worktree: Path,
+    confine_to: Path,
+    base_commit: str,
+    candidate_commit: str = "HEAD",
+    store_paths: Sequence[str] = ("context-rail",),
+    limit: int = CAPTURE_LIMIT,
+) -> dict:
+    """Changed files and commits between two revisions, bounded.
+
+    Store-owned paths are reported separately: they are observations the parent
+    must refuse rather than authorship proof. Both lists are capped at
+    ``limit``; a capped capture is incomplete and says how much it dropped.
+    """
+    base = _revision(base_commit, "base_commit")
+    candidate = _revision(candidate_commit, "candidate_commit")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise WriteRefused("VALIDATION_FAILED", "a capture limit must be a positive integer")
+    files_result = _checked(
+        ["diff", "--name-only", "-z", base, candidate],
+        cwd=worktree,
+        confine_to=confine_to,
+    )
+    commits_result = _checked(
+        ["rev-list", "--reverse", f"{base}..{candidate}"],
+        cwd=worktree,
+        confine_to=confine_to,
+    )
+    prefixes = tuple(
+        text.replace("\\", "/").strip("/")
+        for text in store_paths
+        if isinstance(text, str) and text.strip("/")
+    )
+    files: list[str] = []
+    store_changed: list[str] = []
+    for path in sorted(name for name in files_result["stdout"].split("\0") if name):
+        if _inside(path, prefixes):
+            store_changed.append(path)
+        else:
+            files.append(path)
+    commits = [line.strip() for line in commits_result["stdout"].splitlines() if line.strip()]
+    omitted = max(0, len(files) - limit) + max(0, len(commits) - limit)
+    return {
+        "files_changed": files[:limit],
+        "commits_changed": commits[:limit],
+        "store_changed": store_changed[:limit],
+        "complete": omitted == 0,
+        "reason": None if omitted == 0 else "bounded",
+        "omitted": omitted,
+    }
+
+
+def _revision(value: str, what: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise WriteRefused("VALIDATION_FAILED", f"{what} must be a revision")
+    if value.startswith("-") or any(character.isspace() for character in value):
+        raise WriteRefused("VALIDATION_FAILED", f"{what} is not a plain revision: {value!r}")
+    if "\x00" in value:
+        raise WriteRefused("VALIDATION_FAILED", f"{what} contains a NUL byte")
+    return value
+
+
+def _inside(path: str, prefixes: Sequence[str]) -> bool:
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
 
 
 def _checked(args: Sequence[str], *, cwd: Path, confine_to: Path) -> dict:

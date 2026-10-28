@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import itertools
 import json
+import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,7 +21,13 @@ from context_rail.model.pack import Pack, load_pack
 from context_rail.model.policy import DECISION_RIGHTS, HUMAN_ONLY_IDS
 from context_rail.store.doc import etag
 from context_rail.store.index import Index
-from helpers import approve_picture, run_git, write_record
+from helpers import (
+    DEFAULT_FAKE_BEHAVIORS,
+    FakeDroid,
+    approve_picture,
+    run_git,
+    write_record,
+)
 from perf.gen import make_store
 
 _STAMP = "2026-10-28T00:00:00Z"
@@ -608,5 +615,23 @@ def git_approved_store(tmp_path: Path, approved_store: Path) -> SimpleNamespace:
     run_git(tmp_path, "add", "-A")
     run_git(tmp_path, "commit", "-m", "picture")
     return SimpleNamespace(store=approved_store, root=tmp_path, item="feature-a")
+
+
+@pytest.fixture
+def fake_droid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeDroid:
+    """The scripted fake droid, selected for the launcher through its env var."""
+    holder = FakeDroid(tmp_path / "fake-droid", DEFAULT_FAKE_BEHAVIORS)
+    monkeypatch.setenv("RAIL_DROID_BIN", str(holder.script))
+    return holder
+
+
+@pytest.fixture
+def droid_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """A parent environment with every inherited git and provider secret gone."""
+    for name in list(os.environ):
+        if name.startswith("GIT_") or name in ("GITHUB_TOKEN", "FACTORY_API_KEY"):
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("FACTORY_API_KEY", "SECRET-TEST-7f3a")
+    return dict(os.environ)
 
 
