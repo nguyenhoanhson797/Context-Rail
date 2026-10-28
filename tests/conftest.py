@@ -3,16 +3,48 @@
 from __future__ import annotations
 
 import itertools
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 
 from context_rail.model.manifest import DEFAULT_MANIFEST
 from context_rail.model.pack import Pack, load_pack
+from context_rail.store.index import Index
 from helpers import run_git
 from perf.gen import make_store
+
+_STAMP = "2026-10-28T00:00:00Z"
+
+_DUPLICATE_TASK = f"""---
+primitive: item
+preset: task
+title: Duplicate X Task
+status: todo
+tags: [task]
+created: '{_STAMP}'
+updated: '{_STAMP}'
+part_of: '[[g1]]'
+---
+# Duplicate X Task
+
+Only this task body mentions dupxtask.
+"""
+
+_DUPLICATE_NOTE = f"""---
+primitive: note
+preset: note
+title: Duplicate X Note
+tags: []
+created: '{_STAMP}'
+updated: '{_STAMP}'
+---
+# Duplicate X Note
+
+Only this note body mentions dupxnote.
+"""
 
 
 @pytest.fixture
@@ -30,6 +62,48 @@ def store_factory(tmp_path: Path) -> Callable[..., Path]:
         return make_store(tmp_path / f"store{next(counter)}", docs, seed)
 
     return factory
+
+
+def _indexed(store: Path) -> SimpleNamespace:
+    pack = load_pack("small", store)
+    index = Index.open(store, pack)
+    index.sync()
+    return SimpleNamespace(store=store, ix=index, pack=pack)
+
+
+@pytest.fixture
+def indexed_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
+    """The 200-document generated store, opened and synced."""
+    opened = _indexed(make_store(tmp_path / "indexed", 200))
+    try:
+        yield opened
+    finally:
+        opened.ix.close()
+
+
+@pytest.fixture
+def store_with_duplicate(tmp_path: Path) -> Path:
+    """A generated store plus a task and a note that share the slug ``x``."""
+    store = make_store(tmp_path / "duplicate", 20)
+    (store / "items/task/x.md").write_text(
+        _DUPLICATE_TASK, encoding="utf-8", newline="\n"
+    )
+    (store / "notes/note/x.md").write_text(
+        _DUPLICATE_NOTE, encoding="utf-8", newline="\n"
+    )
+    return store
+
+
+@pytest.fixture
+def indexed_store_with_duplicate(
+    store_with_duplicate: Path,
+) -> Iterator[SimpleNamespace]:
+    """``store_with_duplicate`` opened and synced."""
+    opened = _indexed(store_with_duplicate)
+    try:
+        yield opened
+    finally:
+        opened.ix.close()
 
 
 def _rail_yaml() -> str:
