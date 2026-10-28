@@ -270,8 +270,8 @@ def test_record_is_appended_with_valid_digest(store_factory):
 def test_record_collision_with_doc_op_is_refused(store_factory, monkeypatch):
     store = store_factory()
     manifest = load_manifest(store)
-    _stamp(monkeypatch, "01JCOLLISION0000000000000")
-    target = "records/2026-10/01JCOLLISION0000000000000.json"
+    _stamp(monkeypatch, "01JCOLLISION00000000000000")
+    target = "records/2026-10/01JCOLLISION00000000000000.json"
 
     with pytest.raises(WriteRefused) as excinfo:
         commit(
@@ -289,8 +289,8 @@ def test_record_collision_with_doc_op_is_refused(store_factory, monkeypatch):
 def test_record_collision_with_existing_file_is_refused(store_factory, monkeypatch):
     store = store_factory()
     manifest = load_manifest(store)
-    _stamp(monkeypatch, "01JCOLLISION0000000000001")
-    target = "records/2026-10/01JCOLLISION0000000000001.json"
+    _stamp(monkeypatch, "01JCOLLISION00000000000001")
+    target = "records/2026-10/01JCOLLISION00000000000001.json"
     (store / target).parent.mkdir(parents=True)
     (store / target).write_bytes(b"B")
 

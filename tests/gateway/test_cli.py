@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -259,3 +260,185 @@ def test_cli_emits_unicode_json_on_a_redirected_legacy_stream(tmp_path):
     value = json.loads(text)["value"]
     assert value["doc"]["title"] == "Café 漢"
     assert value["body"] == "Corps é漢\n"
+
+
+def _tagged_task(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
+    """A store holding one task, plus that task's ``show`` document."""
+    store = _init(tmp_path)
+    added = run_cli(tmp_path, "--actor", "cto", "add", "task", "Login page")
+    assert added.returncode == 0, added.stdout
+    slug = _json(added)["value"]["slug"]
+    assert slug == "login-page"
+    return store, _json(run_cli(tmp_path, "show", slug))["value"]["doc"]
+
+
+def _store_files(store: Path) -> dict[str, bytes]:
+    """Every store file except the rebuildable local cache."""
+    return {
+        path.relative_to(store).as_posix(): path.read_bytes()
+        for path in store.rglob("*")
+        if path.is_file() and ".rail-local" not in path.relative_to(store).parts
+    }
+
+
+@pytest.mark.parametrize(
+    "tag_args",
+    [
+        ("--tag", "+ui2", "--tag", "-task"),
+        ("--tag", "+ui2", "--tag=-task"),
+    ],
+    ids=["space-separated", "joined"],
+)
+def test_cli_update_applies_tag_edits_in_both_spellings(tmp_path, tag_args):
+    _, before = _tagged_task(tmp_path)
+    time.sleep(1.1)
+
+    proc = run_cli(
+        tmp_path,
+        "--actor",
+        "cto",
+        "update",
+        before["slug"],
+        "--expect",
+        before["etag"],
+        "--set",
+        "estimate=3",
+        "--set",
+        "urgent=true",
+        *tag_args,
+    )
+
+    assert proc.returncode == 0, proc.stdout
+    assert proc.stderr == ""
+    shown = _json(run_cli(tmp_path, "show", before["slug"]))["value"]["doc"]
+    estimate = shown["fields"]["estimate"]
+    assert isinstance(estimate, int) and not isinstance(estimate, bool)
+    assert estimate == 3
+    assert shown["fields"]["urgent"] is True
+    assert "ui2" in shown["tags"]
+    assert "task" not in shown["tags"]
+    assert shown["created"] == before["created"]
+    assert shown["updated"] > shown["created"]
+
+
+def test_cli_tag_without_a_value_is_refused_and_changes_nothing(tmp_path):
+    store, doc = _tagged_task(tmp_path)
+    before = _store_files(store)
+
+    proc = run_cli(
+        tmp_path,
+        "--actor",
+        "cto",
+        "update",
+        doc["slug"],
+        "--expect",
+        doc["etag"],
+        "--tag",
+    )
+
+    assert proc.returncode == 1
+    error = _json(proc)["error"]
+    assert error["code"] == "VALIDATION_FAILED"
+    assert "--tag" in error["message"]
+    assert _store_files(store) == before
+
+
+def test_cli_tag_never_swallows_a_following_flag(tmp_path):
+    store, doc = _tagged_task(tmp_path)
+    before = _store_files(store)
+
+    proc = run_cli(
+        tmp_path,
+        "--actor",
+        "cto",
+        "update",
+        doc["slug"],
+        "--expect",
+        doc["etag"],
+        "--tag",
+        "--set",
+        "estimate=3",
+    )
+
+    assert proc.returncode == 1
+    error = _json(proc)["error"]
+    assert error["code"] == "VALIDATION_FAILED"
+    assert "--tag" in error["message"]
+    assert _store_files(store) == before
+
+
+@pytest.mark.parametrize("tag", ["task", "+", "-"])
+def test_cli_malformed_tag_edits_are_refused_and_change_nothing(tmp_path, tag):
+    store, doc = _tagged_task(tmp_path)
+    before = _store_files(store)
+
+    proc = run_cli(
+        tmp_path,
+        "--actor",
+        "cto",
+        "update",
+        doc["slug"],
+        "--expect",
+        doc["etag"],
+        "--tag",
+        tag,
+    )
+
+    assert proc.returncode == 1, proc.stdout
+    assert _json(proc)["error"]["code"] == "VALIDATION_FAILED"
+    assert _store_files(store) == before
+
+
+def test_cli_find_accepts_a_space_separated_dash_tag(tmp_path):
+    _init(tmp_path)
+    added = run_cli(tmp_path, "--actor", "cto", "add", "task", "Tagged")
+    assert added.returncode == 0, added.stdout
+
+    space = run_cli(tmp_path, "find", "--tag", "-task")
+    joined = run_cli(tmp_path, "find", "--tag=-task")
+
+    assert space.returncode == 0, space.stdout
+    assert joined.returncode == 0, joined.stdout
+    assert _json(space) == _json(joined)
+    assert _json(space)["value"]["items"] == []
+
+
+def test_cli_add_accepts_a_space_separated_tag(tmp_path):
+    _init(tmp_path)
+
+    proc = run_cli(
+        tmp_path,
+        "--actor",
+        "cto",
+        "add",
+        "task",
+        "Two tags",
+        "--tag",
+        "ui2",
+        "--tag",
+        "beta",
+    )
+
+    assert proc.returncode == 0, proc.stdout
+    shown = _json(run_cli(tmp_path, "show", _json(proc)["value"]["slug"]))["value"]
+    assert {"ui2", "beta"} <= set(shown["doc"]["tags"])
+
+
+def test_cli_add_reports_a_signed_tag_the_same_in_both_spellings(tmp_path):
+    _init(tmp_path)
+
+    space = run_cli(tmp_path, "--actor", "cto", "add", "task", "X", "--tag", "+ui2")
+    joined = run_cli(tmp_path, "--actor", "cto", "add", "task", "Y", "--tag=+ui2")
+
+    assert space.returncode == 1
+    assert joined.returncode == 1
+    assert _json(space)["error"]["code"] == "VALIDATION_FAILED"
+    assert "'+ui2' is not a tag name" in _json(space)["error"]["message"]
+    assert _json(joined)["error"]["message"] == _json(space)["error"]["message"]
+
+
+def test_cli_update_help_documents_tag_edits(tmp_path):
+    proc = run_cli(tmp_path, "update", "--help")
+
+    assert proc.returncode == 0
+    assert "+TAG or -TAG" in proc.stdout

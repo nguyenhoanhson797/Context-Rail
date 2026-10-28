@@ -83,6 +83,59 @@ def _flag(param: Param) -> str:
     return "--" + param.name.replace("_", "-")
 
 
+def _option_sets() -> tuple[frozenset[str], frozenset[str]]:
+    """Every option string, and the subset of them that consumes a value."""
+    everything = {"-h", "--help", "--store", "--actor"}
+    valued = {"--store", "--actor"}
+    for tool in TOOLS:
+        for param in tool.params:
+            if param.positional:
+                continue
+            flag = _flag(param)
+            everything.add(flag)
+            if param.type != "bool":
+                valued.add(flag)
+    return frozenset(everything), frozenset(valued)
+
+
+_ALL_OPTIONS, _VALUE_OPTIONS = _option_sets()
+
+
+def _join_dash_values(argv: list[str]) -> list[str]:
+    """Rewrite ``--flag -value`` as ``--flag=-value`` before argparse sees it.
+
+    argparse reads a space-separated token starting with ``-`` as an option, so
+    ``--tag -task`` would otherwise be rejected as a missing value. A following
+    token that is itself an option, or that starts with ``--``, stays an option,
+    so a genuinely missing value is still refused.
+    """
+    joined: list[str] = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        value = argv[index + 1] if index + 1 < len(argv) else None
+        if token == "--":
+            joined.extend(argv[index:])
+            break
+        if token in _VALUE_OPTIONS and value is not None and _is_dash_value(value):
+            joined.append(f"{token}={value}")
+            index += 2
+            continue
+        joined.append(token)
+        index += 1
+    return joined
+
+
+def _is_dash_value(token: str) -> bool:
+    """A single-dash token that is not one of this CLI's own options."""
+    return (
+        len(token) > 1
+        and token.startswith("-")
+        and not token.startswith("--")
+        and token not in _ALL_OPTIONS
+    )
+
+
 def _emit(result: dict) -> None:
     """Write one Result envelope as UTF-8 bytes, whatever the console declares.
 
@@ -102,8 +155,9 @@ def _emit(result: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     """Run one command and return the process exit code."""
+    args = list(sys.argv[1:] if argv is None else argv)
     try:
-        namespace = _parser().parse_args(argv)
+        namespace = _parser().parse_args(_join_dash_values(args))
     except SystemExit as exc:
         return int(exc.code or 0)
     reserved = {"store", "actor", "group", "_tool"}
