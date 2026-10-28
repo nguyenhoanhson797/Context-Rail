@@ -45,6 +45,8 @@ def test_cli_help_is_text_and_lists_every_tool(tmp_path):
         "show",
         "status",
         "reindex",
+        "check",
+        "verify",
     ):
         assert name in proc.stdout
 
@@ -494,4 +496,43 @@ def test_cli_init_piped_interview_is_refused(tmp_path):
     assert proc.returncode == 1, (proc.stdout, proc.stderr)
     assert _json(proc)["error"]["code"] == "VALIDATION_FAILED"
     assert not (tmp_path / "context-rail").exists()
+
+
+def test_cli_check_and_verify_flags_reach_the_gateway(tmp_path):
+    store = _init(tmp_path)
+
+    checked = run_cli(
+        tmp_path,
+        "--actor",
+        "cto",
+        "check",
+        "smoke",
+        "--target",
+        "feature-a",
+        "--spec-file",
+        str(tmp_path / "missing.json"),
+        "--expect",
+        "absent",
+        store=store,
+    )
+    assert checked.returncode == 1, checked.stdout
+    assert _json(checked)["error"]["code"] == "NOT_FOUND"
+
+    verified = run_cli(
+        tmp_path,
+        "--actor",
+        "cto",
+        "verify",
+        "smoke",
+        "--evidence",
+        "01JRUN000000000000000001",
+        "--evidence",
+        "01JRUN000000000000000002",
+        store=store,
+    )
+    assert verified.returncode == 1, verified.stdout
+    assert _json(verified)["error"]["code"] == "NOT_FOUND"
+
+    for name in ("check", "verify"):
+        assert run_cli(tmp_path, name, "--help").returncode == 0
 

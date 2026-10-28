@@ -48,7 +48,13 @@ EXECUTION_TOOLS = ("verify", "dispatch", "review", "merge", "cto tick")
 LOCKED_CATEGORIES = ("active", "done")
 #: Generic writes whose decision depends on whether their target is protected.
 PROTECTED_METHODS = ("update", "link", "move", "rename")
-_CONFIRM_SLUG = {"update": "slug", "move": "slug", "link": "src", "rename": "old"}
+_CONFIRM_SLUG = {
+    "update": "slug",
+    "move": "slug",
+    "link": "src",
+    "rename": "old",
+    "check": "slug",
+}
 _HUMAN = "human"
 
 
@@ -173,6 +179,14 @@ def effective_decision(
         return "cto-alone" if params.get("draft_file") else "human-only"
     if context is None or context.policy is None:
         return tool.decision
+    if tool.name == "check":
+        from context_rail.gateway.handlers.checks import check_decision
+
+        return check_decision(context, params)
+    if tool.name == "verify":
+        from context_rail.gateway.handlers.checks import verify_decision
+
+        return verify_decision(context, params)
     if tool.name not in PROTECTED_METHODS:
         return tool.decision
     from context_rail.gateway.handlers.common import protected_change

@@ -594,3 +594,19 @@ def approved_store(tmp_path: Path, answers: Path) -> Path:
     return store
 
 
+@pytest.fixture
+def git_approved_store(tmp_path: Path, approved_store: Path) -> SimpleNamespace:
+    """The approved picture committed in a git worktree with a ``Feature A`` task."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    (tmp_path / "README.md").write_text("fixture\n", encoding="utf-8", newline="\n")
+    added = invoke(
+        "add", {"preset": "task", "title": "Feature A"}, store=approved_store, actor="cto"
+    )
+    assert is_ok(added), added
+    run_git(tmp_path, "init")
+    run_git(tmp_path, "add", "-A")
+    run_git(tmp_path, "commit", "-m", "picture")
+    return SimpleNamespace(store=approved_store, root=tmp_path, item="feature-a")
+
+

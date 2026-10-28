@@ -48,6 +48,8 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     resolve_unique(index, args["slug"])
     shown = query.show(index, args["slug"], body_chars=args["body_chars"])
     doc = shown["doc"]
+    if doc["primitive"] == "check":
+        shown["freshness"] = _freshness(ctx, query.check_state(index, doc["slug"]))
     if doc["primitive"] == "policy" and doc["preset"] == CHARTER_TARGET:
         shown["approval"] = approval.approval_state(ctx, CHARTER_TARGET)
         shown["phrase"] = confirmation_phrase("approve", CHARTER_TARGET)
@@ -98,17 +100,35 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     executable_page, executable_omitted = _page(runnable)
     blocked_page, blocked_omitted = _page(held)
     stuck_page, stuck_omitted = _page(stalled)
+    checks = query.check_states(index)
+    states = [
+        {
+            "check": row["slug"],
+            "item": row["item"],
+            "passed": row["passed"],
+            "freshness": _freshness(ctx, row),
+        }
+        for row in checks[:LIST_CAP]
+    ]
     return {
         "counts": counts,
         "executable": executable_page,
         "blocked": dict(blocked_page),
         "stuck": stuck_page,
+        "check_states": states,
+        "check_states_omitted": max(len(checks) - LIST_CAP, 0),
         "omitted": {
             "executable": executable_omitted,
             "blocked": blocked_omitted,
             "stuck": stuck_omitted,
         },
     }
+
+
+def _freshness(ctx: Context, row: dict[str, Any] | None) -> str:
+    from context_rail.gateway.handlers.checks import freshness_of
+
+    return freshness_of(ctx, row)
 
 
 def _page(values: list[Any]) -> tuple[list[Any], int]:

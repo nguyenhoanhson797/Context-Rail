@@ -50,11 +50,20 @@ def local_dir(store: Path) -> Path:
     ``<store>/.rail-local``.
     """
     store = Path(store)
-    found = _worktree_git_dir(store.absolute())
+    found = worktree_git_dir(store.absolute())
     if found is None:
         return store / LOCAL_DIR
     git_dir, root = found
     return git_dir / GIT_SUBDIR / _store_key(store.absolute(), root)
+
+
+def worktree_git_dir(store: Path) -> tuple[Path, Path] | None:
+    """``(this worktree's git dir, worktree root)``, or None outside git.
+
+    The git dir is found by reading ``.git`` in the store or an ancestor; git
+    is never run.
+    """
+    return _worktree_git_dir(Path(store).absolute())
 
 
 def index_path(store: Path) -> Path:

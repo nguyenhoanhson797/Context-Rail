@@ -403,7 +403,7 @@ def _require_done_gate(ctx: Context, doc: Doc, actor: str) -> None:
         policy,
         name,
         doc.slug,
-        [_gate_state(row) for row in query.check_states(ctx.index, doc.slug)],
+        [_gate_state(ctx, row) for row in query.check_states(ctx.index, doc.slug)],
         None,
         actor == "human",
         None,
@@ -417,22 +417,14 @@ def _require_done_gate(ctx: Context, doc: Doc, actor: str) -> None:
     )
 
 
-def _gate_state(row: dict[str, Any]) -> gates.CheckState:
-    """The proof a verdict carries, with freshness only the Git index can prove.
+def _gate_state(ctx: Context, row: dict[str, Any]) -> gates.CheckState:
+    """The proof a verdict carries, with freshness read from the Git index."""
+    from context_rail.gateway.handlers.checks import freshness_of
 
-    A verdict whose definition still matches counts as unknown rather than
-    fresh until the freshness reader exists; unknown never opens a gate.
-    """
-    if row["passed"] is None:
-        freshness = "missing"
-    elif not row["passed"] or row["check_etag"] != row["definition_etag"]:
-        freshness = "stale"
-    else:
-        freshness = "unknown"
     return gates.CheckState(
         slug=row["slug"],
         passed=bool(row["passed"]),
-        freshness=freshness,
+        freshness=freshness_of(ctx, row),
         candidate=row["candidate_commit"],
         acceptance=bool(row["acceptance"]),
     )

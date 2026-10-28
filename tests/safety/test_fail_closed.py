@@ -28,6 +28,8 @@ _REFUSED_TOOLS = (
     "rename",
     "relocate",
     "doctor",
+    "check",
+    "verify",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -47,6 +49,8 @@ _ARGS: dict[str, dict[str, Any]] = {
     "rename": {"old": "t0", "new": "renamed"},
     "relocate": {},
     "doctor": {},
+    "check": {"slug": "smoke", "spec_file": "missing.json", "expect": "absent"},
+    "verify": {"target": "smoke"},
 }
 _ZONK = f"""---
 primitive: item

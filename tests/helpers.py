@@ -95,6 +95,24 @@ def write_record(
     return path
 
 
+def latest_record(store: Path, kind: str) -> dict[str, Any]:
+    """The newest JSON Record of ``kind`` by ``(at, id)``.
+
+    Raises ``LookupError`` when the store holds no such Record.
+    """
+    found: list[dict[str, Any]] = []
+    for path in (Path(store) / "records").rglob("*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(payload, dict) and payload.get("kind") == kind:
+            found.append(payload)
+    if not found:
+        raise LookupError(f"no {kind} record")
+    return max(found, key=lambda row: (str(row.get("at") or ""), str(row.get("id") or "")))
+
+
 def touch_doc(store: Path, rel: str, **frontmatter: Any) -> None:
     """Replace frontmatter keys in an existing document and bump its mtime.
 

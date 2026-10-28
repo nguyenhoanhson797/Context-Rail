@@ -24,6 +24,7 @@ __all__ = [
     "QueryError",
     "approval_for",
     "brief_rows",
+    "check_state",
     "check_states",
     "digest_rows",
     "find",
@@ -31,6 +32,7 @@ __all__ = [
     "ledger",
     "records_about",
     "review_for",
+    "review_for_item",
     "show",
     "untriaged_reports",
 ]
@@ -316,62 +318,81 @@ def last_activity_ms(ix: Index) -> dict[str, int]:
     return {slug: value for slug, value in rows if value is not None}
 
 
-def check_states(ix: Index, item: str) -> list[dict[str, Any]]:
-    """Every Check declared for one Item, with its newest proof.
+_CHECK_COLUMNS = (
+    "c.slug, c.item, c.mode, c.acceptance, c.definition_etag, c.inputs_json, c.spec_json"
+)
+
+
+def check_states(ix: Index, item: str | None = None) -> list[dict[str, Any]]:
+    """Every Check declared for one Item (or all Checks), with its newest proof.
 
     The returned freshness inputs are what a caller compares against the Git
     index; this helper never reads a source file or runs a command.
     """
-    item = _slug(item)
-    rows = ix.conn.execute(
-        "SELECT c.slug, c.item, c.mode, c.acceptance, c.definition_etag, "
-        "c.inputs_json, c.spec_json FROM checks c WHERE c.item = ? ORDER BY c.slug",
-        (item,),
-    ).fetchall()
-    states: list[dict[str, Any]] = []
-    for slug, owner, mode, acceptance, definition_etag, inputs_json, spec_json in rows:
-        latest = ix.conn.execute(
-            "SELECT record_id, at, passed, check_etag, input_blobs_json, "
-            "candidate_commit, runner_digest, data_json FROM verdicts "
-            'WHERE "check" = ? ORDER BY at DESC, record_id DESC LIMIT 1',
-            (slug,),
-        ).fetchone()
-        state: dict[str, Any] = {
-            "slug": slug,
-            "item": owner,
-            "mode": mode,
-            "acceptance": bool(acceptance),
-            "definition_etag": definition_etag,
-            "inputs": json.loads(inputs_json),
-            "spec": json.loads(spec_json),
-            "passed": None,
-            "verdict": None,
-            "at": None,
-            "check_etag": None,
-            "input_blobs": {},
-            "input_globs": [],
-            "candidate_commit": None,
-            "runner_digest": None,
-            "reason": None,
-        }
-        if latest is not None:
-            record_id, at, passed, check_etag, blobs, candidate, digest, data = latest
-            payload = json.loads(data)
-            state.update(
-                {
-                    "passed": bool(passed),
-                    "verdict": record_id,
-                    "at": at,
-                    "check_etag": check_etag,
-                    "input_blobs": json.loads(blobs),
-                    "input_globs": payload.get("input_globs", []),
-                    "candidate_commit": candidate,
-                    "runner_digest": digest,
-                    "reason": payload.get("reason"),
-                }
-            )
-        states.append(state)
-    return states
+    if item is None:
+        rows = ix.conn.execute(
+            f"SELECT {_CHECK_COLUMNS} FROM checks c ORDER BY c.slug, c.path"
+        ).fetchall()
+    else:
+        rows = ix.conn.execute(
+            f"SELECT {_CHECK_COLUMNS} FROM checks c WHERE c.item = ? ORDER BY c.slug, c.path",
+            (_slug(item),),
+        ).fetchall()
+    return [_check_state(ix, row) for row in rows]
+
+
+def check_state(ix: Index, slug: str) -> dict[str, Any] | None:
+    """One Check with its newest proof, or None when no Check carries ``slug``."""
+    row = ix.conn.execute(
+        f"SELECT {_CHECK_COLUMNS} FROM checks c WHERE c.slug = ? ORDER BY c.path LIMIT 1",
+        (_slug(slug),),
+    ).fetchone()
+    return None if row is None else _check_state(ix, row)
+
+
+def _check_state(ix: Index, row: Sequence[Any]) -> dict[str, Any]:
+    slug, owner, mode, acceptance, definition_etag, inputs_json, spec_json = row
+    latest = ix.conn.execute(
+        "SELECT record_id, at, passed, check_etag, input_blobs_json, "
+        "candidate_commit, runner_digest, data_json FROM verdicts "
+        'WHERE "check" = ? ORDER BY at DESC, record_id DESC LIMIT 1',
+        (slug,),
+    ).fetchone()
+    state: dict[str, Any] = {
+        "slug": slug,
+        "item": owner,
+        "mode": mode,
+        "acceptance": bool(acceptance),
+        "definition_etag": definition_etag,
+        "inputs": json.loads(inputs_json),
+        "spec": json.loads(spec_json),
+        "passed": None,
+        "verdict": None,
+        "at": None,
+        "check_etag": None,
+        "input_blobs": {},
+        "input_globs": [],
+        "candidate_commit": None,
+        "runner_digest": None,
+        "reason": None,
+    }
+    if latest is not None:
+        record_id, at, passed, check_etag, blobs, candidate, digest, data = latest
+        payload = json.loads(data)
+        state.update(
+            {
+                "passed": bool(passed),
+                "verdict": record_id,
+                "at": at,
+                "check_etag": check_etag,
+                "input_blobs": json.loads(blobs),
+                "input_globs": payload.get("input_globs", []),
+                "candidate_commit": candidate,
+                "runner_digest": digest,
+                "reason": payload.get("reason"),
+            }
+        )
+    return state
 
 
 def ledger(
@@ -527,6 +548,38 @@ def review_for(ix: Index, candidate: str) -> dict[str, Any] | None:
         "review": record_id,
         "record_id": record_id,
         "item": item,
+        "run": run_id,
+        "candidate_commit": bound,
+        "reviewer": reviewer,
+        "verdict": verdict,
+        "findings": payload.get("findings", []),
+        "evidence": payload.get("evidence", []),
+        "data": payload,
+        "path": path,
+    }
+
+
+def review_for_item(ix: Index, item: str) -> dict[str, Any] | None:
+    """The newest review of one Item, or None when nothing reviewed it."""
+    item = _text(item, "item")
+    row = ix.conn.execute(
+        """
+        SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.reviewer,
+               r.verdict, r.data_json, r.path
+        FROM reviews r JOIN docs d ON d.path = r.path
+        WHERE r.item = ?
+        ORDER BY d.record_at DESC, r.record_id DESC LIMIT 1
+        """,
+        (item,),
+    ).fetchone()
+    if row is None:
+        return None
+    record_id, owner, run_id, bound, reviewer, verdict, data_json, path = row
+    payload = json.loads(data_json)
+    return {
+        "review": record_id,
+        "record_id": record_id,
+        "item": owner,
         "run": run_id,
         "candidate_commit": bound,
         "reviewer": reviewer,
