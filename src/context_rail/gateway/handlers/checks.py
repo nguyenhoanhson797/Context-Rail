@@ -30,9 +30,11 @@ from context_rail.runner.run import run as run_command
 from context_rail.store import query
 from context_rail.store.doc import etag, parse_doc
 from context_rail.store.git_index import (
+    GlobError,
     IndexEntry,
     IndexSnapshot,
     freshness,
+    invalid_glob,
     match_inputs,
     read_index,
     selected_stats,
@@ -187,19 +189,25 @@ def verify(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "confirm": args.get("confirm"),
         "evidence": list(args.get("evidence") or ()),
     }
-    if any(value for value in supplied.values()):
+    if supplied["verdict"] is not None or supplied["confirm"] is not None:
         if not single:
             raise WriteRefused(
                 "VALIDATION_FAILED",
-                "verdict, confirm and evidence apply to one Check",
+                "verdict and confirm apply to one Check",
                 {"target": target},
             )
-        if rows[0]["mode"] not in ("human", "evidence"):
+        if rows[0]["mode"] != "human":
             raise WriteRefused(
                 "VALIDATION_FAILED",
                 f"a verdict is not valid for mode {rows[0]['mode']!r}",
                 {"check": rows[0]["slug"], "mode": rows[0]["mode"]},
             )
+    elif supplied["evidence"] and not single:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "evidence applies to one Check",
+            {"target": target},
+        )
     key = args["key"]
     worktree = _resolve_worktree(ctx, args.get("worktree"))
     results: list[dict[str, Any]] = []
@@ -273,7 +281,11 @@ def freshness_of(ctx: Context, row: Mapping[str, Any] | None) -> str:
     git_dir, worktree = located
     snapshot = read_index(git_dir, worktree)
     globs = list(row.get("inputs") or ())
-    stats = selected_stats(worktree, match_inputs(snapshot, globs))
+    try:
+        matched = match_inputs(snapshot, globs)
+    except GlobError:
+        return "unknown"
+    stats = selected_stats(worktree, matched)
     return freshness(verdict, definition, snapshot, stats)
 
 
@@ -289,18 +301,27 @@ def _verify_one(
     key: str | None,
 ) -> dict[str, Any]:
     mode = row["mode"]
-    if mode == "cmd":
-        payload = _cmd_payload(ctx, row, worktree)
-    elif mode == "exists":
-        payload = _exists_payload(row, worktree)
-    elif mode == "evidence":
-        payload = _evidence_payload(ctx, row)
-    elif mode == "review":
-        payload = _review_payload(ctx, row)
-    elif mode == "human":
-        payload = _human_payload(ctx, row, supplied, actor)
-    else:  # pragma: no cover - parse_check pins the mode enum
-        raise WriteRefused("VALIDATION_FAILED", f"unknown check mode {mode!r}")
+    try:
+        if mode == "cmd":
+            payload = _cmd_payload(ctx, row, worktree)
+        elif mode == "exists":
+            payload = _exists_payload(row, worktree)
+        elif mode == "evidence":
+            payload = _evidence_payload(ctx, row)
+        elif mode == "review":
+            payload = _review_payload(ctx, row)
+        elif mode == "human":
+            payload = _human_payload(ctx, row, supplied, actor)
+        else:  # pragma: no cover - parse_check pins the mode enum
+            raise WriteRefused("VALIDATION_FAILED", f"unknown check mode {mode!r}")
+    except GlobError as error:
+        return {
+            "check": row["slug"],
+            "record": None,
+            "passed": False,
+            "freshness": "unknown",
+            "reason": f"the declared inputs are not valid globs: {error}",
+        }
     if mode == "cmd" and not payload["input_blobs"]:
         # A cmd verdict is only valid bound to its input blobs; a run that could
         # not name a committed input is reported as no proof and never recorded.
@@ -611,6 +632,14 @@ def _validate_definition(spec: Check) -> None:
                     f"{record_id!r} is not a Record id",
                     {"evidence": record_id},
                 )
+    for glob in spec.inputs:
+        problem = invalid_glob(glob)
+        if problem is not None:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"{glob!r} is not a valid input glob: {problem}",
+                {"inputs": glob},
+            )
 
 
 def _is_acceptance(

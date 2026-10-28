@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import now_iso, slugify
+from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import (
     apply_tag_edits,
     compose_doc,
@@ -75,6 +76,17 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
         if (store / rel).exists():
             raise WriteRefused("CONFLICT", f"{rel!r} already exists", {"path": rel})
+        if preset.primitive == "check" and fields.get("acceptance") is True:
+            reason = validate_confirmation("approve", slug, args.get("confirm"))
+            if reason is not None:
+                raise WriteRefused(
+                    "VALIDATION_FAILED",
+                    reason,
+                    {
+                        "slug": slug,
+                        "confirm": confirmation_phrase("approve", slug),
+                    },
+                )
         stamp = now_iso()
         front: dict[str, Any] = {
             "primitive": preset.primitive,

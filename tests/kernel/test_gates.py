@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from context_rail.kernel.gates import (
@@ -125,6 +127,40 @@ def test_merge_requires_checks_and_review(policy):
 
 def test_item_done_does_not_require_acceptance(policy):
     assert evaluate_gate(policy, "item_done", "login", [fresh()], approving(), False, "c1").allowed is True
+
+
+def test_a_bound_review_checks_separation_when_either_implementer_fact_is_known(policy):
+    same_actor = ReviewState(
+        "approve", "c1", "reviewer-1", REVIEWER_MODEL, implementer="reviewer-1"
+    )
+    decision = evaluate_gate(policy, "item_done", "login", [fresh()], same_actor, False, "c1")
+    assert decision.allowed is False
+    assert any("reviewer" in reason for reason in decision.reasons)
+
+    model_only = ReviewState(
+        "approve", "c1", "reviewer-1", REVIEWER_MODEL, implementer_model=REVIEWER_MODEL
+    )
+    assert (
+        evaluate_gate(policy, "item_done", "login", [fresh()], model_only, False, "c1").allowed
+        is False
+    )
+
+
+def test_separation_by_actor_holds_when_the_charter_does_not_require_another_model(policy):
+    optional = replace(policy, reviewer_different_model=False)
+    same_actor = ReviewState(
+        "approve", "c1", "reviewer-1", REVIEWER_MODEL, implementer="reviewer-1"
+    )
+    assert (
+        evaluate_gate(optional, "item_done", "login", [fresh()], same_actor, False, "c1").allowed
+        is False
+    )
+
+    other = ReviewState("approve", "c1", "reviewer-1", REVIEWER_MODEL, implementer="implementer-1")
+    assert (
+        evaluate_gate(optional, "item_done", "login", [fresh()], other, False, "c1").allowed
+        is True
+    )
 
 
 def test_blocked_decisions_always_explain_themselves(policy):

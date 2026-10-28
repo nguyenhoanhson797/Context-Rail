@@ -29,9 +29,11 @@ __all__ = [
     "FRESHNESS_STATES",
     "MAX_ENTRIES",
     "MAX_INDEX_BYTES",
+    "GlobError",
     "IndexEntry",
     "IndexSnapshot",
     "freshness",
+    "invalid_glob",
     "match_inputs",
     "read_index",
     "selected_stats",
@@ -69,6 +71,10 @@ _UNSUPPORTED_EXTENSIONS = {b"link": "a split index", b"sdir": "a sparse index"}
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 _SNAPSHOT_CACHE: dict[tuple[str, int, int], tuple[bytes, IndexSnapshot]] = {}
+
+
+class GlobError(ValueError):
+    """A declared input glob that cannot be compiled into a matcher."""
 
 
 @dataclass(frozen=True)
@@ -142,9 +148,17 @@ def match_inputs(snapshot: IndexSnapshot, globs: Sequence[str]) -> tuple[str, ..
     """The index paths matching any declared glob, sorted.
 
     Globs are matched against index path strings with POSIX separators; the
-    worktree is never scanned.
+    worktree is never scanned. A glob that cannot compile raises ``GlobError``
+    so the caller can report unknown freshness instead of a wrong answer.
     """
-    patterns = [_glob_regex(text.replace("\\", "/")) for text in globs if text]
+    patterns: list[re.Pattern[str]] = []
+    for text in globs:
+        if not text:
+            continue
+        try:
+            patterns.append(_glob_regex(text.replace("\\", "/")))
+        except re.error as error:
+            raise GlobError(f"{text!r} is not a valid glob: {error}") from None
     if not patterns:
         return ()
     return tuple(
@@ -154,6 +168,15 @@ def match_inputs(snapshot: IndexSnapshot, globs: Sequence[str]) -> tuple[str, ..
             if any(pattern.match(path) for pattern in patterns)
         )
     )
+
+
+def invalid_glob(glob: str) -> str | None:
+    """Why ``glob`` cannot compile, or None when it can."""
+    try:
+        _glob_regex(glob.replace("\\", "/"))
+    except re.error as error:
+        return str(error)
+    return None
 
 
 def selected_stats(
@@ -193,7 +216,10 @@ def freshness(
         return STALE
     if definition is not None and verdict.get("check_etag") != definition:
         return STALE
-    matched = match_inputs(snapshot, globs)
+    try:
+        matched = match_inputs(snapshot, globs)
+    except GlobError:
+        return UNKNOWN
     if not matched:
         return MISSING
     recorded = verdict.get("input_blobs")

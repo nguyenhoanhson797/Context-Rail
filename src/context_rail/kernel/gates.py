@@ -122,11 +122,11 @@ def _review_reasons(
         reasons.append("the review has no reviewer")
     if not review.model:
         reasons.append("the review names no reviewer model")
-    if review.implementer and review.implementer_model:
+    if review.implementer or review.implementer_model:
         separation = review_separation(
-            review.implementer,
+            review.implementer or "",
             review.reviewer,
-            review.implementer_model,
+            review.implementer_model or "",
             review.model,
             policy.reviewer_different_model,
         )

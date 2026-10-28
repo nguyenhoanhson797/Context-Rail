@@ -10,7 +10,7 @@ from typing import Any
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import latest_record, run_git
+from helpers import latest_record, run_git, touch_doc
 
 
 def spec_file(tmp_path: Path, name: str, payload: dict[str, Any]) -> Path:
@@ -487,6 +487,78 @@ def test_verify_refuses_a_worktree_outside_the_project(
         actor="human",
     )
     assert relative["error"]["code"] == "VALIDATION_FAILED"
+
+
+def test_verdict_and_confirm_are_refused_outside_human_mode(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    record = latest_record(store, "doc.created")["id"]
+    assert is_ok(
+        declare(
+            store,
+            tmp_path,
+            "real-proof",
+            {"schema": 1, "mode": "evidence", "acceptance": False, "evidence": [record]},
+        )
+    )
+    assert is_ok(
+        declare(
+            store,
+            tmp_path,
+            "smoke",
+            cmd_payload([sys.executable, "-c", "0"], ["src/**/*.py"]),
+        )
+    )
+    before = len(verdict_records(store))
+
+    evidence_verdict = invoke(
+        "verify",
+        {"target": "real-proof", "verdict": "pass", "confirm": "PASS real-proof"},
+        store=store,
+        actor="cto",
+    )
+    evidence_confirm = invoke(
+        "verify", {"target": "real-proof", "confirm": "PASS real-proof"}, store=store, actor="cto"
+    )
+    cmd_verdict = invoke(
+        "verify",
+        {"target": "smoke", "verdict": "pass", "confirm": "PASS smoke"},
+        store=store,
+        actor="cto",
+    )
+
+    for result in (evidence_verdict, evidence_confirm, cmd_verdict):
+        assert result["error"]["code"] == "VALIDATION_FAILED", result
+    assert len(verdict_records(store)) == before
+
+    still_valid = invoke("verify", {"target": "real-proof"}, store=store, actor="cto")
+    assert is_ok(still_valid), still_valid
+    assert still_valid["value"]["passed"] is True
+
+
+def test_a_hand_written_invalid_glob_makes_reads_and_verify_unknown(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    assert is_ok(
+        declare(
+            store,
+            tmp_path,
+            "smoke",
+            cmd_payload([sys.executable, "-c", "0"], ["src/**/*.py"]),
+        )
+    )
+    touch_doc(store, "checks/smoke.md", inputs=["src/[z-a].py"])
+
+    shown = invoke("show", {"slug": "smoke"}, store=store)
+    assert is_ok(shown), shown
+    assert shown["value"]["freshness"] == "unknown"
+
+    verified = invoke("verify", {"target": "smoke"}, store=store, actor="cto")
+    assert is_ok(verified), verified
+    assert verified["value"]["passed"] is False
+    assert verdict_records(store) == []
 
 
 def test_cmd_mode_outside_git_records_no_proof(approved_store: Path, tmp_path: Path) -> None:

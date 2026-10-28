@@ -581,8 +581,13 @@ def _profile_tools(raw: Any, recipe: str) -> tuple[str, ...]:
         refuse("profile.tools names unknown tool id(s): " + ", ".join(unknown))
     if len(set(tools)) != len(tools):
         refuse("profile.tools must not repeat a tool id")
-    if recipe == "reviewer" and "execute-cli" in tools:
-        refuse("the reviewer profile may not hold execute-cli")
+    if recipe == "reviewer":
+        widening = sorted(set(tools) - set(READ_ONLY_TOOL_IDS))
+        if widening:
+            refuse(
+                "the reviewer profile may hold only read-only tools; it names "
+                + ", ".join(widening)
+            )
     return tools
 
 

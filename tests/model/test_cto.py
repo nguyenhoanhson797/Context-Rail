@@ -566,6 +566,21 @@ def test_profile_tools_use_installed_ids_only() -> None:
         parse_profile(profile_fields(tools=["read-cli", "apply-patch"]))
     with pytest.raises(ModelError):
         parse_profile(profile_fields(tools=["read-cli", "execute-cli"], recipe="reviewer", auto=None))
+
+
+@pytest.mark.parametrize("tool", ["execute-cli", "edit-cli", "create-cli", "web_search"])
+def test_a_reviewer_profile_holds_only_read_only_tools(tool: str) -> None:
+    with pytest.raises(ModelError):
+        parse_profile(
+            profile_fields(recipe="reviewer", auto=None, tools=["read-cli", tool])
+        )
+
+
+def test_a_reviewer_profile_accepts_the_read_only_tool_set() -> None:
+    profile = parse_profile(
+        profile_fields(recipe="reviewer", auto=None, tools=list(READ_ONLY_TOOL_IDS))
+    )
+    assert profile.tools == READ_ONLY_TOOL_IDS
     with pytest.raises(ModelError):
         parse_profile(profile_fields(tools="read-cli"))
 

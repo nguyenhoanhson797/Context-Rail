@@ -46,8 +46,8 @@ _BY_NAME = {tool.name: tool for tool in TOOLS}
 EXECUTION_TOOLS = ("verify", "dispatch", "review", "merge", "cto tick")
 #: The categories a move may not reach before approval.
 LOCKED_CATEGORIES = ("active", "done")
-#: Generic writes whose decision depends on whether their target is protected.
-PROTECTED_METHODS = ("update", "link", "move", "rename")
+#: Generic writes whose decision depends on which documents they would change.
+PROTECTED_METHODS = ("update", "link", "move", "rename", "add", "relocate")
 _CONFIRM_SLUG = {
     "update": "slug",
     "move": "slug",
@@ -191,8 +191,7 @@ def effective_decision(
         return tool.decision
     from context_rail.gateway.handlers.common import protected_change
 
-    slug = params.get("slug") or params.get("src") or params.get("old")
-    facts = protected_change(context, slug, tool.name)
+    facts = protected_change(context, params, tool.name)
     return rights.decision_class(tool.name, facts, context.policy)
 
 
@@ -244,7 +243,7 @@ def _authorize(
             {"tool": tool.name, "decision": decision, "actor": actor},
         )
     if decision == "human-only" and actor == _HUMAN:
-        target = _confirmation_target(tool, params)
+        target = _confirmation_target(tool, params, context)
         if target is not None:
             reason = validate_confirmation("approve", target, params.get("confirm"))
             if reason is not None:
@@ -281,7 +280,18 @@ def _is_execution(tool: Tool, params: dict[str, Any], context: Context) -> bool:
     return category in LOCKED_CATEGORIES
 
 
-def _confirmation_target(tool: Tool, params: dict[str, Any]) -> str | None:
+def _confirmation_target(
+    tool: Tool, params: dict[str, Any], context: Context
+) -> str | None:
+    if tool.name == "add":
+        from context_rail.core.util import slugify
+
+        title = params.get("title")
+        return slugify(title) if isinstance(title, str) and title.strip() else None
+    if tool.name == "relocate":
+        from context_rail.gateway.handlers.common import relocate_confirmation
+
+        return relocate_confirmation(context)
     name = _CONFIRM_SLUG.get(tool.name)
     if name is None:
         return None

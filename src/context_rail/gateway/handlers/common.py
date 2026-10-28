@@ -27,28 +27,111 @@ MANAGED_KEYS = frozenset(
 
 
 def protected_change(
-    context: Context, slug: str | None, op: str
+    context: Context, params: dict[str, Any], op: str
 ) -> rights.ChangeFacts:
-    """The technical facts of one generic write, from the protected path set.
+    """The technical facts of one generic write, from the documents involved.
 
     A slug that no document carries is left unprotected here; the handler owns
-    the NOT_FOUND answer.
+    the NOT_FOUND answer. Acceptance comes from what the write would leave on
+    disk: the existing Check's value, or the value the new document receives.
     """
-    from context_rail.store.approval import protected_paths
+    from context_rail.store.approval import is_acceptance_path, protected_paths
 
-    rel: str | None = None
-    if isinstance(slug, str) and slug.strip():
-        try:
-            rel = resolve_unique(context.index, slug)
-        except LookupError:
-            rel = None
+    if op == "add":
+        return _add_facts(context, params)
+    if op == "relocate":
+        protected, acceptance, _targets = relocate_risk(context)
+        return rights.ChangeFacts(
+            method=op,
+            protected=protected,
+            acceptance=acceptance,
+            decision_id=None,
+            budget_increase=False,
+        )
+    rel = _resolved(context, params)
+    acceptance = rel is not None and is_acceptance_path(context.index, rel)
+    if op == "update":
+        requested = _requested_fields(params.get("set")).get("acceptance")
+        acceptance = acceptance or requested is True
     return rights.ChangeFacts(
         method=op,
         protected=rel is not None and rel in protected_paths(context),
-        acceptance=False,
+        acceptance=acceptance,
         decision_id=None,
         budget_increase=False,
     )
+
+
+def relocate_risk(context: Context) -> tuple[bool, bool, tuple[str, ...]]:
+    """(protected, acceptance, moved acceptance Check slugs) for a relocate."""
+    from context_rail.gateway.handlers.reshape import planned_moves
+    from context_rail.store.approval import protected_paths
+
+    moves = planned_moves(context, context.index)
+    if not moves:
+        return False, False, ()
+    members = set(protected_paths(context))
+    protected = any(source in members for source, _target in moves)
+    slugs: list[str] = []
+    for source, _target in moves:
+        row = context.index.conn.execute(
+            "SELECT slug FROM checks WHERE path = ? AND acceptance = 1", (source,)
+        ).fetchone()
+        if row is not None:
+            slugs.append(row[0])
+    targets = tuple(sorted(slugs))
+    return protected or bool(targets), bool(targets), targets
+
+
+def relocate_confirmation(context: Context) -> str | None:
+    """The target a human's typed phrase must name before a relocate."""
+    protected, _acceptance, targets = relocate_risk(context)
+    if len(targets) == 1:
+        return targets[0]
+    return "relocate" if protected or targets else None
+
+
+def _add_facts(context: Context, params: dict[str, Any]) -> rights.ChangeFacts:
+    preset = context.pack.presets.get(str(params.get("preset") or ""))
+    fields = _requested_fields(params.get("set"))
+    acceptance = (
+        preset is not None
+        and preset.primitive == "check"
+        and fields.get("acceptance") is True
+    )
+    return rights.ChangeFacts(
+        method="add",
+        protected=False,
+        acceptance=acceptance,
+        decision_id=None,
+        budget_increase=False,
+    )
+
+
+def _resolved(context: Context, params: dict[str, Any]) -> str | None:
+    slug = params.get("slug") or params.get("src") or params.get("old")
+    if not isinstance(slug, str) or not slug.strip():
+        return None
+    try:
+        return resolve_unique(context.index, slug)
+    except (LookupError, WriteRefused):
+        return None
+
+
+def _requested_fields(values: Any) -> dict[str, Any]:
+    """The frontmatter values a ``--set`` list requests, read without refusing."""
+    fields: dict[str, Any] = {}
+    for raw in values or ():
+        if not isinstance(raw, str):
+            continue
+        key, separator, text = raw.partition("=")
+        if not separator or not key.strip():
+            continue
+        try:
+            fields[key.strip()] = load_yaml(text)
+        except yaml.YAMLError:
+            continue
+    return fields
 
 
 def preset_for(pack: Pack, name: str) -> Preset:

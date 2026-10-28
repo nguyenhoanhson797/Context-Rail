@@ -232,6 +232,29 @@ def test_malformed_typed_payload_is_a_problem_without_proof(seeded_runs_store):
     assert broken == 0
 
 
+@pytest.mark.parametrize("kind", [["event"], {"name": "event"}])
+def test_a_non_text_record_kind_records_an_invalid_payload(
+    seeded_runs_store, kind
+) -> None:
+    ix = seeded_runs_store.ix
+    path = record_file(seeded_runs_store.store, seeded_runs_store.run)
+
+    def corrupt(payload: dict) -> None:
+        payload["kind"] = kind
+
+    rewrite_record(path, corrupt)
+    ix.sync()
+
+    problems, broken = ix.conn.execute(
+        "SELECT problems, broken FROM docs WHERE path LIKE 'records/%' AND slug = ?",
+        (seeded_runs_store.run,),
+    ).fetchone()
+    assert "invalid_payload" in json.loads(problems)
+    assert broken == 0
+    assert scalar(ix, "SELECT count(*) FROM checks") == 1
+    assert scalar(ix, "SELECT count(*) FROM verdicts") == 1
+
+
 def test_malformed_check_contributes_no_check_row(seeded_runs_store):
     ix = seeded_runs_store.ix
     path = seeded_runs_store.store / "checks" / "broken.md"

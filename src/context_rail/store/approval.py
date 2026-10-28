@@ -37,6 +37,7 @@ __all__ = [
     "STATES",
     "approval_state",
     "charter_document",
+    "is_acceptance_path",
     "protected_paths",
     "protected_snapshot",
     "semantic_hash",
@@ -108,6 +109,15 @@ def charter_document(context: Context) -> tuple[str, dict[str, Any]] | None:
         )
     path, fields = next(iter(found.items()))
     return path, fields
+
+
+def is_acceptance_path(index: Any, path: str) -> bool:
+    """Whether the document at ``path`` is an acceptance Check."""
+    row = index.conn.execute(
+        "SELECT value_json FROM fields WHERE path = ? AND key = 'acceptance'",
+        (path,),
+    ).fetchone()
+    return row is not None and json.loads(row[0]) is True
 
 
 def protected_paths(context: Context, *, pack_name: str | None = None) -> tuple[str, ...]:
@@ -223,11 +233,7 @@ def _manifest_hash(context: Context, name: str) -> str:
 
 
 def _is_acceptance_check(index: Any, path: str) -> bool:
-    row = index.conn.execute(
-        "SELECT value_json FROM fields WHERE path = ? AND key = 'acceptance'",
-        (path,),
-    ).fetchone()
-    return row is not None and json.loads(row[0]) is True
+    return is_acceptance_path(index, path)
 
 
 def _format_of(rel: str) -> str:

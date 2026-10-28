@@ -220,6 +220,17 @@ def test_same_blobs_after_a_squash_stay_fresh_and_a_changed_blob_goes_stale(
     assert _freshness(root, changed, verdict, check) == "stale"
 
 
+def test_an_invalid_declared_glob_degrades_to_unknown(git_index_repo: SimpleNamespace) -> None:
+    snapshot = read_index(git_index_repo.git_dir, git_index_repo.worktree)
+    verdict = {"passed": True, "check_etag": "etag-current", "input_blobs": {}}
+
+    assert freshness(verdict, _check(["src/[z-a].py"]), snapshot, {}) == "unknown"
+    assert (
+        freshness(verdict, _check(["src/a.py", "src/[z-a].py"]), snapshot, {})
+        == "unknown"
+    )
+
+
 def test_an_untrusted_snapshot_makes_every_check_unknown(git_index_repo: SimpleNamespace) -> None:
     index = git_index_repo.git_dir / "index"
     index.write_bytes(index.read_bytes()[:-30])

@@ -152,6 +152,27 @@ def test_acceptance_check_is_human_only_to_create_or_edit(
     assert is_ok(allowed), allowed
 
 
+def test_a_syntactically_invalid_input_glob_is_refused(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    spec = spec_file(
+        tmp_path,
+        "bad-glob.json",
+        cmd_spec([sys.executable, "-c", "print('ok')"], ["src/[z-a].py"]),
+    )
+
+    refused = invoke(
+        "check",
+        {"slug": "bad-glob", "target": "feature-a", "spec_file": str(spec), "expect": "absent"},
+        store=store,
+        actor="cto",
+    )
+
+    assert refused["error"]["code"] == "VALIDATION_FAILED", refused
+    assert not (store / "checks" / "bad-glob.md").exists()
+
+
 def test_shell_text_and_missing_inputs_are_refused(
     git_approved_store: Any, tmp_path: Path
 ) -> None:

@@ -767,6 +767,10 @@ def _projection(doc: Doc) -> tuple[list[tuple[str, tuple[Any, ...]]], set[str]]:
     if doc.primitive != "record":
         return [], set()
     kind = doc.fields.get("kind")
+    if kind is None:
+        return [], set()
+    if not isinstance(kind, str):
+        raise ModelError("VALIDATION_FAILED", "record kind must be text")
     if kind not in _PROJECTED_KINDS:
         return [], set()
     data = doc.fields.get("data")

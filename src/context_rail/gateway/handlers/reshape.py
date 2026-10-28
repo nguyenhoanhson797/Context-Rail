@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
     from context_rail.store.index import Index
 
-__all__ = ["relocate", "rename"]
+__all__ = ["planned_moves", "relocate", "rename"]
 
 _LINK_FIELDS = frozenset(RELATIONS)
 _UPDATED_LINE = re.compile(r"^updated:.*$", re.MULTILINE)
@@ -134,7 +134,7 @@ def relocate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if saved is not None:
             moves = record_data(index, saved.get("record")).get("moves") or []
             return {"moves": moves, "dry_run": False}
-        planned = _planned_moves(ctx, index)
+        planned = planned_moves(ctx, index)
         moves = [{"from": source, "to": target} for source, target in planned]
         if dry_run:
             return {"moves": moves, "dry_run": True}
@@ -289,7 +289,7 @@ def _read_etag(store: Path, path: str | None) -> str | None:
         return None
 
 
-def _planned_moves(ctx: Context, index: Index) -> list[tuple[str, str]]:
+def planned_moves(ctx: Context, index: Index) -> list[tuple[str, str]]:
     """Every mutable document whose path differs from its rendered placement."""
     moves: list[tuple[str, str]] = []
     rows = index.conn.execute(
