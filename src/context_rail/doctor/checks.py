@@ -150,7 +150,11 @@ def _doc_issues(
     relations: dict[str, list[tuple[str, str]]],
     fields: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """The issues one document has; a broken document stops at its problem."""
+    """The issues one document has; a broken document stops at its problem.
+
+    A Check carries no title: it is identified by its slug, its preset and the
+    Item it verifies, and its body is the pack template.
+    """
     for problem in row.problems:
         if problem in _BROKEN:
             return [
@@ -203,7 +207,7 @@ def _doc_issues(
         return issues
 
     if primitive_known:
-        if not row.title:
+        if not row.title and row.primitive != "check":
             issues.append(_issue("missing_title", row.path, "the document has no title"))
         if row.primitive == "item" and row.status not in pack.statuses:
             issues.append(

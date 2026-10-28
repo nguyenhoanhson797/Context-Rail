@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -142,6 +143,108 @@ def test_missing_title_reported_alone(store_factory) -> None:
     assert [issue["code"] for issue in report["issues"]] == ["missing_title"]
     assert report["issues"][0]["severity"] == "error"
     assert report["issues"][0]["path"] == "items/task/m.md"
+
+
+def test_missing_title_on_a_note_is_still_reported(store_factory) -> None:
+    store = store_factory()
+    _write(
+        store,
+        "notes/note/plain.md",
+        {
+            "primitive": "note",
+            "preset": "note",
+            "tags": [],
+            "created": STAMP,
+            "updated": STAMP,
+        },
+    )
+
+    report = _doctor(store)
+
+    assert [issue["code"] for issue in report["issues"]] == ["missing_title"]
+    assert report["issues"][0]["path"] == "notes/note/plain.md"
+
+
+def test_declared_checks_are_doctor_clean_without_a_title(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    payloads: dict[str, dict[str, Any]] = {
+        "smoke": {
+            "schema": 1,
+            "mode": "cmd",
+            "acceptance": False,
+            "cmd": [sys.executable, "-c", "print('ok')"],
+            "inputs": ["src/**/*.py"],
+            "timeout_s": 60,
+        },
+        "readme": {
+            "schema": 1,
+            "mode": "exists",
+            "acceptance": False,
+            "exists": ["README.md"],
+            "inputs": ["README.md"],
+            "timeout_s": 60,
+        },
+        "review-feature-a": {
+            "schema": 1,
+            "mode": "review",
+            "acceptance": False,
+            "verifies": ["feature-a"],
+        },
+    }
+    for slug, payload in payloads.items():
+        spec = tmp_path / f"{slug}.json"
+        spec.write_text(json.dumps(payload), encoding="utf-8")
+        created = invoke(
+            "check",
+            {
+                "slug": slug,
+                "target": "feature-a",
+                "spec_file": str(spec),
+                "expect": "absent",
+            },
+            store=store,
+            actor="cto",
+        )
+        assert is_ok(created), created
+
+    front = yaml.safe_load(
+        (store / "checks" / "smoke.md").read_text(encoding="utf-8").split("---\n", 2)[1]
+    )
+    assert "title" not in front
+
+    report = _doctor(store)
+
+    assert [issue["code"] for issue in report["issues"]] == []
+    assert report["counts"] == {"error": 0, "warning": 0, "info": 0}
+    ran = run_cli(store, "doctor", store=store)
+    assert ran.returncode == 0, ran.stderr
+    assert json.loads(ran.stdout)["ok"] is True
+
+
+def test_title_less_check_still_reports_its_own_defect(store_factory) -> None:
+    store = store_factory()
+    _write(
+        store,
+        "checks/orphan.md",
+        {
+            "primitive": "check",
+            "preset": "check",
+            "schema": 1,
+            "mode": "cmd",
+            "acceptance": False,
+            "cmd": ["py", "-c", "pass"],
+            "inputs": ["src/**/*.py"],
+            "verifies": "[[gone]]",
+            "timeout_s": 60,
+        },
+    )
+
+    report = _doctor(store)
+
+    assert [issue["code"] for issue in report["issues"]] == ["broken_relation"]
+    assert report["issues"][0]["path"] == "checks/orphan.md"
 
 
 def test_unknown_status_reported_alone(store_factory) -> None:

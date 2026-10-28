@@ -158,6 +158,25 @@ def test_reviewer_runs_in_its_own_worktree_at_the_candidate(
     assert review_run["data"]["report"] == report["id"]
 
 
+def test_auto_declared_review_check_is_doctor_clean_without_a_title(
+    verified_run: SimpleNamespace, fake_droid: Any
+) -> None:
+    fake_droid.set_behaviors(["review_approve"])
+    r = review(verified_run, "rv-doctor")
+
+    assert r["ok"], r
+    declared = verified_run.store / "checks" / f"review-{verified_run.slug}.md"
+    assert declared.is_file()
+
+    report = invoke("doctor", {}, store=verified_run.store, actor="human")
+
+    assert report["ok"], report
+    missing = [
+        issue for issue in report["value"]["issues"] if issue["code"] == "missing_title"
+    ]
+    assert missing == []
+
+
 def test_reviewer_argv_is_exact(verified_run: SimpleNamespace, fake_droid: Any) -> None:
     fake_droid.set_behaviors(["review_approve"])
     r = review(verified_run, "rv-argv")
