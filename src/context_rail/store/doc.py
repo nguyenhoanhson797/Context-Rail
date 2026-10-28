@@ -73,6 +73,25 @@ def record_digest(payload: dict[str, Any]) -> str:
     )
 
 
+def doc_digest(rel_path: str, data: bytes) -> str | None:
+    """The record digest a document carries, or None when it carries none.
+
+    JSON records are digested from their payload; a markdown record keeps the
+    digest it declares in frontmatter, which covers a body this parser drops.
+    """
+    path = rel_path.replace("\\", "/")
+    try:
+        text = data.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+        if path.lower().endswith(".json"):
+            payload = json.loads(text)
+            return record_digest(payload) if isinstance(payload, dict) else None
+        frontmatter, _ = _split_frontmatter(text)
+        value = _load_frontmatter(frontmatter).get("digest")
+        return value if isinstance(value, str) and value else None
+    except Exception:
+        return None
+
+
 def parse_doc(rel_path: str, data: bytes) -> Doc:
     """Parse one store document from its persisted bytes; never raises."""
     path = rel_path.replace("\\", "/")

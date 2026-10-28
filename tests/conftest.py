@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -10,12 +12,24 @@ import yaml
 from context_rail.model.manifest import DEFAULT_MANIFEST
 from context_rail.model.pack import Pack, load_pack
 from helpers import run_git
+from perf.gen import make_store
 
 
 @pytest.fixture
 def small_pack(tmp_path: Path) -> Pack:
     """The built-in ``small`` pack, loaded for an empty store."""
     return load_pack("small", tmp_path)
+
+
+@pytest.fixture
+def store_factory(tmp_path: Path) -> Callable[..., Path]:
+    """A generated store under a fresh child of ``tmp_path`` on every call."""
+    counter = itertools.count()
+
+    def factory(docs: int = 0, seed: int = 0) -> Path:
+        return make_store(tmp_path / f"store{next(counter)}", docs, seed)
+
+    return factory
 
 
 def _rail_yaml() -> str:

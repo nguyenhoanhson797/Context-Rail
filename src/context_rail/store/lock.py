@@ -105,14 +105,13 @@ def _acquire_os_lock(path: Path, timeout: float) -> int:
 
 
 @contextlib.contextmanager
-def store_lock(store: Path, timeout: float = DEFAULT_LOCK_TIMEOUT) -> Iterator[None]:
-    """Hold the store's write lock for the block, re-entrant in this process.
+def file_lock(path: Path, timeout: float = DEFAULT_LOCK_TIMEOUT) -> Iterator[None]:
+    """Hold an OS lock on ``path`` for the block, re-entrant in this process.
 
-    The lock folder is created when missing, so bootstrap writes into a store
-    that does not exist yet are serialised like any other write. Raises
-    ``StoreLockTimeout`` when another process keeps the lock past ``timeout``.
+    The lock folder is created when missing. Raises ``StoreLockTimeout`` when
+    another process keeps the lock past ``timeout``.
     """
-    path = local_dir(Path(store)) / LOCK_FILE
+    path = Path(path)
     key = str(path)
     with _held_guard:
         held = _held.setdefault(key, _Held())
@@ -132,3 +131,15 @@ def store_lock(store: Path, timeout: float = DEFAULT_LOCK_TIMEOUT) -> Iterator[N
                 held.fd = None
     finally:
         held.rlock.release()
+
+
+@contextlib.contextmanager
+def store_lock(store: Path, timeout: float = DEFAULT_LOCK_TIMEOUT) -> Iterator[None]:
+    """Hold the store's write lock for the block, re-entrant in this process.
+
+    The lock folder is created when missing, so bootstrap writes into a store
+    that does not exist yet are serialised like any other write. Raises
+    ``StoreLockTimeout`` when another process keeps the lock past ``timeout``.
+    """
+    with file_lock(local_dir(Path(store)) / LOCK_FILE, timeout):
+        yield
