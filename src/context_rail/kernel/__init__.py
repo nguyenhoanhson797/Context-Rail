@@ -1,1 +1,1 @@
-"""Pure rules: lifecycle, structure and rights over the pack's vocabulary."""
+"""Pure rules: lifecycle, structure, rights, gates, budgets and triage."""

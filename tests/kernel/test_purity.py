@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,7 +31,15 @@ def _kernel_sources() -> list[Path]:
 
 def test_kernel_sources_exist():
     names = {path.name for path in _kernel_sources()}
-    assert {"__init__.py", "lifecycle.py", "structure.py", "rights.py"} <= names
+    assert {
+        "__init__.py",
+        "budgets.py",
+        "gates.py",
+        "lifecycle.py",
+        "rights.py",
+        "structure.py",
+        "triage.py",
+    } <= names
 
 
 def test_kernel_modules_import_nothing_impure():
@@ -58,8 +67,10 @@ def test_kernel_modules_never_call_open():
 
 def test_importing_the_kernel_loads_no_impure_module():
     script = (
-        "import sys\n"
-        "import context_rail.kernel.lifecycle, context_rail.kernel.structure, context_rail.kernel.rights\n"
+        "import importlib, pkgutil, sys\n"
+        "import context_rail.kernel as kernel\n"
+        "for info in pkgutil.iter_modules(kernel.__path__):\n"
+        "    importlib.import_module('context_rail.kernel.' + info.name)\n"
         "bad = [m for m in sys.modules if m.startswith("
         "('context_rail.store', 'context_rail.runner', 'context_rail.gateway', 'context_rail.doctor'))]\n"
         "print(bad)\n"
@@ -70,3 +81,18 @@ def test_importing_the_kernel_loads_no_impure_module():
     result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env)
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "[]"
+
+
+FORBIDDEN_TEXT = re.compile(
+    r"import (subprocess|sqlite3)|\bopen\(|os\.(stat|walk|listdir|environ)"
+    r"|time\.(time|perf_counter)|datetime\.now"
+)
+
+
+def test_kernel_never_reads_clocks_files_or_environment():
+    matches = [
+        f"{path.name}:{match.group(0)}"
+        for path in _kernel_sources()
+        for match in FORBIDDEN_TEXT.finditer(path.read_text(encoding="utf-8"))
+    ]
+    assert matches == []
