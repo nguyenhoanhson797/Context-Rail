@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import multiprocessing
 import os
+import queue as queue_module
+import statistics
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from context_rail.core.util import dump_frontmatter, load_yaml
 
 _REPO_SRC = Path(__file__).resolve().parents[1] / "src"
+_STARTUP_TIMEOUT = 120.0
+_JOIN_TIMEOUT = 30.0
 
 
 def run_cli(
@@ -74,3 +81,112 @@ def touch_doc(store: Path, rel: str, **frontmatter: Any) -> None:
     )
     stat = path.stat()
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+
+
+def median_ms(fn: Callable[[], object], runs: int) -> float:
+    """Median wall time of ``runs`` calls to ``fn``, in milliseconds."""
+    samples: list[float] = []
+    for _ in range(runs):
+        started = time.perf_counter()
+        fn()
+        samples.append((time.perf_counter() - started) * 1000.0)
+    return statistics.median(samples)
+
+
+def _move_worker(
+    store: str,
+    slug: str,
+    etag: str,
+    actor: str,
+    barrier: Any,
+    results: Any,
+) -> None:
+    """One spawned mover: announce readiness, wait for the release, then move."""
+    from context_rail.gateway.gateway import invoke
+
+    results.put(("ready", actor))
+    try:
+        barrier.wait(timeout=_STARTUP_TIMEOUT)
+        result = invoke(
+            "move",
+            {"slug": slug, "status": "doing", "expect": etag},
+            store=Path(store),
+            actor=actor,
+        )
+    except BaseException as exc:  # surface a child fault in the parent
+        results.put(("failed", actor, f"{type(exc).__name__}: {exc}"))
+        raise
+    results.put(("result", actor, result))
+
+
+def parallel_moves(store: Path, slug: str, etag: str, n: int) -> list[dict[str, Any]]:
+    """Run ``n`` simultaneous ``move`` calls that all expect the same etag.
+
+    The workers spawn, announce readiness, and are released together by a
+    barrier; every child is joined, a straggler is terminated, and a child
+    exception or a missing result fails the call instead of being hidden.
+    """
+    context = multiprocessing.get_context("spawn")
+    results = context.Queue()
+    barrier = context.Barrier(n + 1)
+    workers = [
+        context.Process(
+            target=_move_worker,
+            args=(str(store), slug, etag, f"w{index}", barrier, results),
+            name=f"mover-{index}",
+        )
+        for index in range(n)
+    ]
+    for worker in workers:
+        worker.start()
+    try:
+        _await_readiness(results, n)
+        barrier.wait(timeout=_STARTUP_TIMEOUT)
+        collected = _collect_results(results, n)
+    finally:
+        for worker in workers:
+            worker.join(timeout=_JOIN_TIMEOUT)
+        for worker in workers:
+            if worker.is_alive():
+                worker.terminate()
+                worker.join(timeout=_JOIN_TIMEOUT)
+    return collected
+
+
+def _await_readiness(results: Any, n: int) -> None:
+    """Wait until every worker announced it is ready to be released."""
+    seen = 0
+    deadline = time.monotonic() + _STARTUP_TIMEOUT
+    while seen < n:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(f"only {seen} of {n} movers became ready in time")
+        try:
+            message = results.get(timeout=remaining)
+        except queue_module.Empty:
+            raise AssertionError(f"only {seen} of {n} movers became ready in time") from None
+        if message[0] != "ready":
+            raise AssertionError(f"a mover failed before the release: {message!r}")
+        seen += 1
+
+
+def _collect_results(results: Any, n: int) -> list[dict[str, Any]]:
+    """Collect every worker's Result, failing on a child fault or a shortfall."""
+    collected: list[dict[str, Any]] = []
+    deadline = time.monotonic() + _STARTUP_TIMEOUT
+    while len(collected) < n:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(f"only {len(collected)} of {n} movers reported a result")
+        try:
+            message = results.get(timeout=remaining)
+        except queue_module.Empty:
+            raise AssertionError(
+                f"only {len(collected)} of {n} movers reported a result"
+            ) from None
+        if message[0] == "failed":
+            raise AssertionError(f"mover {message[1]} failed: {message[2]}")
+        if message[0] != "result":
+            raise AssertionError(f"unexpected mover message: {message!r}")
+        collected.append(message[2])
+    return collected

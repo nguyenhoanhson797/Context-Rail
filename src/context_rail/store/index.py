@@ -14,6 +14,7 @@ import os
 import sqlite3
 import time
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,11 @@ FTS_BODY_CAP = 20000
 BUSY_TIMEOUT_MS = 5000
 BUSY_RETRIES = 2
 CACHE_LOCK = "index.lock"
+#: A cold pass reads every document, so first-access latency is overlapped
+#: and each batch is bounded so a store of large bodies stays out of memory.
+READ_WORKERS = 16
+READ_INLINE = 8
+READ_BATCH = 256
 
 _DOC_SUFFIXES = (".md", ".json")
 _UNCOUNTED_NAMES = frozenset({"rail.yaml", ".gitignore"})
@@ -246,6 +252,20 @@ class Index:
                 seen[rel] = (stat.st_mtime_ns, stat.st_size)
         return seen, skipped
 
+    def _payloads(self, paths: list[str]) -> dict[str, bytes]:
+        """Read the bytes of one batch of re-parsed documents, overlapping access.
+
+        A cold pass opens every file once; that latency is I/O-bound, so a
+        thread pool overlaps it while the parse and SQL work stays serial.
+        """
+        if len(paths) <= READ_INLINE:
+            return {path: self._read(path) for path in paths}
+        with ThreadPoolExecutor(max_workers=min(READ_WORKERS, len(paths))) as pool:
+            return dict(zip(paths, pool.map(self._read, paths)))
+
+    def _read(self, path: str) -> bytes:
+        return (self.store / path).read_bytes()
+
     def _apply(
         self,
         conn: sqlite3.Connection,
@@ -259,11 +279,24 @@ class Index:
             if row is not None:
                 self._clear(conn, path, row[0])
             conn.execute("DELETE FROM docs WHERE path = ?", (path,))
-        for path in [*added, *changed]:
-            mtime_ns, size = seen[path]
-            data = (self.store / path).read_bytes()
-            doc = parse_doc(path, data)
-            self._store(conn, doc, data, mtime_ns, size)
+        targets = [*added, *changed]
+        for start in range(0, len(targets), READ_BATCH):
+            chunk = targets[start : start + READ_BATCH]
+            payloads = self._payloads(chunk)
+            # BEGIN IMMEDIATE holds the write lock, so this read cannot race a
+            # concurrent sync that already stored one of these paths.
+            known = dict(
+                conn.execute(
+                    f"SELECT path, rowid FROM docs WHERE path IN "
+                    f"({', '.join('?' * len(chunk))})",
+                    chunk,
+                )
+            )
+            for path in chunk:
+                mtime_ns, size = seen[path]
+                data = payloads[path]
+                doc = parse_doc(path, data)
+                self._store(conn, doc, data, mtime_ns, size, rowid=known.get(path))
 
     def _store(
         self,
@@ -272,6 +305,8 @@ class Index:
         data: bytes,
         mtime_ns: int,
         size: int,
+        *,
+        rowid: int | None = None,
     ) -> None:
         broken = bool(_BROKEN_PROBLEMS.intersection(doc.problems))
         category = self.pack.statuses.get(doc.status) if doc.status else None
@@ -295,30 +330,37 @@ class Index:
             record_at,
             1 if broken else 0,
         )
-        conn.execute(
+        cursor = conn.execute(
             f"INSERT INTO docs({_COLUMNS}) VALUES ({', '.join('?' * len(values))}) "
             f"ON CONFLICT(path) DO UPDATE SET {_UPDATE_SET}",
             values,
         )
-        rowid = conn.execute(
-            "SELECT rowid FROM docs WHERE path = ?", (doc.path,)
-        ).fetchone()[0]
-        self._clear(conn, doc.path, rowid)
+        if rowid is None:
+            rowid = cursor.lastrowid
+        else:
+            self._clear(conn, doc.path, rowid)
         if broken:
             return
-        for key, value in doc.fields.items():
-            conn.execute(
+        if doc.fields:
+            conn.executemany(
                 "INSERT INTO fields(path, key, value_json) VALUES (?, ?, ?)",
-                (doc.path, key, _json(value)),
+                [(doc.path, key, _json(value)) for key, value in doc.fields.items()],
             )
-        for name, targets in doc.relations.items():
-            for target in targets:
-                conn.execute(
-                    "INSERT INTO relations(src_path, src, rel, dst) VALUES (?, ?, ?, ?)",
-                    (doc.path, doc.slug, name, target),
-                )
-        for tag in doc.tags:
-            conn.execute("INSERT INTO tags(path, tag) VALUES (?, ?)", (doc.path, tag))
+        rows = [
+            (doc.path, doc.slug, name, target)
+            for name, targets in doc.relations.items()
+            for target in targets
+        ]
+        if rows:
+            conn.executemany(
+                "INSERT INTO relations(src_path, src, rel, dst) VALUES (?, ?, ?, ?)",
+                rows,
+            )
+        if doc.tags:
+            conn.executemany(
+                "INSERT INTO tags(path, tag) VALUES (?, ?)",
+                [(doc.path, tag) for tag in doc.tags],
+            )
         conn.execute(
             "INSERT INTO docs_fts(rowid, slug, title, body, path) VALUES (?, ?, ?, ?, ?)",
             (rowid, doc.slug, doc.title or "", doc.body[:FTS_BODY_CAP], doc.path),

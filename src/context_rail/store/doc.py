@@ -86,6 +86,10 @@ def doc_digest(rel_path: str, data: bytes) -> str | None:
             payload = json.loads(text)
             return record_digest(payload) if isinstance(payload, dict) else None
         frontmatter, _ = _split_frontmatter(text)
+        if frontmatter is None or "digest" not in frontmatter:
+            # A second YAML load per document is only worth it when the key
+            # can actually be there.
+            return None
         value = _load_frontmatter(frontmatter).get("digest")
         return value if isinstance(value, str) and value else None
     except Exception:
