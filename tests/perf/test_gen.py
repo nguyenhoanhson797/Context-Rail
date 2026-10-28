@@ -37,7 +37,7 @@ def test_make_store_lays_out_the_documented_counts(tmp_path):
     assert store == tmp_path / "context-rail"
     expected = (
         ["rail.yaml"]
-        + [f"items/goal/g{i}.md" for i in range(20)]
+        + [f"project/g{i}.md" for i in range(20)]
         + [f"notes/note/n{i}.md" for i in range(40)]
         + [f"items/task/t{i}.md" for i in range(140)]
     )
@@ -58,7 +58,7 @@ def test_task_relations_follow_the_contract(tmp_path):
 def test_statuses_cycle_and_notes_have_none(tmp_path):
     store = make_store(tmp_path, 200)
     for i in range(6):
-        assert _frontmatter(store, f"items/goal/g{i}.md")["status"] == (
+        assert _frontmatter(store, f"project/g{i}.md")["status"] == (
             "todo",
             "doing",
             "done",

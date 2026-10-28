@@ -75,8 +75,8 @@ def test_rename_rewrites_links_everywhere(store_with_links: Path) -> None:
     shown = invoke("show", {"slug": "authentication"}, store=store)
     assert is_ok(shown), shown
     assert shown["value"]["in"]["part_of"] == ["t1", "t2", "t3"]
-    assert not (store / "items/goal/auth.md").exists()
-    assert (store / "items/goal/authentication.md").is_file()
+    assert not (store / "project/auth.md").exists()
+    assert (store / "project/authentication.md").is_file()
 
 
 def test_rename_rewrites_body_only_links(tmp_path: Path, store_with_links: Path) -> None:
@@ -188,15 +188,15 @@ def test_rename_unknown_slug_is_not_found(store_with_links: Path) -> None:
 
 def test_rename_stamps_updated_and_keeps_created(store_with_links: Path) -> None:
     store = store_with_links
-    touch_doc(store, "items/goal/auth.md", updated="2026-01-01T00:00:00Z")
-    before = _frontmatter(store, "items/goal/auth.md")
+    touch_doc(store, "project/auth.md", updated="2026-01-01T00:00:00Z")
+    before = _frontmatter(store, "project/auth.md")
 
     result = invoke(
         "rename", {"old": "auth", "new": "authentication"}, store=store, actor="cto"
     )
 
     assert is_ok(result), result
-    after = _frontmatter(store, "items/goal/authentication.md")
+    after = _frontmatter(store, "project/authentication.md")
     assert after["created"] == before["created"]
     assert after["updated"] != before["updated"]
     assert (after["primitive"], after["preset"]) == ("item", "goal")
@@ -303,7 +303,10 @@ def test_relocate_returns_sorted_moves(store_factory) -> None:
     moves = result["value"]["moves"]
     assert moves == sorted(moves, key=lambda move: move["from"])
     assert all(set(move) == {"from", "to"} for move in moves)
-    assert all(move["to"] == move["from"].replace("items/", "work/") for move in moves)
+    assert all(move["to"].startswith("work/") for move in moves)
+    assert all(
+        move["to"].split("/")[-1] == move["from"].split("/")[-1] for move in moves
+    )
 
 
 def test_relocate_dry_run_changes_nothing(store_factory) -> None:

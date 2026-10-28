@@ -123,7 +123,17 @@ def test_init_writes_manifest_folders_and_gitignore(tmp_path):
             "actor": "workspace/profiles/{slug}/profile.md",
             "policy": "policies/{slug}.md",
         },
-        "presets": {"decision": "records/decisions/{slug}.md"},
+        "presets": {
+            "decision": "records/decisions/{slug}.md",
+            "charter": "charter.md",
+            "goal": "project/{slug}.md",
+            "vision": "project/{slug}.md",
+            "scope": "project/{slug}.md",
+            "wont": "project/{slug}.md",
+            "skill": "workspace/skills/{slug}.md",
+            "cto": "workspace/cto/profile.md",
+            "profile": "workspace/profiles/{slug}/profile.md",
+        },
     }
     for rel in (
         "items",

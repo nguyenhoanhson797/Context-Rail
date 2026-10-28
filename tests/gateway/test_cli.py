@@ -442,3 +442,56 @@ def test_cli_update_help_documents_tag_edits(tmp_path):
 
     assert proc.returncode == 0
     assert "+TAG or -TAG" in proc.stdout
+
+
+def test_cli_init_answers_file_writes_the_picture(tmp_path, answers):
+    proc = run_cli(
+        tmp_path,
+        "--actor",
+        "human",
+        "init",
+        "--dir",
+        str(tmp_path),
+        "--answers-file",
+        str(answers),
+        "--confirm",
+        "APPROVE charter",
+    )
+
+    assert proc.returncode == 0, proc.stdout
+    payload = _json(proc)
+    assert payload["value"]["approval"] == "missing"
+    assert (tmp_path / "context-rail" / "charter.md").is_file()
+    assert (tmp_path / "context-rail" / "project" / "ship-invoicing.md").is_file()
+
+
+def test_cli_init_piped_interview_is_refused(tmp_path):
+    env = {**os.environ, "PYTHONPATH": str(SRC_DIR)}
+    env.pop("RAIL_ACTOR", None)
+    # A piped stdin is not a TTY, so the interview must refuse instead of
+    # treating the piped bytes as answers. stdin matters here, which the shared
+    # run_cli helper cannot express.
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "context_rail",
+            "--actor",
+            "human",
+            "init",
+            "--dir",
+            str(tmp_path),
+            "--interview",
+        ],
+        cwd=tmp_path,
+        input="{}",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+    )
+
+    assert proc.returncode == 1, (proc.stdout, proc.stderr)
+    assert _json(proc)["error"]["code"] == "VALIDATION_FAILED"
+    assert not (tmp_path / "context-rail").exists()
+

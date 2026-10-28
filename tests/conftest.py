@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import copy
 import itertools
+import json
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import yaml
@@ -14,6 +17,7 @@ from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import DEFAULT_MANIFEST
 from context_rail.model.pack import Pack, load_pack
+from context_rail.model.policy import DECISION_RIGHTS, HUMAN_ONLY_IDS
 from context_rail.store.doc import etag
 from context_rail.store.index import Index
 from helpers import run_git, write_record
@@ -389,3 +393,134 @@ def git_repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
         wt_store.mkdir(parents=True, exist_ok=True)
         (wt_store / "rail.yaml").write_text(_rail_yaml(), encoding="utf-8")
     return store, wt_store
+
+
+# ── the reference onboarding picture ─────────────────────────────────────
+
+PICTURE_ANSWERS: dict[str, Any] = {
+    "schema": 1,
+    "pack": "small",
+    "goal": {
+        "title": "Ship invoicing",
+        "body": "Small teams send invoices without keeping a spreadsheet.",
+    },
+    "vision": {
+        "title": "Invoices on autopilot",
+        "body": "Every invoice goes out and gets paid without a human chasing it.",
+    },
+    "scope": [
+        {
+            "title": "Send invoice",
+            "body": "Create an invoice and email it to the payer.",
+            "priority": "must",
+        },
+        {
+            "title": "Track payment",
+            "body": "See which invoices are paid and which are not.",
+            "priority": "should",
+        },
+        {
+            "title": "Chase overdue",
+            "body": "Send one reminder to a late payer.",
+            "priority": "could",
+        },
+    ],
+    "wont": [{"title": "Payroll", "reason": "A payroll product does it better."}],
+    "charter": {
+        "schema": 1,
+        "project": {
+            "goal": "ship-invoicing",
+            "vision": "invoices-on-autopilot",
+            "scope": ["send-invoice", "track-payment", "chase-overdue"],
+            "wont": ["wont"],
+        },
+        "protected_files": [
+            "rail.yaml",
+            "charter.md",
+            "project/ship-invoicing.md",
+            "project/invoices-on-autopilot.md",
+            "project/wont.md",
+            "project/send-invoice.md",
+            "project/track-payment.md",
+        ],
+        "gates": {
+            "item_done": {
+                "require_checks": True,
+                "require_acceptance": False,
+                "require_review": True,
+                "require_human": False,
+            },
+            "scope_done": {
+                "require_checks": True,
+                "require_acceptance": True,
+                "require_review": True,
+                "require_human": False,
+            },
+            "merge": {
+                "require_checks": True,
+                "require_acceptance": False,
+                "require_review": True,
+                "require_human": False,
+            },
+            "release": {
+                "require_checks": True,
+                "require_acceptance": True,
+                "require_review": True,
+                "require_human": True,
+            },
+        },
+        "human_in_loop": list(HUMAN_ONLY_IDS),
+        "budgets": {
+            "item": {"attempts": 4, "seconds": 7200, "tokens": None, "credits": None},
+            "project": {"attempts": None, "seconds": None, "tokens": None, "credits": None},
+        },
+        "thresholds": {
+            "stuck_hours": 24,
+            "near_budget_ratio": 0.8,
+            "triage_reports": 2,
+            "triage_weight": 2,
+        },
+        "change_rule": {"approval_required": True, "delegable": False},
+        "decision_rights": {name: list(ids) for name, ids in DECISION_RIGHTS.items()},
+        "default_branch": "main",
+        "remote": "origin",
+        "allow_push": False,
+        "reviewer_different_model": True,
+    },
+}
+
+
+def picture_answers_payload() -> dict[str, Any]:
+    """A deep copy of the reference picture answers."""
+    return copy.deepcopy(PICTURE_ANSWERS)
+
+
+def _write_answers(path: Path, payload: dict[str, Any]) -> Path:
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
+    return path
+
+
+@pytest.fixture
+def picture_answers() -> dict[str, Any]:
+    """The reference picture answers, ready to be adjusted by a test."""
+    return picture_answers_payload()
+
+
+@pytest.fixture
+def answers(tmp_path: Path, picture_answers: dict[str, Any]) -> Path:
+    """The reference answers file."""
+    return _write_answers(tmp_path / "answers.json", picture_answers)
+
+
+@pytest.fixture
+def answers_with_extra_key(tmp_path: Path, picture_answers: dict[str, Any]) -> Path:
+    """The reference answers file plus one unknown top-level key."""
+    payload = {**picture_answers, "foo": 1}
+    return _write_answers(tmp_path / "answers-extra.json", payload)
+
+
+@pytest.fixture
+def draft_file(tmp_path: Path, picture_answers: dict[str, Any]) -> Path:
+    """The reference picture as a CTO draft file."""
+    return _write_answers(tmp_path / "draft.json", picture_answers)
+

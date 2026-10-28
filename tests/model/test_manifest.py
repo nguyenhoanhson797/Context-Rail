@@ -29,7 +29,17 @@ PINNED_MANIFEST = {
         "actor": "workspace/profiles/{slug}/profile.md",
         "policy": "policies/{slug}.md",
     },
-    "presets": {"decision": "records/decisions/{slug}.md"},
+    "presets": {
+        "decision": "records/decisions/{slug}.md",
+        "charter": "charter.md",
+        "goal": "project/{slug}.md",
+        "vision": "project/{slug}.md",
+        "scope": "project/{slug}.md",
+        "wont": "project/{slug}.md",
+        "skill": "workspace/skills/{slug}.md",
+        "cto": "workspace/cto/profile.md",
+        "profile": "workspace/profiles/{slug}/profile.md",
+    },
 }
 
 
@@ -57,7 +67,15 @@ LOCAL_PACK: dict[str, Any] = {
     "transitions": {"todo": ["done"], "done": []},
     "presets": {
         "task": {"primitive": "item", "tags": ["task"]},
+        "goal": {"primitive": "item", "tags": ["goal"]},
+        "scope": {"primitive": "item", "tags": ["scope"]},
         "decision": {"primitive": "record", "tags": ["decision"]},
+        "charter": {"primitive": "policy", "tags": []},
+        "vision": {"primitive": "note", "tags": []},
+        "wont": {"primitive": "note", "tags": []},
+        "skill": {"primitive": "note", "tags": []},
+        "cto": {"primitive": "actor", "tags": []},
+        "profile": {"primitive": "actor", "tags": []},
     },
     "policy": {"stuck_hours": 24, "retries": 1},
 }
@@ -108,7 +126,7 @@ def test_loaded_manifest_exposes_schema_pack_and_placement(tmp_path: Path) -> No
     assert m.schema == 3
     assert m.pack == "small"
     assert m.placement == PINNED_MANIFEST["placement"]
-    assert m.preset_placement == {"decision": "records/decisions/{slug}.md"}
+    assert m.preset_placement == PINNED_MANIFEST["presets"]
 
 
 def test_unknown_schema_fails_closed(tmp_path: Path) -> None:
@@ -272,7 +290,7 @@ def test_manifest_cache_follows_path_mtime_and_size(tmp_path: Path) -> None:
 def test_preset_override_is_rechecked_after_local_pack_edit(tmp_path: Path) -> None:
     _write_manifest(tmp_path, DEFAULT_MANIFEST)
     _write_pack(tmp_path, LOCAL_PACK)
-    expected = {"decision": "records/decisions/{slug}.md"}
+    expected = PINNED_MANIFEST["presets"]
     assert load_manifest(tmp_path).preset_placement == expected
 
     without_decision = copy.deepcopy(LOCAL_PACK)
@@ -291,7 +309,7 @@ def test_local_pack_appearance_and_removal_recheck_preset_override(
     tmp_path: Path,
 ) -> None:
     _write_manifest(tmp_path, DEFAULT_MANIFEST)
-    expected = {"decision": "records/decisions/{slug}.md"}
+    expected = PINNED_MANIFEST["presets"]
     assert load_manifest(tmp_path).preset_placement == expected
 
     without_decision = copy.deepcopy(LOCAL_PACK)

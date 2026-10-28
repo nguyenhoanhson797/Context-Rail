@@ -249,7 +249,7 @@ def test_preset_field_hint_reported_alone(store_factory) -> None:
     store = store_factory()
     _write(
         store,
-        "items/scope/s.md",
+        "project/s.md",
         _task("s", preset="scope", priority="urgent"),
     )
 
@@ -258,7 +258,7 @@ def test_preset_field_hint_reported_alone(store_factory) -> None:
     assert [issue["code"] for issue in report["issues"]] == ["preset_field_hint"]
     issue = report["issues"][0]
     assert issue["severity"] == "warning"
-    assert issue["path"] == "items/scope/s.md"
+    assert issue["path"] == "project/s.md"
 
 
 # ── clean stores ──────────────────────────────────────────────────────────

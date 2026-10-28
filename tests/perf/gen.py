@@ -30,7 +30,7 @@ def make_store(root: Path, n: int, seed: int = 0) -> Path:
     for i in range(goals):
         _write(
             store,
-            f"items/goal/g{i}.md",
+            f"project/g{i}.md",
             "item",
             "goal",
             f"Goal {i}",

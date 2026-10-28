@@ -40,15 +40,19 @@ class Tool:
 TOOLS: tuple[Tool, ...] = (
     Tool(
         name="init",
-        summary="Create a store's pinned layout in a project directory.",
+        summary="Create a store, or turn an interview or answers file into the project picture.",
         permission="write",
         params=(
             Param("dir", "str", help="project directory (default: the current one)"),
             Param("pack", "str", default="small", help="pack name"),
             Param("root", "str", default="context-rail", help="store folder inside the project"),
+            Param("interview", "bool", help="ask the picture questions in a terminal"),
+            Param("answers_file", "str", help="JSON answers written by the human"),
+            Param("draft_file", "str", help="JSON picture proposed by the CTO"),
+            Param("confirm", "str", help="the typed phrase APPROVE charter"),
             Param("key", "str", help="idempotency key"),
         ),
-        handler="context_rail.gateway.handlers.init:init",
+        handler="context_rail.gateway.handlers.onboarding:init",
     ),
     Tool(
         name="add",

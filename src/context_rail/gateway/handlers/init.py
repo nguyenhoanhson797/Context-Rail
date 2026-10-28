@@ -30,7 +30,7 @@ PINNED_FOLDERS = (
 GITIGNORE = b".rail-local/\n"
 
 
-def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, Any]:
+def scaffold(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Create ``<dir>/<root>`` with the default manifest and pinned folders."""
     directory = Path(args["dir"] or Path.cwd())
     store = confine(directory, args["root"])
