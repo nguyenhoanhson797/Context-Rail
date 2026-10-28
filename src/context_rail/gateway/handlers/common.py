@@ -5,21 +5,50 @@ from __future__ import annotations
 import json
 from importlib import resources
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from context_rail.core.util import dump_frontmatter, load_yaml, slugify
+from context_rail.kernel import rights
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import RELATIONS
 from context_rail.store.doc import Doc, parse_doc
 from context_rail.store.index import Index
-from context_rail.store.write import WriteRefused
+from context_rail.store.write import WriteRefused, resolve_unique
+
+if TYPE_CHECKING:
+    from context_rail.gateway.gateway import Context
 
 #: Frontmatter keys the engine owns; ``--set`` may not replace them.
 MANAGED_KEYS = frozenset(
     {"slug", "path", "id", "digest", "created", "updated", "primitive", "preset", "status"}
 )
+
+
+def protected_change(
+    context: Context, slug: str | None, op: str
+) -> rights.ChangeFacts:
+    """The technical facts of one generic write, from the protected path set.
+
+    A slug that no document carries is left unprotected here; the handler owns
+    the NOT_FOUND answer.
+    """
+    from context_rail.store.approval import protected_paths
+
+    rel: str | None = None
+    if isinstance(slug, str) and slug.strip():
+        try:
+            rel = resolve_unique(context.index, slug)
+        except LookupError:
+            rel = None
+    return rights.ChangeFacts(
+        method=op,
+        protected=rel is not None and rel in protected_paths(context),
+        acceptance=False,
+        decision_id=None,
+        budget_increase=False,
+    )
 
 
 def preset_for(pack: Pack, name: str) -> Preset:

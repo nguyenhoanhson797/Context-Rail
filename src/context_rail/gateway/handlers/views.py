@@ -5,16 +5,19 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
+from context_rail.gateway.confirmation import confirmation_phrase
 from context_rail.gateway.handlers.common import parse_relation_filter
 from context_rail.kernel import structure
 from context_rail.model.primitives import CATEGORIES
-from context_rail.store import query
+from context_rail.store import approval, query
 from context_rail.store.write import resolve_unique
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
 LIST_CAP = 20
+PACK_PREFIX = "pack:"
+CHARTER_TARGET = "charter"
 
 
 def find(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -33,10 +36,22 @@ def find(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
 
 def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """One document, its relations and a bounded body."""
+    """One document, its relations and a bounded body, or an approval target."""
+    slug = (args["slug"] or "").strip()
     index = ctx.index  # opened and synced before the one body read
+    if slug.startswith(PACK_PREFIX):
+        return {
+            "target": slug,
+            "approval": approval.approval_state(ctx, slug),
+            "phrase": confirmation_phrase("approve", slug),
+        }
     resolve_unique(index, args["slug"])
-    return query.show(index, args["slug"], body_chars=args["body_chars"])
+    shown = query.show(index, args["slug"], body_chars=args["body_chars"])
+    doc = shown["doc"]
+    if doc["primitive"] == "policy" and doc["preset"] == CHARTER_TARGET:
+        shown["approval"] = approval.approval_state(ctx, CHARTER_TARGET)
+        shown["phrase"] = confirmation_phrase("approve", CHARTER_TARGET)
+    return shown
 
 
 def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

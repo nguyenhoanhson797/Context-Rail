@@ -20,8 +20,8 @@ from typing import TYPE_CHECKING, Any, Sequence
 import yaml
 
 from context_rail.core.util import now_iso, slugify
-from context_rail.gateway.confirmation import validate_confirmation
-from context_rail.gateway.handlers.common import compose_doc
+from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
+from context_rail.gateway.handlers.common import compose_doc, record_data
 from context_rail.gateway.handlers.init import GITIGNORE, PINNED_FOLDERS, scaffold
 from context_rail.model.cto import load_builtin_profile, load_builtin_skills
 from context_rail.model.manifest import (
@@ -33,14 +33,30 @@ from context_rail.model.manifest import (
 )
 from context_rail.model.pack import Pack, load_pack
 from context_rail.model.policy import Charter, parse_answers
+from context_rail.store.approval import (
+    APPROVAL_KIND,
+    APPROVAL_SCHEMA,
+    protected_paths,
+    protected_snapshot,
+    snapshot_digest,
+)
+from context_rail.store.lock import store_lock
 from context_rail.store.location import confine
-from context_rail.store.write import ABSENT, Op, WriteRefused, commit
+from context_rail.store.write import (
+    ABSENT,
+    Op,
+    WriteRefused,
+    commit,
+    replay,
+    resolve_unique,
+)
 
 if TYPE_CHECKING:  # importing the gateway at module load would circle back here
     from context_rail.gateway.gateway import Context
 
 __all__ = [
     "QUESTIONS",
+    "approve",
     "default_branch",
     "init",
     "picture_ops",
@@ -106,6 +122,94 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
         actor=actor,
         draft=draft,
     )
+
+
+def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Record one human approval of the protected picture's current meaning."""
+    target = (args["target"] or "").strip()
+    confirmer = (args["confirmer"] or "").strip()
+    if not confirmer:
+        raise WriteRefused(
+            "VALIDATION_FAILED", "an approval needs a confirmer", {"param": "confirmer"}
+        )
+    reason = validate_confirmation("approve", target, args["confirm"])
+    if reason is not None:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            reason,
+            {"confirm": confirmation_phrase("approve", target)},
+        )
+    pack_name = _approval_target(ctx, target)
+    store = ctx.store
+    with store_lock(store):
+        index = ctx.index
+        saved = replay(store, args["key"])
+        if saved is not None:
+            data = record_data(index, saved.get("record"))
+            return {
+                "approval": saved.get("record"),
+                "target": target,
+                "hashes": data.get("protected_hashes", {}),
+            }
+        hashes = protected_snapshot(ctx, pack_name=pack_name)
+        missing = sorted(path for path, digest in hashes.items() if digest is None)
+        if missing:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "the protected picture is incomplete",
+                {"paths": missing},
+            )
+        digest = snapshot_digest(hashes)
+        expect = args["expect"]
+        if expect is not None and expect != digest:
+            raise WriteRefused(
+                "CONFLICT",
+                f"the protected picture is at {digest}, not {expect}",
+                {"expected": expect, "actual": digest},
+            )
+        result = commit(
+            store,
+            ctx.manifest,
+            [],
+            {
+                "preset": "event",
+                "kind": APPROVAL_KIND,
+                "about": [target],
+                "data": {
+                    "schema": APPROVAL_SCHEMA,
+                    "target": target,
+                    "protected_hashes": hashes,
+                    "confirmer": confirmer,
+                    "confirmation": confirmation_phrase("approve", target),
+                },
+            },
+            actor=actor,
+            key=args["key"],
+            index=index,
+        )
+    return {"approval": result.get("record"), "target": target, "hashes": hashes}
+
+
+def _approval_target(ctx: Context, target: str) -> str | None:
+    """Validate an approval target; return the candidate pack name, if any."""
+    if not target:
+        raise WriteRefused("VALIDATION_FAILED", "an approval needs a target")
+    if target.startswith("pack:"):
+        name = target[len("pack:") :].strip()
+        if not name:
+            raise WriteRefused("VALIDATION_FAILED", "the pack target has no name")
+        load_pack(name, ctx.store)
+        return name
+    if target == CHARTER_TARGET:
+        return None
+    rel = resolve_unique(ctx.index, target)
+    if rel not in protected_paths(ctx):
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"{target!r} is not part of the protected picture",
+            {"target": target},
+        )
+    return None
 
 
 def read_answers(path: Path) -> dict[str, Any]:

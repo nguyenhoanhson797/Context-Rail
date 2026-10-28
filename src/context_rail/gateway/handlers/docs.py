@@ -22,11 +22,13 @@ from context_rail.gateway.handlers.common import (
     template_body,
     unique_slug,
 )
-from context_rail.kernel.lifecycle import check_transition
+from context_rail.kernel import gates
+from context_rail.kernel.lifecycle import category_of, check_transition
 from context_rail.model.manifest import render_path
 from context_rail.model.pack import Preset
 from context_rail.model.primitives import RELATIONS
-from context_rail.store.doc import etag
+from context_rail.store import query
+from context_rail.store.doc import Doc, etag
 from context_rail.store.index import Index
 from context_rail.store.lock import store_lock
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay, resolve_unique
@@ -272,6 +274,8 @@ def move(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             raise WriteRefused(
                 "VALIDATION_FAILED", "a resolution must be non-empty text", {"path": rel}
             )
+        if category_of(ctx.pack, target) == "done":
+            _require_done_gate(ctx, doc, actor)
         front = doc_frontmatter(doc)
         front["status"] = target
         if resolution is not None:
@@ -387,3 +391,48 @@ def _response(store: Path, index: Index, result: dict[str, Any]) -> dict[str, An
         "etag": etag_value,
         "record": result.get("record"),
     }
+
+
+def _require_done_gate(ctx: Context, doc: Doc, actor: str) -> None:
+    """Refuse a done move when the charter gate has no current proof for it."""
+    policy = ctx.policy
+    if policy is None:
+        return
+    name = "scope_done" if doc.slug in policy.project.get("scope", ()) else "item_done"
+    decision = gates.evaluate_gate(
+        policy,
+        name,
+        doc.slug,
+        [_gate_state(row) for row in query.check_states(ctx.index, doc.slug)],
+        None,
+        actor == "human",
+        None,
+    )
+    if decision.allowed:
+        return
+    raise WriteRefused(
+        "BUSINESS_RULE_VIOLATED",
+        f"the {name} gate is not satisfied",
+        {"gate": name, "path": doc.path, "reasons": list(decision.reasons)},
+    )
+
+
+def _gate_state(row: dict[str, Any]) -> gates.CheckState:
+    """The proof a verdict carries, with freshness only the Git index can prove.
+
+    A verdict whose definition still matches counts as unknown rather than
+    fresh until the freshness reader exists; unknown never opens a gate.
+    """
+    if row["passed"] is None:
+        freshness = "missing"
+    elif not row["passed"] or row["check_etag"] != row["definition_etag"]:
+        freshness = "stale"
+    else:
+        freshness = "unknown"
+    return gates.CheckState(
+        slug=row["slug"],
+        passed=bool(row["passed"]),
+        freshness=freshness,
+        candidate=row["candidate_commit"],
+        acceptance=bool(row["acceptance"]),
+    )

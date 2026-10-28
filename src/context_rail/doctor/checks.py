@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from context_rail.model.errors import ModelError
@@ -47,12 +48,15 @@ SEVERITIES: dict[str, str] = {
     UNKNOWN_RELATION: "error",
     "record_tampered": "error",
     "intent_pending": "error",
+    "approval_missing": "error",
+    "approval_mismatch": "error",
     "placement_mismatch": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
 
 _REPAIR = "rail doctor --repair"
+_APPROVE = 'rail approve charter --confirm "APPROVE charter" --confirmer <you>'
 _RELOCATE = "rail relocate"
 _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
 
@@ -84,6 +88,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
         issues.extend(_doc_issues(store, manifest, pack, row, known, relations, fields))
     issues.extend(_duplicate_issues(slugs))
     issues.extend(_intent_issues(store))
+    issues.extend(_approval_issues(store, manifest, pack, ix))
     issues.sort(key=lambda issue: (issue["path"], issue["code"]))
 
     counts = {"error": 0, "warning": 0, "info": 0}
@@ -318,6 +323,39 @@ def _intent_issues(store: Path) -> list[dict[str, Any]]:
         )
         for path in sorted(folder.iterdir())
         if path.is_file()
+    ]
+
+
+def _approval_issues(
+    store: Path, manifest: Manifest, pack: Pack, ix: Index
+) -> list[dict[str, Any]]:
+    """One issue when the picture has no human approval, or differs from it."""
+    from context_rail.store.approval import approval_state, charter_document
+
+    context = SimpleNamespace(store=Path(store), manifest=manifest, pack=pack, index=ix)
+    found = charter_document(context)
+    if found is None:
+        return []
+    path, _ = found
+    state = approval_state(context, "charter")
+    if state["state"] == "approved":
+        return []
+    if state["state"] == "missing":
+        return [
+            _issue(
+                "approval_missing",
+                path,
+                "the picture has no human approval",
+                fix=_APPROVE,
+            )
+        ]
+    return [
+        _issue(
+            "approval_mismatch",
+            path,
+            "the protected picture changed since the human approved it",
+            fix=_APPROVE,
+        )
     ]
 
 

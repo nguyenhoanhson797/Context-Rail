@@ -28,13 +28,14 @@ class Param:
 
 @dataclass(frozen=True)
 class Tool:
-    """One command: its permission, its arguments and its lazy handler."""
+    """One command: its permission, its decision class, its handler."""
 
     name: str
     summary: str
     permission: str
     params: tuple[Param, ...]
     handler: str
+    decision: str = "cto-alone"
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -55,6 +56,20 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.onboarding:init",
     ),
     Tool(
+        name="approve",
+        summary="Record the human's approval of the protected picture's meaning.",
+        permission="human",
+        params=(
+            Param("target", "str", required=True, positional=True, help="charter, a protected slug or pack:<name>"),
+            Param("confirm", "str", required=True, help="the typed phrase APPROVE <target>"),
+            Param("confirmer", "str", required=True, help="who approved it"),
+            Param("expect", "str", help="the snapshot_digest the human saw"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.onboarding:approve",
+        decision="human-only",
+    ),
+    Tool(
         name="add",
         summary="Create one document from a preset.",
         permission="write",
@@ -65,6 +80,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("tag", "str", repeat=True, help="tag to add"),
             Param("set", "str", repeat=True, help="frontmatter field as KEY=VALUE"),
             Param("body_file", "str", help="file whose text becomes the body"),
+            Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.docs:add",
@@ -79,6 +95,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("set", "str", repeat=True, help="frontmatter field as KEY=VALUE"),
             Param("tag", "str", repeat=True, help="tag edit as +TAG or -TAG"),
             Param("body_file", "str", help="file whose text replaces the body"),
+            Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.docs:update",
@@ -92,6 +109,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("status", "str", required=True, positional=True, help="target status"),
             Param("expect", "str", required=True, help="current etag"),
             Param("resolution", "str", help="how the item was resolved"),
+            Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.docs:move",
@@ -106,6 +124,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("dst", "str", required=True, positional=True, help="target slug"),
             Param("expect", "str", required=True, help="current source etag"),
             Param("remove", "bool", help="remove the relation instead of adding it"),
+            Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.docs:link",
@@ -117,6 +136,7 @@ TOOLS: tuple[Tool, ...] = (
         params=(
             Param("old", "str", required=True, positional=True, help="current slug"),
             Param("new", "str", required=True, positional=True, help="new slug"),
+            Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.reshape:rename",
@@ -127,6 +147,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("dry_run", "bool", help="report the moves without applying them"),
+            Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.reshape:relocate",

@@ -4,32 +4,52 @@ Handlers stay ``"module:function"`` strings so importing the tool table (and the
 CLI) costs nothing; each handler is imported only when its tool is invoked.
 Every failure crosses the boundary as a Result envelope, mapped from the
 exception the layer below refused with.
+
+Rights are decided here, before any handler runs: a call's decision class comes
+from the technical facts of the change, a profile narrows its actor's methods,
+the human-only floor cannot be widened, and nothing executable runs until the
+human has approved the protected picture.
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from functools import cached_property
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable
 
 from context_rail.core.result import fail, ok
+from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.tools import TOOLS, Param, Tool
 from context_rail.kernel import rights
+from context_rail.kernel.lifecycle import category_of
+from context_rail.model.cto import Profile, parse_profile
 from context_rail.model.errors import ModelError
-from context_rail.model.manifest import Manifest, load_manifest
+from context_rail.model.manifest import Manifest, load_manifest, render_path
 from context_rail.model.pack import Pack, load_pack
+from context_rail.model.policy import Charter, parse_charter
+from context_rail.store.doc import Doc, parse_doc
 from context_rail.store.index import Index
 from context_rail.store.location import PathEscape, find_store
 from context_rail.store.query import QueryError
 from context_rail.store.write import WriteRefused
 
-__all__ = ["Context", "invoke"]
+__all__ = ["EXECUTION_TOOLS", "Context", "effective_decision", "invoke"]
 
 Handler = Callable[[Any, dict[str, Any], str], Any]
 
 _BY_NAME = {tool.name: tool for tool in TOOLS}
+
+#: Tools that execute something; none of them may run before the human approves.
+EXECUTION_TOOLS = ("verify", "dispatch", "review", "merge", "cto tick")
+#: The categories a move may not reach before approval.
+LOCKED_CATEGORIES = ("active", "done")
+#: Generic writes whose decision depends on whether their target is protected.
+PROTECTED_METHODS = ("update", "link", "move", "rename")
+_CONFIRM_SLUG = {"update": "slug", "move": "slug", "link": "src", "rename": "old"}
+_HUMAN = "human"
 
 
 @dataclass
@@ -49,6 +69,65 @@ class Context:
             self._index = Index.open(self.store, self.pack)
             self._index.sync()
         return self._index
+
+    @cached_property
+    def policy(self) -> Charter | None:
+        """The validated charter, or None when this store has no picture yet."""
+        from context_rail.store.approval import charter_document
+
+        found = charter_document(self)
+        return None if found is None else parse_charter(found[1])
+
+    @cached_property
+    def profile(self) -> Profile | None:
+        """The Actor profile the acting name resolves to, when the store has one.
+
+        The lookup reads the placements rail.yaml renders and checks the parsed
+        identity, so a fixed placement (the CTO's) never stands in for another
+        actor, and narrowing an actor's methods never syncs the index ahead of
+        the handler.
+        """
+        found = self._actor_document()
+        if found is None:
+            return None
+        return parse_profile(found.fields, body=found.body)
+
+    def _actor_document(self) -> Doc | None:
+        candidates: list[tuple[str, Doc]] = []
+        for preset in self.pack.presets.values():
+            if preset.primitive != "actor":
+                continue
+            try:
+                rel = render_path(
+                    self.manifest,
+                    primitive="actor",
+                    preset=preset.name,
+                    slug=self.actor,
+                )
+            except ModelError:
+                continue
+            path = self.store / rel
+            if not path.is_file():
+                continue
+            doc = parse_doc(rel, path.read_bytes())
+            if doc.slug == self.actor:
+                candidates.append((rel, doc))
+        if not candidates:
+            return None
+        if len(candidates) > 1:
+            raise WriteRefused(
+                "CONFLICT",
+                f"{self.actor!r} names more than one profile",
+                {"paths": sorted(rel for rel, _ in candidates)},
+            )
+        return candidates[0][1]
+
+    @cached_property
+    def approval(self) -> dict[str, Any]:
+        """The current state of the charter approval."""
+        from context_rail.store.approval import approval_state
+
+        return approval_state(self, "charter")
 
     def close(self) -> None:
         """Release the index connection, if this invocation opened one."""
@@ -70,11 +149,11 @@ def invoke(
     try:
         tool = _tool(name)
         params = _parameters(tool, args)
-        refusal = rights.allowed(tool.permission, resolved_actor)
-        if refusal is not None:
-            return fail("PERMISSION_DENIED", refusal)
         if tool.name != "init":
             context = _open_context(store, resolved_actor)
+        refusal = _authorize(tool, params, context, resolved_actor)
+        if refusal is not None:
+            return refusal
         handler = _handler(tool.handler)
         return ok(handler(context, params, resolved_actor))
     except Exception as exc:  # the boundary converts every fault into a Result
@@ -82,6 +161,118 @@ def invoke(
     finally:
         if context is not None:
             context.close()
+
+
+def effective_decision(
+    tool: Tool, params: dict[str, Any], context: Context | None
+) -> str:
+    """The decision class a call needs, from technical facts and never names."""
+    if tool.permission == "human" or tool.decision == "human-only":
+        return "human-only"
+    if tool.name == "init":
+        return "cto-alone" if params.get("draft_file") else "human-only"
+    if context is None or context.policy is None:
+        return tool.decision
+    if tool.name not in PROTECTED_METHODS:
+        return tool.decision
+    from context_rail.gateway.handlers.common import protected_change
+
+    slug = params.get("slug") or params.get("src") or params.get("old")
+    facts = protected_change(context, slug, tool.name)
+    return rights.decision_class(tool.name, facts, context.policy)
+
+
+def _authorize(
+    tool: Tool,
+    params: dict[str, Any],
+    context: Context | None,
+    actor: str,
+) -> dict[str, Any] | None:
+    """The refusal a call earns before its handler runs, if it earns one."""
+    refusal = rights.allowed(tool.permission, actor)
+    if refusal is not None:
+        return fail(
+            "PERMISSION_DENIED", refusal, {"tool": tool.name, "actor": actor}
+        )
+    if tool.permission == "human" or context is None:
+        return None
+    profile = context.profile
+    if profile is not None and tool.name not in profile.allowed_methods:
+        return fail(
+            "PERMISSION_DENIED",
+            f"profile {actor!r} may not use {tool.name!r}",
+            {
+                "tool": tool.name,
+                "profile": actor,
+                "allowed_methods": list(profile.allowed_methods),
+            },
+        )
+    if tool.permission == "read":
+        return None
+    policy = context.policy
+    if policy is None:
+        return None
+    locked = _lockout(tool, params, context)
+    if locked is not None:
+        return fail(
+            "INVALID_STATE",
+            "the charter is not approved; nothing executes yet",
+            {"reason": locked, "tool": tool.name},
+        )
+    decision = effective_decision(tool, params, context)
+    refusal = rights.allowed_decision(
+        tool.permission, decision, actor, policy, None, True
+    )
+    if refusal is not None:
+        return fail(
+            "PERMISSION_DENIED",
+            refusal,
+            {"tool": tool.name, "decision": decision, "actor": actor},
+        )
+    if decision == "human-only" and actor == _HUMAN:
+        target = _confirmation_target(tool, params)
+        if target is not None:
+            reason = validate_confirmation("approve", target, params.get("confirm"))
+            if reason is not None:
+                return fail(
+                    "VALIDATION_FAILED",
+                    reason,
+                    {
+                        "target": target,
+                        "confirm": confirmation_phrase("approve", target),
+                    },
+                )
+    return None
+
+
+def _lockout(
+    tool: Tool, params: dict[str, Any], context: Context
+) -> str | None:
+    """Why the approval lockout refuses this call, or None when it may run."""
+    if not _is_execution(tool, params, context):
+        return None
+    state = context.approval["state"]
+    if state == "approved":
+        return None
+    return "approval_missing" if state == "missing" else "approval_mismatch"
+
+
+def _is_execution(tool: Tool, params: dict[str, Any], context: Context) -> bool:
+    if tool.name in EXECUTION_TOOLS:
+        return True
+    if tool.name != "move":
+        return False
+    status = params.get("status")
+    category = category_of(context.pack, status) if isinstance(status, str) else None
+    return category in LOCKED_CATEGORIES
+
+
+def _confirmation_target(tool: Tool, params: dict[str, Any]) -> str | None:
+    name = _CONFIRM_SLUG.get(tool.name)
+    if name is None:
+        return None
+    value = params.get(name)
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _tool(name: Any) -> Tool:

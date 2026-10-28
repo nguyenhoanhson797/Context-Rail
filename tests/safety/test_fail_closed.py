@@ -16,6 +16,7 @@ from context_rail.gateway.tools import TOOLS
 from helpers import run_cli
 
 _REFUSED_TOOLS = (
+    "approve",
     "add",
     "update",
     "move",
@@ -29,6 +30,7 @@ _REFUSED_TOOLS = (
     "doctor",
 )
 _ARGS: dict[str, dict[str, Any]] = {
+    "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
     "add": {"preset": "task", "title": "Refused"},
     "update": {"slug": "t0", "expect": "0123456789abcdef", "set": ["estimate=1"]},
     "move": {"slug": "t0", "status": "doing", "expect": "0123456789abcdef"},

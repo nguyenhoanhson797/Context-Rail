@@ -20,7 +20,7 @@ from context_rail.model.pack import Pack, load_pack
 from context_rail.model.policy import DECISION_RIGHTS, HUMAN_ONLY_IDS
 from context_rail.store.doc import etag
 from context_rail.store.index import Index
-from helpers import run_git, write_record
+from helpers import approve_picture, run_git, write_record
 from perf.gen import make_store
 
 _STAMP = "2026-10-28T00:00:00Z"
@@ -523,4 +523,22 @@ def answers_with_extra_key(tmp_path: Path, picture_answers: dict[str, Any]) -> P
 def draft_file(tmp_path: Path, picture_answers: dict[str, Any]) -> Path:
     """The reference picture as a CTO draft file."""
     return _write_answers(tmp_path / "draft.json", picture_answers)
+
+
+@pytest.fixture
+def approved_store(tmp_path: Path, answers: Path) -> Path:
+    """A store whose picture the human onboarded and approved."""
+    result = invoke(
+        "init",
+        {"dir": str(tmp_path), "answers_file": str(answers), "confirm": "APPROVE charter"},
+        actor="human",
+    )
+    assert is_ok(result), result
+    store = tmp_path / "context-rail"
+    approved = approve_picture(store)
+    assert is_ok(approved), approved
+    shown = invoke("show", {"slug": "charter"}, store=store, actor="human")["value"]
+    assert shown["approval"]["state"] == "approved"
+    return store
+
 

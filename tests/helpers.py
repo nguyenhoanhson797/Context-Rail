@@ -118,6 +118,32 @@ def touch_doc(store: Path, rel: str, **frontmatter: Any) -> None:
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
 
 
+def approve_picture(
+    store: Path, *, confirmer: str = "validator", expect: str | None = None
+) -> dict[str, Any]:
+    """Approve the current picture as the human, sending the displayed digest.
+
+    ``expect`` defaults to the ``snapshot_digest`` ``show charter`` displays, so
+    a re-approval after a mismatch only needs the new digest passed in.
+    """
+    from context_rail.gateway.gateway import invoke
+
+    shown = invoke("show", {"slug": "charter"}, store=store, actor="human")
+    if expect is None:
+        expect = shown["value"]["approval"]["snapshot_digest"]
+    return invoke(
+        "approve",
+        {
+            "target": "charter",
+            "confirm": "APPROVE charter",
+            "confirmer": confirmer,
+            "expect": expect,
+        },
+        store=store,
+        actor="human",
+    )
+
+
 def median_ms(fn: Callable[[], object], runs: int) -> float:
     """Median wall time of ``runs`` calls to ``fn``, in milliseconds."""
     samples: list[float] = []
