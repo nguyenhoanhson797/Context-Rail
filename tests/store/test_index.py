@@ -575,7 +575,7 @@ def test_junction_detection_works_without_python_312_helpers(
     def unavailable(*args: object, **kwargs: object) -> bool:
         raise AssertionError("Path.is_junction is unavailable before Python 3.12")
 
-    monkeypatch.setattr(Path, "is_junction", unavailable)
+    monkeypatch.setattr(Path, "is_junction", unavailable, raising=False)
     store = store_factory(docs=10)
     link = store / "items" / "task" / "linked"
     junction(link, outside_store(tmp_path))
