@@ -62,6 +62,9 @@ HUMAN_VERDICTS = ("pass", "fail")
 SHELL_MODES = ("cmd", "exists")
 #: The modes whose verification may carry a supplied ``--evidence`` list.
 EVIDENCE_MODES = ("evidence", "human")
+#: Modes an Item-wide verification leaves out: a human verdict is the human's,
+#: and a review proves one exact candidate the review command produced.
+ITEM_WIDE_SKIP = ("human", "review")
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 _RECORD_ID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 _EXECUTABLE_MODES = ("cmd", "exists", "evidence", "review")
@@ -221,7 +224,7 @@ def verify(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     worktree = _resolve_worktree(ctx, args.get("worktree"))
     results: list[dict[str, Any]] = []
     for selected in rows:
-        if not single and selected["mode"] == "human":
+        if not single and selected["mode"] in ITEM_WIDE_SKIP:
             continue
         target_worktree = worktree if selected["mode"] in SHELL_MODES else None
         results.append(
@@ -490,7 +493,7 @@ def _review_payload(ctx: Context, row: Mapping[str, Any]) -> dict[str, Any]:
             str(data.get("reviewer_actor") or review.get("reviewer") or ""),
             str(data.get("implementer_model") or ""),
             str(data.get("reviewer_model") or ""),
-            True,
+            _different_model_required(ctx),
         )
         if separation is not None:
             reason = separation
@@ -501,6 +504,11 @@ def _review_payload(ctx: Context, row: Mapping[str, Any]) -> dict[str, Any]:
         reason=reason,
         candidate_commit=review.get("candidate_commit"),
     )
+
+
+def _different_model_required(ctx: Context) -> bool:
+    """Whether this project's charter requires the reviewer to use another model."""
+    return True if ctx.policy is None else ctx.policy.reviewer_different_model
 
 
 def _human_payload(

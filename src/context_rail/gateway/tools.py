@@ -110,6 +110,18 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.dispatch:dispatch",
     ),
     Tool(
+        name="review",
+        summary="Review one verified candidate in its own worktree and record the verdict.",
+        permission="write",
+        params=(
+            Param("item", "str", required=True, positional=True, help="leaf Item slug"),
+            Param("run", "str", required=True, help="the verified implementer run id"),
+            Param("profile", "str", default="reviewer", help="reviewer profile name"),
+            Param("key", "str", required=True, help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.dispatch:review",
+    ),
+    Tool(
         name="add",
         summary="Create one document from a preset.",
         permission="write",

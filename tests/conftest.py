@@ -709,6 +709,42 @@ def leaf_item(tmp_path: Path, answers: Path) -> SimpleNamespace:
 
 
 @pytest.fixture
+def verified_run(
+    leaf_item: SimpleNamespace, fake_droid: FakeDroid, droid_env: dict[str, str]
+) -> SimpleNamespace:
+    """An approved checkout whose single implementer run verified one candidate.
+
+    The candidate and both worktrees stay on disk, so a review can be launched
+    against exactly the commit the implementer produced.
+    """
+    dispatched = invoke(
+        "dispatch",
+        {"item": leaf_item.slug, "expect": leaf_item.etag, "key": "fixture-verified"},
+        store=leaf_item.store,
+        actor="cto",
+    )
+    assert is_ok(dispatched), dispatched
+    assert dispatched["value"]["status"] == "verified", dispatched
+    shown = invoke("show", {"slug": leaf_item.slug}, store=leaf_item.store, actor="cto")
+    assert is_ok(shown), shown
+    worktree = Path(dispatched["value"]["worktree"])
+    candidate = run_git(worktree, "rev-parse", "HEAD").stdout.strip()
+    return SimpleNamespace(
+        store=leaf_item.store,
+        project=leaf_item.root,
+        root=leaf_item.root,
+        item=leaf_item.slug,
+        slug=leaf_item.slug,
+        etag=shown["value"]["doc"]["etag"],
+        run=dispatched["value"]["run"],
+        dispatch_id=dispatched["value"]["dispatch_id"],
+        dispatch_worktree=worktree,
+        dispatch_branch=dispatched["value"]["branch"],
+        candidate=candidate,
+    )
+
+
+@pytest.fixture
 def fake_droid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeDroid:
     """The scripted fake droid, selected for the launcher through its env var."""
     holder = FakeDroid(tmp_path / "fake-droid", DEFAULT_FAKE_BEHAVIORS)

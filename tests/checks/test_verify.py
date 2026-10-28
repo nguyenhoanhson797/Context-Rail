@@ -635,3 +635,31 @@ def test_cmd_mode_outside_git_records_no_proof(approved_store: Path, tmp_path: P
     assert entry["record"] is None
     assert "git worktree" in entry["reason"]
     assert verdict_records(store) == []
+
+
+def test_verifying_an_item_leaves_review_checks_to_the_review(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    assert is_ok(
+        declare(
+            store,
+            tmp_path,
+            "smoke",
+            cmd_payload([sys.executable, "-c", "0"], ["src/**/*.py"]),
+        )
+    )
+    declared = declare(
+        store, tmp_path, "peer-review", {"schema": 1, "mode": "review", "acceptance": False}
+    )
+    assert is_ok(declared), declared
+
+    checked = invoke("verify", {"target": "feature-a"}, store=store, actor="cto")
+    assert is_ok(checked), checked
+    assert [row["check"] for row in checked["value"]["verdicts"]] == ["smoke"]
+    assert checked["value"]["passed"] is True
+
+    single = invoke("verify", {"target": "peer-review"}, store=store, actor="cto")
+    assert is_ok(single), single
+    assert single["value"]["passed"] is False
+    assert "no separated reviewer verdict" in single["value"]["reason"]

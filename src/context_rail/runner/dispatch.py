@@ -35,14 +35,24 @@ __all__ = [
     "project_root",
     "read_binding",
     "read_progress",
+    "read_review_binding",
+    "read_review_progress",
+    "register_review_worktree",
     "register_worktree",
     "remove_binding",
+    "remove_review_binding",
+    "review_binding_path",
+    "review_paths",
+    "review_progress_path",
     "write_binding",
     "write_progress",
+    "write_review_binding",
+    "write_review_progress",
     "worktree_root",
 ]
 
 DISPATCH_DIR = "dispatch"
+REVIEW_DIR = "review"
 KEY_DIR = "keys"
 LOCK_DIR = "locks"
 WORKTREE_PARENT = "context-rail-worktrees"
@@ -50,6 +60,9 @@ PROGRESS_STATES = ("started", "worktree", "running", "verifying", "completed")
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 _DISPATCH_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _BRANCH = re.compile(r"^rail/([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/([A-Za-z0-9][A-Za-z0-9_-]{0,63})$")
+_REVIEW_BRANCH = re.compile(
+    r"^rail-review/([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/([A-Za-z0-9][A-Za-z0-9_-]{0,63})$"
+)
 _RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.I)
 
 
@@ -99,6 +112,31 @@ def dispatch_paths(store: Path, item: str, dispatch_id: str) -> DispatchPaths:
 def progress_path(store: Path, dispatch_id: str) -> Path:
     """The local control file of one dispatch."""
     return local_dir(Path(store)) / DISPATCH_DIR / f"{_dispatch_id(dispatch_id)}.json"
+
+
+def review_paths(store: Path, item: str, review_id: str) -> DispatchPaths:
+    """The validated worktree path and branch name for one review."""
+    slug = _slug(item)
+    ident = _dispatch_id(review_id)
+    root = worktree_root(store)
+    return DispatchPaths(
+        root=root,
+        worktree=root / ident,
+        branch=f"rail-review/{slug}/{ident}",
+    )
+
+
+def review_progress_path(store: Path, review_id: str) -> Path:
+    """The local control file of one review."""
+    return local_dir(Path(store)) / REVIEW_DIR / f"{_dispatch_id(review_id)}.json"
+
+
+def review_binding_path(store: Path, key: str) -> Path:
+    """The local file binding one idempotency key to its review id."""
+    if not isinstance(key, str) or not key.strip():
+        raise WriteRefused("VALIDATION_FAILED", "a review key must be text")
+    digest = sha256_hex(key.encode("utf-8"))
+    return local_dir(Path(store)) / REVIEW_DIR / KEY_DIR / f"{digest}.json"
 
 
 def key_binding_path(store: Path, key: str) -> Path:
@@ -162,6 +200,55 @@ def read_binding(store: Path, key: str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else {"key": key, "corrupt": True}
 
 
+def read_review_progress(store: Path, review_id: str) -> dict[str, Any] | None:
+    """The stored progress of one review, or None when there is none."""
+    path = review_progress_path(store, review_id)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return {"dispatch_id": _dispatch_id(review_id), "corrupt": True}
+    return payload if isinstance(payload, dict) else {"dispatch_id": review_id, "corrupt": True}
+
+
+def write_review_progress(store: Path, review_id: str, **values: Any) -> dict[str, Any]:
+    """Merge ``values`` into one review's progress file and return it."""
+    ident = _dispatch_id(review_id)
+    path = review_progress_path(store, ident)
+    current = read_review_progress(store, ident) or {}
+    if current.get("corrupt"):
+        current = {"dispatch_id": ident, "corrupt": True}
+    merged = {**current, **values, "schema": 1, "dispatch_id": ident}
+    _write_json(path, merged)
+    return merged
+
+
+def read_review_binding(store: Path, key: str) -> dict[str, Any] | None:
+    """The review id one key already names, or None."""
+    path = review_binding_path(store, key)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return {"key": key, "corrupt": True}
+    return payload if isinstance(payload, dict) else {"key": key, "corrupt": True}
+
+
+def write_review_binding(store: Path, key: str, **values: Any) -> dict[str, Any]:
+    """Persist the key-to-review binding before any branch is created."""
+    path = review_binding_path(store, key)
+    payload = {**values, "schema": 1, "key": key}
+    _write_json(path, payload)
+    return payload
+
+
+def remove_review_binding(store: Path, key: str) -> None:
+    """Forget a review binding whose launch never started."""
+    review_binding_path(store, key).unlink(missing_ok=True)
+
+
 def write_binding(store: Path, key: str, **values: Any) -> dict[str, Any]:
     """Persist the key-to-dispatch binding before any branch is created."""
     path = key_binding_path(store, key)
@@ -221,6 +308,34 @@ def register_worktree(store: Path, dispatch_id: str, path: Path, branch: str) ->
             {"dispatch_id": ident, "branch": branch},
         )
     write_progress(
+        store,
+        ident,
+        state="worktree",
+        phase="worktree",
+        worktree=str(candidate.resolve()),
+        branch=branch,
+    )
+
+
+def register_review_worktree(store: Path, review_id: str, path: Path, branch: str) -> None:
+    """Record the checkout one review created, before it is used."""
+    ident = _dispatch_id(review_id)
+    root = worktree_root(store)
+    candidate = Path(path)
+    if candidate.name != ident or not _same_path(candidate.parent, root):
+        raise WriteRefused(
+            "CONFLICT",
+            "the review worktree is not this project's review directory",
+            {"review_id": ident, "path": str(candidate), "root": str(root)},
+        )
+    match = _REVIEW_BRANCH.match(branch) if isinstance(branch, str) else None
+    if match is None or match.group(2) != ident:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"{branch!r} is not a review branch for {ident!r}",
+            {"review_id": ident, "branch": branch},
+        )
+    write_review_progress(
         store,
         ident,
         state="worktree",

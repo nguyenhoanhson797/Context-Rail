@@ -257,7 +257,7 @@ def _bound(
         return STALE
     if _text(check.get("mode")) == "review":
         candidate = _text(check.get("candidate_commit"))
-        if candidate is None or verdict.get("candidate_commit") != candidate:
+        if candidate is not None and verdict.get("candidate_commit") != candidate:
             return STALE
     declared = _texts(check.get("evidence"))
     if declared and not set(declared) <= set(_texts(verdict.get("evidence"))):

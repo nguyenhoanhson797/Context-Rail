@@ -34,6 +34,7 @@ __all__ = [
     "review_for",
     "review_for_item",
     "run_facts",
+    "run_record",
     "show",
     "untriaged_reports",
 ]
@@ -524,6 +525,52 @@ def run_facts(ix: Index, item: str) -> list[dict[str, Any]]:
         }
         for record_id, role, attempt_count, duration_s in rows
     ]
+
+
+def run_record(ix: Index, run_id: str) -> dict[str, Any] | None:
+    """One completed run by its Record id, with its payload and evaluation."""
+    run_id = _text(run_id, "run")
+    row = ix.conn.execute(
+        """
+        SELECT r.record_id, r.dispatch_id, r.role, r.item, r.profile, r.model,
+               r.status, r.candidate_commit, r.accepted, r.profile_version,
+               r.data_json
+        FROM runs r WHERE r.record_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    (
+        record_id,
+        dispatch_id,
+        role,
+        item,
+        profile,
+        model,
+        status,
+        candidate,
+        accepted,
+        version,
+        data_json,
+    ) = row
+    payload = json.loads(data_json)
+    return {
+        "record_id": record_id,
+        "dispatch_id": dispatch_id,
+        "role": role,
+        "item": item,
+        "actor": payload.get("actor"),
+        "profile": profile,
+        "profile_version": version,
+        "profile_etag": payload.get("profile_etag"),
+        "skills": payload.get("skills", []),
+        "model": model,
+        "status": status,
+        "candidate_commit": candidate,
+        "accepted": None if accepted is None else bool(accepted),
+        "data": payload,
+    }
 
 
 def untriaged_reports(ix: Index, limit: int = 100) -> list[dict[str, Any]]:

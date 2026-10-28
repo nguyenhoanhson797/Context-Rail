@@ -254,6 +254,18 @@ def test_bound_modes_use_definition_candidate_and_evidence(git_index_repo: Simpl
     assert freshness({**verdict, "candidate_commit": "abc123"}, review, snapshot, {}) == "fresh"
     assert freshness({**verdict, "candidate_commit": "def456"}, review, snapshot, {}) == "stale"
 
+    undefined_candidate = {"mode": "review", "check_etag": "e"}
+    assert (
+        freshness({**verdict, "candidate_commit": "abc123"}, undefined_candidate, snapshot, {})
+        == "fresh"
+    )
+    assert (
+        freshness(
+            {**verdict, "candidate_commit": "def456"}, undefined_candidate, snapshot, {}
+        )
+        == "fresh"
+    )
+
     evidence = {"mode": "evidence", "check_etag": "e", "evidence": ["01J"]}
     assert freshness(verdict, evidence, snapshot, {}) == "fresh"
     assert freshness(verdict, {**evidence, "evidence": ["02K"]}, snapshot, {}) == "stale"

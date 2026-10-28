@@ -8,10 +8,19 @@ prose is never proof: the attempt passes only when its candidate commit is
 clean, free of store edits, and the declared Checks pass against committed
 inputs. One failed attempt is retried in the same session; the second failure
 blocks the Item and keeps the evidence.
+
+A review reuses that plumbing for the other side of the gate: a reviewer that
+is neither the implementer nor, when the charter says so, the implementer's
+model reads the candidate in a worktree of its own, created at the exact
+candidate commit. Its fenced ``rail-review`` block becomes one immutable
+verdict bound to that commit, and the implementer's run is only ever extended
+with a ``run.evaluated`` Record, never rewritten.
 """
 
 from __future__ import annotations
 
+import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -29,6 +38,7 @@ from context_rail.kernel.budgets import (
     launch_refusal,
 )
 from context_rail.kernel.lifecycle import category_of
+from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import (
     Profile,
     aggregate_usage,
@@ -50,15 +60,24 @@ from context_rail.runner.droid import (
 )
 from context_rail.store import query
 from context_rail.store.doc import Doc, etag, parse_doc
-from context_rail.store.location import PathEscape, confine, worktree_git_dir
-from context_rail.store.write import WriteRefused, commit, resolve_unique
+from context_rail.store.location import (
+    PathEscape,
+    confine,
+    local_dir,
+    worktree_git_dir,
+)
+from context_rail.store.write import ABSENT, WriteRefused, commit, resolve_unique
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["dispatch"]
+__all__ = ["dispatch", "review"]
 
 IMPL_ROLE = "implementer"
+REVIEW_ROLE = "reviewer"
+REVIEW_VERDICTS = ("approve", "reject")
+REVIEW_DIFF_MAX = 12000
+_COMMIT = re.compile(r"^[0-9a-f]{7,64}$")
 BUILTIN_ATTEMPTS = 2
 BUILTIN_SECONDS = 3600.0
 CAPTURE_REASON = "the droid output exceeded the 262144-byte cap"
@@ -192,7 +211,7 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 branch=paths.branch,
                 started_record=started,
             )
-            _create_worktree(root, paths, policy.default_branch, base)
+            _create_worktree(root, paths, base)
             local_dispatch.register_worktree(
                 store, dispatch_id, paths.worktree, paths.branch
             )
@@ -223,6 +242,784 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
         role_file, order_file = _write_prompts(ctx, plan, rel)
         return _execute(plan, role_file, order_file)
+
+
+# ── review ────────────────────────────────────────────────────────────────
+
+
+def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Run one separated reviewer on a verified candidate and record its verdict.
+
+    The reviewer reads the candidate commit in a private worktree of its own;
+    the implementer's working tree is never opened. The kernel refuses a
+    reviewer that is the implementer or, when the charter says so, uses the
+    implementer's model, and both refusals happen before any launch.
+    """
+    store = Path(ctx.store)
+    item = _required(args.get("item"), "an Item slug")
+    implementation_run = _required(args.get("run"), "a verified run id")
+    key = _required(args.get("key"), "a review key")
+    profile_name = _optional(args.get("profile")) or REVIEW_ROLE
+
+    replayed = _review_replayed(store, key, item, implementation_run, profile_name)
+    if replayed is not None:
+        return replayed
+
+    index = ctx.index
+    slug, rel, _current = _resolve_item(ctx, item)
+    policy = ctx.policy
+    if policy is None:
+        raise WriteRefused(
+            "INVALID_STATE", "the charter is not approved", {"reason": "approval_missing"}
+        )
+    run = query.run_record(index, implementation_run)
+    if run is None or run["item"] != slug:
+        raise WriteRefused(
+            "INVALID_STATE",
+            "no completed run of this Item carries that id",
+            {"item": slug, "run": implementation_run},
+        )
+    if run["role"] != IMPL_ROLE:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"run {implementation_run!r} is a {run['role']!r}, not an implementer run",
+            {"run": implementation_run, "role": run["role"]},
+        )
+    candidate = run["candidate_commit"]
+    if run["status"] != "verified" or not candidate:
+        raise WriteRefused(
+            "INVALID_STATE",
+            "only a verified candidate can be reviewed",
+            {"run": implementation_run, "status": run["status"]},
+        )
+
+    _profile_rel, profile_etag, profile = _load_profile(ctx, profile_name)
+    separation = _separation_reason(
+        policy,
+        implementer=str(run["actor"] or ""),
+        implementer_model=str(run["model"] or ""),
+        reviewer=profile_name,
+        reviewer_model=profile.model,
+        invoking=actor,
+    )
+    if separation is not None:
+        raise separation
+    if profile.recipe != REVIEW_ROLE:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"profile {profile_name!r} is a {profile.recipe!r}, not a reviewer",
+            {"profile": profile_name, "recipe": profile.recipe},
+        )
+    droid = droid_profile(profile, name=profile_name)
+    budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets)
+    _facts, used_seconds, _used_attempts = _run_facts(index, slug)
+    remaining = float(budget.seconds or BUILTIN_SECONDS) - used_seconds
+    if remaining <= 0:
+        raise WriteRefused(
+            "BUSINESS_RULE_VIOLATED",
+            f"{slug!r} has no review time left: {used_seconds:g} of {budget.seconds:g} seconds used",
+            {"item": slug, "used_seconds": used_seconds},
+        )
+
+    root, _git_dir = _checkout(ctx)
+    review_id = new_ulid()
+    paths = local_dispatch.review_paths(store, slug, review_id)
+    started_at = now_iso()
+    flight_started = time.monotonic()
+    with local_dispatch.acquire_dispatch_lock(store, slug, review_id):
+        _refuse_pending(store, slug)
+        local_dispatch.write_review_binding(
+            store,
+            key,
+            item=item,
+            slug=slug,
+            run=implementation_run,
+            profile=profile_name,
+            review_id=review_id,
+        )
+        local_dispatch.write_review_progress(
+            store,
+            review_id,
+            item=slug,
+            run=implementation_run,
+            profile=profile_name,
+            key_hash=sha256_hex(key.encode("utf-8")),
+            candidate_commit=candidate,
+            state="started",
+            phase="started",
+        )
+        try:
+            _create_worktree(root, paths, candidate)
+            local_dispatch.register_review_worktree(
+                store, review_id, paths.worktree, paths.branch
+            )
+        except BaseException:
+            _review_rollback(store, key, review_id)
+            raise
+
+        role_file = write_role_file(
+            store, review_id, profile=droid, body=profile.body
+        )
+        order_file = write_order_file(
+            store,
+            review_id,
+            metadata=_review_metadata(
+                ctx,
+                slug=slug,
+                rel=rel,
+                candidate=candidate,
+                profile_name=profile_name,
+                profile=profile,
+                profile_etag=profile_etag,
+                paths=paths,
+            ),
+            sections=_review_sections(
+                ctx, slug=slug, rel=rel, run=run, candidate=candidate, profile=profile
+            ),
+        )
+        local_dispatch.write_review_progress(
+            store, review_id, state="running", phase="running"
+        )
+        ran = run_droid(
+            context=ctx,
+            profile=droid,
+            worktree=paths.worktree,
+            confine_to=paths.worktree,
+            role_file=role_file,
+            order_file=order_file,
+            timeout=remaining,
+        )
+
+    duration = round(time.monotonic() - flight_started, 3)
+    outcome = _review_outcome(ran, candidate)
+    report_id = _review_report(
+        ctx, slug=slug, ran=ran, outcome=outcome
+    )
+    review_record_id: str | None = None
+    check_verdict: dict[str, Any] | None = None
+    if outcome["verdict"] is not None:
+        review_record_id = _review_verdict_record(
+            ctx,
+            slug=slug,
+            implementation_run=implementation_run,
+            candidate=candidate,
+            run=run,
+            profile_name=profile_name,
+            profile=profile,
+            outcome=outcome,
+        )
+        check_verdict = _verify_review_check(ctx, slug, review_id, actor)
+    verdict_ids = _verdict_ids(ctx, slug)
+    accepted = bool(
+        outcome["verdict"] == "approve"
+        and check_verdict is not None
+        and check_verdict.get("passed") is True
+        and _candidate_checks_pass(ctx, slug, candidate)
+    )
+    ended_at = now_iso()
+    review_run_id = _review_run_record(
+        ctx,
+        slug=slug,
+        review_id=review_id,
+        profile_name=profile_name,
+        profile=profile,
+        profile_etag=profile_etag,
+        droid_model=profile.model,
+        candidate=candidate,
+        report_id=report_id,
+        ran=ran,
+        verdicts=verdict_ids,
+        verified=outcome["verdict"] is not None,
+        started_at=started_at,
+        ended_at=ended_at,
+        duration=duration,
+    )
+    evaluated = _evaluation_record(
+        ctx,
+        slug=slug,
+        implementation_run=implementation_run,
+        candidate=candidate,
+        accepted=accepted,
+        check_verdicts=verdict_ids,
+        review=review_record_id,
+        actor=actor,
+    )
+    status = (
+        "invalid"
+        if outcome["verdict"] is None
+        else ("approved" if outcome["verdict"] == "approve" else "rejected")
+    )
+    value = {
+        "run": review_run_id,
+        "review": review_record_id,
+        "commit": candidate,
+        "verdict": outcome["verdict"],
+        "findings": list(outcome["findings"]),
+        "status": status,
+    }
+    local_dispatch.write_review_progress(
+        store,
+        review_id,
+        state="completed",
+        phase="completed",
+        run=review_run_id,
+        review=review_record_id,
+        report=report_id,
+        verdict=outcome["verdict"],
+        status=status,
+        evaluated=evaluated,
+        result=value,
+    )
+    return value
+
+
+def _review_replayed(
+    store: Path, key: str, item: str, run: str, profile: str
+) -> dict[str, Any] | None:
+    """The stored result one review key already earned, or a refusal."""
+    binding = local_dispatch.read_review_binding(store, key)
+    if binding is None:
+        return None
+    if binding.get("corrupt"):
+        raise WriteRefused(
+            "CONFLICT",
+            "the review key binding is unreadable; inspect it before retrying",
+            {"key": key},
+        )
+    same = (binding.get("item"), binding.get("run"), binding.get("profile"))
+    if same != (item, run, profile):
+        raise WriteRefused(
+            "CONFLICT",
+            "this key already names a different review payload",
+            {
+                "key": key,
+                "item": binding.get("item"),
+                "run": binding.get("run"),
+                "profile": binding.get("profile"),
+                "review_id": binding.get("review_id"),
+            },
+        )
+    review_id = str(binding.get("review_id"))
+    progress = local_dispatch.read_review_progress(store, review_id) or {}
+    if progress.get("state") == "completed" and isinstance(progress.get("result"), dict):
+        return progress["result"]
+    raise WriteRefused(
+        "CONFLICT",
+        "a review with this key has not completed; inspect the pending review",
+        {
+            "key": key,
+            "review_id": review_id,
+            "phase": progress.get("phase", "unknown"),
+            "worktree": progress.get("worktree"),
+            "branch": progress.get("branch"),
+        },
+    )
+
+
+def _separation_reason(
+    policy: Any,
+    *,
+    implementer: str,
+    implementer_model: str,
+    reviewer: str,
+    reviewer_model: str,
+    invoking: str,
+) -> WriteRefused | None:
+    """The refusal a review earns for not being separated, or None.
+
+    The compared pair is the implementer run's actor against the reviewer
+    profile; an invoker that is the implementer is refused the same way, since
+    it would be reviewing its own candidate.
+    """
+    reason = review_separation(
+        implementer,
+        reviewer,
+        implementer_model,
+        reviewer_model,
+        policy.reviewer_different_model,
+    )
+    if reason is None and invoking != reviewer:
+        reason = review_separation(
+            implementer,
+            invoking,
+            implementer_model,
+            reviewer_model,
+            policy.reviewer_different_model,
+        )
+    if reason is None:
+        return None
+    code = "PERMISSION_DENIED" if "model" not in reason else "VALIDATION_FAILED"
+    return WriteRefused(
+        code,
+        reason,
+        {
+            "implementer_actor": implementer,
+            "reviewer_actor": reviewer,
+            "implementer_model": implementer_model,
+            "reviewer_model": reviewer_model,
+        },
+    )
+
+
+def _review_metadata(
+    ctx: Context,
+    *,
+    slug: str,
+    rel: str,
+    candidate: str,
+    profile_name: str,
+    profile: Profile,
+    profile_etag: str,
+    paths: local_dispatch.DispatchPaths,
+) -> dict[str, Any]:
+    data, _doc = read_doc(ctx.store, rel)
+    return {
+        "schema": 1,
+        "dispatch_id": paths.worktree.name,
+        "item": slug,
+        "item_etag": etag(data),
+        "actor": profile_name,
+        "profile": profile_name,
+        "profile_version": profile.version,
+        "profile_etag": profile_etag,
+        "skills": _skill_pins(ctx, profile),
+        "base_commit": candidate,
+        "candidate_commit": candidate,
+        "checks": [row["slug"] for row in query.check_states(ctx.index, slug)],
+        "store": str(Path(ctx.store).absolute()),
+        "worktree": str(paths.worktree.absolute()),
+    }
+
+
+def _review_sections(
+    ctx: Context,
+    *,
+    slug: str,
+    rel: str,
+    run: dict[str, Any],
+    candidate: str,
+    profile: Profile,
+) -> dict[str, str]:
+    _data, doc = read_doc(ctx.store, rel)
+    title = doc.title or slug
+    scope = ", ".join(doc.relations.get("part_of", ())) or "(none)"
+    changed = ", ".join(run["data"].get("files_changed") or ()) or "(none captured)"
+    methods = ", ".join(profile.allowed_methods)
+    return {
+        "objective": _bounded(
+            f"Review candidate {candidate} for {title}.\n\n{doc.body}", 6000
+        ),
+        "selected scope": scope,
+        "conventions": (
+            "Judge the candidate commit against the Item's acceptance and the "
+            "charter, not against the implementer's description of the work."
+        ),
+        "constraints": (
+            "Read-only review: do not edit, commit, run commands or merge. HEAD must "
+            "stay at the candidate commit. Approve exactly this commit, or reject it "
+            "with findings the implementer can act on."
+        ),
+        "selected files": "\n".join(
+            part for part in (changed, _bounded_diff(ctx, run, candidate)) if part
+        ),
+        "checks": _check_evidence(ctx, slug),
+        "allowed rail methods": methods,
+        "no-store-edit rule": (
+            f"Never write {Path(ctx.store).absolute()} (the canonical store). Read it "
+            f"with `rail --store {Path(ctx.store).absolute()}`."
+        ),
+        "commit expectation": (
+            "Leave the worktree untouched: the parent records your verdict; you never "
+            "merge, rebase or push."
+        ),
+        "final report protocol": (
+            "End your text with exactly one fenced ```rail-report block and exactly one "
+            "fenced ```rail-review block holding one JSON object with schema, verdict "
+            "(approve or reject), candidate_commit, findings and evidence. Prose never "
+            "stands in for a Check."
+        ),
+    }
+
+
+def _bounded_diff(ctx: Context, run: dict[str, Any], candidate: str) -> str:
+    """The reviewer's bounded view of what the candidate changed.
+
+    The implementer's dispatch progress names the commit the candidate branch
+    started from; when it is gone, the candidate's own commit is shown instead.
+    """
+    base = None
+    dispatch_id = run.get("dispatch_id")
+    if isinstance(dispatch_id, str) and dispatch_id:
+        progress = local_dispatch.read_progress(Path(ctx.store), dispatch_id) or {}
+        base = progress.get("base_commit")
+    root, _git_dir = _checkout(ctx)
+    if isinstance(base, str) and _COMMIT.match(base):
+        result = _git(["diff", "--no-color", f"{base}..{candidate}"], root)
+    else:
+        result = _git(["show", "--no-color", "--format=commit %H", candidate], root)
+    if result["exit"] != 0:
+        return "(the parent could not produce a bounded diff)"
+    text = result["stdout"].strip()
+    if not text:
+        return "(no changed lines captured)"
+    return "```diff\n" + _bounded(text, REVIEW_DIFF_MAX) + "\n```"
+
+
+def _check_evidence(ctx: Context, slug: str) -> str:
+    lines: list[str] = []
+    for row in query.check_states(ctx.index, slug):
+        state = "no verdict yet"
+        if row["verdict"] is not None:
+            state = (
+                f"{'passed' if row['passed'] else 'failed'}; record {row['verdict']}"
+            )
+        lines.append(f"- {row['slug']} ({row['mode']}): {state}")
+    return "\n".join(lines) or "(none declared)"
+
+
+def _review_outcome(ran: Any, candidate: str) -> dict[str, Any]:
+    """The parsed verdict, or an invalid outcome that can never approve."""
+    invalid = {"verdict": None, "findings": [], "evidence": [], "reason": None}
+    if ran.failure:
+        return {**invalid, "reason": ran.failure}
+    block = extract_block(ran.text, "rail-review")
+    if block is None:
+        return {
+            **invalid,
+            "reason": "the review printed no single valid rail-review block",
+        }
+    schema = block.get("schema")
+    if schema is not None and (isinstance(schema, bool) or schema != 1):
+        return {**invalid, "reason": f"the review schema {schema!r} is not supported"}
+    verdict = block.get("verdict")
+    if verdict not in REVIEW_VERDICTS:
+        return {
+            **invalid,
+            "reason": f"the review verdict {verdict!r} is not approve or reject",
+        }
+    bound = block.get("candidate_commit")
+    if bound is not None and bound != candidate:
+        return {
+            **invalid,
+            "reason": f"the review names candidate {bound!r}, not {candidate!r}",
+        }
+    findings = _string_list(block.get("findings", []), "review findings")
+    evidence = _string_list(block.get("evidence", []), "review evidence")
+    if findings is None or evidence is None:
+        return {
+            **invalid,
+            "reason": "the review findings and evidence must be lists of strings",
+        }
+    return {
+        "verdict": verdict,
+        "findings": findings,
+        "evidence": evidence[:20],
+        "reason": None,
+    }
+
+
+def _string_list(value: Any, what: str) -> list[str] | None:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(
+        isinstance(entry, str) and entry.strip() for entry in value
+    ):
+        return None
+    return [entry.strip() for entry in value]
+
+
+def _review_report(
+    ctx: Context,
+    *,
+    slug: str,
+    ran: Any,
+    outcome: dict[str, Any],
+) -> str | None:
+    block = extract_block(ran.text, "rail-report")
+    data: dict[str, Any] | None = None
+    if block is not None and outcome["verdict"] is not None:
+        try:
+            parse_report(block)
+            data = block
+        except ModelError:
+            data = None
+    if data is None:
+        reason = outcome.get("reason") or "the review printed no valid rail-report block"
+        data = {
+            "schema": 1,
+            "target_class": "environment",
+            "target": slug,
+            "item": slug,
+            "run": None,
+            "nothing_to_report": False,
+            "what_happened": _bounded(
+                f"the review of {slug!r} did not finish", SUMMARY_MAX
+            ),
+            "expected": "one separated verdict bound to the candidate commit",
+            "observed": _bounded(str(reason), SUMMARY_MAX),
+            "impact": "medium",
+            "evidence": list(outcome.get("evidence") or [])[:20],
+            "fingerprint": None,
+        }
+    result = commit(
+        ctx.store,
+        ctx.manifest,
+        [],
+        {"kind": "report.filed", "about": [slug], "data": data},
+        actor=REVIEW_ROLE,
+        index=ctx.index,
+    )
+    return result.get("record")
+
+
+def _review_verdict_record(
+    ctx: Context,
+    *,
+    slug: str,
+    implementation_run: str,
+    candidate: str,
+    run: dict[str, Any],
+    profile_name: str,
+    profile: Profile,
+    outcome: dict[str, Any],
+) -> str | None:
+    data = {
+        "schema": 1,
+        "item": slug,
+        "implementation_run": implementation_run,
+        "implementer_actor": str(run["actor"] or ""),
+        "reviewer_actor": profile_name,
+        "implementer_model": str(run["model"] or ""),
+        "reviewer_model": profile.model,
+        "candidate_commit": candidate,
+        "verdict": outcome["verdict"],
+        "findings": list(outcome["findings"]),
+        "evidence": list(outcome["evidence"]),
+        "profile_version": profile.version,
+    }
+    result = commit(
+        ctx.store,
+        ctx.manifest,
+        [],
+        {"kind": "review.verdict", "about": [slug], "data": data},
+        actor=profile_name,
+        index=ctx.index,
+    )
+    return result.get("record")
+
+
+def _verify_review_check(
+    ctx: Context, slug: str, review_id: str, actor: str
+) -> dict[str, Any] | None:
+    """Verify the Item's review-mode Check against the verdict just written."""
+    name = _review_check_slug(ctx, slug, review_id, actor)
+    try:
+        verified = checks_handler.verify(
+            ctx,
+            {
+                "target": name,
+                "worktree": None,
+                "verdict": None,
+                "evidence": [],
+                "confirm": None,
+                "key": None,
+            },
+            actor,
+        )
+    except (WriteRefused, ModelError):
+        return None
+    rows = [row for row in verified.get("verdicts", []) if row.get("check") == name]
+    return rows[0] if rows else None
+
+
+def _review_check_slug(ctx: Context, slug: str, review_id: str, actor: str) -> str:
+    """The Item's review-mode Check slug, declaring one when it has none.
+
+    A review Check is what binds the reviewer's verdict into the gate's proof;
+    declaring it here keeps the associated verdict derivable from the review
+    alone, and never edits an existing Check.
+    """
+    found = [
+        row
+        for row in query.check_states(ctx.index, slug)
+        if row["mode"] == "review"
+    ]
+    if found:
+        return str(found[0]["slug"])
+    for name in (f"review-{slug}", *[f"review-{slug}-{n}" for n in range(2, 10)]):
+        if query.check_state(ctx.index, name) is not None:
+            continue
+        spec = {
+            "schema": 1,
+            "mode": "review",
+            "acceptance": False,
+            "verifies": [slug],
+        }
+        spec_path = local_dir(Path(ctx.store)) / "review" / review_id / "check.json"
+        spec_path.parent.mkdir(parents=True, exist_ok=True)
+        spec_path.write_text(
+            json.dumps(spec), encoding="utf-8", newline="\n"
+        )
+        checks_handler.check(
+            ctx,
+            {
+                "slug": name,
+                "target": slug,
+                "spec_file": str(spec_path),
+                "expect": ABSENT,
+                "key": None,
+            },
+            actor,
+        )
+        return name
+    raise WriteRefused(
+        "CONFLICT",
+        f"{slug!r} already uses every review Check slug this tool would declare",
+        {"item": slug},
+    )
+
+
+def _verdict_ids(ctx: Context, slug: str) -> list[str]:
+    """The newest verdict Record id of every Check the Item declares."""
+    return [
+        str(row["verdict"])
+        for row in query.check_states(ctx.index, slug)
+        if row["verdict"] is not None
+    ]
+
+
+def _candidate_checks_pass(ctx: Context, slug: str, candidate: str) -> bool:
+    """Whether every deterministic Check holds a fresh passing proof.
+
+    The proof is the verdict's own binding: it passed, it was made from the
+    Check's current definition, and any candidate it names is this one. Review
+    Checks are excluded; their proof is the review verdict itself.
+    """
+    considered = 0
+    for row in query.check_states(ctx.index, slug):
+        if row["mode"] == "review":
+            continue
+        considered += 1
+        if row["verdict"] is None or row["passed"] is not True:
+            return False
+        if row["check_etag"] != row["definition_etag"]:
+            return False
+        if row["mode"] == "cmd" and not row["input_blobs"]:
+            return False
+        if row["candidate_commit"] and row["candidate_commit"] != candidate:
+            return False
+    return considered > 0
+
+
+def _review_run_record(
+    ctx: Context,
+    *,
+    slug: str,
+    review_id: str,
+    profile_name: str,
+    profile: Profile,
+    profile_etag: str,
+    droid_model: str,
+    candidate: str,
+    report_id: str | None,
+    ran: Any,
+    verdicts: list[str],
+    verified: bool,
+    started_at: str,
+    ended_at: str,
+    duration: float,
+) -> str | None:
+    attempt = {
+        "number": 1,
+        "session_id": ran.session_id,
+        "start": started_at,
+        "end": ended_at,
+        "duration_s": duration,
+        "exit": ran.exit,
+        "timed_out": bool(ran.timed_out),
+        "usage": dict(ran.usage),
+        "runner_digest": ran.runner.get("digest"),
+        "verdicts": verdicts,
+        "status": "verified" if verified else "failed",
+    }
+    data = {
+        "schema": 1,
+        "dispatch_id": review_id,
+        "role": REVIEW_ROLE,
+        "actor": profile_name,
+        "profile": profile_name,
+        "profile_version": profile.version,
+        "profile_etag": profile_etag,
+        "skills": _skill_pins(ctx, profile),
+        "model": droid_model,
+        "item": slug,
+        "session_id": ran.session_id,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "duration_s": duration,
+        "exit": ran.exit,
+        "status": "verified" if verified else "failed",
+        "attempts": [attempt],
+        "candidate_commit": candidate,
+        "accepted": None,
+        "verdicts": verdicts,
+        "files_changed": [],
+        "commits_changed": [],
+        "capture": _capture_payload(
+            {"complete": True, "reason": None, "omitted": 0},
+            int(ran.runner.get("omitted_bytes") or 0),
+        ),
+        "usage": aggregate_usage([attempt]),
+        "runner_digest": ran.runner.get("digest"),
+        "report": report_id,
+    }
+    parse_run(data)
+    result = commit(
+        ctx.store,
+        ctx.manifest,
+        [],
+        {"kind": "run.completed", "about": [slug], "data": data},
+        actor=profile_name,
+        index=ctx.index,
+    )
+    return result.get("record")
+
+
+def _evaluation_record(
+    ctx: Context,
+    *,
+    slug: str,
+    implementation_run: str,
+    candidate: str,
+    accepted: bool,
+    check_verdicts: list[str],
+    review: str | None,
+    actor: str,
+) -> str | None:
+    data = {
+        "schema": 1,
+        "run": implementation_run,
+        "candidate_commit": candidate,
+        "accepted": bool(accepted),
+        "check_verdicts": list(check_verdicts),
+        "review": review,
+        "at": now_iso(),
+    }
+    result = commit(
+        ctx.store,
+        ctx.manifest,
+        [],
+        {"kind": "run.evaluated", "about": [slug], "data": data},
+        actor=actor,
+        index=ctx.index,
+    )
+    return result.get("record")
+
+
+def _review_rollback(store: Path, key: str, review_id: str) -> None:
+    """Forget a review that never reached the droid."""
+    local_dispatch.remove_review_binding(store, key)
+    local_dispatch.review_progress_path(store, review_id).unlink(missing_ok=True)
 
 
 # ── preflight ─────────────────────────────────────────────────────────────
@@ -621,27 +1418,27 @@ def _started_record(
     return result.get("record")
 
 
-def _create_worktree(
-    root: Path, paths: local_dispatch.DispatchPaths, default_branch: str, base: str
-) -> None:
+def _create_worktree(root: Path, paths: local_dispatch.DispatchPaths, revision: str) -> None:
+    if not isinstance(revision, str) or not revision.strip():
+        raise WriteRefused("VALIDATION_FAILED", "a worktree needs a revision to start from")
     existing = _git(["branch", "--list", paths.branch], root)
     if existing["stdout"].strip():
         raise WriteRefused(
             "CONFLICT",
-            f"the dispatch branch {paths.branch!r} already exists",
+            f"the branch {paths.branch!r} already exists",
             {"branch": paths.branch},
         )
     if paths.worktree.exists():
         if any(paths.worktree.iterdir()):
             raise WriteRefused(
                 "CONFLICT",
-                "the dispatch worktree directory already exists",
+                "the worktree directory already exists",
                 {"worktree": str(paths.worktree)},
             )
         paths.worktree.rmdir()
     paths.root.mkdir(parents=True, exist_ok=True)
     added = _git(
-        ["worktree", "add", "-b", paths.branch, str(paths.worktree), default_branch],
+        ["worktree", "add", "-b", paths.branch, str(paths.worktree), revision],
         root,
         timeout=120.0,
     )
@@ -653,12 +1450,24 @@ def _create_worktree(
             {"branch": paths.branch, "worktree": str(paths.worktree)},
         )
     head = git_runner.rev_parse_head(paths.worktree, paths.worktree)
-    if head != base:
+    expected = _resolve_commit(root, revision)
+    if head != expected:
         raise WriteRefused(
             "PROCESS_ERROR",
-            "the new worktree is not at the captured base commit",
-            {"expected": base, "actual": head},
+            "the new worktree is not at the requested revision",
+            {"expected": expected, "actual": head},
         )
+
+
+def _resolve_commit(root: Path, revision: str) -> str:
+    result = _git(["rev-parse", "--verify", f"{revision}^{{commit}}"], root)
+    if result["exit"] != 0:
+        raise WriteRefused(
+            "INVALID_STATE",
+            f"the revision {revision!r} is not a commit in this project",
+            {"revision": revision},
+        )
+    return result["stdout"].strip()
 
 
 def _git(args: list[str], cwd: Path, timeout: float = 120.0) -> dict[str, Any]:

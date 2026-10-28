@@ -148,12 +148,17 @@ def main() -> int:
         verdict = "approve"
     elif mode == "review_reject":
         verdict = "reject"
-    _leave_commit(
-        worktree,
-        work=behavior.get("work"),
-        store_edit=bool(behavior.get("store_edit")),
+    if not reviewer and verdict is None:
+        _leave_commit(
+            worktree,
+            work=behavior.get("work"),
+            store_edit=bool(behavior.get("store_edit")),
+        )
+    return _emit(
+        _text(behavior, reviewer, verdict, _order_metadata(flags.get("-f"))),
+        session,
+        FULL_USAGE,
     )
-    return _emit(_text(behavior, reviewer, verdict), session, FULL_USAGE)
 
 
 def _parse_flags(args: list[str]) -> dict[str, str]:
@@ -224,7 +229,12 @@ def _read(path: str | None) -> str:
         return ""
 
 
-def _text(behavior: dict, reviewer: bool, verdict: str | None) -> str:
+def _text(
+    behavior: dict,
+    reviewer: bool,
+    verdict: str | None,
+    metadata: dict | None = None,
+) -> str:
     report = behavior.get("report") or DEFAULT_REPORT
     parts = [
         "Implemented the candidate commit.",
@@ -232,14 +242,31 @@ def _text(behavior: dict, reviewer: bool, verdict: str | None) -> str:
         "```rail-report\n" + json.dumps(report, sort_keys=True) + "\n```",
     ]
     if reviewer or verdict is not None:
+        candidate = (metadata or {}).get("candidate_commit")
         review = {
             "schema": 1,
             "verdict": verdict or "approve",
             "findings": [],
-            "candidate_commit": None,
+            "evidence": [],
+            "candidate_commit": candidate,
         }
-        parts += ["", "```rail-review\n" + json.dumps(review, sort_keys=True) + "\n```"]
+        review.update(behavior.get("review") or {})
+        if behavior.get("review_block", True):
+            block = "```rail-review\n" + json.dumps(review, sort_keys=True) + "\n```"
+            for _ in range(int(behavior.get("review_blocks", 1))):
+                parts += ["", block]
     return "\n".join(parts) + "\n"
+
+
+def _order_metadata(path: str | None) -> dict:
+    text = _read(path).lstrip()
+    if not text.startswith("{"):
+        return {}
+    try:
+        payload, _end = json.JSONDecoder().raw_decode(text)
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _emit(
