@@ -167,4 +167,13 @@ TOOLS: tuple[Tool, ...] = (
         params=(Param("full", "bool", help="rebuild from scratch"),),
         handler="context_rail.gateway.handlers.maintenance:reindex",
     ),
+    Tool(
+        name="doctor",
+        summary="Report store integrity issues, optionally repairing interrupted writes.",
+        permission="read",
+        params=(
+            Param("repair", "bool", help="roll interrupted writes forward first"),
+        ),
+        handler="context_rail.gateway.handlers.doctor:doctor",
+    ),
 )
