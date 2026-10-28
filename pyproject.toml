@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctx-rail"
+version = "3.0.0.dev0"
+description = "An agentic project workspace: files are the truth, agents work through one write path"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-timeout>=2.3"]
+
+[project.scripts]
+rail = "context_rail.cli:main"
+ctx-rail = "context_rail.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+context_rail = ["packs/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+timeout = 300
+timeout_method = "thread"
+markers = [
+    "slow: tests that take many seconds (excluded from the default lane)",
+    "perf: speed-budget tests (run serially, never with xdist)",
+]
+addopts = "-q -m 'not slow'"
