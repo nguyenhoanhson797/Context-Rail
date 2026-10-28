@@ -395,6 +395,58 @@ def git_repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
     return store, wt_store
 
 
+_INDEX_VERSIONS = {"v2": 2, "v3": 3, "v4": 4}
+
+_INDEX_FILES: dict[str, str] = {
+    "README.md": "# fixture\n",
+    "data/notes.txt": "notes\n",
+    "docs/guide/intro.md": "# intro\n",
+    "docs/readme.md": "# docs\n",
+    "pkg/deep/nested/module.py": "MODULE = 1\n",
+    "scripts/run.py": "print('run')\n",
+    "src/main.py": "VALUE = 1\n",
+    "src/pkg/a.py": "A = 1\n",
+    "src/pkg/b.py": "B = 1\n",
+    "tests/test_main.py": "def test_main():\n    assert True\n",
+}
+
+
+@pytest.fixture(params=["v2", "v3", "v4"])
+def index_version(request: pytest.FixtureRequest) -> str:
+    """The git index format a repository fixture writes."""
+    return request.param
+
+
+@pytest.fixture
+def git_index_repo(tmp_path: Path, index_version: str) -> SimpleNamespace:
+    """A committed repo whose index is written in ``index_version``'s format."""
+    root = tmp_path / "index-repo"
+    for rel, text in _INDEX_FILES.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8", newline="\n")
+    run_git(root, "init")
+    run_git(root, "add", "-A")
+    run_git(root, "commit", "-m", "fixture")
+    version = _INDEX_VERSIONS[index_version]
+    run_git(root, "update-index", f"--index-version={version}")
+    skip = "src/pkg/a.py" if version == 3 else None
+    if skip is not None:
+        # git demotes a version 3 index to 2 unless an extended flag needs it.
+        run_git(root, "update-index", "--skip-worktree", skip)
+    written = int.from_bytes((root / ".git" / "index").read_bytes()[4:8], "big")
+    assert written == version, f"git wrote index version {written}, not {version}"
+    paths = tuple(run_git(root, "ls-files").stdout.splitlines())
+    return SimpleNamespace(
+        root=root,
+        git_dir=root / ".git",
+        worktree=root,
+        paths=paths,
+        version=version,
+        skip_worktree=skip,
+    )
+
+
 # ── the reference onboarding picture ─────────────────────────────────────
 
 PICTURE_ANSWERS: dict[str, Any] = {
