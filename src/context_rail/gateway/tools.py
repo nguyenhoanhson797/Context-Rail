@@ -107,6 +107,27 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.docs:link",
     ),
     Tool(
+        name="rename",
+        summary="Rename a document's slug and retarget every link to it.",
+        permission="write",
+        params=(
+            Param("old", "str", required=True, positional=True, help="current slug"),
+            Param("new", "str", required=True, positional=True, help="new slug"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.reshape:rename",
+    ),
+    Tool(
+        name="relocate",
+        summary="Move every document to the path its placement renders now.",
+        permission="write",
+        params=(
+            Param("dry_run", "bool", help="report the moves without applying them"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.reshape:relocate",
+    ),
+    Tool(
         name="find",
         summary="List documents matching every supplied filter.",
         permission="read",

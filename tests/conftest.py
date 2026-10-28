@@ -10,6 +10,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from context_rail.core.result import is_ok
+from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import DEFAULT_MANIFEST
 from context_rail.model.pack import Pack, load_pack
 from context_rail.store.index import Index
@@ -104,6 +106,25 @@ def indexed_store_with_duplicate(
         yield opened
     finally:
         opened.ix.close()
+
+
+@pytest.fixture
+def store_with_links(tmp_path: Path) -> Path:
+    """An initialized store holding goal ``auth`` and tasks t1-t3 linked to it."""
+    created = invoke("init", {"dir": str(tmp_path)}, actor="human")
+    assert is_ok(created), created
+    store = Path(created["value"]["store"])
+    goal = invoke("add", {"preset": "goal", "title": "auth"}, store=store, actor="cto")
+    assert is_ok(goal), goal
+    for name in ("t1", "t2", "t3"):
+        task = invoke(
+            "add",
+            {"preset": "task", "title": name, "rel": ["part_of=auth"]},
+            store=store,
+            actor="cto",
+        )
+        assert is_ok(task), task
+    return store
 
 
 def _rail_yaml() -> str:

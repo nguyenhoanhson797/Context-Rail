@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +16,7 @@ from context_rail.gateway.handlers.common import (
     parse_tags,
     preset_for,
     read_doc,
+    record_data,
     record_path_for,
     slug_of_path,
     template_body,
@@ -248,7 +248,7 @@ def move(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         saved = replay(store, key)
         if saved is not None:
             response = _response(store, index, saved)
-            status = _record_data(index, saved.get("record")).get("to")
+            status = record_data(index, saved.get("record")).get("to")
             return {**response, "status": status}
         rel = resolve_unique(index, args["slug"])
         data, doc = read_doc(store, rel)
@@ -387,22 +387,3 @@ def _response(store: Path, index: Index, result: dict[str, Any]) -> dict[str, An
         "etag": etag_value,
         "record": result.get("record"),
     }
-
-
-def _record_data(index: Index, record_id: Any) -> dict[str, Any]:
-    """The ``data`` a record carries, read from the index rather than state."""
-    if not isinstance(record_id, str) or not record_id:
-        return {}
-    row = index.conn.execute(
-        "SELECT f.value_json FROM fields f JOIN docs d ON d.path = f.path "
-        "WHERE f.key = 'data' AND d.slug = ? AND d.primitive = 'record' "
-        "ORDER BY d.path LIMIT 1",
-        (record_id,),
-    ).fetchone()
-    if row is None:
-        return {}
-    try:
-        value = json.loads(row[0])
-    except ValueError:
-        return {}
-    return value if isinstance(value, dict) else {}

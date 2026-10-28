@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from importlib import resources
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -229,3 +230,22 @@ def record_path_for(index: Index, record_id: str | None) -> str | None:
         (record_id,),
     ).fetchone()
     return row[0] if row is not None else None
+
+
+def record_data(index: Index, record_id: Any) -> dict[str, Any]:
+    """The ``data`` a record carries, read from the index rather than live state."""
+    if not isinstance(record_id, str) or not record_id:
+        return {}
+    row = index.conn.execute(
+        "SELECT f.value_json FROM fields f JOIN docs d ON d.path = f.path "
+        "WHERE f.key = 'data' AND d.slug = ? AND d.primitive = 'record' "
+        "ORDER BY d.path LIMIT 1",
+        (record_id,),
+    ).fetchone()
+    if row is None:
+        return {}
+    try:
+        value = json.loads(row[0])
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
