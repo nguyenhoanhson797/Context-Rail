@@ -17,13 +17,20 @@ import os
 import re
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from context_rail.core.result import ERROR_CODES
-from context_rail.core.util import new_ulid, now_iso, sha256_hex, write_bytes_atomic
+from context_rail.core.util import (
+    dump_frontmatter,
+    new_ulid,
+    now_iso,
+    sha256_hex,
+    write_bytes_atomic,
+)
 from context_rail.model.manifest import Manifest, render_path
+from context_rail.model.primitives import RELATIONS
 from context_rail.store.doc import etag, record_digest
 from context_rail.store.index import Index
 from context_rail.store.location import PathEscape, confine, local_dir
@@ -46,7 +53,24 @@ _IDEM_TTL_SECONDS = IDEM_DAYS * 24 * 60 * 60
 _INTENT_VERSION = 1
 _INTENTS_DIR = "intents"
 _IDEM_DIR = "idem"
-_RECORD_REQUEST_KEYS = frozenset({"kind", "about", "data", "preset"})
+_RECORD_REQUEST_KEYS = frozenset(
+    {
+        "kind",
+        "about",
+        "data",
+        "preset",
+        "title",
+        "body",
+        "slug",
+        "tags",
+        "fields",
+        "relations",
+    }
+)
+#: Keys a record request may never set: commit stamps identity and the digest.
+_RECORD_STAMPED_KEYS = frozenset(
+    {"id", "primitive", "preset", "kind", "at", "actor", "about", "data", "digest"}
+)
 _RECORD_PAYLOAD_ORDER = (
     "id",
     "primitive",
@@ -107,6 +131,24 @@ class _RecordRequest:
     preset: str
     about: list[str]
     data: dict[str, Any]
+    title: str | None = None
+    body: str | None = None
+    slug: str | None = None
+    tags: tuple[str, ...] = ()
+    fields: dict[str, Any] = field(default_factory=dict)
+    relations: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+    @property
+    def presentation(self) -> bool:
+        """True when the request carries values only a markdown record can hold."""
+        return bool(
+            self.title is not None
+            or self.body is not None
+            or self.slug is not None
+            or self.tags
+            or self.fields
+            or self.relations
+        )
 
 
 @dataclass(frozen=True)
@@ -151,8 +193,13 @@ def commit(
         _prune_idem(store)
         _check_etags(targets)
         planned = _build_record(store, manifest, request, targets, actor)
+        written = [target.rel for target in targets]
+        if planned is not None and planned.rel.lower().endswith(".md"):
+            # A markdown record is a store document, so its path belongs in the
+            # result a keyed replay hands back.
+            written.append(planned.rel)
         result = {
-            "written": [target.rel for target in targets],
+            "written": written,
             "record": planned.payload["id"] if planned is not None else None,
         }
         intent = _build_intent(store, targets, planned, result, actor, key)
@@ -298,7 +345,82 @@ def _record_request(record: dict[str, Any] | None) -> _RecordRequest | None:
         data = {}
     if not isinstance(data, dict):
         raise WriteRefused("VALIDATION_FAILED", "record data must be a mapping")
-    return _RecordRequest(kind=kind, preset=preset, about=list(about), data=dict(data))
+    return _RecordRequest(
+        kind=kind,
+        preset=preset,
+        about=list(about),
+        data=dict(data),
+        title=_record_text(record, "title"),
+        body=_record_text(record, "body"),
+        slug=_record_text(record, "slug"),
+        tags=_record_tags(record.get("tags")),
+        fields=_record_fields(record.get("fields")),
+        relations=_record_relations(record.get("relations")),
+    )
+
+
+def _record_text(record: dict[str, Any], key: str) -> str | None:
+    value = record.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or (key != "body" and not value.strip()):
+        raise WriteRefused("VALIDATION_FAILED", f"a record {key} must be text")
+    return value
+
+
+def _record_tags(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(tag, str) and tag for tag in value
+    ):
+        raise WriteRefused("VALIDATION_FAILED", "record tags must be a list of names")
+    return tuple(value)
+
+
+def _record_fields(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or any(
+        not isinstance(key, str) or not key for key in value
+    ):
+        raise WriteRefused("VALIDATION_FAILED", "record fields must map names to values")
+    stamped = sorted(set(value) & _RECORD_STAMPED_KEYS)
+    if stamped:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "commit stamps " + ", ".join(stamped) + " on a record",
+        )
+    relations = sorted(set(value) & set(RELATIONS))
+    if relations:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "record relations are declared separately: " + ", ".join(relations),
+        )
+    return dict(value)
+
+
+def _record_relations(value: Any) -> dict[str, tuple[str, ...]]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise WriteRefused("VALIDATION_FAILED", "record relations must be a mapping")
+    relations: dict[str, tuple[str, ...]] = {}
+    for name, targets in value.items():
+        if name not in RELATIONS:
+            raise WriteRefused("VALIDATION_FAILED", f"unknown relation {name!r}")
+        if name == "about":
+            raise WriteRefused(
+                "VALIDATION_FAILED", "record about is declared separately"
+            )
+        if not isinstance(targets, (list, tuple)) or not all(
+            isinstance(target, str) and target for target in targets
+        ):
+            raise WriteRefused(
+                "VALIDATION_FAILED", f"record relation {name!r} needs a list of slugs"
+            )
+        relations[name] = tuple(targets)
+    return relations
 
 
 def _build_record(
@@ -318,15 +440,25 @@ def _build_record(
             manifest,
             primitive="record",
             preset=request.preset,
-            slug=record_id,
+            slug=request.slug or record_id,
             record_id=record_id,
             at=at,
         )
     )
-    if not rel.lower().endswith(".json"):
+    markdown = rel.lower().endswith(".md")
+    if not markdown and not rel.lower().endswith(".json"):
         raise WriteRefused(
             "VALIDATION_FAILED",
-            f"record placement {rel!r} is not canonical JSON",
+            f"record placement {rel!r} is neither JSON nor markdown",
+            {"path": rel},
+        )
+    if not markdown and request.presentation:
+        # A JSON record's payload keys are fixed, so a body or free fields would
+        # be silently dropped; refuse instead of losing the caller's values.
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"record placement {rel!r} is JSON and carries no body, slug, tags, "
+            "fields or relations",
             {"path": rel},
         )
     if rel in _PROTOCOL_FILES:
@@ -357,10 +489,41 @@ def _build_record(
         "about": request.about,
         "data": request.data,
     }
+    if markdown:
+        return _markdown_record(path, rel, payload, request)
     payload["digest"] = record_digest(payload)
     ordered = {key: payload[key] for key in _RECORD_PAYLOAD_ORDER}
     text = json.dumps(ordered, indent=2, ensure_ascii=False) + "\n"
     return _Record(rel=rel, path=path, payload=ordered, data=text.encode("utf-8"))
+
+
+def _markdown_record(
+    path: Path, rel: str, payload: dict[str, Any], request: _RecordRequest
+) -> _Record:
+    """Serialize a markdown record: frontmatter plus the requested body."""
+    body = request.body or ""
+    digest = record_digest({**payload, "body": body})
+    front: dict[str, Any] = {"primitive": "record", "preset": payload["preset"]}
+    if request.title is not None:
+        front["title"] = request.title
+    front["tags"] = list(request.tags)
+    front["id"] = payload["id"]
+    front["kind"] = payload["kind"]
+    front["at"] = payload["at"]
+    front["actor"] = payload["actor"]
+    front["about"] = list(payload["about"])
+    front["data"] = payload["data"]
+    for name, targets in request.relations.items():
+        front[name] = [f"[[{target}]]" for target in targets]
+    front.update(request.fields)
+    front["digest"] = digest
+    text = "---\n" + dump_frontmatter(front) + "---\n" + body
+    return _Record(
+        rel=rel,
+        path=path,
+        payload={**payload, "digest": digest},
+        data=text.encode("utf-8"),
+    )
 
 
 def _check_etags(targets: list[_Target]) -> None:

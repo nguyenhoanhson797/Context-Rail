@@ -13,11 +13,11 @@ from typing import Any
 
 import pytest
 
-from context_rail.core.util import sha256_hex
+from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
 from context_rail.store import write as write_module
-from context_rail.store.doc import etag, record_digest
+from context_rail.store.doc import doc_digest, etag, record_digest
 from context_rail.store.index import Index, SyncStats
 from context_rail.store.location import local_dir
 from context_rail.store.query import find
@@ -777,3 +777,123 @@ def test_resolve_unique_reports_absent_and_unique_slugs(indexed_store):
 
     assert str(excinfo.value) == "not_found"
     assert resolve_unique(indexed_store.ix, "t0") == "items/task/t0.md"
+
+
+# ── record-preset (markdown) records ──────────────────────────────────────
+
+MARKDOWN_RECORD = {
+    "preset": "decision",
+    "kind": "decision",
+    "title": "Use SQLite",
+    "slug": "use-sqlite",
+    "body": "# Use SQLite\n\nOne portable file per decision.\n",
+    "tags": ["decision"],
+    "about": [],
+    "data": {},
+}
+
+
+def _frontmatter(path: Path) -> tuple[dict[str, Any], str]:
+    text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    _, rest = text.split("---\n", 1)
+    raw, body = rest.split("---\n", 1)
+    return load_yaml(raw), body
+
+
+def test_markdown_record_creates_one_document_with_body_digest(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+
+    result = commit(store, manifest, [], MARKDOWN_RECORD, actor="cto")
+
+    rel = "records/decisions/use-sqlite.md"
+    assert result["written"] == [rel]
+    assert [path for path in (store / "records").rglob("*") if path.is_file()] == [
+        store / rel
+    ]
+    front, body = _frontmatter(store / rel)
+    assert result["record"] == front["id"]
+    assert front["primitive"] == "record"
+    assert front["preset"] == "decision"
+    assert front["title"] == "Use SQLite"
+    assert front["tags"] == ["decision"]
+    assert body == MARKDOWN_RECORD["body"]
+    metadata = {
+        key: front[key]
+        for key in ("id", "primitive", "preset", "kind", "at", "actor", "about", "data")
+    }
+    assert front["digest"] == record_digest({**metadata, "body": body})
+    assert doc_digest(rel, (store / rel).read_bytes()) == front["digest"]
+
+
+def test_markdown_record_is_never_overwritten(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+    first = commit(store, manifest, [], MARKDOWN_RECORD, actor="cto")
+    before = (store / "records/decisions/use-sqlite.md").read_bytes()
+
+    with pytest.raises(WriteRefused) as excinfo:
+        commit(store, manifest, [], MARKDOWN_RECORD, actor="cto")
+
+    assert excinfo.value.code == "CONFLICT"
+    assert (store / "records/decisions/use-sqlite.md").read_bytes() == before
+    assert first["written"] == ["records/decisions/use-sqlite.md"]
+
+
+def test_markdown_record_syncs_the_index_it_is_given(indexed_store):
+    manifest = load_manifest(indexed_store.store)
+
+    commit(
+        indexed_store.store,
+        manifest,
+        [],
+        MARKDOWN_RECORD,
+        actor="cto",
+        index=indexed_store.ix,
+    )
+
+    found = find(indexed_store.ix, text="SQLite")
+    assert found["total"] == 1
+    assert found["items"][0]["path"] == "records/decisions/use-sqlite.md"
+    assert found["items"][0]["preset"] == "decision"
+
+
+def test_repair_recreates_a_missing_markdown_record(store_factory):
+    store = store_factory()
+    intent_id = "01JMDREPAIR00000000000000"
+    record_bytes = (
+        b"---\nprimitive: record\npreset: decision\ntitle: Kept\nslug: kept\n---\n# Kept\n"
+    )
+    target = "records/decisions/kept.md"
+    path = _craft_intent(
+        store,
+        _intent(
+            intent_id,
+            [],
+            {"written": [target], "record": "01J"},
+            record={
+                "path": target,
+                "bytes_b64": base64.b64encode(record_bytes).decode("ascii"),
+                "etag": etag(record_bytes),
+            },
+        ),
+    )
+
+    report = repair(store)
+
+    assert report == {"completed": [intent_id], "unrecoverable": []}
+    assert (store / target).read_bytes() == record_bytes
+    assert not path.exists()
+
+
+def test_json_record_refuses_markdown_only_request_keys(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+    request = {"kind": "doc.created", "preset": "event", "body": "# no body here\n"}
+
+    with pytest.raises(WriteRefused) as excinfo:
+        commit(store, manifest, [], request, actor="cto")
+
+    assert excinfo.value.code == "VALIDATION_FAILED"
+    assert [path for path in (store / "records").rglob("*") if path.is_file()] == []
+

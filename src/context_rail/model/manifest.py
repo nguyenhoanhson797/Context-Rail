@@ -25,6 +25,7 @@ __all__ = [
     "ModelError",
     "TOKENS",
     "load_manifest",
+    "manifest_from_mapping",
     "render_path",
 ]
 
@@ -74,6 +75,19 @@ def load_manifest(store: Path) -> Manifest:
     return manifest
 
 
+def manifest_from_mapping(data: Any, store: Path | None = None) -> Manifest:
+    """Validate an in-memory manifest mapping.
+
+    ``init`` validates the default manifest before ``rail.yaml`` exists, so the
+    same checks run on a mapping; passing ``store`` also checks the declared
+    preset placements against the pack the store would select.
+    """
+    manifest = _manifest(_mapping(data, "rail.yaml"))
+    if store is not None:
+        _check_against_pack(manifest, Path(store))
+    return manifest
+
+
 def render_path(
     m: Manifest,
     *,
@@ -110,8 +124,10 @@ def render_path(
 
 
 def _parse_manifest(path: Path) -> Manifest:
-    data = _mapping(load_yaml(_read_text(path)), "rail.yaml")
+    return _manifest(_mapping(load_yaml(_read_text(path)), "rail.yaml"))
 
+
+def _manifest(data: dict[str, Any]) -> Manifest:
     if "schema" not in data:
         _refuse("rail.yaml is missing schema")
     schema = data["schema"]

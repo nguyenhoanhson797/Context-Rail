@@ -4,10 +4,39 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 from context_rail.core.util import dump_frontmatter, load_yaml
+
+_REPO_SRC = Path(__file__).resolve().parents[1] / "src"
+
+
+def run_cli(
+    cwd: Path, *args: str, store: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run ``py -m context_rail`` in ``cwd`` against the repo's ``src`` tree.
+
+    The global ``--store`` goes before the subcommand when ``store`` is given.
+    ``RAIL_ACTOR`` is dropped from the child environment so a developer's shell
+    never changes which actor a test's records name.
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_REPO_SRC)
+    env.pop("RAIL_ACTOR", None)
+    command = [sys.executable, "-m", "context_rail"]
+    if store is not None:
+        command += ["--store", str(store)]
+    command += [str(arg) for arg in args]
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+    )
 
 
 def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
