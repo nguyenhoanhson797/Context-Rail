@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import multiprocessing
 import os
 import queue as queue_module
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from context_rail.core.util import dump_frontmatter, load_yaml
+from context_rail.store.doc import record_digest
 
 _REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 _STARTUP_TIMEOUT = 120.0
@@ -58,6 +60,39 @@ def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     if proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {proc.stderr.strip()}")
     return proc
+
+
+def write_record(
+    store: Path,
+    record_id: str,
+    kind: str,
+    data: dict[str, Any],
+    *,
+    at: str = "2026-10-28T00:00:00Z",
+    actor: str = "cto",
+    about: tuple[str, ...] = (),
+    preset: str = "event",
+) -> Path:
+    """Write one JSON Record with a valid digest and return its path."""
+    payload = {
+        "id": record_id,
+        "primitive": "record",
+        "preset": preset,
+        "kind": kind,
+        "at": at,
+        "actor": actor,
+        "about": list(about),
+        "data": data,
+    }
+    payload["digest"] = record_digest(payload)
+    path = Path(store) / "records" / f"{at[:4]}-{at[5:7]}" / f"{record_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return path
 
 
 def touch_doc(store: Path, rel: str, **frontmatter: Any) -> None:

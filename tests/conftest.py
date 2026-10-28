@@ -14,8 +14,9 @@ from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import DEFAULT_MANIFEST
 from context_rail.model.pack import Pack, load_pack
+from context_rail.store.doc import etag
 from context_rail.store.index import Index
-from helpers import run_git
+from helpers import run_git, write_record
 from perf.gen import make_store
 
 _STAMP = "2026-10-28T00:00:00Z"
@@ -81,6 +82,245 @@ def indexed_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
         yield opened
     finally:
         opened.ix.close()
+
+
+@pytest.fixture
+def seeded_runs_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
+    """A small store with one Check and one full implementer run.
+
+    The store holds the projected shapes the CTO reads: a Check doc, a passing
+    verdict, a completed run with two attempts and a skill pin, its candidate
+    evaluation, a report, a review and a human approval.
+    """
+    store = make_store(tmp_path / "seeded", 12)
+    item = "login-page"
+    candidate = "a" * 40
+    check_slug = "unit"
+    check_at = "2026-10-28T10:05:00Z"
+    run_id = "01JRUN000000000000000001"
+    verdict_id = "01JVERDICT000000000000001"
+    evaluation_id = "01JEVALUATION00000000001"
+    report_id = "01JREPORT0000000000000001"
+    review_id = "01JREVIEW0000000000000001"
+    approval_id = "01JAPPROVAL00000000000001"
+
+    task = f"""---
+primitive: item
+preset: task
+title: Login page
+status: doing
+tags: [task]
+created: '2026-10-28T00:00:00Z'
+updated: '2026-10-28T00:00:00Z'
+part_of: '[[g0]]'
+---
+# Login page
+
+The login form accepts valid credentials.
+"""
+    task_path = store / "items" / "task" / f"{item}.md"
+    task_path.parent.mkdir(parents=True, exist_ok=True)
+    task_path.write_text(task, encoding="utf-8", newline="\n")
+
+    check = f"""---
+primitive: check
+schema: 1
+mode: cmd
+acceptance: true
+verifies: '[[{item}]]'
+cmd: [py, -m, pytest, -q]
+inputs: ['src/**/login*.py']
+---
+# Login works
+
+The login test suite passes.
+"""
+    check_path = store / "checks" / f"{check_slug}.md"
+    check_path.parent.mkdir(parents=True, exist_ok=True)
+    check_path.write_text(check, encoding="utf-8", newline="\n")
+    check_etag = etag(check_path.read_bytes())
+
+    write_record(
+        store,
+        verdict_id,
+        "check.verdict",
+        {
+            "schema": 1,
+            "check": check_slug,
+            "check_etag": check_etag,
+            "passed": True,
+            "mode": "cmd",
+            "input_blobs": {"src/login.py": "oid123"},
+            "input_globs": ["src/**/login*.py"],
+            "runner_digest": "sha256:verdict",
+            "exit": 0,
+            "evidence": [],
+            "candidate_commit": candidate,
+        },
+        at=check_at,
+        about=(check_slug, item),
+    )
+    attempts = [
+        {
+            "number": 1,
+            "session_id": "s1",
+            "start": "2026-10-28T10:00:00Z",
+            "end": "2026-10-28T10:00:12Z",
+            "duration_s": 12.0,
+            "exit": 1,
+            "timed_out": False,
+            "usage": {"input_tokens": 1, "output_tokens": 2},
+            "status": "failed",
+        },
+        {
+            "number": 2,
+            "session_id": "s1",
+            "start": "2026-10-28T10:00:12Z",
+            "end": "2026-10-28T10:00:32Z",
+            "duration_s": 20.0,
+            "exit": 0,
+            "timed_out": False,
+            "usage": {"input_tokens": 1, "output_tokens": 2},
+            "status": "completed",
+        },
+    ]
+    write_record(
+        store,
+        run_id,
+        "run.completed",
+        {
+            "schema": 1,
+            "dispatch_id": "dispatch-1",
+            "role": "implementer",
+            "actor": "cto",
+            "profile": "implementer",
+            "profile_version": 1,
+            "profile_etag": "0123456789abcdef",
+            "skills": [
+                {
+                    "identity": "workspace/skills/test-first.md",
+                    "version": 1,
+                    "etag": "abcdef0123456789",
+                }
+            ],
+            "model": "custom:Deepseek-V4-flash-0",
+            "item": item,
+            "session_id": "s1",
+            "started_at": "2026-10-28T10:00:00Z",
+            "ended_at": "2026-10-28T10:00:32Z",
+            "duration_s": 32.0,
+            "exit": 0,
+            "status": "completed",
+            "attempts": attempts,
+            "candidate_commit": None,
+            "accepted": None,
+            "verdicts": [verdict_id],
+            "files_changed": ["src/login.py"],
+            "commits_changed": [candidate],
+            "usage": {"input_tokens": 2, "output_tokens": 4},
+        },
+        at="2026-10-28T10:00:32Z",
+        about=(item,),
+    )
+    write_record(
+        store,
+        evaluation_id,
+        "run.evaluated",
+        {
+            "schema": 1,
+            "run": run_id,
+            "candidate_commit": candidate,
+            "accepted": True,
+            "check_verdicts": [verdict_id],
+            "review": review_id,
+            "at": "2026-10-28T10:10:00Z",
+        },
+        at="2026-10-28T10:10:00Z",
+        about=(item,),
+    )
+    write_record(
+        store,
+        report_id,
+        "report.filed",
+        {
+            "schema": 1,
+            "target_class": "engine",
+            "target": "parser",
+            "item": item,
+            "run": run_id,
+            "nothing_to_report": False,
+            "what_happened": "the parser dropped a token",
+            "expected": "every token is kept",
+            "observed": "one token is lost",
+            "impact": "low",
+            "evidence": [],
+            "fingerprint": "engine|parser|every token is kept|one token is lost",
+        },
+        at="2026-10-28T10:11:00Z",
+        about=(item,),
+    )
+    write_record(
+        store,
+        review_id,
+        "review.verdict",
+        {
+            "schema": 1,
+            "item": item,
+            "implementation_run": run_id,
+            "implementer_actor": "implementer",
+            "reviewer_actor": "reviewer",
+            "implementer_model": "custom:Deepseek-V4-flash-0",
+            "reviewer_model": "custom:gemini-3.8-flash-LTN-0",
+            "candidate_commit": candidate,
+            "verdict": "approve",
+            "findings": [],
+            "evidence": [run_id],
+            "profile_version": 1,
+        },
+        at="2026-10-28T10:12:00Z",
+        about=(item,),
+    )
+    write_record(
+        store,
+        approval_id,
+        "approval.recorded",
+        {
+            "schema": 1,
+            "target": "charter",
+            "protected_hashes": {
+                "rail.yaml": "a" * 64,
+                "policies/charter.md": "b" * 64,
+            },
+            "confirmer": "validator",
+            "confirmation": "APPROVE charter",
+        },
+        at="2026-10-28T10:20:00Z",
+        actor="human",
+        about=("charter",),
+    )
+
+    pack = load_pack("small", store)
+    index = Index.open(store, pack)
+    index.sync()
+    try:
+        yield SimpleNamespace(
+            store=store,
+            ix=index,
+            pack=pack,
+            item=item,
+            check=check_slug,
+            check_etag=check_etag,
+            run=run_id,
+            dispatch="dispatch-1",
+            candidate=candidate,
+            verdict=verdict_id,
+            evaluation=evaluation_id,
+            report=report_id,
+            review=review_id,
+            approval=approval_id,
+        )
+    finally:
+        index.close()
 
 
 @pytest.fixture

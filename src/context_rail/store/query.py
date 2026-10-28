@@ -9,20 +9,40 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterable
+from collections import defaultdict
+from collections.abc import Iterable, Sequence
+from datetime import datetime, timezone
 from typing import Any
 
+from context_rail.core.util import canonical_iso
+from context_rail.model.cto import USAGE_KEYS
 from context_rail.model.primitives import CATEGORIES, PRIMITIVES, RELATIONS
 from context_rail.store.doc import parse_doc
 from context_rail.store.index import Index
 
-__all__ = ["QueryError", "find", "last_activity_ms", "records_about", "show"]
+__all__ = [
+    "QueryError",
+    "approval_for",
+    "brief_rows",
+    "check_states",
+    "digest_rows",
+    "find",
+    "last_activity_ms",
+    "ledger",
+    "records_about",
+    "review_for",
+    "show",
+    "untriaged_reports",
+]
 
 DEFAULT_LIMIT = 50
 LIMIT_BOUNDS = (1, 100)
 DEFAULT_BODY_CHARS = 4000
 BODY_CHARS_BOUNDS = (0, 20000)
 DEFAULT_RECORD_LIMIT = 20
+LEDGER_LIMIT_BOUNDS = (1, 100)
+REPORT_LIMIT_BOUNDS = (1, 1000)
+FEED_LIMIT_BOUNDS = (1, 100)
 
 _SQLITE_ERROR = getattr(sqlite3, "SQLITE_ERROR", 1)
 
@@ -294,6 +314,554 @@ def last_activity_ms(ix: Index) -> dict[str, int]:
         """
     ).fetchall()
     return {slug: value for slug, value in rows if value is not None}
+
+
+def check_states(ix: Index, item: str) -> list[dict[str, Any]]:
+    """Every Check declared for one Item, with its newest proof.
+
+    The returned freshness inputs are what a caller compares against the Git
+    index; this helper never reads a source file or runs a command.
+    """
+    item = _slug(item)
+    rows = ix.conn.execute(
+        "SELECT c.slug, c.item, c.mode, c.acceptance, c.definition_etag, "
+        "c.inputs_json, c.spec_json FROM checks c WHERE c.item = ? ORDER BY c.slug",
+        (item,),
+    ).fetchall()
+    states: list[dict[str, Any]] = []
+    for slug, owner, mode, acceptance, definition_etag, inputs_json, spec_json in rows:
+        latest = ix.conn.execute(
+            "SELECT record_id, at, passed, check_etag, input_blobs_json, "
+            "candidate_commit, runner_digest, data_json FROM verdicts "
+            'WHERE "check" = ? ORDER BY at DESC, record_id DESC LIMIT 1',
+            (slug,),
+        ).fetchone()
+        state: dict[str, Any] = {
+            "slug": slug,
+            "item": owner,
+            "mode": mode,
+            "acceptance": bool(acceptance),
+            "definition_etag": definition_etag,
+            "inputs": json.loads(inputs_json),
+            "spec": json.loads(spec_json),
+            "passed": None,
+            "verdict": None,
+            "at": None,
+            "check_etag": None,
+            "input_blobs": {},
+            "input_globs": [],
+            "candidate_commit": None,
+            "runner_digest": None,
+            "reason": None,
+        }
+        if latest is not None:
+            record_id, at, passed, check_etag, blobs, candidate, digest, data = latest
+            payload = json.loads(data)
+            state.update(
+                {
+                    "passed": bool(passed),
+                    "verdict": record_id,
+                    "at": at,
+                    "check_etag": check_etag,
+                    "input_blobs": json.loads(blobs),
+                    "input_globs": payload.get("input_globs", []),
+                    "candidate_commit": candidate,
+                    "runner_digest": digest,
+                    "reason": payload.get("reason"),
+                }
+            )
+        states.append(state)
+    return states
+
+
+def ledger(
+    ix: Index,
+    *,
+    item: str | None = None,
+    profile: str | None = None,
+    since: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Runs with their attempt-counted usage, bounded by ``limit``.
+
+    Totals cover every matching run, not just the page. Attempt rows are read
+    once per run, so a run with a report, verdict and review is still counted
+    once, and a counter that was never reported stays out of ``known_sum``.
+    """
+    limit = _bounded(limit, LEDGER_LIMIT_BOUNDS, "limit")
+    item = _optional_name(item, "item")
+    profile = _optional_name(profile, "profile")
+    since = _since(since)
+    clause, params = _run_clause(item, profile, since)
+
+    total = ix.conn.execute(
+        f"SELECT COUNT(*) FROM runs r WHERE {clause}", params
+    ).fetchone()[0]
+    rows = ix.conn.execute(
+        f"""
+        SELECT r.record_id, r.dispatch_id, r.role, r.item, r.profile, r.model,
+               r."start", r."end", r.duration_s, r.status, r.attempt_count,
+               r.candidate_commit, r.accepted, r.data_json,
+               (SELECT p.record_id FROM reports p WHERE p.run_id = r.record_id
+                ORDER BY p.at DESC, p.record_id DESC LIMIT 1)
+        FROM runs r WHERE {clause}
+        ORDER BY r."end" DESC, r.record_id DESC LIMIT ?
+        """,
+        [*params, limit],
+    ).fetchall()
+    usage = _usage_for_runs(ix, [row[0] for row in rows])
+    runs: list[dict[str, Any]] = []
+    for row in rows:
+        (
+            record_id,
+            dispatch_id,
+            role,
+            item_name,
+            profile_name,
+            model,
+            start,
+            end,
+            duration_s,
+            status,
+            attempt_count,
+            candidate,
+            accepted,
+            data_json,
+            report,
+        ) = row
+        report = report or json.loads(data_json).get("report")
+        runs.append(
+            {
+                "run": record_id,
+                "record_id": record_id,
+                "dispatch_id": dispatch_id,
+                "role": role,
+                "item": item_name,
+                "profile": profile_name,
+                "model": model,
+                "start": start,
+                "end": end,
+                "duration_s": duration_s,
+                "status": status,
+                "attempt_count": attempt_count,
+                "candidate_commit": candidate,
+                "accepted": None if accepted is None else bool(accepted),
+                "usage": _visible_usage(usage.get(record_id, ())),
+                "report": report,
+            }
+        )
+    totals = _visible_usage(_attempt_usages(ix, clause, params))
+    return {
+        "runs": runs,
+        "totals": totals,
+        "unknown_counts": totals["unknown_attempts"],
+        "total": total,
+        "omitted": total - len(runs),
+    }
+
+
+def untriaged_reports(ix: Index, limit: int = 100) -> list[dict[str, Any]]:
+    """Reports no triage Record has claimed yet, newest first."""
+    limit = _bounded(limit, REPORT_LIMIT_BOUNDS, "limit")
+    rows = ix.conn.execute(
+        """
+        SELECT p.record_id, p.item, p.run_id, p.target_class, p.target,
+               p.fingerprint, p.impact, p."nothing", p.at, p.data_json, p.path
+        FROM reports p
+        WHERE NOT EXISTS (
+            SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id
+        )
+        ORDER BY p.at DESC, p.record_id DESC LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "report": record_id,
+            "record_id": record_id,
+            "item": item,
+            "run": run_id,
+            "target_class": target_class,
+            "target": target,
+            "fingerprint": fingerprint,
+            "impact": impact,
+            "nothing": bool(nothing),
+            "at": at,
+            "data": json.loads(data),
+            "path": path,
+        }
+        for (
+            record_id,
+            item,
+            run_id,
+            target_class,
+            target,
+            fingerprint,
+            impact,
+            nothing,
+            at,
+            data,
+            path,
+        ) in rows
+    ]
+
+
+def review_for(ix: Index, candidate: str) -> dict[str, Any] | None:
+    """The newest review bound to exactly ``candidate``, or None."""
+    candidate = _text(candidate, "candidate")
+    row = ix.conn.execute(
+        """
+        SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.reviewer,
+               r.verdict, r.data_json, r.path
+        FROM reviews r JOIN docs d ON d.path = r.path
+        WHERE r.candidate_commit = ?
+        ORDER BY d.record_at DESC, r.record_id DESC LIMIT 1
+        """,
+        (candidate,),
+    ).fetchone()
+    if row is None:
+        return None
+    record_id, item, run_id, bound, reviewer, verdict, data_json, path = row
+    payload = json.loads(data_json)
+    return {
+        "review": record_id,
+        "record_id": record_id,
+        "item": item,
+        "run": run_id,
+        "candidate_commit": bound,
+        "reviewer": reviewer,
+        "verdict": verdict,
+        "findings": payload.get("findings", []),
+        "evidence": payload.get("evidence", []),
+        "data": payload,
+        "path": path,
+    }
+
+
+def approval_for(ix: Index, target: str) -> dict[str, Any] | None:
+    """The newest approval for ``target``, by ``(at, id)``; never an older one."""
+    target = _text(target, "target")
+    row = ix.conn.execute(
+        "SELECT record_id, target, at, protected_hashes_json, confirmer, path "
+        "FROM approvals WHERE target = ? "
+        "ORDER BY at DESC, record_id DESC LIMIT 1",
+        (target,),
+    ).fetchone()
+    if row is None:
+        return None
+    record_id, found_target, at, hashes_json, confirmer, path = row
+    payload = _record_data(ix, path)
+    return {
+        "approval": record_id,
+        "record_id": record_id,
+        "target": found_target,
+        "at": at,
+        "protected_hashes": json.loads(hashes_json),
+        "confirmer": confirmer,
+        "confirmation": payload.get("confirmation"),
+        "data": payload,
+        "path": path,
+    }
+
+
+def brief_rows(ix: Index, limit: int = 20) -> dict[str, Any]:
+    """Complete counts plus bounded feeds for the CTO brief sections."""
+    limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
+    categories = dict(
+        ix.conn.execute(
+            "SELECT category, COUNT(*) FROM docs "
+            "WHERE primitive = 'item' AND broken = 0 GROUP BY category"
+        )
+    )
+    reports_total = _scalar(ix, "SELECT COUNT(*) FROM reports")
+    untriaged = _scalar(
+        ix,
+        "SELECT COUNT(*) FROM reports p WHERE NOT EXISTS "
+        "(SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id)",
+    )
+    counts = {
+        "items": {
+            "total": sum(categories.values()),
+            "by_category": {name: categories.get(name, 0) for name in CATEGORIES},
+        },
+        "checks": _scalar(ix, "SELECT COUNT(*) FROM checks"),
+        "runs": _scalar(ix, "SELECT COUNT(*) FROM runs"),
+        "reports": {"total": reports_total, "untriaged": untriaged},
+        "triaged": _scalar(ix, "SELECT COUNT(*) FROM triaged_reports"),
+        "approvals": _scalar(ix, "SELECT COUNT(*) FROM approvals"),
+    }
+    approvals = [
+        {"approval": record_id, "target": target, "at": at, "confirmer": confirmer}
+        for record_id, target, at, confirmer in ix.conn.execute(
+            """
+            SELECT a.record_id, a.target, a.at, a.confirmer FROM approvals a
+            WHERE NOT EXISTS (
+                SELECT 1 FROM approvals b WHERE b.target = a.target
+                  AND (b.at > a.at OR (b.at = a.at AND b.record_id > a.record_id))
+            )
+            ORDER BY a.at DESC, a.record_id DESC LIMIT ?
+            """,
+            (limit,),
+        )
+    ]
+    return {
+        "counts": counts,
+        "items": _item_rows(ix, limit),
+        "reports": untriaged_reports(ix, limit),
+        "runs": ledger(ix, limit=limit)["runs"],
+        "approvals": approvals,
+    }
+
+
+def digest_rows(
+    ix: Index, since: str | None = None, limit: int = 20
+) -> dict[str, Any]:
+    """Bounded activity feeds plus complete counts and usage for the digest."""
+    limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
+    since = _since(since)
+    clause, params = _run_clause(None, None, since)
+    at_filter = "" if since is None else " WHERE at >= ?"
+    at_params: list[Any] = [] if since is None else [since]
+    review_where = (
+        ""
+        if since is None
+        else " WHERE d.record_at IS NOT NULL AND d.record_at >= ?"
+    )
+    review_and = (
+        ""
+        if since is None
+        else " AND d.record_at IS NOT NULL AND d.record_at >= ?"
+    )
+    review_params: list[Any] = [] if since is None else [_iso_ms(since)]
+
+    untriaged = _scalar(
+        ix,
+        "SELECT COUNT(*) FROM reports p WHERE NOT EXISTS "
+        "(SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id)"
+        + ("" if since is None else " AND p.at >= ?"),
+        at_params,
+    )
+    triaged = _scalar(
+        ix,
+        "SELECT COUNT(*) FROM triaged_reports t JOIN reports p "
+        "ON p.record_id = t.report_id" + ("" if since is None else " WHERE p.at >= ?"),
+        at_params,
+    )
+    counts = {
+        "runs": _scalar(ix, f"SELECT COUNT(*) FROM runs r WHERE {clause}", params),
+        "reports": _scalar(ix, f"SELECT COUNT(*) FROM reports{at_filter}", at_params),
+        "untriaged_reports": untriaged,
+        "triaged": triaged,
+        "verdicts": _scalar(
+            ix, f"SELECT COUNT(*) FROM verdicts{at_filter}", at_params
+        ),
+        "reviews": _scalar(
+            ix,
+            "SELECT COUNT(*) FROM reviews r JOIN docs d ON d.path = r.path"
+            + review_where,
+            review_params,
+        ),
+        "approvals": _scalar(
+            ix, f"SELECT COUNT(*) FROM approvals{at_filter}", at_params
+        ),
+    }
+    verdict_passed = _scalar(
+        ix,
+        "SELECT COUNT(*) FROM verdicts WHERE passed = 1" + _and(since),
+        at_params,
+    )
+    verdict_failed = _scalar(
+        ix,
+        "SELECT COUNT(*) FROM verdicts WHERE passed = 0" + _and(since),
+        at_params,
+    )
+    review_approve = _scalar(
+        ix,
+        "SELECT COUNT(*) FROM reviews r JOIN docs d ON d.path = r.path "
+        "WHERE r.verdict = 'approve'" + review_and,
+        review_params,
+    )
+    review_reject = _scalar(
+        ix,
+        "SELECT COUNT(*) FROM reviews r JOIN docs d ON d.path = r.path "
+        "WHERE r.verdict = 'reject'" + review_and,
+        review_params,
+    )
+    accepted = _scalar(
+        ix, f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted = 1", params
+    )
+    rejected = _scalar(
+        ix, f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted = 0", params
+    )
+    pending = _scalar(
+        ix, f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted IS NULL", params
+    )
+    reports = [
+        {
+            "report": record_id,
+            "item": item,
+            "run": run_id,
+            "target_class": target_class,
+            "target": target,
+            "fingerprint": fingerprint,
+            "impact": impact,
+            "nothing": bool(nothing),
+            "at": at,
+        }
+        for (
+            record_id,
+            item,
+            run_id,
+            target_class,
+            target,
+            fingerprint,
+            impact,
+            nothing,
+            at,
+        ) in ix.conn.execute(
+            "SELECT p.record_id, p.item, p.run_id, p.target_class, p.target, "
+            'p.fingerprint, p.impact, p."nothing", p.at FROM reports p'
+            + at_filter
+            + " ORDER BY p.at DESC, p.record_id DESC LIMIT ?",
+            [*at_params, limit],
+        )
+    ]
+    return {
+        "since": since,
+        "counts": counts,
+        "quality": {
+            "verdicts": {"passed": verdict_passed, "failed": verdict_failed},
+            "reviews": {"approve": review_approve, "reject": review_reject},
+            "runs": {"accepted": accepted, "rejected": rejected, "pending": pending},
+        },
+        "usage": _visible_usage(_attempt_usages(ix, clause, params)),
+        "runs": ledger(ix, since=since, limit=limit)["runs"],
+        "reports": reports,
+        "items": _item_rows(ix, limit),
+    }
+
+
+def _run_clause(
+    item: str | None, profile: str | None, since: str | None
+) -> tuple[str, list[Any]]:
+    where = ["1 = 1"]
+    params: list[Any] = []
+    if item is not None:
+        where.append("r.item = ?")
+        params.append(item)
+    if profile is not None:
+        where.append("r.profile = ?")
+        params.append(profile)
+    if since is not None:
+        where.append('r."end" >= ?')
+        params.append(since)
+    return " AND ".join(where), params
+
+
+def _attempt_usages(ix: Index, clause: str, params: Sequence[Any]) -> list[dict[str, Any]]:
+    rows = ix.conn.execute(
+        "SELECT a.usage_json FROM run_attempts a WHERE a.run_id IN "
+        f"(SELECT r.record_id FROM runs r WHERE {clause}) "
+        "ORDER BY a.run_id, a.number",
+        params,
+    )
+    return [json.loads(usage) for (usage,) in rows]
+
+
+def _usage_for_runs(ix: Index, run_ids: Sequence[str]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    if not run_ids:
+        return grouped
+    rows = ix.conn.execute(
+        "SELECT run_id, usage_json FROM run_attempts WHERE run_id IN "
+        f"({', '.join('?' * len(run_ids))}) ORDER BY run_id, number",
+        list(run_ids),
+    )
+    for run_id, usage in rows:
+        grouped[run_id].append(json.loads(usage))
+    return grouped
+
+
+def _visible_usage(usages: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Known sums and unknown counts, without turning an unknown into zero."""
+    known = dict.fromkeys(USAGE_KEYS, 0)
+    reported: set[str] = set()
+    unknown = dict.fromkeys(USAGE_KEYS, 0)
+    for raw in usages:
+        for key in USAGE_KEYS:
+            value = raw.get(key, "unknown") if isinstance(raw, dict) else "unknown"
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                unknown[key] += 1
+            else:
+                known[key] += value
+                reported.add(key)
+    return {
+        "known_sum": {key: known[key] for key in USAGE_KEYS if key in reported},
+        "unknown_attempts": {key: count for key, count in unknown.items() if count},
+    }
+
+
+def _item_rows(ix: Index, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "slug": slug,
+            "title": title,
+            "status": status,
+            "category": category,
+            "updated": updated,
+            "path": path,
+        }
+        for slug, title, status, category, updated, path in ix.conn.execute(
+            "SELECT slug, title, status, category, updated, path FROM docs "
+            "WHERE primitive = 'item' AND broken = 0 "
+            "ORDER BY updated DESC, slug ASC, path ASC LIMIT ?",
+            (limit,),
+        )
+    ]
+
+
+def _scalar(ix: Index, sql: str, params: Sequence[Any] = ()) -> int:
+    return ix.conn.execute(sql, params).fetchone()[0]
+
+
+def _record_data(ix: Index, path: str) -> dict[str, Any]:
+    row = ix.conn.execute(
+        "SELECT value_json FROM fields WHERE path = ? AND key = 'data' "
+        "ORDER BY rowid LIMIT 1",
+        (path,),
+    ).fetchone()
+    if row is None:
+        return {}
+    payload = json.loads(row[0])
+    return payload if isinstance(payload, dict) else {}
+
+
+def _since(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise QueryError("since must be a UTC timestamp")
+    stamp = canonical_iso(value)
+    if stamp is None:
+        raise QueryError(f"since is not a timestamp: {value!r}")
+    return stamp
+
+
+def _iso_ms(canonical: str) -> int:
+    stamp = datetime.strptime(
+        canonical, "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc)
+    return int(stamp.timestamp() * 1000)
+
+
+def _and(since: str | None) -> str:
+    return "" if since is None else " AND at >= ?"
+
+
+def _text(value: object, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise QueryError(f"{name} must be a non-empty string")
+    return value
 
 
 def _bounded(value: object, bounds: tuple[int, int], name: str) -> int:

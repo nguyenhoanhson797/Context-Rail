@@ -22,6 +22,26 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def canonical_iso(value: str) -> str | None:
+    """A timestamp as UTC seconds, so stored strings sort chronologically.
+
+    Naive timestamps are read as UTC. Anything the parser rejects is ``None``:
+    a cache row never invents a time.
+    """
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    try:
+        stamp = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def slugify(text: str, max_len: int = 80) -> str:
     """Generate a URL-safe slug from text. Lowercase, hyphens, [a-z0-9-]."""
     text = unicodedata.normalize("NFKD", text)
