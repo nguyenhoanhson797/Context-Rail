@@ -33,6 +33,7 @@ __all__ = [
     "records_about",
     "review_for",
     "review_for_item",
+    "run_facts",
     "show",
     "untriaged_reports",
 ]
@@ -479,6 +480,50 @@ def ledger(
         "total": total,
         "omitted": total - len(runs),
     }
+
+
+def run_facts(ix: Index, item: str) -> list[dict[str, Any]]:
+    """Worker runs of one Item with their measured attempts and usage.
+
+    The dispatch preflight needs the attempts and seconds already spent on an
+    Item, plus each attempt's own counters; a run is read once and its attempt
+    rows are joined by run id, so usage is never multiplied.
+    """
+    rows = ix.conn.execute(
+        """
+        SELECT r.record_id, r.role, r.attempt_count, r.duration_s
+        FROM runs r WHERE r.item = ? AND r.role IN ('implementer', 'reviewer')
+        ORDER BY r."end" DESC, r.record_id DESC
+        """,
+        (_slug(item),),
+    ).fetchall()
+    if not rows:
+        return []
+    attempts = ix.conn.execute(
+        f"""
+        SELECT a.run_id, a.usage_json FROM run_attempts a
+        WHERE a.run_id IN ({",".join("?" for _ in rows)})
+        ORDER BY a.run_id, a.number
+        """,
+        [row[0] for row in rows],
+    ).fetchall()
+    usage: dict[str, list[dict[str, Any]]] = {}
+    for run_id, payload in attempts:
+        try:
+            parsed = json.loads(payload)
+        except ValueError:
+            parsed = {}
+        usage.setdefault(run_id, []).append(parsed if isinstance(parsed, dict) else {})
+    return [
+        {
+            "run": record_id,
+            "role": role,
+            "attempts": int(attempt_count),
+            "seconds": float(duration_s),
+            "usage": usage.get(record_id, []),
+        }
+        for record_id, role, attempt_count, duration_s in rows
+    ]
 
 
 def untriaged_reports(ix: Index, limit: int = 100) -> list[dict[str, Any]]:

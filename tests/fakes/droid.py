@@ -148,7 +148,11 @@ def main() -> int:
         verdict = "approve"
     elif mode == "review_reject":
         verdict = "reject"
-    _leave_commit(worktree)
+    _leave_commit(
+        worktree,
+        work=behavior.get("work"),
+        store_edit=bool(behavior.get("store_edit")),
+    )
     return _emit(_text(behavior, reviewer, verdict), session, FULL_USAGE)
 
 
@@ -278,15 +282,27 @@ def _hang() -> int:
     return 0
 
 
-def _leave_commit(worktree: Path) -> None:
+def _leave_commit(
+    worktree: Path, *, work: str | None = None, store_edit: bool = False
+) -> None:
+    content = work if isinstance(work, str) and work.strip() else "fake droid work\n"
+    staged = [WORK_FILE]
     target = worktree / WORK_FILE
     try:
-        target.write_text("fake droid work\n", encoding="utf-8", newline="\n")
+        target.write_text(content, encoding="utf-8", newline="\n")
     except OSError:
         return
+    if store_edit:
+        note = worktree / "context-rail" / "worker-note.txt"
+        try:
+            note.parent.mkdir(parents=True, exist_ok=True)
+            note.write_text("a worker must never write the store\n", encoding="utf-8")
+            staged.append("context-rail/worker-note.txt")
+        except OSError:
+            pass
     if not (worktree / ".git").exists():
         return
-    _git(worktree, "add", "--", WORK_FILE)
+    _git(worktree, "add", "--", *staged)
     _git(worktree, "commit", "-m", "fake droid candidate")
 
 

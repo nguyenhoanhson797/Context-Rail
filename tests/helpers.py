@@ -49,6 +49,33 @@ def run_cli(
     )
 
 
+def start_cli(
+    cwd: Path, *args: str, store: Path | None = None
+) -> subprocess.Popen[str]:
+    """Start ``py -m context_rail`` without waiting, for crash scenarios.
+
+    Uses the same environment as :func:`run_cli`; the caller owns the process
+    and must terminate it. Output is captured as text.
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_REPO_SRC)
+    env.pop("RAIL_ACTOR", None)
+    command = [sys.executable, "-m", "context_rail"]
+    if store is not None:
+        command += ["--store", str(store)]
+    command += [str(arg) for arg in args]
+    return subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        start_new_session=os.name != "nt",
+    )
+
+
 def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run git in ``cwd``; an error fails the calling test setup."""
     proc = subprocess.run(

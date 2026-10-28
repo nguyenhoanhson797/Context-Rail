@@ -6,6 +6,7 @@ import copy
 import itertools
 import json
 import os
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -615,6 +616,96 @@ def git_approved_store(tmp_path: Path, approved_store: Path) -> SimpleNamespace:
     run_git(tmp_path, "add", "-A")
     run_git(tmp_path, "commit", "-m", "picture")
     return SimpleNamespace(store=approved_store, root=tmp_path, item="feature-a")
+
+
+@pytest.fixture
+def unapproved_store(tmp_path: Path, answers: Path) -> Path:
+    """A store whose picture exists but the human has not approved yet."""
+    result = invoke(
+        "init",
+        {"dir": str(tmp_path), "answers_file": str(answers), "confirm": "APPROVE charter"},
+        actor="human",
+    )
+    assert is_ok(result), result
+    return tmp_path / "context-rail"
+
+
+#: The leaf task's cmd Check passes unless the worker leaves the marker ``bad``.
+UNIT_COMMAND = (
+    "import sys\n"
+    "from pathlib import Path\n"
+    "work = Path('fake-droid-work.txt')\n"
+    "ok = work.is_file() and 'bad' not in work.read_text(encoding='utf-8')\n"
+    "sys.exit(0 if ok else 1)\n"
+)
+
+
+@pytest.fixture
+def leaf_item(tmp_path: Path, answers: Path) -> SimpleNamespace:
+    """An approved git checkout with one executable leaf task and a cmd Check.
+
+    The project lives in its own child folder so a test's other temporary
+    files (the fake droid, for one) never appear as changes in the checkout.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    result = invoke(
+        "init",
+        {"dir": str(project), "answers_file": str(answers), "confirm": "APPROVE charter"},
+        actor="human",
+    )
+    assert is_ok(result), result
+    store = project / "context-rail"
+    approved = approve_picture(store)
+    assert is_ok(approved), approved
+    added = invoke(
+        "add",
+        {"preset": "task", "title": "Login page", "rel": ["part_of=send-invoice"]},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(added), added
+    spec = tmp_path / "unit.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "cmd",
+                "acceptance": False,
+                "cmd": [sys.executable, "-c", UNIT_COMMAND],
+                "inputs": ["src/*.py"],
+                "timeout_s": 60,
+            }
+        ),
+        encoding="utf-8",
+    )
+    declared = invoke(
+        "check",
+        {
+            "slug": "unit",
+            "target": "login-page",
+            "spec_file": str(spec),
+            "expect": "absent",
+        },
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(declared), declared
+    (project / "src").mkdir()
+    (project / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    (project / "README.md").write_text("fixture\n", encoding="utf-8", newline="\n")
+    run_git(project, "init", "-b", "main")
+    run_git(project, "add", "-A")
+    run_git(project, "commit", "-m", "picture and leaf task")
+    shown = invoke("show", {"slug": "login-page"}, store=store, actor="cto")
+    assert is_ok(shown), shown
+    return SimpleNamespace(
+        store=store,
+        root=project,
+        slug="login-page",
+        etag=shown["value"]["doc"]["etag"],
+        check="unit",
+    )
 
 
 @pytest.fixture
