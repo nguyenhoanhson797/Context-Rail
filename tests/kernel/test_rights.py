@@ -161,25 +161,52 @@ def test_allowed_decision_never_widens_a_profile(policy):
     assert allowed_decision("write", "human-only", "human", policy, None, approved=True) is None
 
 
-def test_a_cto_human_only_write_is_refused(policy):
+def test_allowed_decision_refuses_a_cto_human_only_write(policy):
     reason = allowed_decision("write", "human-only", "cto", policy, None, approved=True)
-    assert reason is not None and "human" in reason
+    assert reason is not None
+    assert "human-only" in reason
+    assert "delegated" in reason
+    assert "'cto'" in reason
 
 
-def test_a_human_approved_human_only_write_is_allowed(policy):
+def test_allowed_decision_allows_a_human_approved_human_only_write(policy):
     assert allowed_decision("write", "human-only", "human", policy, None, approved=True) is None
 
 
-def test_a_permitted_cto_planning_decision_is_allowed(policy):
+def test_allowed_decision_allows_a_permitted_cto_planning_decision(policy):
     assert allowed_decision("write", "cto-alone", "cto", policy, None, approved=True) is None
     assert allowed_decision("write", "cto-reversible", "cto", policy, None, approved=True) is None
+    assert allowed_decision("read", "cto-alone", "cto", policy, None, approved=True) is None
 
 
-@pytest.mark.parametrize("actor", ["implementer", "reviewer"])
-def test_worker_profiles_refuse_methods_outside_their_list(policy, actor):
-    assert allowed_decision("read", "cto-alone", actor, policy, WORKER_METHODS, approved=True) is None
-    reason = allowed_decision("write", "cto-alone", actor, policy, WORKER_METHODS, approved=True)
-    assert reason is not None and "profile" in reason
+def test_profile_restriction_refuses_methods_outside_the_profile_list(policy):
+    assert allowed_decision("read", "cto-alone", "implementer", policy, WORKER_METHODS, approved=True) is None
+    reason = allowed_decision("write", "cto-alone", "implementer", policy, WORKER_METHODS, approved=True)
+    assert reason is not None
+    assert "profile" in reason
+    assert "it lists: find, show, cto brief, ledger, report" in reason
+
+
+def test_profile_restriction_keeps_reviewer_reads(policy):
+    for method in ("find", "show", "ledger", "report"):
+        assert method in WORKER_METHODS
+        assert allowed_decision("read", "cto-alone", "reviewer", policy, (method,), approved=True) is None
+    reason = allowed_decision("write", "cto-alone", "reviewer", policy, WORKER_METHODS, approved=True)
+    assert reason is not None
+    assert "profile" in reason
+    assert "it lists: find, show, cto brief, ledger, report" in reason
+
+
+@pytest.mark.parametrize(
+    ("decision_id", "expected_class"),
+    [("acceptance", "human-only"), ("dependency", "cto-reversible")],
+)
+def test_allowed_decision_rejects_a_semantic_decision_id_as_a_class(policy, decision_id, expected_class):
+    assert decision_class("update", change(decision_id=decision_id), policy) == expected_class
+    for actor in ("cto", "human"):
+        reason = allowed_decision("write", decision_id, actor, policy, None, approved=True)
+        assert reason is not None
+        assert f"unknown decision class {decision_id!r}" in reason
 
 
 def test_unknown_permission_and_class_are_refused(policy):
