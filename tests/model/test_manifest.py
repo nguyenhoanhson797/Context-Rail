@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -46,6 +47,29 @@ def _manifest(**overrides: object) -> dict:
     payload = copy.deepcopy(DEFAULT_MANIFEST)
     payload.update(overrides)
     return payload
+
+
+LOCAL_PACK: dict[str, Any] = {
+    "name": "small",
+    "version": 1,
+    "statuses": {"todo": "not_started", "done": "done"},
+    "initial": "todo",
+    "transitions": {"todo": ["done"], "done": []},
+    "presets": {
+        "task": {"primitive": "item", "tags": ["task"]},
+        "decision": {"primitive": "record", "tags": ["decision"]},
+    },
+    "policy": {"stuck_hours": 24, "retries": 1},
+}
+
+
+def _write_pack(store: Path, payload: dict[str, Any]) -> Path:
+    path = store / "packs" / "small" / "pack.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    stale = path.stat()
+    os.utime(path, ns=(stale.st_atime_ns, stale.st_mtime_ns + 2_000_000_000))
+    return path
 
 
 def _load_error(store: Path) -> ModelError:
@@ -243,3 +267,40 @@ def test_manifest_cache_follows_path_mtime_and_size(tmp_path: Path) -> None:
     stale = path.stat()
     os.utime(path, ns=(stale.st_atime_ns, stale.st_mtime_ns + 2_000_000_000))
     assert load_manifest(tmp_path).placement["note"] == "notex/{preset}/{slug}.md"
+
+
+def test_preset_override_is_rechecked_after_local_pack_edit(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, DEFAULT_MANIFEST)
+    _write_pack(tmp_path, LOCAL_PACK)
+    expected = {"decision": "records/decisions/{slug}.md"}
+    assert load_manifest(tmp_path).preset_placement == expected
+
+    without_decision = copy.deepcopy(LOCAL_PACK)
+    del without_decision["presets"]["decision"]
+    _write_pack(tmp_path, without_decision)
+
+    with pytest.raises(ModelError) as err:
+        load_manifest(tmp_path)
+    assert err.value.code == "VALIDATION_FAILED"
+
+    _write_pack(tmp_path, LOCAL_PACK)
+    assert load_manifest(tmp_path).preset_placement == expected
+
+
+def test_local_pack_appearance_and_removal_recheck_preset_override(
+    tmp_path: Path,
+) -> None:
+    _write_manifest(tmp_path, DEFAULT_MANIFEST)
+    expected = {"decision": "records/decisions/{slug}.md"}
+    assert load_manifest(tmp_path).preset_placement == expected
+
+    without_decision = copy.deepcopy(LOCAL_PACK)
+    del without_decision["presets"]["decision"]
+    path = _write_pack(tmp_path, without_decision)
+
+    with pytest.raises(ModelError) as err:
+        load_manifest(tmp_path)
+    assert err.value.code == "VALIDATION_FAILED"
+
+    path.unlink()
+    assert load_manifest(tmp_path).preset_placement == expected

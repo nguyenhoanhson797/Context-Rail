@@ -62,11 +62,16 @@ DEFAULT_MANIFEST: dict[str, Any] = {
 
 
 def load_manifest(store: Path) -> Manifest:
-    """Read and validate ``<store>/rail.yaml``."""
+    """Read and validate ``<store>/rail.yaml`` against its selected pack."""
     path = Path(store) / "rail.yaml"
     if not path.is_file():
         _refuse("rail.yaml is missing")
-    return cached_model(path, lambda: _parse_manifest(path))
+    manifest = cached_model(path, lambda: _parse_manifest(path))
+    # The pack is not part of the manifest cache key, so its presets are
+    # rechecked on every load: a local pack may gain or lose a preset while
+    # rail.yaml itself is unchanged.
+    _check_against_pack(manifest, path.parent)
+    return manifest
 
 
 def render_path(
@@ -147,7 +152,6 @@ def _parse_manifest(path: Path) -> Manifest:
         placement=dict(placement),
         preset_placement=dict(preset_placement),
     )
-    _check_against_pack(manifest, path.parent)
     return manifest
 
 
