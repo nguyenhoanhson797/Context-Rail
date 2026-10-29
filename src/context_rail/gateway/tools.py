@@ -344,4 +344,13 @@ TOOLS: tuple[Tool, ...] = (
         ),
         handler="context_rail.gateway.handlers.doctor:doctor",
     ),
+    Tool(
+        name="ci",
+        summary="Gate the store: doctor issues plus approval and done gates, never a Check run.",
+        permission="read",
+        params=(
+            Param("warnings_as_errors", "bool", help="fail on warnings too"),
+        ),
+        handler="context_rail.gateway.handlers.maintenance:ci",
+    ),
 )

@@ -436,6 +436,20 @@ def approve_picture(
     )
 
 
+def make_pilot_repo(root: Path) -> Any:
+    """Create the pilot project and its bare remote under ``root`` in-process."""
+    from support.pilot_repo import build_pilot
+
+    return build_pilot(Path(root))
+
+
+def seed_activity(store: Path, *, stuck: str, too_long: str) -> Any:
+    """Seed old activity and an over-budget run into one pilot store."""
+    from support.seed_activity import seed_activity as seed
+
+    return seed(Path(store), stuck=stuck, too_long=too_long)
+
+
 def median_ms(fn: Callable[[], object], runs: int) -> float:
     """Median wall time of ``runs`` calls to ``fn``, in milliseconds."""
     samples: list[float] = []

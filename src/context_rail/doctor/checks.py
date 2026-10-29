@@ -6,10 +6,14 @@ the command that resolves it when one exists. Issues are sorted by
 ``counts`` always reports every issue found.
 
 Unreadable documents suppress the checks that would need their fields, so one
-broken file reports one problem instead of a cascade. Records are historical
-bytes: their relations may name slugs that no longer exist, so ``broken_relation``
-applies to mutable documents only. The digest check rereads JSON record files;
-that is the only store content the doctor reads.
+broken file reports one problem instead of a cascade. An unparseable charter
+reports ``policy_invalid`` alone: the approval and gate checks read the policy,
+and none of them may guess at what an invalid policy means. Records are
+historical bytes: their relations may name slugs that no longer exist, so
+``broken_relation`` applies to mutable documents only. Reading store content is
+confined to what a check cannot get from the index: JSON record digests, the
+charter fields, actor profiles, the packs policy and the generated adapter
+files.
 """
 
 from __future__ import annotations
@@ -28,12 +32,13 @@ from context_rail.store.doc import (
     BAD_ENCODING,
     PARSE_ERROR,
     UNKNOWN_RELATION,
+    parse_doc,
     record_digest,
 )
-from context_rail.store.index import Index
+from context_rail.store.index import INVALID_PAYLOAD, Index
 from context_rail.store.location import local_dir
 
-__all__ = ["ISSUE_CAP", "SEVERITIES", "run_doctor"]
+__all__ = ["ISSUE_CAP", "SEVERITIES", "gate_report", "run_doctor"]
 
 ISSUE_CAP = 100
 
@@ -50,13 +55,20 @@ SEVERITIES: dict[str, str] = {
     "intent_pending": "error",
     "approval_missing": "error",
     "approval_mismatch": "error",
+    "policy_invalid": "error",
+    "check_invalid": "error",
+    "check_stale": "warning",
+    "check_unknown": "warning",
+    "review_invalid": "error",
     "report_untriaged": "warning",
     "report_missing": "error",
     "run_incomplete": "warning",
+    "profile_invalid": "error",
+    "adapter_modified": "warning",
+    "gate_bypassed": "error",
     "placement_mismatch": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
-    "adapter_modified": "warning",
 }
 
 _REPAIR = "rail doctor --repair"
@@ -64,7 +76,9 @@ _APPROVE = 'rail approve charter --confirm "APPROVE charter" --confirmer <you>'
 _RELOCATE = "rail relocate"
 _TRIAGE = "rail triage"
 _REPORT = "rail report <item> --run <run> --report-file <file>"
+_CHARTER = "charter.md"
 _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
+_FRESHNESS_CODES = {"stale": "check_stale", "unknown": "check_unknown"}
 
 
 @dataclass(frozen=True)
@@ -77,12 +91,14 @@ class _Row:
     preset: str | None
     title: str | None
     status: str | None
+    category: str | None
     problems: tuple[str, ...]
 
 
 def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[str, Any]:
     """Every issue this store has, sorted by ``(path, code)`` and counted whole."""
     store = Path(store)
+    context = _context(store, manifest, pack, ix)
     rows = _rows(ix)
     slugs = _slugs(rows)
     relations = _relations(ix)
@@ -94,9 +110,16 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
         issues.extend(_doc_issues(store, manifest, pack, row, known, relations, fields))
     issues.extend(_duplicate_issues(slugs))
     issues.extend(_intent_issues(store))
-    issues.extend(_approval_issues(store, manifest, pack, ix))
+    policy_issues, policy = _policy(context)
+    issues.extend(policy_issues)
+    if policy is not None:
+        issues.extend(_approval_issues(context))
+        issues.extend(_gate_issues(context, policy))
+    issues.extend(_check_issues(context, ix))
+    issues.extend(_review_issues(ix))
     issues.extend(_report_issues(ix))
     issues.extend(_run_issues(ix))
+    issues.extend(_profile_issues(context, rows))
     issues.extend(_adapter_issues(store))
     issues.sort(key=lambda issue: (issue["path"], issue["code"]))
 
@@ -104,6 +127,54 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     for issue in issues:
         counts[issue["severity"]] += 1
     return {"issues": issues[:ISSUE_CAP], "counts": counts}
+
+
+def gate_report(
+    store: Path, manifest: Manifest, pack: Pack, ix: Index
+) -> list[dict[str, Any]]:
+    """Every closed Item's current gate decision, bounded and read from the index."""
+    context = _context(Path(store), manifest, pack, ix)
+    policy_issues, policy = _policy(context)
+    if policy is not None:
+        return [_gate_row(context, policy, slug, path) for path, slug in _closed_items(ix)]
+    return []
+
+
+def _context(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> Any:
+    """The read-only slice of a gateway context the doctor's checks need."""
+    return SimpleNamespace(store=Path(store), manifest=manifest, pack=pack, index=ix)
+
+
+def _policy(context: Any) -> tuple[list[dict[str, Any]], Any]:
+    """The charter's validated meaning, or the one issue that replaces it."""
+    from context_rail.model.policy import parse_charter
+    from context_rail.store.approval import charter_document
+
+    try:
+        found = charter_document(context)
+    except ModelError as error:
+        return [
+            _issue(
+                "policy_invalid",
+                _CHARTER,
+                f"the charter cannot be read: {error.message}",
+                fix=_APPROVE,
+            )
+        ], None
+    if found is None:
+        return [], None
+    path, fields = found
+    try:
+        return [], parse_charter(fields)
+    except ModelError as error:
+        return [
+            _issue(
+                "policy_invalid",
+                path,
+                f"the charter is invalid: {error.message}",
+                fix=_APPROVE,
+            )
+        ], None
 
 
 def _rows(ix: Index) -> list[_Row]:
@@ -115,10 +186,11 @@ def _rows(ix: Index) -> list[_Row]:
             preset=preset,
             title=title,
             status=status,
+            category=category,
             problems=tuple(json.loads(problems)),
         )
-        for path, slug, primitive, preset, title, status, problems in ix.conn.execute(
-            "SELECT path, slug, primitive, preset, title, status, problems "
+        for path, slug, primitive, preset, title, status, category, problems in ix.conn.execute(
+            "SELECT path, slug, primitive, preset, title, status, category, problems "
             "FROM docs ORDER BY path"
         )
     ]
@@ -213,7 +285,12 @@ def _doc_issues(
                     f"{row.path!r} holds bytes that do not match its digest",
                 )
             )
+        if INVALID_PAYLOAD in row.problems:
+            issues.append(_invalid_payload(row))
         return issues
+
+    if primitive_known and INVALID_PAYLOAD in row.problems:
+        issues.append(_invalid_payload(row))
 
     if primitive_known:
         if not row.title and row.primitive != "check":
@@ -232,6 +309,33 @@ def _doc_issues(
     if preset is not None:
         issues.extend(_field_hints(row, preset, fields))
     return issues
+
+
+def _invalid_payload(row: _Row) -> dict[str, Any]:
+    """A document whose typed payload the index refused to project gets one code.
+
+    A Check or an Actor profile carries a validated spec, so its own defect code
+    names it; any other record kind is reported with the primitive's code so a
+    malformed payload is never silently indexed as sound.
+    """
+    if row.primitive == "check":
+        return _issue(
+            "check_invalid",
+            row.path,
+            f"{row.path!r} carries a Check spec that does not validate",
+            fix=f"rail check {row.slug} --spec-file <file> --expect <etag>",
+        )
+    if row.primitive == "actor":
+        return _issue(
+            "profile_invalid",
+            row.path,
+            f"{row.path!r} carries a profile that does not validate",
+        )
+    return _issue(
+        "policy_invalid" if row.primitive == "policy" else "record_tampered",
+        row.path,
+        f"{row.path!r} carries a typed payload that does not validate",
+    )
 
 
 def _broken_relations(
@@ -339,13 +443,10 @@ def _intent_issues(store: Path) -> list[dict[str, Any]]:
     ]
 
 
-def _approval_issues(
-    store: Path, manifest: Manifest, pack: Pack, ix: Index
-) -> list[dict[str, Any]]:
+def _approval_issues(context: Any) -> list[dict[str, Any]]:
     """One issue when the picture has no human approval, or differs from it."""
     from context_rail.store.approval import approval_state, charter_document
 
-    context = SimpleNamespace(store=Path(store), manifest=manifest, pack=pack, index=ix)
     found = charter_document(context)
     if found is None:
         return []
@@ -370,6 +471,149 @@ def _approval_issues(
             fix=_APPROVE,
         )
     ]
+
+
+def _closed_items(ix: Index) -> list[tuple[str, str]]:
+    """The ``(path, slug)`` of every Item whose category is ``done``."""
+    return [
+        (path, slug)
+        for path, slug in ix.conn.execute(
+            "SELECT path, slug FROM docs WHERE primitive = 'item' AND broken = 0 "
+            "AND category = 'done' ORDER BY path"
+        )
+    ]
+
+
+def _gate_issues(context: Any, policy: Any) -> list[dict[str, Any]]:
+    """One ``gate_bypassed`` per done Item whose current gate is closed.
+
+    The gate reads the same indexed proofs a move to done reads, so a hand edit
+    that skipped the gate is reported instead of accepted as done.
+    """
+    issues: list[dict[str, Any]] = []
+    for path, slug in _closed_items(context.index):
+        row = _gate_row(context, policy, slug, path)
+        if row["allowed"]:
+            continue
+        issues.append(
+            _issue(
+                "gate_bypassed",
+                path,
+                f"{slug!r} is done and its {row['gate']} gate is not satisfied: "
+                + "; ".join(row["reasons"]),
+            )
+        )
+    return issues
+
+
+def _gate_row(context: Any, policy: Any, slug: str, path: str) -> dict[str, Any]:
+    """One Item's gate decision, read from indexed checks and the newest review."""
+    from context_rail.gateway.handlers.common import check_gate_state, review_gate_state
+    from context_rail.store import query
+
+    gate = "scope_done" if slug in policy.project.get("scope", ()) else "item_done"
+    review = review_gate_state(query.review_for_item(context.index, slug))
+    from context_rail.kernel import gates as gate_rules
+
+    decision = gate_rules.evaluate_gate(
+        policy,
+        gate,
+        slug,
+        [check_gate_state(context, row) for row in query.check_states(context.index, slug)],
+        review,
+        False,
+        review.candidate if review is not None else None,
+    )
+    return {
+        "item": slug,
+        "path": path,
+        "gate": gate,
+        "allowed": decision.allowed,
+        "reasons": list(decision.reasons),
+    }
+
+
+def _check_issues(context: Any, ix: Index) -> list[dict[str, Any]]:
+    """Stale and unknown freshness for every Check with a stored verdict."""
+    from context_rail.gateway.handlers.checks import freshness_of
+    from context_rail.store import query
+
+    issues: list[dict[str, Any]] = []
+    for row in query.check_states(ix):
+        if row["verdict"] is None:
+            continue
+        state = freshness_of(context, row)
+        code = _FRESHNESS_CODES.get(state)
+        if code is None:
+            continue
+        found = ix.conn.execute(
+            "SELECT path FROM checks WHERE slug = ? ORDER BY path LIMIT 1", (row["slug"],)
+        ).fetchone()
+        path = found[0] if found is not None else f"checks/{row['slug']}.md"
+        issues.append(
+            _issue(
+                code,
+                path,
+                f"check {row['slug']!r} is {state!r}: its last verdict no longer "
+                "describes the declared inputs",
+                fix=f"rail verify {row['slug']}",
+            )
+        )
+    return issues
+
+
+def _review_issues(ix: Index) -> list[dict[str, Any]]:
+    """One issue per review whose reviewer is not separated from its implementer."""
+    from context_rail.kernel.rights import review_separation
+
+    issues: list[dict[str, Any]] = []
+    for path, record_id, data_json in ix.conn.execute(
+        "SELECT r.path, r.record_id, r.data_json FROM reviews r JOIN docs d "
+        "ON d.path = r.path ORDER BY r.path"
+    ):
+        try:
+            data = json.loads(data_json)
+        except ValueError:
+            continue
+        reason = review_separation(
+            str(data.get("implementer_actor") or ""),
+            str(data.get("reviewer_actor") or ""),
+            str(data.get("implementer_model") or ""),
+            str(data.get("reviewer_model") or ""),
+            True,
+        )
+        if reason is None:
+            continue
+        issues.append(
+            _issue("review_invalid", path, f"review {record_id!r} is not separated: {reason}")
+        )
+    return issues
+
+
+def _profile_issues(context: Any, rows: list[_Row]) -> list[dict[str, Any]]:
+    """One issue per Actor profile whose stored fields do not validate."""
+    from context_rail.model.cto import parse_profile
+
+    issues: list[dict[str, Any]] = []
+    for row in rows:
+        if row.primitive != "actor" or row.problems:
+            continue
+        path = row.path
+        try:
+            doc = parse_doc(path, (Path(context.store) / path).read_bytes())
+        except (OSError, UnicodeDecodeError):
+            continue
+        try:
+            parse_profile(dict(doc.fields), body=doc.body)
+        except ModelError as error:
+            issues.append(
+                _issue(
+                    "profile_invalid",
+                    path,
+                    f"{path!r} is not a valid profile: {error.message}",
+                )
+            )
+    return issues
 
 
 def _report_issues(ix: Index) -> list[dict[str, Any]]:

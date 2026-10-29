@@ -80,6 +80,33 @@ def test_a_clean_sync_has_no_adapter_doctor_issues(skill_store: Path) -> None:
     assert "adapter_modified" not in codes
 
 
+def test_a_clean_sync_passes_ci_without_warnings_as_errors(skill_store: Path) -> None:
+    assert is_ok(invoke("adapters sync", {}, store=skill_store, actor="cto"))
+
+    clean = invoke("ci", {}, store=skill_store, actor="cto")
+
+    assert is_ok(clean), clean
+    assert clean["value"]["passed"] is True
+    assert clean["value"]["counts"]["warning"] == 0
+
+
+def test_a_hand_edited_block_fails_ci_only_with_warnings_as_errors(
+    skill_store: Path, edited_block: Path
+) -> None:
+    before = edited_block_before(edited_block)
+
+    tolerated = invoke("ci", {}, store=skill_store, actor="cto")
+    assert is_ok(tolerated), tolerated
+    assert tolerated["value"]["counts"]["warning"] >= 1
+    assert "adapter_modified" in [issue["code"] for issue in tolerated["value"]["issues"]]
+
+    strict = invoke("ci", {"warnings_as_errors": True}, store=skill_store, actor="cto")
+    assert strict["ok"] is False, strict
+    assert strict["error"]["code"] == "BUSINESS_RULE_VIOLATED"
+    assert [i["code"] for i in strict["error"]["details"]["issues"]] == ["adapter_modified"]
+    assert edited_block.read_text(encoding="utf-8") == before
+
+
 def test_force_needs_human_and_the_exact_phrase(skill_store: Path, edited_block: Path) -> None:
     before = edited_block_before(edited_block)
     cto = invoke(

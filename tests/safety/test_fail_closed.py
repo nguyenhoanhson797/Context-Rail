@@ -40,6 +40,7 @@ _REFUSED_TOOLS = (
     "ledger",
     "digest",
     "adapters sync",
+    "ci",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -76,6 +77,7 @@ _ARGS: dict[str, dict[str, Any]] = {
     "ledger": {},
     "digest": {},
     "adapters sync": {},
+    "ci": {},
 }
 _ZONK = f"""---
 primitive: item

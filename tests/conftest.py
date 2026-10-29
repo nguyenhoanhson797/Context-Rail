@@ -1103,6 +1103,22 @@ def droid_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     return dict(os.environ)
 
 
+@pytest.fixture
+def pilot_repo(tmp_path: Path) -> SimpleNamespace:
+    """The generated pilot project and its local bare remote.
+
+    The generator refuses to build without a configured git identity; that is an
+    environment failure, so the test skips instead of inventing one.
+    """
+    from helpers import make_pilot_repo
+    from support.pilot_repo import PilotError
+
+    try:
+        return make_pilot_repo(tmp_path / "pilot-root")
+    except PilotError as error:
+        pytest.skip(f"the pilot generator needs a git identity: {error}")
+
+
 _VIEW_STAMP = "2026-10-28T12:00:00Z"
 
 
@@ -1290,13 +1306,15 @@ def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNames
         at=_hours_ago(3),
         about=(stuck,),
     )
+    # The run and the wait sit inside the rolling window a digest queries with
+    # ``since = now - 24h``, so the fixture keeps working as real time moves on.
     write_run(
         store,
         "01JLONGRUN00000000000000001",
         item=too_long,
         dispatch="dispatch-long",
         duration=120.0,
-        at=_VIEW_STAMP,
+        at=_hours_ago(1),
     )
     _write_report(
         store,
@@ -1305,6 +1323,7 @@ def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNames
         target_class="human-wait",
         target="payer copy",
         what_happened="the reminder copy needs a human decision",
+        at=_hours_ago(1),
     )
     for title in ("Login page", "Sign in"):
         added = invoke("add", {"preset": "task", "title": title}, store=store, actor="cto")
