@@ -56,6 +56,7 @@ _CONFIRM_SLUG = {
     "check": "slug",
 }
 _HUMAN = "human"
+_CTO = "cto"
 
 
 @dataclass
@@ -151,13 +152,14 @@ def invoke(
 ) -> dict[str, Any]:
     """Run one tool and return a Result envelope; no exception escapes."""
     resolved_actor = _resolve_actor(actor)
+    actor_env = _actor_env()
     context: Context | None = None
     try:
         tool = _tool(name)
         params = _parameters(tool, args)
         if tool.name != "init":
             context = _open_context(store, resolved_actor)
-        refusal = _authorize(tool, params, context, resolved_actor)
+        refusal = _authorize(tool, params, context, resolved_actor, actor_env)
         if refusal is not None:
             return refusal
         handler = _handler(tool.handler)
@@ -167,6 +169,26 @@ def invoke(
     finally:
         if context is not None:
             context.close()
+
+
+def _actor_env() -> str | None:
+    """The actor ``RAIL_ACTOR`` names, or None when the caller named none."""
+    from_env = os.environ.get("RAIL_ACTOR")
+    return from_env.strip() if isinstance(from_env, str) and from_env.strip() else None
+
+
+def _tick_refusal(actor: str, actor_env: str | None) -> str | None:
+    """Whether a tick may start: the CTO or the human, and only as the outer session.
+
+    A droid child always carries ``RAIL_ACTOR``, so a session that is already
+    running can never nest a second tick; a worker actor may not start one at
+    all.
+    """
+    if actor_env is not None:
+        return "'cto tick' cannot be nested inside a running session"
+    if actor not in (_CTO, _HUMAN):
+        return f"{_CTO!r} or {_HUMAN!r} alone may start a CTO tick, not {actor!r}"
+    return None
 
 
 def effective_decision(
@@ -203,6 +225,7 @@ def _authorize(
     params: dict[str, Any],
     context: Context | None,
     actor: str,
+    actor_env: str | None = None,
 ) -> dict[str, Any] | None:
     """The refusal a call earns before its handler runs, if it earns one."""
     refusal = rights.allowed(tool.permission, actor)
@@ -212,8 +235,18 @@ def _authorize(
         )
     if tool.permission == "human" or context is None:
         return None
+    if tool.name == "cto tick":
+        nested = _tick_refusal(actor, actor_env)
+        if nested is not None:
+            return fail("PERMISSION_DENIED", nested, {"tool": tool.name, "actor": actor})
     profile = context.profile
-    if profile is not None and tool.name not in profile.allowed_methods:
+    # ``cto tick`` starts the CTO session rather than acting inside one, so the
+    # profile it instantiates does not gate it; every other method still does.
+    if (
+        profile is not None
+        and tool.name != "cto tick"
+        and tool.name not in profile.allowed_methods
+    ):
         return fail(
             "PERMISSION_DENIED",
             f"profile {actor!r} may not use {tool.name!r}",

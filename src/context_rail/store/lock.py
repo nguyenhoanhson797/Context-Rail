@@ -134,6 +134,24 @@ def file_lock(path: Path, timeout: float = DEFAULT_LOCK_TIMEOUT) -> Iterator[Non
 
 
 @contextlib.contextmanager
+def exclusive_lock(path: Path) -> Iterator[None]:
+    """Hold a non-blocking OS lock on ``path`` for the block, never re-entering.
+
+    :func:`file_lock` is re-entrant so one process may nest its own writes; a
+    single-instance lock must refuse a second holder even inside one process,
+    so this always takes a fresh descriptor. Raises ``StoreLockTimeout`` when
+    another holder has it.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = _acquire_os_lock(path, 0.0)
+    try:
+        yield
+    finally:
+        _os_unlock(fd)
+
+
+@contextlib.contextmanager
 def store_lock(store: Path, timeout: float = DEFAULT_LOCK_TIMEOUT) -> Iterator[None]:
     """Hold the store's write lock for the block, re-entrant in this process.
 

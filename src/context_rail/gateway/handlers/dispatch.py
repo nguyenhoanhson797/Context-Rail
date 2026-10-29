@@ -23,15 +23,18 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import new_ulid, now_iso, sha256_hex
 from context_rail.gateway.handlers import checks as checks_handler
 from context_rail.gateway.handlers.common import (
+    bounded,
     check_gate_state,
+    profile_document,
     read_doc,
     review_gate_state,
+    skill_pins,
 )
 from context_rail.gateway.handlers.docs import move as move_item
 from context_rail.kernel import gates, structure
@@ -65,12 +68,7 @@ from context_rail.runner.droid import (
 )
 from context_rail.store import query
 from context_rail.store.doc import Doc, etag, parse_doc
-from context_rail.store.location import (
-    PathEscape,
-    confine,
-    local_dir,
-    worktree_git_dir,
-)
+from context_rail.store.location import local_dir, worktree_git_dir
 from context_rail.store.write import ABSENT, WriteRefused, commit, resolve_unique
 
 if TYPE_CHECKING:
@@ -143,7 +141,7 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         raise WriteRefused(
             "INVALID_STATE", "the charter is not approved", {"reason": "approval_missing"}
         )
-    _profile_rel, profile_etag, profile = _load_profile(ctx, profile_name)
+    _profile_rel, profile_etag, profile = profile_document(ctx, profile_name)
     if profile.recipe != IMPL_ROLE:
         raise WriteRefused(
             "VALIDATION_FAILED",
@@ -243,7 +241,7 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             base=base,
             store_paths=store_paths,
             checks=checks,
-            skill_pins=_skill_pins(ctx, profile),
+            skill_pins=skill_pins(ctx, profile),
             used_seconds=used_seconds,
             max_attempts=max(1, int(budget.attempts or BUILTIN_ATTEMPTS) - used_attempts),
         )
@@ -300,7 +298,7 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"run": implementation_run, "status": run["status"]},
         )
 
-    _profile_rel, profile_etag, profile = _load_profile(ctx, profile_name)
+    _profile_rel, profile_etag, profile = profile_document(ctx, profile_name)
     separation = _separation_reason(
         policy,
         implementer=str(run["actor"] or ""),
@@ -631,7 +629,7 @@ def _review_metadata(
         "profile": profile_name,
         "profile_version": profile.version,
         "profile_etag": profile_etag,
-        "skills": _skill_pins(ctx, profile),
+        "skills": skill_pins(ctx, profile),
         "base_commit": candidate,
         "candidate_commit": candidate,
         "checks": [row["slug"] for row in query.check_states(ctx.index, slug)],
@@ -999,7 +997,7 @@ def _review_run_record(
         "profile": profile_name,
         "profile_version": profile.version,
         "profile_etag": profile_etag,
-        "skills": _skill_pins(ctx, profile),
+        "skills": skill_pins(ctx, profile),
         "model": droid_model,
         "item": slug,
         "session_id": ran.session_id,
@@ -1529,7 +1527,7 @@ def _continue_conflict(
 ) -> dict[str, Any]:
     """One implementer session continuation that may resolve only the conflict."""
     profile_name = str(run["profile"] or IMPL_ROLE)
-    _profile_rel, profile_etag, profile = _load_profile(ctx, profile_name)
+    _profile_rel, profile_etag, profile = profile_document(ctx, profile_name)
     droid = droid_profile(profile, name=profile_name)
     budget = _effective_budget(
         ctx.policy.budgets.get("item") or {} if ctx.policy else {}, profile.budgets
@@ -1618,7 +1616,7 @@ def _continue_conflict(
         "profile": profile_name,
         "profile_version": profile.version,
         "profile_etag": profile_etag,
-        "skills": _skill_pins(ctx, profile),
+        "skills": skill_pins(ctx, profile),
         "model": profile.model,
         "item": slug,
         "session_id": attempt["session_id"],
@@ -1684,7 +1682,7 @@ def _conflict_metadata(
         "profile": profile_name,
         "profile_version": profile.version,
         "profile_etag": profile_etag,
-        "skills": _skill_pins(ctx, profile),
+        "skills": skill_pins(ctx, profile),
         "base_commit": onto,
         "candidate_commit": str(run["candidate_commit"] or "") or None,
         "checks": [row["slug"] for row in query.check_states(ctx.index, slug)],
@@ -1862,7 +1860,7 @@ def _review_for_merge(
         raise WriteRefused(
             "INVALID_STATE", "the charter is not approved", {"reason": "approval_missing"}
         )
-    _profile_rel, profile_etag, profile = _load_profile(ctx, REVIEW_ROLE)
+    _profile_rel, profile_etag, profile = profile_document(ctx, REVIEW_ROLE)
     separation = _separation_reason(
         policy,
         implementer=str(run["actor"] or ""),
@@ -2232,96 +2230,6 @@ def _resolve_item(ctx: Context, item: str) -> tuple[str, str, str]:
             "VALIDATION_FAILED", f"{rel!r} is not an Item", {"path": rel}
         )
     return doc.slug, rel, etag(data)
-
-
-def _load_profile(ctx: Context, name: str) -> tuple[str, str, Profile]:
-    """The store's own copy of one Actor profile, its etag and its parse."""
-    candidates: list[tuple[str, bytes, Doc]] = []
-    for preset in ctx.pack.presets.values():
-        if preset.primitive != "actor":
-            continue
-        try:
-            rel = render_path(
-                ctx.manifest, primitive="actor", preset=preset.name, slug=name
-            )
-        except ModelError:
-            continue
-        path = Path(ctx.store) / rel
-        if not path.is_file():
-            continue
-        data = path.read_bytes()
-        doc = parse_doc(rel, data)
-        if doc.slug == name:
-            candidates.append((rel, data, doc))
-    if not candidates:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            f"unknown profile {name!r}; onboarding ships the implementer",
-            {"profile": name},
-        )
-    if len(candidates) > 1:
-        raise WriteRefused(
-            "CONFLICT",
-            f"{name!r} names more than one profile",
-            {"paths": sorted(rel for rel, _data, _doc in candidates)},
-        )
-    rel, data, doc = candidates[0]
-    try:
-        profile = parse_profile(doc.fields, body=doc.body)
-    except ModelError as error:
-        raise WriteRefused(error.code, error.message) from None
-    return rel, etag(data), profile
-
-
-def _skill_pins(ctx: Context, profile: Profile) -> list[dict[str, Any]]:
-    """Pin every selected skill's source path, version and etag.
-
-    A profile may name a scoped copy; when the store ships only the shared
-    source for the same slug, that source is the document the pin describes.
-    """
-    pins: list[dict[str, Any]] = []
-    for declared in profile.skills:
-        rel, data = _skill_source(ctx, declared)
-        doc = parse_doc(rel, data)
-        version = doc.fields.get("version")
-        if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
-            raise WriteRefused(
-                "VALIDATION_FAILED",
-                f"skill {rel!r} carries no positive version",
-                {"skill": rel},
-            )
-        pins.append({"identity": rel, "version": version, "etag": etag(data)})
-    return pins
-
-
-def _skill_source(ctx: Context, declared: str) -> tuple[str, bytes]:
-    found = _read_confined(ctx.store, declared)
-    if found is not None:
-        return declared, found
-    stem = PurePosixPath(declared).stem
-    try:
-        shared = render_path(
-            ctx.manifest, primitive="note", preset="skill", slug=stem
-        )
-    except ModelError:
-        shared = None
-    if shared is not None:
-        found = _read_confined(ctx.store, shared)
-        if found is not None:
-            return shared, found
-    raise WriteRefused(
-        "VALIDATION_FAILED",
-        f"the profile names a missing skill {declared!r}",
-        {"skill": declared},
-    )
-
-
-def _read_confined(store: Path, rel: str) -> bytes | None:
-    try:
-        path = confine(store, rel)
-    except PathEscape:
-        return None
-    return path.read_bytes() if path.is_file() else None
 
 
 def _effective_budget(charter: dict[str, Any], profile: dict[str, Any]) -> Budget:
@@ -2694,8 +2602,7 @@ def _sections(plan: _Plan, doc: Doc) -> dict[str, str]:
 
 
 def _bounded(text: str, limit: int) -> str:
-    text = text.strip()
-    return text if len(text) <= limit else text[: limit - 16] + "\n[truncated]"
+    return bounded(text, limit)
 
 
 # ── execution ─────────────────────────────────────────────────────────────

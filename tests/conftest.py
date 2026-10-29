@@ -1237,6 +1237,27 @@ def tick_with_workers(tmp_path: Path) -> SimpleNamespace:
 
 
 @pytest.fixture
+def tick_holder() -> Callable[..., Any]:
+    """Hold the CTO single-instance lock the way a live tick does.
+
+    Returns a context manager over a store; the lock is taken from this
+    process with the same non-blocking OS primitive a tick uses.
+    """
+    import contextlib
+
+    from context_rail.store.lock import file_lock
+
+    @contextlib.contextmanager
+    def hold(store: Path) -> Any:
+        path = local_dir(Path(store)) / "cto.lock"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with file_lock(path, timeout=0):
+            yield path
+
+    return hold
+
+
+@pytest.fixture
 def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNamespace:
     """An approved picture with a stuck Item, an over-budget Item and a human wait.
 

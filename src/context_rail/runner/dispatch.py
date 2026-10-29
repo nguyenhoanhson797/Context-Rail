@@ -5,6 +5,10 @@ control files that make a launch survivable: where its worktree lives, which
 phase it reached, and the key it was started with. Everything here is written
 under ``local_dir`` (or the OS temporary directory for the checkout itself), so
 nothing lands in the repository tree, its git dir or the store.
+
+The CTO tick keeps the same kind of state: one OS lock in ``local_dir/cto.lock``
+that makes a second concurrent tick impossible, plus the key binding and the
+progress file a replay reads after a crash.
 """
 
 from __future__ import annotations
@@ -21,13 +25,14 @@ from typing import Any
 
 from context_rail.core.util import sha256_hex
 from context_rail.store.location import local_dir, worktree_git_dir
-from context_rail.store.lock import StoreLockTimeout, file_lock
+from context_rail.store.lock import StoreLockTimeout, exclusive_lock, file_lock
 from context_rail.store.write import WriteRefused
 
 __all__ = [
     "DispatchPaths",
     "PROGRESS_STATES",
     "acquire_dispatch_lock",
+    "acquire_tick_lock",
     "dispatch_paths",
     "key_binding_path",
     "pending_dispatches",
@@ -37,22 +42,32 @@ __all__ = [
     "read_progress",
     "read_review_binding",
     "read_review_progress",
+    "read_tick_binding",
+    "read_tick_progress",
     "register_review_worktree",
     "register_worktree",
     "remove_binding",
     "remove_review_binding",
+    "remove_tick_binding",
     "review_binding_path",
     "review_paths",
     "review_progress_path",
+    "tick_binding_path",
+    "tick_lock_path",
+    "tick_progress_path",
     "write_binding",
     "write_progress",
     "write_review_binding",
     "write_review_progress",
+    "write_tick_binding",
+    "write_tick_progress",
     "worktree_root",
 ]
 
 DISPATCH_DIR = "dispatch"
 REVIEW_DIR = "review"
+TICK_DIR = "tick"
+TICK_LOCK = "cto.lock"
 KEY_DIR = "keys"
 LOCK_DIR = "locks"
 WORKTREE_PARENT = "context-rail-worktrees"
@@ -174,6 +189,127 @@ def read_progress(store: Path, dispatch_id: str) -> dict[str, Any] | None:
     except (OSError, ValueError):
         return {"dispatch_id": _dispatch_id(dispatch_id), "corrupt": True}
     return payload if isinstance(payload, dict) else {"dispatch_id": dispatch_id, "corrupt": True}
+
+
+def tick_lock_path(store: Path) -> Path:
+    """The single-instance CTO lock file, beside the write lock's folder."""
+    return local_dir(Path(store)) / TICK_LOCK
+
+
+@contextlib.contextmanager
+def acquire_tick_lock(store: Path) -> Iterator[Path]:
+    """Hold the CTO lock for the whole child; a live holder is a ``CONFLICT``.
+
+    The lock is non-blocking and unrelated to ``write.lock``: a tick keeps it
+    while the CTO runs ``rail`` commands that take the write lock themselves.
+    A holder's own progress file names who holds it.
+    """
+    path = tick_lock_path(store)
+    try:
+        with exclusive_lock(path):
+            yield path
+    except StoreLockTimeout:
+        holder = _tick_holder(store)
+        raise WriteRefused(
+            "CONFLICT",
+            "another CTO tick holds the single-instance lock",
+            {"lock": str(path), "holder": holder},
+        ) from None
+
+
+def _tick_holder(store: Path) -> dict[str, Any]:
+    """The best available description of the tick holding the lock.
+
+    The lock file itself carries no payload, so the holder is the newest
+    unfinished progress file; a corrupt one still blocks, and an unknown
+    holder is reported as such rather than invented.
+    """
+    folder = local_dir(Path(store)) / TICK_DIR
+    candidates: list[dict[str, Any]] = []
+    if folder.is_dir():
+        for path in sorted(folder.glob("*.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                candidates.append({"tick_id": path.stem, "corrupt": True})
+                continue
+            if not isinstance(payload, dict):
+                candidates.append({"tick_id": path.stem, "corrupt": True})
+                continue
+            if payload.get("state") in ("completed", "failed"):
+                continue
+            candidates.append(payload)
+    if not candidates:
+        return {"tick_id": None, "phase": "unknown"}
+    newest = max(candidates, key=lambda entry: str(entry.get("started_at") or ""))
+    return {
+        "tick_id": newest.get("tick_id"),
+        "phase": newest.get("phase", "unknown"),
+        "key": newest.get("key"),
+        "started_at": newest.get("started_at"),
+        "corrupt": bool(newest.get("corrupt")),
+    }
+
+
+def tick_progress_path(store: Path, tick_id: str) -> Path:
+    """The local control file of one tick."""
+    return local_dir(Path(store)) / TICK_DIR / f"{_dispatch_id(tick_id)}.json"
+
+
+def read_tick_progress(store: Path, tick_id: str) -> dict[str, Any] | None:
+    """The stored progress of one tick, or None when there is none."""
+    path = tick_progress_path(store, tick_id)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return {"tick_id": _dispatch_id(tick_id), "corrupt": True}
+    return payload if isinstance(payload, dict) else {"tick_id": tick_id, "corrupt": True}
+
+
+def write_tick_progress(store: Path, tick_id: str, **values: Any) -> dict[str, Any]:
+    """Merge ``values`` into one tick's progress file and return it."""
+    ident = _dispatch_id(tick_id)
+    current = read_tick_progress(store, ident) or {}
+    if current.get("corrupt"):
+        current = {"tick_id": ident, "corrupt": True}
+    merged = {**current, **values, "schema": 1, "tick_id": ident}
+    _write_json(tick_progress_path(store, ident), merged)
+    return merged
+
+
+def tick_binding_path(store: Path, key: str) -> Path:
+    """The local file binding one idempotency key to its tick."""
+    if not isinstance(key, str) or not key.strip():
+        raise WriteRefused("VALIDATION_FAILED", "a tick key must be text")
+    digest = sha256_hex(key.encode("utf-8"))
+    return local_dir(Path(store)) / TICK_DIR / KEY_DIR / f"{digest}.json"
+
+
+def read_tick_binding(store: Path, key: str) -> dict[str, Any] | None:
+    """The tick one key already names, or None."""
+    path = tick_binding_path(store, key)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return {"key": key, "corrupt": True}
+    return payload if isinstance(payload, dict) else {"key": key, "corrupt": True}
+
+
+def write_tick_binding(store: Path, key: str, **values: Any) -> dict[str, Any]:
+    """Persist the key-to-tick binding before the child is launched."""
+    path = tick_binding_path(store, key)
+    payload = {**values, "schema": 1, "key": key}
+    _write_json(path, payload)
+    return payload
+
+
+def remove_tick_binding(store: Path, key: str) -> None:
+    """Forget a tick binding whose launch never reached the droid."""
+    tick_binding_path(store, key).unlink(missing_ok=True)
 
 
 def write_progress(store: Path, dispatch_id: str, **values: Any) -> dict[str, Any]:

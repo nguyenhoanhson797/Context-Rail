@@ -167,6 +167,16 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.cto:brief",
     ),
     Tool(
+        name="cto tick",
+        summary="Launch one bounded CTO droid session behind the single-instance lock.",
+        permission="write",
+        params=(
+            Param("key", "str", required=True, help="idempotency key"),
+            Param("timeout", "int", help="seconds for the child (default: the CTO profile's)"),
+        ),
+        handler="context_rail.gateway.handlers.cto:tick",
+    ),
+    Tool(
         name="digest",
         summary="Summarize activity, waits, reversible decisions, stuck and too-long items.",
         permission="read",

@@ -11,11 +11,15 @@ import yaml
 
 from context_rail.core.util import dump_frontmatter, load_yaml, slugify
 from context_rail.kernel import gates, rights
+from context_rail.model.cto import Profile, parse_profile
+from context_rail.model.errors import ModelError
+from context_rail.model.manifest import render_path
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import RELATIONS
-from context_rail.store.doc import Doc, parse_doc
+from context_rail.store.doc import Doc, etag, parse_doc
 from context_rail.store.git_index import invalid_glob
 from context_rail.store.index import Index
+from context_rail.store.location import PathEscape, confine
 from context_rail.store.write import WriteRefused, resolve_unique
 
 if TYPE_CHECKING:
@@ -420,3 +424,104 @@ def record_data(index: Index, record_id: Any) -> dict[str, Any]:
     except ValueError:
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def profile_document(context: Context, name: str) -> tuple[str, str, Profile]:
+    """The store's own copy of one Actor profile, its etag and its parse.
+
+    Profiles are store documents, so a launch reads the copy the project
+    materialised at onboarding: the shipped profile is never a silent stand-in
+    for a store that lacks one.
+    """
+    candidates: list[tuple[str, bytes, Doc]] = []
+    for preset in context.pack.presets.values():
+        if preset.primitive != "actor":
+            continue
+        try:
+            rel = render_path(
+                context.manifest, primitive="actor", preset=preset.name, slug=name
+            )
+        except ModelError:
+            continue
+        path = Path(context.store) / rel
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        doc = parse_doc(rel, data)
+        if doc.slug == name:
+            candidates.append((rel, data, doc))
+    if not candidates:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"unknown profile {name!r}; onboarding ships the {name} profile",
+            {"profile": name},
+        )
+    if len(candidates) > 1:
+        raise WriteRefused(
+            "CONFLICT",
+            f"{name!r} names more than one profile",
+            {"paths": sorted(rel for rel, _data, _doc in candidates)},
+        )
+    rel, data, doc = candidates[0]
+    try:
+        profile = parse_profile(doc.fields, body=doc.body)
+    except ModelError as error:
+        raise WriteRefused(error.code, error.message) from None
+    return rel, etag(data), profile
+
+
+def skill_pins(context: Context, profile: Profile) -> list[dict[str, Any]]:
+    """Pin every selected skill's source path, version and etag.
+
+    A profile may name a scoped copy; when the store ships only the shared
+    source for the same slug, that source is the document the pin describes.
+    """
+    pins: list[dict[str, Any]] = []
+    for declared in profile.skills:
+        rel, data = _skill_source(context, declared)
+        doc = parse_doc(rel, data)
+        version = doc.fields.get("version")
+        if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"skill {rel!r} carries no positive version",
+                {"skill": rel},
+            )
+        pins.append({"identity": rel, "version": version, "etag": etag(data)})
+    return pins
+
+
+def _skill_source(context: Context, declared: str) -> tuple[str, bytes]:
+    found = _read_confined(context.store, declared)
+    if found is not None:
+        return declared, found
+    stem = PurePosixPath(declared).stem
+    try:
+        shared = render_path(
+            context.manifest, primitive="note", preset="skill", slug=stem
+        )
+    except ModelError:
+        shared = None
+    if shared is not None:
+        found = _read_confined(context.store, shared)
+        if found is not None:
+            return shared, found
+    raise WriteRefused(
+        "VALIDATION_FAILED",
+        f"the profile names a missing skill {declared!r}",
+        {"skill": declared},
+    )
+
+
+def _read_confined(store: Path, rel: str) -> bytes | None:
+    try:
+        path = confine(store, rel)
+    except PathEscape:
+        return None
+    return path.read_bytes() if path.is_file() else None
+
+
+def bounded(text: str, limit: int) -> str:
+    """Text trimmed to ``limit`` characters with one truncation marker."""
+    text = text.strip()
+    return text if len(text) <= limit else text[: limit - 16] + "\n[truncated]"

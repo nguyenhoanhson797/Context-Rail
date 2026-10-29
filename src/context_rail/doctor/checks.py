@@ -52,6 +52,7 @@ SEVERITIES: dict[str, str] = {
     "approval_mismatch": "error",
     "report_untriaged": "warning",
     "report_missing": "error",
+    "run_incomplete": "warning",
     "placement_mismatch": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
@@ -95,6 +96,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_intent_issues(store))
     issues.extend(_approval_issues(store, manifest, pack, ix))
     issues.extend(_report_issues(ix))
+    issues.extend(_run_issues(ix))
     issues.extend(_adapter_issues(store))
     issues.sort(key=lambda issue: (issue["path"], issue["code"]))
 
@@ -411,6 +413,50 @@ def _report_issues(ix: Index) -> list[dict[str, Any]]:
                 path,
                 f"report {record_id!r} has not been triaged",
                 fix=_TRIAGE,
+            )
+        )
+    return issues
+
+
+def _run_issues(ix: Index) -> list[dict[str, Any]]:
+    """One issue per tick that announced itself and never recorded a run.
+
+    A tick writes ``tick.started`` before it builds its prompts or launches the
+    droid, so an unmatched one means a session that never got as far as its own
+    ``run.completed``. Both sides are read from the index the caller already
+    synced, so the check never scans the store or reads the local control files.
+    """
+    recorded = {
+        row[0]
+        for row in ix.conn.execute(
+            "SELECT dispatch_id FROM runs WHERE role = 'cto'"
+        )
+    }
+    issues: list[dict[str, Any]] = []
+    for path, data_json in ix.conn.execute(
+        "SELECT d.path, f.value_json FROM docs d JOIN fields f ON f.path = d.path "
+        "WHERE d.primitive = 'record' AND d.broken = 0 AND f.key = 'data' "
+        "ORDER BY d.path"
+    ):
+        kind = ix.conn.execute(
+            "SELECT f.value_json FROM fields f WHERE f.path = ? AND f.key = 'kind'",
+            (path,),
+        ).fetchone()
+        if kind is None or kind[0] != '"tick.started"':
+            continue
+        try:
+            data = json.loads(data_json)
+        except ValueError:
+            continue
+        dispatch_id = data.get("dispatch_id") if isinstance(data, dict) else None
+        if dispatch_id in recorded:
+            continue
+        issues.append(
+            _issue(
+                "run_incomplete",
+                path,
+                f"the CTO tick {dispatch_id!r} started but recorded no completed run",
+                fix="rail cto tick --key <key>",
             )
         )
     return issues
