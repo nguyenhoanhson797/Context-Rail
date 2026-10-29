@@ -157,6 +157,39 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.reports:triage",
     ),
     Tool(
+        name="cto brief",
+        summary="Assemble the bounded CTO brief from the indexed project state.",
+        permission="read",
+        params=(
+            Param("max_chars", "int", default=12000, help="character budget (100-32000)"),
+            Param("item_limit", "int", default=20, help="entries per section (1-100)"),
+        ),
+        handler="context_rail.gateway.handlers.cto:brief",
+    ),
+    Tool(
+        name="digest",
+        summary="Summarize activity, waits, reversible decisions, stuck and too-long items.",
+        permission="read",
+        params=(
+            Param("since", "str", help="UTC timestamp: activity from then on"),
+            Param("limit", "int", default=20, help="rows per list (1-100)"),
+            Param("max_chars", "int", default=12000, help="summary budget (100-32000)"),
+        ),
+        handler="context_rail.gateway.handlers.views:digest",
+    ),
+    Tool(
+        name="ledger",
+        summary="List runs with attempt-counted usage and unknown counters kept apart.",
+        permission="read",
+        params=(
+            Param("item", "str", help="Item slug"),
+            Param("profile", "str", help="profile name"),
+            Param("since", "str", help="UTC timestamp: runs that ended from then on"),
+            Param("limit", "int", default=20, help="rows (1-100)"),
+        ),
+        handler="context_rail.gateway.handlers.views:ledger",
+    ),
+    Tool(
         name="add",
         summary="Create one document from a preset.",
         permission="write",

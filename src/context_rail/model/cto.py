@@ -802,7 +802,7 @@ def parse_run(data: dict[str, Any]) -> Run:
         actor=string(payload["actor"], "run.actor"),
         profile=string(payload["profile"], "run.profile"),
         model=string(payload["model"], "run.model"),
-        item=string(payload["item"], "run.item"),
+        item=_run_item(payload["item"], role),
         started_at=string(payload["started_at"], "run.started_at"),
         ended_at=string(payload["ended_at"], "run.ended_at"),
         duration_s=finite_number(payload["duration_s"], "run.duration_s", minimum=0),
@@ -811,6 +811,13 @@ def parse_run(data: dict[str, Any]) -> Run:
         usage=normalized["usage"],
         data=normalized,
     )
+
+
+def _run_item(raw: Any, role: str) -> str:
+    """A worker run names its Item; the CTO's own tick run has none."""
+    if raw is None and role == "cto":
+        return ""
+    return string(raw, "run.item")
 
 
 def _attempt(raw: Any, index: int) -> dict[str, Any]:

@@ -8,6 +8,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Iterator
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1057,5 +1058,206 @@ def droid_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
             monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("FACTORY_API_KEY", "SECRET-TEST-7f3a")
     return dict(os.environ)
+
+
+_VIEW_STAMP = "2026-10-28T12:00:00Z"
+
+
+def _hours_ago(hours: float) -> str:
+    stamp = datetime.now(timezone.utc) - timedelta(hours=hours)
+    return stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _write_item_doc(store: Path, slug: str, title: str, status: str) -> Path:
+    """Seed one plain Item file, as a hand-created document looks on disk."""
+    path = Path(store) / "items" / "task" / f"{slug}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\n"
+        "primitive: item\n"
+        "preset: task\n"
+        f"title: {title}\n"
+        f"status: {status}\n"
+        "tags: [task]\n"
+        f"created: '{_VIEW_STAMP}'\n"
+        f"updated: '{_VIEW_STAMP}'\n"
+        "---\n"
+        f"# {title}\n\n{title}.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return path
+
+
+def _write_report(
+    store: Path,
+    record_id: str,
+    *,
+    item: str,
+    target_class: str,
+    target: str,
+    what_happened: str,
+    at: str = _VIEW_STAMP,
+    run: str | None = None,
+) -> Path:
+    """Seed one valid report Record about an Item."""
+    return write_record(
+        store,
+        record_id,
+        "report.filed",
+        {
+            "schema": 1,
+            "target_class": target_class,
+            "target": target,
+            "item": item,
+            "run": run,
+            "nothing_to_report": False,
+            "what_happened": what_happened,
+            "expected": "the declared behaviour holds",
+            "observed": "it did not",
+            "impact": "medium",
+            "evidence": [],
+            "fingerprint": f"{target_class}|{target}|the declared behaviour holds|it did not",
+        },
+        at=at,
+        about=(item,),
+    )
+
+
+@pytest.fixture
+def brief_store(approved_store: Path) -> Path:
+    """An approved picture with a leaf Item, an untriaged report and a reversible decision."""
+    store = approved_store
+    for title in ("Login page", "Sign in"):
+        added = invoke("add", {"preset": "task", "title": title}, store=store, actor="cto")
+        assert is_ok(added), added
+    linked = invoke(
+        "link",
+        {
+            "src": "sign-in",
+            "rel": "depends_on",
+            "dst": "login-page",
+            "expect": invoke("show", {"slug": "sign-in"}, store=store)["value"]["doc"]["etag"],
+            "reason": "reuses the login parser",
+        },
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(linked), linked
+    _write_report(
+        store,
+        "01JVIEWREPORT00000000001",
+        item="login-page",
+        target_class="item",
+        target="login-page",
+        what_happened="the form rejects the demo account",
+    )
+    return store
+
+
+@pytest.fixture
+def large_brief_store(tmp_path: Path) -> Path:
+    """A 120-document store with far more Items than one brief page shows."""
+    return make_store(tmp_path / "brief-large", 120)
+
+
+@pytest.fixture
+def unknown_usage_run(tmp_path: Path) -> SimpleNamespace:
+    """One implementer run whose attempt reported no usage at all."""
+    store = make_store(tmp_path / "unknown-usage", 6)
+    write_run(store, "01JUNKNOWNUSAGE0000000001", item="t0", usage={}, at=_VIEW_STAMP)
+    return SimpleNamespace(store=store, item="t0")
+
+
+@pytest.fixture
+def tick_with_workers(tmp_path: Path) -> SimpleNamespace:
+    """A CTO tick run beside one worker run, each with its own attempt usage."""
+    store = make_store(tmp_path / "tick", 6)
+    write_run(
+        store,
+        "01JWORKERRUN00000000000001",
+        item="t0",
+        dispatch="dispatch-worker",
+        usage={"input_tokens": 7, "output_tokens": 5, "factory_credits": 1},
+        at=_VIEW_STAMP,
+    )
+    write_run(
+        store,
+        "01JTICKRUN0000000000000001",
+        item=None,
+        role="cto",
+        dispatch="tick-1",
+        usage={"input_tokens": 3, "output_tokens": 2, "factory_credits": 1},
+        at="2026-10-28T12:01:00Z",
+    )
+    return SimpleNamespace(store=store, worker_input=7, tick_input=3)
+
+
+@pytest.fixture
+def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNamespace:
+    """An approved picture with a stuck Item, an over-budget Item and a human wait.
+
+    The charter sets ``stuck_hours`` to 1 and the Item budget to 60 seconds, so a
+    three-hour-old activity Record and a 120-second implementer run both exceed it.
+    """
+    picture = picture_answers
+    picture["charter"]["thresholds"]["stuck_hours"] = 1
+    picture["charter"]["budgets"]["item"]["seconds"] = 60
+    answers = _write_answers(tmp_path / "digest-answers.json", picture)
+    started = invoke(
+        "init",
+        {"dir": str(tmp_path), "answers_file": str(answers), "confirm": "APPROVE charter"},
+        actor="human",
+    )
+    assert is_ok(started), started
+    store = tmp_path / "context-rail"
+    approved = approve_picture(store)
+    assert is_ok(approved), approved
+
+    stuck = "stuck-task"
+    too_long = "long-task"
+    _write_item_doc(store, stuck, "Stuck task", "doing")
+    _write_item_doc(store, too_long, "Long task", "todo")
+    write_record(
+        store,
+        "01JSTUCKACTIVITY0000000001",
+        "item.updated",
+        {"schema": 1, "item": stuck},
+        at=_hours_ago(3),
+        about=(stuck,),
+    )
+    write_run(
+        store,
+        "01JLONGRUN00000000000000001",
+        item=too_long,
+        dispatch="dispatch-long",
+        duration=120.0,
+        at=_VIEW_STAMP,
+    )
+    _write_report(
+        store,
+        "01JHUMANWAIT000000000000001",
+        item=stuck,
+        target_class="human-wait",
+        target="payer copy",
+        what_happened="the reminder copy needs a human decision",
+    )
+    for title in ("Login page", "Sign in"):
+        added = invoke("add", {"preset": "task", "title": title}, store=store, actor="cto")
+        assert is_ok(added), added
+    linked = invoke(
+        "link",
+        {
+            "src": "sign-in",
+            "rel": "depends_on",
+            "dst": "login-page",
+            "expect": invoke("show", {"slug": "sign-in"}, store=store)["value"]["doc"]["etag"],
+            "reason": "reuses the login parser",
+        },
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(linked), linked
+    return SimpleNamespace(store=store, stuck=stuck, too_long=too_long)
 
 

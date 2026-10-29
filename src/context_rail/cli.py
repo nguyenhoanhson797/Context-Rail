@@ -9,6 +9,7 @@ exits 2. Parser errors print one VALIDATION_FAILED envelope and exit 1.
 import argparse
 import json
 import sys
+from dataclasses import replace
 
 from context_rail.gateway.tools import TOOLS, Param, Tool
 
@@ -42,7 +43,9 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _subcommands(parent: argparse.ArgumentParser, tools: tuple[Tool, ...]) -> None:
+def _subcommands(
+    parent: argparse.ArgumentParser, tools: tuple[Tool, ...], prefix: str = ""
+) -> None:
     subparsers = parent.add_subparsers(dest="group", required=True, metavar="command")
     nested: dict[str, list[Tool]] = {}
     for tool in tools:
@@ -53,11 +56,14 @@ def _subcommands(parent: argparse.ArgumentParser, tools: tuple[Tool, ...]) -> No
         parser = subparsers.add_parser(
             tool.name, help=tool.summary, description=tool.summary
         )
-        parser.set_defaults(_tool=tool.name)
+        parser.set_defaults(_tool=prefix + tool.name)
         _tool_params(parser, tool)
     for head, grouped in nested.items():
         parser = subparsers.add_parser(head, help=f"{head} commands")
-        _subcommands(parser, tuple(grouped))
+        rest_names = tuple(
+            replace(tool, name=tool.name[len(head) + 1 :]) for tool in grouped
+        )
+        _subcommands(parser, rest_names, f"{prefix}{head} ")
 
 
 def _tool_params(parser: argparse.ArgumentParser, tool: Tool) -> None:

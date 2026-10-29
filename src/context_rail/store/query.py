@@ -28,10 +28,13 @@ __all__ = [
     "check_states",
     "digest_rows",
     "find",
+    "human_proposals",
     "last_activity_ms",
     "ledger",
     "records_about",
+    "rejected_reviews",
     "report_for_run",
+    "reversible_decisions",
     "review_for",
     "review_for_item",
     "run_facts",
@@ -39,6 +42,7 @@ __all__ = [
     "show",
     "triage_runs",
     "untriaged_reports",
+    "worker_totals",
 ]
 
 DEFAULT_LIMIT = 50
@@ -461,7 +465,7 @@ def ledger(
                 "record_id": record_id,
                 "dispatch_id": dispatch_id,
                 "role": role,
-                "item": item_name,
+                "item": item_name or None,
                 "profile": profile_name,
                 "model": model,
                 "start": start,
@@ -471,7 +475,7 @@ def ledger(
                 "attempt_count": attempt_count,
                 "candidate_commit": candidate,
                 "accepted": None if accepted is None else bool(accepted),
-                "usage": _visible_usage(usage.get(record_id, ())),
+                "usage": _attempt_usage(usage.get(record_id, ())),
                 "report": report,
             }
         )
@@ -561,7 +565,7 @@ def run_record(ix: Index, run_id: str) -> dict[str, Any] | None:
         "record_id": record_id,
         "dispatch_id": dispatch_id,
         "role": role,
-        "item": item,
+        "item": item or None,
         "actor": payload.get("actor"),
         "profile": profile,
         "profile_version": version,
@@ -762,6 +766,128 @@ def approval_for(ix: Index, target: str) -> dict[str, Any] | None:
     }
 
 
+def reversible_decisions(
+    ix: Index, since: str | None = None, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Newest decision Records whose payload names ``cto-reversible``.
+
+    The class lives in the Record's data, never in its kind, so this reads the
+    payload and re-checks the class it found instead of trusting the filter.
+    """
+    limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
+    since = _since(since)
+    clause = (
+        "WHERE d.primitive = 'record' AND d.broken = 0 "
+        "AND f2.value_json LIKE '%\"decision_class\":\"cto-reversible\"%'"
+    )
+    params: list[Any] = []
+    if since is not None:
+        clause += " AND d.record_at IS NOT NULL AND d.record_at >= ?"
+        params.append(_iso_ms(since))
+    rows = ix.conn.execute(
+        "SELECT d.slug, d.path, d.record_at, f2.value_json, "
+        "(SELECT group_concat(r.dst, ',') FROM relations r "
+        " WHERE r.src_path = d.path AND r.rel = 'about') "
+        "FROM docs d "
+        "JOIN fields f1 ON f1.path = d.path AND f1.key = 'kind' "
+        " AND f1.value_json = '\"decision.made\"' "
+        "JOIN fields f2 ON f2.path = d.path AND f2.key = 'data' "
+        f"{clause} ORDER BY d.record_at DESC, d.slug DESC LIMIT ?",
+        [*params, limit],
+    ).fetchall()
+    found: list[dict[str, Any]] = []
+    for slug, path, at, payload_json, about in rows:
+        payload = json.loads(payload_json)
+        if not isinstance(payload, dict) or payload.get("decision_class") != "cto-reversible":
+            continue
+        found.append(
+            {
+                "decision": slug,
+                "record_id": slug,
+                "class": payload.get("decision_class"),
+                "reason": payload.get("reason"),
+                "before": payload.get("before"),
+                "after": payload.get("after"),
+                "item": (about or "").split(",")[0] or None,
+                "about": [name for name in (about or "").split(",") if name],
+                "at": None if at is None else _iso(at),
+                "path": path,
+            }
+        )
+    return found
+
+
+def human_proposals(ix: Index, limit: int = 20) -> list[dict[str, Any]]:
+    """Open proposal Notes whose decision class waits on a human."""
+    limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
+    rows = ix.conn.execute(
+        "SELECT d.slug, d.title, d.updated, p.value_json FROM docs d "
+        "JOIN fields f ON f.path = d.path AND f.key = 'decision_class' "
+        " AND f.value_json = '\"human-only\"' "
+        "LEFT JOIN fields p ON p.path = d.path AND p.key = 'proposed_change' "
+        "WHERE d.primitive = 'note' AND d.broken = 0 "
+        "ORDER BY d.updated DESC, d.slug DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "slug": slug,
+            "item": slug,
+            "title": title,
+            "proposed_change": None if change is None else json.loads(change),
+            "updated": updated,
+        }
+        for slug, title, updated, change in rows
+    ]
+
+
+def rejected_reviews(
+    ix: Index, since: str | None = None, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Newest rejecting reviews, kept apart from what the runs were accepted as."""
+    limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
+    since = _since(since)
+    clause = "WHERE r.verdict = 'reject'"
+    params: list[Any] = []
+    if since is not None:
+        clause += " AND d.record_at IS NOT NULL AND d.record_at >= ?"
+        params.append(_iso_ms(since))
+    rows = ix.conn.execute(
+        "SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.reviewer, "
+        f'd.record_at FROM reviews r JOIN docs d ON d.path = r.path {clause} '
+        'ORDER BY d.record_at DESC, r.record_id DESC LIMIT ?',
+        [*params, limit],
+    ).fetchall()
+    return [
+        {
+            "review": record_id,
+            "record_id": record_id,
+            "item": item,
+            "run": run_id,
+            "candidate_commit": candidate,
+            "reviewer": reviewer,
+            "at": None if at is None else _iso(at),
+        }
+        for record_id, item, run_id, candidate, reviewer, at in rows
+    ]
+
+
+def worker_totals(ix: Index) -> dict[str, dict[str, Any]]:
+    """Attempts and measured seconds per Item, summed from worker run rows only.
+
+    A CTO tick's own run carries no Item and is excluded, so its overhead never
+    counts against the Item's budget.
+    """
+    rows = ix.conn.execute(
+        'SELECT item, SUM(attempt_count), SUM(duration_s) FROM runs '
+        "WHERE role IN ('implementer', 'reviewer') AND item <> '' GROUP BY item"
+    ).fetchall()
+    return {
+        item: {"attempts": int(attempts or 0), "seconds": float(seconds or 0.0)}
+        for item, attempts, seconds in rows
+    }
+
+
 def brief_rows(ix: Index, limit: int = 20) -> dict[str, Any]:
     """Complete counts plus bounded feeds for the CTO brief sections."""
     limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
@@ -886,13 +1012,22 @@ def digest_rows(
         review_params,
     )
     accepted = _scalar(
-        ix, f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted = 1", params
+        ix,
+        f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted = 1 "
+        "AND r.role = 'implementer'",
+        params,
     )
     rejected = _scalar(
-        ix, f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted = 0", params
+        ix,
+        f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted = 0 "
+        "AND r.role = 'implementer'",
+        params,
     )
     pending = _scalar(
-        ix, f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted IS NULL", params
+        ix,
+        f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted IS NULL "
+        "AND r.role = 'implementer'",
+        params,
     )
     reports = [
         {
@@ -999,6 +1134,21 @@ def _visible_usage(usages: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]
     }
 
 
+def _attempt_usage(usages: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """One run's counters: a sum when every attempt reported it, else ``unknown``."""
+    totals: dict[str, Any] = {}
+    for key in USAGE_KEYS:
+        known: int | float | None = 0
+        for raw in usages:
+            value = raw.get(key, "unknown") if isinstance(raw, dict) else "unknown"
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                known = None
+                break
+            known += value
+        totals[key] = "unknown" if known is None else known
+    return totals
+
+
 def _item_rows(ix: Index, limit: int) -> list[dict[str, Any]]:
     return [
         {
@@ -1050,6 +1200,13 @@ def _iso_ms(canonical: str) -> int:
         canonical, "%Y-%m-%dT%H:%M:%SZ"
     ).replace(tzinfo=timezone.utc)
     return int(stamp.timestamp() * 1000)
+
+
+def _iso(milliseconds: int) -> str:
+    """The canonical UTC stamp of an indexed millisecond value."""
+    return datetime.fromtimestamp(milliseconds / 1000, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
 
 def _and(since: str | None) -> str:

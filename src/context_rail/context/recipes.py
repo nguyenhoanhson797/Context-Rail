@@ -1,0 +1,764 @@
+"""Indexed selections and bounded renderers behind the computed CTO views.
+
+Everything here reads the index plus the protected store files one approval
+hash covers. Nothing executes a command, hashes a source tree or scans the
+store, and every list is bounded with its omissions counted.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
+
+from context_rail.kernel import budgets, structure
+from context_rail.model.cto import USAGE_KEYS
+from context_rail.store import query
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from context_rail.gateway.gateway import Context
+
+BRIEF_CHARS = 12000
+BRIEF_MAX_CHARS = 32000
+BRIEF_CHARS_BOUNDS = (100, BRIEF_MAX_CHARS)
+BRIEF_LIMIT = 20
+BRIEF_LIMIT_BOUNDS = (1, 100)
+DIGEST_LIMIT_BOUNDS = (1, 100)
+STUCK_HOURS_DEFAULT = 24.0
+NEAR_RATIO_DEFAULT = 0.8
+CHARTER_TARGET = "charter"
+EXCERPT_CHARS = 160
+SECTION_KEYS = (
+    "approval",
+    "goal",
+    "charter",
+    "reports",
+    "executable",
+    "active",
+    "quality",
+    "reversible",
+    "conventions",
+)
+_SECTION_TITLES = {
+    "approval": "Approval and human waits",
+    "goal": "Goal and scope",
+    "charter": "Charter gates, rights and budgets",
+    "reports": "Reports to triage",
+    "executable": "Executable items and dependencies",
+    "active": "Active, stuck and too-long items",
+    "quality": "Quality: runs, checks and reviews",
+    "reversible": "Reversible decisions",
+    "conventions": "Conventions and memory",
+}
+_PRIORITIES = ("must", "should", "could", "wont")
+
+
+@dataclass
+class Section:
+    """One brief section: its pinned title, kept lines and trimmable entries."""
+
+    key: str
+    fixed: list[str] = field(default_factory=list)
+    entries: list[str] = field(default_factory=list)
+
+    @property
+    def title(self) -> str:
+        return _SECTION_TITLES[self.key]
+
+    def render(self) -> str:
+        lines = [f"## {self.title}", *self.fixed]
+        lines.extend(f"- {entry}" for entry in self.entries)
+        return "\n".join(lines)
+
+
+# ── shared selections ─────────────────────────────────────────────────────
+
+
+def item_rows(ix: Any) -> list[structure.ItemRow]:
+    """Every Item with its part_of/depends_on edges and newest activity."""
+    edges: dict[str, dict[str, list[str]]] = {}
+    for src, rel, dst in ix.conn.execute(
+        "SELECT r.src, r.rel, r.dst FROM relations r JOIN docs d ON d.path = r.src_path "
+        "WHERE d.primitive = 'item' AND d.broken = 0 "
+        "AND r.rel IN ('part_of', 'depends_on')"
+    ):
+        edges.setdefault(src, {}).setdefault(rel, []).append(dst)
+    activity = query.last_activity_ms(ix)
+    rows = ix.conn.execute(
+        "SELECT slug, category FROM docs WHERE primitive = 'item' AND broken = 0"
+    ).fetchall()
+    return [
+        structure.ItemRow(
+            slug=slug,
+            category=category,
+            part_of=tuple(sorted(edges.get(slug, {}).get("part_of", ()))),
+            depends_on=tuple(sorted(edges.get(slug, {}).get("depends_on", ()))),
+            last_activity_ms=activity.get(slug),
+        )
+        for slug, category in rows
+    ]
+
+
+def item_titles(ix: Any) -> dict[str, str]:
+    """The title each Item slug carries, for display only."""
+    return {
+        slug: title or slug
+        for slug, title in ix.conn.execute(
+            "SELECT slug, title FROM docs WHERE primitive = 'item' AND broken = 0"
+        )
+    }
+
+
+def stuck_window_ms(context: Context) -> int:
+    """The stuck window the approved charter set, else the pack's own policy."""
+    policy = context.policy
+    if policy is not None:
+        hours = policy.thresholds.get("stuck_hours")
+    else:
+        hours = context.pack.policy.get("stuck_hours")
+    return int(float(hours if hours is not None else STUCK_HOURS_DEFAULT) * 3600 * 1000)
+
+
+def stuck_rows(
+    items: Sequence[structure.ItemRow],
+    now_ms: int,
+    window_ms: int,
+    titles: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Every stuck Item, quietest first."""
+    by_slug = {item.slug: item for item in items}
+    rows: list[dict[str, Any]] = []
+    for slug in structure.stuck(list(items), now_ms, window_ms):
+        item = by_slug[slug]
+        quiet = None
+        if item.last_activity_ms is not None:
+            quiet = max(now_ms - item.last_activity_ms, 0) / 1000
+        rows.append(
+            {
+                "slug": slug,
+                "title": titles.get(slug, slug),
+                "category": item.category,
+                "last_activity": None
+                if item.last_activity_ms is None
+                else _iso(item.last_activity_ms),
+                "quiet_s": quiet,
+                "quiet_hours": None if quiet is None else round(quiet / 3600, 1),
+            }
+        )
+    rows.sort(key=lambda row: (-(row["quiet_s"] or 0), row["slug"]))
+    return rows
+
+
+def too_long_rows(
+    context: Context, items: Sequence[structure.ItemRow]
+) -> list[dict[str, Any]]:
+    """Every open Item whose worker attempts or runtime exceed the item budget."""
+    policy = context.policy
+    caps: dict[str, Any] = {} if policy is None else policy.budgets
+    totals = query.worker_totals(context.index)
+    facts = [
+        budgets.ItemFacts(
+            slug=item.slug,
+            category=item.category or "not_started",
+            last_activity_s=(item.last_activity_ms or 0) / 1000,
+            dependencies=item.depends_on,
+        )
+        for item in items
+    ]
+    runs = [
+        budgets.RunFacts(
+            item=slug,
+            role="implementer",
+            attempts=measured["attempts"],
+            seconds=measured["seconds"],
+            usage=(),
+        )
+        for slug, measured in sorted(totals.items())
+    ]
+    near_ratio = NEAR_RATIO_DEFAULT
+    if policy is not None:
+        near_ratio = float(policy.thresholds.get("near_budget_ratio", NEAR_RATIO_DEFAULT))
+    item_caps = caps.get("item", {}) if isinstance(caps, dict) else {}
+    cap = budgets.Budget(
+        attempts=item_caps.get("attempts"),
+        seconds=item_caps.get("seconds"),
+        tokens=item_caps.get("tokens"),
+        credits=item_caps.get("credits"),
+    )
+    titles = item_titles(context.index)
+    rows: list[dict[str, Any]] = []
+    for slug in budgets.too_long(facts, runs, caps):
+        measured = totals.get(slug, {"attempts": 0, "seconds": 0.0})
+        own = [run for run in runs if run.item == slug]
+        state = budgets.budget_state(own, cap, near_ratio)
+        rows.append(
+            {
+                "slug": slug,
+                "title": titles.get(slug, slug),
+                "attempts": measured["attempts"],
+                "seconds": measured["seconds"],
+                "reasons": list(state.reasons),
+            }
+        )
+    return rows
+
+
+def freshness(context: Context, row: dict[str, Any] | None) -> str:
+    """How much a stored verdict still says about the checkout, from files only."""
+    from context_rail.gateway.handlers.checks import freshness_of
+
+    return freshness_of(context, row)
+
+
+def check_rows(context: Context, limit: int) -> tuple[list[dict[str, Any]], int]:
+    """The Check states with their freshness, bounded, plus the omitted count."""
+    rows = query.check_states(context.index)
+    shown = [
+        {
+            "check": row["slug"],
+            "item": row["item"],
+            "passed": row["passed"],
+            "freshness": freshness(context, row),
+        }
+        for row in rows[:limit]
+    ]
+    return shown, max(len(rows) - limit, 0)
+
+
+def human_waits(
+    context: Context, reports: Sequence[dict[str, Any]], limit: int
+) -> tuple[list[dict[str, Any]], int]:
+    """Items and proposals waiting on a human, bounded, with the omitted count."""
+    rows: list[dict[str, Any]] = []
+    for report in reports:
+        if report.get("target_class") != "human-wait":
+            continue
+        rows.append(
+            {
+                "kind": "report",
+                "item": report.get("item"),
+                "report": report.get("report"),
+                "reason": _narrative(report.get("data"), "what_happened")
+                or report.get("target"),
+                "at": report.get("at"),
+            }
+        )
+    for proposal in query.human_proposals(context.index, limit):
+        rows.append(
+            {
+                "kind": "proposal",
+                "item": proposal.get("slug"),
+                "report": None,
+                "reason": proposal.get("proposed_change"),
+                "at": proposal.get("updated"),
+            }
+        )
+    return rows[:limit], max(len(rows) - limit, 0)
+
+
+# ── the brief ─────────────────────────────────────────────────────────────
+
+
+def brief(
+    context: Context, *, max_chars: int = BRIEF_CHARS, item_limit: int = BRIEF_LIMIT
+) -> dict[str, Any]:
+    """The bounded CTO brief, its sections in the pinned priority order."""
+    chars = _bounded(max_chars, BRIEF_CHARS_BOUNDS, "max_chars")
+    limit = _bounded(item_limit, BRIEF_LIMIT_BOUNDS, "item_limit")
+    index = context.index
+    approval = approval_state(context)
+    rows = query.brief_rows(index, limit)
+    activity = query.digest_rows(index, None, limit)
+    items = item_rows(index)
+    titles = item_titles(index)
+    now_ms = int(time.time() * 1000)
+    stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
+    long_items = too_long_rows(context, items)
+    waits, waits_omitted = human_waits(context, rows["reports"], limit)
+    decisions = query.reversible_decisions(index, limit=limit)
+    checks, checks_omitted = check_rows(context, limit)
+    sections, omitted = _brief_sections(
+        context,
+        approval=approval,
+        counts=rows["counts"],
+        reports=rows["reports"],
+        activity=activity,
+        items=items,
+        titles=titles,
+        stuck=stuck,
+        too_long=long_items,
+        waits=waits,
+        waits_omitted=waits_omitted,
+        decisions=decisions,
+        checks=checks,
+        checks_omitted=checks_omitted,
+        limit=limit,
+    )
+    text, trimmed = _fit(sections, chars)
+    for key, count in trimmed.items():
+        omitted[key] += count
+    return {
+        "text": text,
+        "estimated_tokens": estimate_tokens(text),
+        "omitted": omitted,
+        "approval": approval,
+        "state": {
+            "approval": approval["state"],
+            "counts": rows["counts"],
+            "stuck": len(stuck),
+            "too_long": len(long_items),
+            "needs_human": len(waits) + waits_omitted,
+        },
+    }
+
+
+def _brief_sections(
+    context: Context,
+    *,
+    approval: dict[str, Any],
+    counts: dict[str, Any],
+    reports: Sequence[dict[str, Any]],
+    activity: dict[str, Any],
+    items: Sequence[structure.ItemRow],
+    titles: dict[str, str],
+    stuck: Sequence[dict[str, Any]],
+    too_long: Sequence[dict[str, Any]],
+    waits: Sequence[dict[str, Any]],
+    waits_omitted: int,
+    decisions: Sequence[dict[str, Any]],
+    checks: Sequence[dict[str, Any]],
+    checks_omitted: int,
+    limit: int,
+) -> tuple[list[Section], dict[str, int]]:
+    sections = [Section(key) for key in SECTION_KEYS]
+    by_key = {section.key: section for section in sections}
+    omitted = dict.fromkeys(SECTION_KEYS, 0)
+
+    approval_section = by_key["approval"]
+    approval_section.fixed.append(f"charter approval: {approval['state']}")
+    if approval["state"] != "approved":
+        approval_section.fixed.append(
+            "blocked: nothing executes until a human approves the charter"
+        )
+    if approval.get("confirmer"):
+        approval_section.fixed.append(
+            f"approved by {approval['confirmer']} in {approval['latest_record']}"
+        )
+    approval_section.entries.extend(_wait_line(row) for row in waits)
+    omitted["approval"] = waits_omitted
+
+    goal_section = by_key["goal"]
+    goal, scope, wont = picture(context.index)
+    for title in goal[:limit]:
+        goal_section.fixed.append(f"Goal: {title}")
+    available = [f"{priority}: {title}" for priority, title in scope]
+    available.extend(f"won't: {title}" for title in wont)
+    goal_section.entries.extend(available[:limit])
+    omitted["goal"] = max(len(available) - limit, 0) + max(len(goal) - limit, 0)
+
+    charter_section = by_key["charter"]
+    charter_section.fixed.extend(_charter_lines(context))
+    if context.policy is None:
+        charter_section.entries.append("no charter document yet")
+
+    report_section = by_key["reports"]
+    report_counts = counts["reports"]
+    report_section.fixed.append(
+        f"untriaged: {report_counts['untriaged']} of {report_counts['total']}"
+    )
+    report_section.entries.extend(_report_line(row) for row in reports[:limit])
+    omitted["reports"] = max(report_counts["untriaged"] - min(len(reports), limit), 0)
+
+    executable_section = by_key["executable"]
+    runnable = structure.executable(list(items))
+    held = structure.blocked(list(items))
+    executable_section.fixed.append(f"executable: {len(runnable)} of {len(items)} item(s)")
+    available = [f"run {slug} — {titles.get(slug, slug)}" for slug in runnable]
+    available.extend(f"wait {slug} — blocked by {held[slug]}" for slug in sorted(held))
+    executable_section.entries.extend(available[:limit])
+    omitted["executable"] = max(len(available) - limit, 0)
+
+    active_section = by_key["active"]
+    categories = counts["items"]["by_category"]
+    active_section.fixed.append(
+        f"active: {categories.get('active', 0)} stuck: {len(stuck)} too long: {len(too_long)}"
+    )
+    available = [
+        f"stuck {row['slug']} — quiet for {_hours(row['quiet_hours'])}" for row in stuck
+    ]
+    available.extend(
+        f"too long {row['slug']} — {row['attempts']} attempt(s), {_seconds(row['seconds'])}"
+        for row in too_long
+    )
+    available.extend(
+        f"active {item.slug} — {titles.get(item.slug, item.slug)}"
+        for item in items
+        if item.category == "active"
+    )
+    active_section.entries.extend(available[:limit])
+    omitted["active"] = max(len(available) - limit, 0)
+
+    quality_section = by_key["quality"]
+    quality_section.fixed.extend(_quality_lines(activity))
+    available = [_run_line(row) for row in activity["runs"]]
+    available.extend(
+        f"review rejected {row['review']} — {row['item'] or '-'} (run {row['run'] or '-'})"
+        for row in query.rejected_reviews(context.index, limit=limit)
+    )
+    available.extend(
+        f"check {row['check']} — {row['item'] or '-'} "
+        f"{'passed' if row['passed'] else 'unproven'}, freshness {row['freshness']}"
+        for row in checks
+    )
+    quality_section.entries.extend(available[:limit])
+    omitted["quality"] = max(len(available) - limit, 0) + checks_omitted
+
+    reversible_section = by_key["reversible"]
+    if decisions:
+        reversible_section.entries.extend(_decision_line(row) for row in decisions)
+        omitted["reversible"] = max(len(decisions) - limit, 0)
+    else:
+        reversible_section.fixed.append("none")
+
+    conventions_section = by_key["conventions"]
+    memory, memory_omitted = _memory_rows(context.index, limit)
+    conventions_section.entries.extend(memory)
+    omitted["conventions"] = memory_omitted
+    return sections, omitted
+
+
+# ── the digest ────────────────────────────────────────────────────────────
+
+
+def digest(
+    context: Context,
+    *,
+    since: str | None = None,
+    limit: int = BRIEF_LIMIT,
+    max_chars: int = BRIEF_CHARS,
+) -> dict[str, Any]:
+    """The bounded digest: state counts, waits, decisions, stuck and quality."""
+    chars = _bounded(max_chars, BRIEF_CHARS_BOUNDS, "max_chars")
+    page = _bounded(limit, DIGEST_LIMIT_BOUNDS, "limit")
+    index = context.index
+    activity = query.digest_rows(index, since, page)
+    approval = approval_state(context)
+    items = item_rows(index)
+    titles = item_titles(index)
+    now_ms = int(time.time() * 1000)
+    stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
+    long_items = too_long_rows(context, items)
+    waits, waits_omitted = human_waits(
+        context, query.untriaged_reports(index, page), page
+    )
+    decisions = query.reversible_decisions(index, since, page)
+    rejected = query.rejected_reviews(index, since, page)
+    counts = activity["counts"]
+    runnable = structure.executable(list(items))
+    recent_reports = activity["reports"]
+    return {
+        "summary": {
+            "text": _clip(
+                _summary_text(approval, counts, runnable, stuck, long_items), chars
+            ),
+            "counts": {
+                "items": len(items),
+                "executable": len(runnable),
+                "stuck": len(stuck),
+                "too_long": len(long_items),
+                "runs": counts["runs"],
+                "reports": counts["reports"],
+                "untriaged_reports": counts["untriaged_reports"],
+            },
+            "approval": approval["state"],
+        },
+        "needs_human": list(waits),
+        "reversible_decisions": list(decisions),
+        "stuck": list(stuck[:page]),
+        "too_long": list(long_items[:page]),
+        "quality": {
+            "checks": {
+                "passed": activity["quality"]["verdicts"]["passed"],
+                "failed": activity["quality"]["verdicts"]["failed"],
+            },
+            "reviews": {
+                "approved": activity["quality"]["reviews"]["approve"],
+                "rejected": activity["quality"]["reviews"]["reject"],
+            },
+            "runs": activity["quality"]["runs"],
+            "rejected_reviews": list(rejected),
+        },
+        "usage": activity["usage"],
+        "reports": {
+            "total": counts["reports"],
+            "untriaged": counts["untriaged_reports"],
+            "triaged": counts["triaged"],
+            "recent": list(recent_reports),
+        },
+        "omitted": {
+            "needs_human": waits_omitted,
+            "stuck": max(len(stuck) - page, 0),
+            "too_long": max(len(long_items) - page, 0),
+            "reversible_decisions": max(len(decisions) - page, 0),
+            "rejected_reviews": max(len(rejected) - page, 0),
+            "reports": max(counts["reports"] - len(recent_reports), 0),
+        },
+    }
+
+
+def _summary_text(
+    approval: dict[str, Any],
+    counts: dict[str, Any],
+    runnable: Sequence[str],
+    stuck: Sequence[dict[str, Any]],
+    too_long: Sequence[dict[str, Any]],
+) -> str:
+    return (
+        f"approval {approval['state']}; {len(runnable)} executable, "
+        f"{len(stuck)} stuck, {len(too_long)} too long, "
+        f"{counts['untriaged_reports']} untriaged report(s) of {counts['reports']}, "
+        f"{counts['runs']} run(s)"
+    )
+
+
+# ── selection helpers ─────────────────────────────────────────────────────
+
+
+def picture(ix: Any) -> tuple[list[str], list[tuple[str, str]], list[str]]:
+    """The picture's goal titles, scope items by priority and the Won't titles."""
+    rows = ix.conn.execute(
+        "SELECT d.preset, d.title, f.value_json FROM docs d "
+        "LEFT JOIN fields f ON f.path = d.path AND f.key = 'priority' "
+        "WHERE d.primitive IN ('item', 'note') AND d.broken = 0 "
+        "AND d.preset IN ('goal', 'scope', 'wont') ORDER BY d.slug"
+    ).fetchall()
+    goal: list[str] = []
+    wont: list[str] = []
+    scope: list[tuple[str, str]] = []
+    for preset, title, priority in rows:
+        name = title or ""
+        if not name:
+            continue
+        if preset == "goal":
+            goal.append(name)
+        elif preset == "wont":
+            wont.append(name)
+        else:
+            scope.append((priority or "could", name))
+    order = {name: index for index, name in enumerate(_PRIORITIES)}
+    scope.sort(key=lambda row: (order.get(row[0], len(order)), row[1]))
+    return goal, scope, wont
+
+
+def approval_state(context: Context) -> dict[str, Any]:
+    """The charter approval state plus who confirmed it, from the newest Record."""
+    from context_rail.store.approval import approval_state as current_state
+
+    state = current_state(context, CHARTER_TARGET)
+    latest = query.approval_for(context.index, CHARTER_TARGET)
+    return {
+        **state,
+        "confirmer": None if latest is None else latest["confirmer"],
+        "at": None if latest is None else latest["at"],
+    }
+
+
+def _memory_rows(ix: Any, limit: int) -> tuple[list[str], int]:
+    where = (
+        "WHERE d.broken = 0 AND d.primitive = 'note' "
+        "AND (d.preset = 'convention' OR d.path LIKE 'workspace/%')"
+    )
+    total = ix.conn.execute(f"SELECT COUNT(*) FROM docs d {where}").fetchone()[0]
+    rows = ix.conn.execute(
+        f"SELECT d.slug, d.title, d.excerpt FROM docs d {where} "
+        "ORDER BY d.updated DESC, d.slug ASC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    shown = [
+        f"{title or slug} — {_clip(excerpt or '', EXCERPT_CHARS)}"
+        for slug, title, excerpt in rows
+    ]
+    return shown, max(total - len(rows), 0)
+
+
+def _charter_lines(context: Context) -> list[str]:
+    policy = context.policy
+    if policy is None:
+        return []
+    gates = ", ".join(
+        f"{name} {_gate_marks(gate)}" for name, gate in sorted(policy.gates.items())
+    )
+    rights = ", ".join(
+        f"{name} {len(ids)}" for name, ids in sorted(policy.decision_rights.items())
+    )
+    return [
+        f"gates: {gates}",
+        f"rights: {rights}",
+        f"budgets: item {_budget_text(policy.budgets.get('item'))}; "
+        f"project {_budget_text(policy.budgets.get('project'))}",
+        f"push: {'allowed' if policy.allow_push else 'never'}; separate reviewer "
+        f"model: {'required' if policy.reviewer_different_model else 'optional'}",
+    ]
+
+
+def _quality_lines(activity: dict[str, Any]) -> list[str]:
+    quality = activity["quality"]
+    checks = quality["verdicts"]
+    reviews = quality["reviews"]
+    runs = quality["runs"]
+    return [
+        f"checks: {checks['passed']} passed, {checks['failed']} failed; "
+        f"reviews: {reviews['approve']} approved, {reviews['reject']} rejected; "
+        f"runs: {runs['accepted']} accepted, {runs['rejected']} rejected, "
+        f"{runs['pending']} pending",
+        f"usage: {_usage_text(activity['usage'])}",
+    ]
+
+
+def _fit(sections: list[Section], limit: int) -> tuple[str, dict[str, int]]:
+    """Render the sections, trimming the lowest-priority lines until they fit."""
+    trimmed = dict.fromkeys([section.key for section in sections], 0)
+    text = _render(sections)
+    while len(text) > limit:
+        target = next((section for section in reversed(sections) if section.entries), None)
+        if target is not None:
+            target.entries.pop()
+            trimmed[target.key] += 1
+            text = _render(sections)
+            continue
+        lowest = next(
+            (section for section in reversed(sections) if section.key != "approval"),
+            None,
+        )
+        if lowest is None:
+            break
+        if lowest.fixed:
+            lowest.fixed.pop()
+            trimmed[lowest.key] += 1
+        else:
+            trimmed[lowest.key] += len(lowest.entries)
+            sections.remove(lowest)
+        text = _render(sections)
+    return text[:limit], trimmed
+
+
+def _render(sections: Sequence[Section]) -> str:
+    return "\n\n".join(section.render() for section in sections)
+
+
+# ── rendering helpers ─────────────────────────────────────────────────────
+
+
+def estimate_tokens(text: str) -> int:
+    """A labelled estimate: one token per four characters, never a real count."""
+    return math.ceil(len(text) / 4)
+
+
+def _wait_line(row: dict[str, Any]) -> str:
+    reason = row.get("reason")
+    if isinstance(reason, dict):
+        reason = json.dumps(reason, sort_keys=True)
+    return f"{row.get('kind')} {row.get('item') or '-'} — {reason or 'needs a human decision'}"
+
+
+def _report_line(row: dict[str, Any]) -> str:
+    state = "nothing to report" if row.get("nothing") else row.get("impact")
+    return (
+        f"[{state}] {row.get('target_class')} {row.get('target')} "
+        f"— item {row.get('item') or '-'}"
+    )
+
+
+def _run_line(row: dict[str, Any]) -> str:
+    accepted = {True: "accepted", False: "rejected", None: "pending"}[row.get("accepted")]
+    usage = row.get("usage") or {}
+    unknown = sum(1 for key in USAGE_KEYS if usage.get(key) == "unknown")
+    return (
+        f"run {row.get('run')} {row.get('role')} {row.get('item') or '(no item)'} "
+        f"{row.get('status')} {accepted} {row.get('duration_s')}s "
+        f"{row.get('attempt_count')} attempt(s), {unknown} unknown usage counter(s)"
+    )
+
+
+def _decision_line(row: dict[str, Any]) -> str:
+    before = json.dumps(row.get("before"), sort_keys=True)
+    after = json.dumps(row.get("after"), sort_keys=True)
+    reason = row.get("reason") or "no reason given"
+    return f"{row.get('decision')} {row.get('class')}: before {before} after {after} ({reason})"
+
+
+def _gate_marks(gate: Any) -> str:
+    marks = [
+        name
+        for name, needed in (
+            ("checks", gate.require_checks),
+            ("acceptance", gate.require_acceptance),
+            ("review", gate.require_review),
+            ("human", gate.require_human),
+        )
+        if needed
+    ]
+    return "(" + ", ".join(marks) + ")"
+
+
+def _budget_text(caps: dict[str, Any] | None) -> str:
+    if not caps:
+        return "no limit"
+    return ", ".join(
+        f"{key} {caps.get(key) if caps.get(key) is not None else 'no limit'}"
+        for key in ("attempts", "seconds", "tokens", "credits")
+    )
+
+
+def _usage_text(usage: dict[str, dict[str, Any]]) -> str:
+    known = usage.get("known_sum") or {}
+    unknown = usage.get("unknown_attempts") or {}
+    parts: list[str] = []
+    for key in USAGE_KEYS:
+        if key in known:
+            part = f"{key} {known[key]}"
+            if unknown.get(key):
+                part += f" (unknown {unknown[key]})"
+            parts.append(part)
+        elif unknown.get(key):
+            parts.append(f"{key} unknown ({unknown[key]} attempt(s))")
+    return ", ".join(parts) if parts else "unknown"
+
+
+def _narrative(data: Any, key: str) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    value = data.get(key)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _hours(value: float | None) -> str:
+    return "unknown" if value is None else f"{value:g}h"
+
+
+def _seconds(value: float) -> str:
+    return f"{value:g}s"
+
+
+def _iso(milliseconds: int) -> str:
+    return datetime.fromtimestamp(milliseconds / 1000, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
+def _clip(value: str, limit: int) -> str:
+    return value if len(value) <= limit else value[:limit]
+
+
+def _bounded(value: Any, bounds: tuple[int, int], name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise query.QueryError(f"{name} must be an integer")
+    low, high = bounds
+    if value < low or value > high:
+        raise query.QueryError(f"{name} must be between {low} and {high}")
+    return value

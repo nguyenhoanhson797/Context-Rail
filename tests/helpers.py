@@ -191,22 +191,29 @@ def write_run(
     store: Path,
     run_id: str,
     *,
-    item: str = "t0",
+    item: str | None = "t0",
+    role: str = "implementer",
     status: str = "verified",
     candidate: str | None = None,
     at: str = "2026-10-28T12:00:00Z",
     dispatch: str = "dispatch-1",
     report: str | None = None,
     accepted: bool | None = None,
+    usage: dict[str, Any] | None = None,
+    duration: float = 1.0,
 ) -> Path:
     """Write one completed-run Record with a valid payload and return its path.
 
     ``status`` is the run's own outcome; ``candidate`` lets a failing Check
     verdict bind to the run for triage weighting; ``report`` is the Record id
     the run points at, as a dispatch writes it; ``accepted`` is the run's
-    outcome attribution when no evaluation exists.
+    outcome attribution when no evaluation exists; ``role`` names the run's own
+    role, so a CTO tick run carries ``item: None`` as the design pins it;
+    ``usage`` is the counters an attempt reported (absent counters stay
+    ``unknown``) and ``duration`` is the run's measured seconds.
     """
     failed = status == "failed"
+    counters = {"input_tokens": 2, "output_tokens": 3} if usage is None else usage
     return write_record(
         store,
         run_id,
@@ -214,16 +221,16 @@ def write_run(
         {
             "schema": 1,
             "dispatch_id": dispatch,
-            "role": "implementer",
+            "role": role,
             "actor": "cto",
-            "profile": "implementer",
+            "profile": role,
             "profile_version": 1,
             "skills": [],
             "model": "custom:Deepseek-V4-flash-0",
             "item": item,
             "started_at": at,
             "ended_at": at,
-            "duration_s": 1.0,
+            "duration_s": duration,
             "exit": 1 if failed else 0,
             "status": status,
             "attempts": [
@@ -231,19 +238,19 @@ def write_run(
                     "number": 1,
                     "start": at,
                     "end": at,
-                    "duration_s": 1.0,
+                    "duration_s": duration,
                     "status": "failed" if failed else "completed",
-                    "usage": {"input_tokens": 2, "output_tokens": 3},
+                    "usage": dict(counters),
                 }
             ],
             "candidate_commit": candidate,
             "accepted": accepted,
             "verdicts": [],
-            "usage": {"input_tokens": 2, "output_tokens": 3},
+            "usage": dict(counters),
             "report": report,
         },
         at=at,
-        about=(item,),
+        about=() if item is None else (item,),
     )
 
 

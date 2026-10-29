@@ -35,6 +35,9 @@ _REFUSED_TOOLS = (
     "merge",
     "report",
     "triage",
+    "cto brief",
+    "ledger",
+    "digest",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -66,6 +69,9 @@ _ARGS: dict[str, dict[str, Any]] = {
         "report_file": "missing.json",
     },
     "triage": {},
+    "cto brief": {},
+    "ledger": {},
+    "digest": {},
 }
 _ZONK = f"""---
 primitive: item

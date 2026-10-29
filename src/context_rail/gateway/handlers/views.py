@@ -1,10 +1,11 @@
-"""Read views: find, show and the status picture, all from the index."""
+"""Read views: find, show, the status picture, the ledger and the digest."""
 
 from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING, Any
 
+from context_rail.context import recipes
 from context_rail.gateway.confirmation import confirmation_phrase
 from context_rail.gateway.handlers.common import parse_relation_filter
 from context_rail.kernel import structure
@@ -49,7 +50,9 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     shown = query.show(index, args["slug"], body_chars=args["body_chars"])
     doc = shown["doc"]
     if doc["primitive"] == "check":
-        shown["freshness"] = _freshness(ctx, query.check_state(index, doc["slug"]))
+        shown["freshness"] = recipes.freshness(
+            ctx, query.check_state(index, doc["slug"])
+        )
     if doc["primitive"] == "policy" and doc["preset"] == CHARTER_TARGET:
         shown["approval"] = approval.approval_state(ctx, CHARTER_TARGET)
         shown["phrase"] = confirmation_phrase("approve", CHARTER_TARGET)
@@ -57,78 +60,84 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
 
 def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Counts, executable items, blockers and stuck items, each list capped."""
+    """Counts, executable items, blockers, stuck and too-long items, each capped."""
     index = ctx.index
-    rows = index.conn.execute(
-        "SELECT slug, category FROM docs WHERE primitive = 'item' AND broken = 0"
-    ).fetchall()
-    edges: dict[str, dict[str, list[str]]] = {}
-    for slug, name, target in index.conn.execute(
-        "SELECT r.src, r.rel, r.dst FROM relations r JOIN docs d ON d.path = r.src_path "
-        "WHERE d.primitive = 'item' AND d.broken = 0 "
-        "AND r.rel IN ('part_of', 'depends_on')"
-    ):
-        edges.setdefault(slug, {}).setdefault(name, []).append(target)
-    activity = query.last_activity_ms(index)
+    items = recipes.item_rows(index)
+    titles = recipes.item_titles(index)
 
     counts = {category: 0 for category in CATEGORIES}
-    items: list[structure.ItemRow] = []
-    for slug, category in rows:
-        if category in counts:
-            counts[category] += 1
-        related = edges.get(slug, {})
-        items.append(
-            structure.ItemRow(
-                slug=slug,
-                category=category,
-                part_of=tuple(sorted(related.get("part_of", ()))),
-                depends_on=tuple(sorted(related.get("depends_on", ()))),
-                last_activity_ms=activity.get(slug),
-            )
-        )
+    for item in items:
+        if item.category in counts:
+            counts[item.category] += 1
 
-    runnable = sorted(set(structure.executable(items)))
-    stalled = sorted(set(structure.stuck(items, _now_ms(), _stuck_ms(ctx))))
+    runnable = structure.executable(items)
     finished = {
-        slug for slug, category in rows if category in structure.FINISHED_CATEGORIES
+        item.slug for item in items if item.category in structure.FINISHED_CATEGORIES
     }
-    held = sorted(
-        (slug, reason)
+    held = {
+        slug: reason
         for slug, reason in structure.blocked(items).items()
         if slug not in finished
-    )
+    }
+    stalled = [
+        row["slug"]
+        for row in recipes.stuck_rows(
+            items, _now_ms(), recipes.stuck_window_ms(ctx), titles
+        )
+    ]
+    long_items = [row["slug"] for row in recipes.too_long_rows(ctx, items)]
+
     executable_page, executable_omitted = _page(runnable)
-    blocked_page, blocked_omitted = _page(held)
+    blocked_page, blocked_omitted = _page(sorted(held))
     stuck_page, stuck_omitted = _page(stalled)
+    too_long_page, too_long_omitted = _page(long_items)
     checks = query.check_states(index)
     states = [
         {
             "check": row["slug"],
             "item": row["item"],
             "passed": row["passed"],
-            "freshness": _freshness(ctx, row),
+            "freshness": recipes.freshness(ctx, row),
         }
         for row in checks[:LIST_CAP]
     ]
     return {
         "counts": counts,
         "executable": executable_page,
-        "blocked": dict(blocked_page),
+        "blocked": {slug: held[slug] for slug in blocked_page},
         "stuck": stuck_page,
+        "too_long": too_long_page,
         "check_states": states,
         "check_states_omitted": max(len(checks) - LIST_CAP, 0),
+        "approval": recipes.approval_state(ctx),
         "omitted": {
             "executable": executable_omitted,
             "blocked": blocked_omitted,
             "stuck": stuck_omitted,
+            "too_long": too_long_omitted,
         },
     }
 
 
-def _freshness(ctx: Context, row: dict[str, Any] | None) -> str:
-    from context_rail.gateway.handlers.checks import freshness_of
+def ledger(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Runs with their attempt-counted usage, unknown counters kept apart."""
+    return query.ledger(
+        ctx.index,
+        item=args["item"],
+        profile=args["profile"],
+        since=args["since"],
+        limit=args["limit"],
+    )
 
-    return freshness_of(ctx, row)
+
+def digest(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """The bounded digest of state, waits, decisions, stuck and quality."""
+    return recipes.digest(
+        ctx,
+        since=args["since"],
+        limit=args["limit"],
+        max_chars=args["max_chars"],
+    )
 
 
 def _page(values: list[Any]) -> tuple[list[Any], int]:
@@ -137,8 +146,3 @@ def _page(values: list[Any]) -> tuple[list[Any], int]:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _stuck_ms(ctx: Context) -> int:
-    hours = ctx.pack.policy.get("stuck_hours", 0)
-    return int(float(hours) * 60 * 60 * 1000)

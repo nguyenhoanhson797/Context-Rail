@@ -799,7 +799,12 @@ def test_status_view_lists_executable_and_blocked(tmp_path):
     assert status["value"]["executable"] == ["t1"]
     assert status["value"]["blocked"] == {"t2": "depends_on:t1"}
     assert status["value"]["stuck"] == []
-    assert status["value"]["omitted"] == {"executable": 0, "blocked": 0, "stuck": 0}
+    assert status["value"]["omitted"] == {
+        "executable": 0,
+        "blocked": 0,
+        "stuck": 0,
+        "too_long": 0,
+    }
 
     assert is_ok(
         invoke("add", {"preset": "task", "title": "t3", "rel": ["part_of=auth"]}, store=store)
