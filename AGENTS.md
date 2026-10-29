@@ -13,6 +13,8 @@ repository is a clean rebuild. The legacy v1/v2 code lives in the sibling
 - Stage 1a plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-1a-engine-core.md`
 - Stage 1a amendments: `docs/superpowers/plans/2026-10-28-v3-stage-1a-amendments.md`, which
   win over the Stage 1a plan where they differ.
+- Stage 1b amendments: `docs/superpowers/plans/2026-10-29-v3-stage-1b-amendments.md`, which
+  win over the Stage 1b plan where they differ.
 
 Work the plan task by task, in order. If the plan and the code disagree, or a
 step cannot be done as written, stop and report it rather than improvising a
@@ -22,7 +24,9 @@ different design.
 
 - Use `py`, not `python`.
 - Install: `py -m pip install -e .[test]`
-- Default test lane: `py -m pytest -q` (excludes `slow`)
+- Default test lane: `py -m pytest -q` (excludes `slow` only, so it also collects
+  `perf`; the milestone gate is `commands.test` in `services.yaml`, functional lane
+  then serial perf lane)
 - Speed budgets: `py -m pytest -q -m perf`; 10k-doc and other slow tests: `py -m pytest -q -m slow`
 - Profile a slow command: `py -m cProfile -s cumtime -m context_rail <command>`
 
