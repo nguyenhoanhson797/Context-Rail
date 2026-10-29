@@ -187,6 +187,66 @@ def write_record(
     return path
 
 
+def write_run(
+    store: Path,
+    run_id: str,
+    *,
+    item: str = "t0",
+    status: str = "verified",
+    candidate: str | None = None,
+    at: str = "2026-10-28T12:00:00Z",
+    dispatch: str = "dispatch-1",
+    report: str | None = None,
+    accepted: bool | None = None,
+) -> Path:
+    """Write one completed-run Record with a valid payload and return its path.
+
+    ``status`` is the run's own outcome; ``candidate`` lets a failing Check
+    verdict bind to the run for triage weighting; ``report`` is the Record id
+    the run points at, as a dispatch writes it; ``accepted`` is the run's
+    outcome attribution when no evaluation exists.
+    """
+    failed = status == "failed"
+    return write_record(
+        store,
+        run_id,
+        "run.completed",
+        {
+            "schema": 1,
+            "dispatch_id": dispatch,
+            "role": "implementer",
+            "actor": "cto",
+            "profile": "implementer",
+            "profile_version": 1,
+            "skills": [],
+            "model": "custom:Deepseek-V4-flash-0",
+            "item": item,
+            "started_at": at,
+            "ended_at": at,
+            "duration_s": 1.0,
+            "exit": 1 if failed else 0,
+            "status": status,
+            "attempts": [
+                {
+                    "number": 1,
+                    "start": at,
+                    "end": at,
+                    "duration_s": 1.0,
+                    "status": "failed" if failed else "completed",
+                    "usage": {"input_tokens": 2, "output_tokens": 3},
+                }
+            ],
+            "candidate_commit": candidate,
+            "accepted": accepted,
+            "verdicts": [],
+            "usage": {"input_tokens": 2, "output_tokens": 3},
+            "report": report,
+        },
+        at=at,
+        about=(item,),
+    )
+
+
 def records_of(store: Path, kind: str) -> list[dict[str, Any]]:
     """Every JSON Record of ``kind``, oldest path first."""
     found: list[dict[str, Any]] = []

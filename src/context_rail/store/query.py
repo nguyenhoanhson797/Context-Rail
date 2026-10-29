@@ -31,11 +31,13 @@ __all__ = [
     "last_activity_ms",
     "ledger",
     "records_about",
+    "report_for_run",
     "review_for",
     "review_for_item",
     "run_facts",
     "run_record",
     "show",
+    "triage_runs",
     "untriaged_reports",
 ]
 
@@ -617,6 +619,57 @@ def untriaged_reports(ix: Index, limit: int = 100) -> list[dict[str, Any]]:
             path,
         ) in rows
     ]
+
+
+def report_for_run(ix: Index, run_id: str) -> str | None:
+    """The Record id of the report that already names ``run_id``, if any."""
+    row = ix.conn.execute(
+        "SELECT record_id FROM reports WHERE run_id = ? "
+        "ORDER BY at DESC, record_id DESC LIMIT 1",
+        (run_id,),
+    ).fetchone()
+    return None if row is None else row[0]
+
+
+def triage_runs(ix: Index, run_ids: Sequence[str]) -> list[dict[str, Any]]:
+    """The runs a page of reports names, with the failure evidence it carries.
+
+    A run counts as failed when its own outcome says so, when its latest
+    evaluation recorded no acceptance, or when a Check failed on its candidate.
+    Reading it here keeps triage's weight a fact of the index, never of a
+    report's prose.
+    """
+    ids = sorted({run_id for run_id in run_ids if isinstance(run_id, str) and run_id})
+    if not ids:
+        return []
+    marks = ",".join("?" for _ in ids)
+    failed: set[str] = set()
+    candidates: dict[str, str] = {}
+    for record_id, status, accepted, candidate in ix.conn.execute(
+        f"SELECT record_id, status, accepted, candidate_commit FROM runs "
+        f"WHERE record_id IN ({marks})",
+        ids,
+    ):
+        if status == "failed" or (accepted is not None and not accepted):
+            failed.add(record_id)
+        if candidate:
+            candidates[record_id] = candidate
+    if candidates:
+        candidate_marks = ",".join("?" for _ in candidates)
+        rejected = {
+            row[0]
+            for row in ix.conn.execute(
+                "SELECT DISTINCT candidate_commit FROM verdicts "
+                f"WHERE passed = 0 AND candidate_commit IN ({candidate_marks})",
+                list(candidates.values()),
+            )
+        }
+        failed.update(
+            record_id
+            for record_id, candidate in candidates.items()
+            if candidate in rejected
+        )
+    return [{"run": record_id, "failed": record_id in failed} for record_id in ids]
 
 
 def review_for(ix: Index, candidate: str) -> dict[str, Any] | None:

@@ -73,7 +73,8 @@ READ_BATCH = 256
 
 _DOC_SUFFIXES = (".md", ".json")
 _UNCOUNTED_NAMES = frozenset({"rail.yaml", ".gitignore"})
-_UNCOUNTED_DIRS = frozenset({"templates", "packs"})
+#: Folders whose files are store artifacts, not documents to parse and index.
+_UNCOUNTED_DIRS = frozenset({"templates", "packs", "engine-issues"})
 _BROKEN_PROBLEMS = frozenset({PARSE_ERROR, BAD_ENCODING})
 
 _SCHEMA = (

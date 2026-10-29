@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import hashlib
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import now_iso, slugify
@@ -28,6 +29,7 @@ from context_rail.gateway.handlers.common import (
 )
 from context_rail.kernel import gates
 from context_rail.kernel.lifecycle import category_of, check_transition
+from context_rail.model.cto import SKILL_SCHEMA
 from context_rail.model.manifest import render_path
 from context_rail.model.pack import Preset
 from context_rail.model.primitives import RELATIONS
@@ -59,6 +61,8 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             )
     tags = parse_tags(args["tag"])
     body = load_body(args["body_file"])
+    if preset.name == "skill" or preset.primitive == "actor":
+        fields["version"] = _initial_version(fields.get("version"), preset.name)
     key = args["key"]
     store = ctx.store
     with store_lock(store):
@@ -75,6 +79,8 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             )
             return _response(store, index, result)
         slug = unique_slug(index, slugify(title))
+        if preset.name == "skill":
+            _skill_identity(fields, slug)
         rel = render_path(
             ctx.manifest, primitive=preset.primitive, preset=preset.name, slug=slug
         )
@@ -218,12 +224,21 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             raise WriteRefused(
                 "VALIDATION_FAILED", f"{rel!r} has no primitive", {"path": rel}
             )
+        versioned = _versioned_kind(doc, rel)
         actual = etag(data)
         if actual != expect:
             raise WriteRefused(
                 "CONFLICT",
                 f"{rel!r} is at etag {actual}, not {expect}",
                 {"path": rel, "expected": expect, "actual": actual},
+            )
+        if versioned == "skill":
+            _refuse_skill_identity_change(values, doc)
+        if versioned is not None and "version" in values:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"{rel!r} carries a managed version; a change increments it once",
+                {"path": rel},
             )
         front = doc_frontmatter(doc)
         changed = False
@@ -242,17 +257,156 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             raise WriteRefused(
                 "VALIDATION_FAILED", "the update changes nothing", {"path": rel}
             )
+        before_version: int | None = None
+        if versioned is not None:
+            before_version = _document_version(front, rel)
+            front["version"] = before_version + 1
         front["updated"] = now_iso()
+        after = compose_doc(front, new_body)
+        record = None
+        if versioned is not None:
+            record = _change_record(
+                kind=_VERSIONED_KINDS[versioned],
+                target_class=versioned,
+                rel=rel,
+                before_version=before_version,
+                after_version=front["version"],
+                before_text=data.decode("utf-8"),
+                after_text=after.decode("utf-8"),
+                before_etag=actual,
+                after_etag=etag(after),
+                slug=doc.slug,
+            )
         result = commit(
             store,
             ctx.manifest,
-            [Op(rel, compose_doc(front, new_body), actual)],
-            {"kind": "doc.updated", "about": [doc.slug], "data": {"path": rel}},
+            [Op(rel, after, actual)],
+            record
+            or {
+                "kind": "doc.updated",
+                "about": [doc.slug],
+                "data": {"path": rel},
+            },
             actor=actor,
             key=key,
             index=index,
         )
     return _response(store, index, result)
+
+
+#: The versioned document kinds and the Record kinds their changes append.
+_VERSIONED_KINDS = {"skill": "skill.changed", "profile": "profile.changed"}
+
+
+def _initial_version(value: Any, preset: str) -> int:
+    """The first version a skill or profile carries: one unless stated."""
+    if value is None:
+        return 1
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"a {preset} version must be a positive integer",
+            {"preset": preset, "version": value},
+        )
+    return value
+
+
+def _skill_identity(fields: dict[str, Any], slug: str) -> None:
+    """Pin a skill's name to its file stem and its payload to schema one."""
+    supplied = fields.get("name")
+    if supplied is not None and supplied != slug:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"a skill's name must equal its file stem {slug!r}",
+            {"name": supplied, "slug": slug},
+        )
+    schema = fields.setdefault("schema", SKILL_SCHEMA)
+    if schema != SKILL_SCHEMA:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"a skill carries schema {SKILL_SCHEMA}",
+            {"schema": schema},
+        )
+    fields["name"] = slug
+
+
+def _refuse_skill_identity_change(values: dict[str, Any], doc: Doc) -> None:
+    """Refuse a skill edit that would separate its name from its file."""
+    if "name" in values and values["name"] != doc.slug:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"a skill's name must equal its file stem {doc.slug!r}",
+            {"name": values["name"], "slug": doc.slug},
+        )
+    if "schema" in values and values["schema"] != SKILL_SCHEMA:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"a skill carries schema {SKILL_SCHEMA}",
+            {"schema": values["schema"]},
+        )
+
+
+def _versioned_kind(doc: Doc, rel: str) -> str | None:
+    """Which versioned kind one document is, or None for an ordinary document."""
+    if doc.primitive == "actor":
+        return "profile"
+    if doc.preset == "skill":
+        return "skill"
+    if doc.primitive == "note" and _is_skill_path(rel):
+        return "skill"
+    return None
+
+
+def _is_skill_path(rel: str) -> bool:
+    parts = PurePosixPath(rel).parts
+    return len(parts) > 2 and parts[0] == "workspace" and "skills" in parts[:-1]
+
+
+def _document_version(front: dict[str, Any], rel: str) -> int:
+    version = front.get("version")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"{rel!r} has no positive integer version to increment",
+            {"path": rel, "version": version},
+        )
+    return version
+
+
+def _change_record(
+    *,
+    kind: str,
+    target_class: str,
+    rel: str,
+    before_version: int,
+    after_version: int,
+    before_text: str,
+    after_text: str,
+    before_etag: str,
+    after_etag: str,
+    slug: str,
+) -> dict[str, Any]:
+    """One versioned change Record carrying both complete documents."""
+    return {
+        "kind": kind,
+        "about": [slug],
+        "data": {
+            "schema": 1,
+            "target_class": target_class,
+            "target": rel,
+            "before": before_version,
+            "after": after_version,
+            "before_etag": before_etag,
+            "after_etag": after_etag,
+            "before_text": before_text,
+            "after_text": after_text,
+            "before_digest": hashlib.sha256(before_text.encode("utf-8")).hexdigest(),
+            "after_digest": hashlib.sha256(after_text.encode("utf-8")).hexdigest(),
+            "reason": None,
+            "reports": [],
+            "restored_from_version": None,
+        },
+    }
 
 
 def move(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

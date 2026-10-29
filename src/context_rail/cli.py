@@ -63,7 +63,11 @@ def _subcommands(parent: argparse.ArgumentParser, tools: tuple[Tool, ...]) -> No
 def _tool_params(parser: argparse.ArgumentParser, tool: Tool) -> None:
     for param in tool.params:
         if param.positional:
-            parser.add_argument(param.name, help=param.help)
+            supplied: dict[str, object] = {"help": param.help}
+            if not param.required:
+                supplied["nargs"] = "?"
+                supplied["default"] = None
+            parser.add_argument(param.name, **supplied)
             continue
         options: dict[str, object] = {"dest": param.name, "help": param.help}
         if param.repeat:

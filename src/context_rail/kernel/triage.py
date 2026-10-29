@@ -8,6 +8,7 @@ CTO does not own becomes a proposal for a human.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -21,6 +22,7 @@ __all__ = [
     "ReportFacts",
     "TriageThresholds",
     "cluster_reports",
+    "report_fingerprint",
 ]
 
 ACTIONS = ("deferred", "acknowledged", "fix", "proposal", "export")
@@ -59,6 +61,27 @@ class ClusterDecision:
     weight: int
     action: str
     reason: str
+
+
+def report_fingerprint(
+    target_class: str, target: str, expected: str, observed: str
+) -> str:
+    """The canonical grouping identity of a report: its exact normalized text.
+
+    Membership is decided by this one string alone, so two reports that look
+    alike to a reader but differ in a word stay in different clusters.
+    """
+    parts = (
+        _normalized(target_class),
+        _normalized(target),
+        _normalized(expected),
+        _normalized(observed),
+    )
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _normalized(text: str) -> str:
+    return " ".join(str(text).split())
 
 
 def cluster_reports(

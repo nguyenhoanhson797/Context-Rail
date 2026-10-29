@@ -51,6 +51,7 @@ __all__ = [
     "REPORT_TARGET_CLASSES",
     "RUN_KEYS",
     "RUN_SCHEMA",
+    "SKILL_SCHEMA",
     "TOOL_IDS",
     "UNKNOWN",
     "USAGE_KEYS",

@@ -135,6 +135,28 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.dispatch:merge",
     ),
     Tool(
+        name="report",
+        summary="File the one structured report a completed run owes.",
+        permission="write",
+        params=(
+            Param("item", "str", positional=True, help="the Item the run worked on"),
+            Param("run", "str", required=True, help="the run's Record id"),
+            Param("report_file", "str", required=True, help="strict JSON report file"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.reports:report",
+    ),
+    Tool(
+        name="triage",
+        summary="Cluster untriaged reports into fixes, proposals or engine issues.",
+        permission="write",
+        params=(
+            Param("limit", "int", default=100, help="reports to consider (1-1000)"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.reports:triage",
+    ),
+    Tool(
         name="add",
         summary="Create one document from a preset.",
         permission="write",

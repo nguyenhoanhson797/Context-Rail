@@ -50,6 +50,8 @@ SEVERITIES: dict[str, str] = {
     "intent_pending": "error",
     "approval_missing": "error",
     "approval_mismatch": "error",
+    "report_untriaged": "warning",
+    "report_missing": "error",
     "placement_mismatch": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
@@ -58,6 +60,8 @@ SEVERITIES: dict[str, str] = {
 _REPAIR = "rail doctor --repair"
 _APPROVE = 'rail approve charter --confirm "APPROVE charter" --confirmer <you>'
 _RELOCATE = "rail relocate"
+_TRIAGE = "rail triage"
+_REPORT = "rail report <item> --run <run> --report-file <file>"
 _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
 
 
@@ -89,6 +93,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_duplicate_issues(slugs))
     issues.extend(_intent_issues(store))
     issues.extend(_approval_issues(store, manifest, pack, ix))
+    issues.extend(_report_issues(ix))
     issues.sort(key=lambda issue: (issue["path"], issue["code"]))
 
     counts = {"error": 0, "warning": 0, "info": 0}
@@ -361,6 +366,52 @@ def _approval_issues(
             fix=_APPROVE,
         )
     ]
+
+
+def _report_issues(ix: Index) -> list[dict[str, Any]]:
+    """One issue per run with no report, and one per nonempty report triage never saw."""
+    issues: list[dict[str, Any]] = []
+    report_ids = {row[0] for row in ix.conn.execute("SELECT record_id FROM reports")}
+    reported = {
+        row[0]
+        for row in ix.conn.execute(
+            "SELECT DISTINCT run_id FROM reports WHERE run_id IS NOT NULL"
+        )
+    }
+    for path, record_id, data_json in ix.conn.execute(
+        "SELECT path, record_id, data_json FROM runs ORDER BY path"
+    ):
+        if record_id in reported:
+            continue
+        try:
+            data = json.loads(data_json)
+        except ValueError:
+            data = {}
+        named = data.get("report") if isinstance(data, dict) else None
+        if isinstance(named, str) and named in report_ids:
+            continue
+        issues.append(
+            _issue(
+                "report_missing",
+                path,
+                f"run {record_id!r} has no report",
+                fix=_REPORT,
+            )
+        )
+    for path, record_id in ix.conn.execute(
+        "SELECT p.path, p.record_id FROM reports p WHERE p.\"nothing\" = 0 AND NOT EXISTS "
+        "(SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id) "
+        "ORDER BY p.path"
+    ):
+        issues.append(
+            _issue(
+                "report_untriaged",
+                path,
+                f"report {record_id!r} has not been triaged",
+                fix=_TRIAGE,
+            )
+        )
+    return issues
 
 
 def _issue(code: str, path: str, message: str, fix: str | None = None) -> dict[str, Any]:

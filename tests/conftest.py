@@ -30,6 +30,7 @@ from helpers import (
     item_etag,
     run_git,
     write_record,
+    write_run,
 )
 from perf.gen import make_store
 
@@ -335,6 +336,238 @@ The login test suite passes.
         )
     finally:
         index.close()
+
+
+_REPORT_STAMP = "2026-10-28T12:00:00Z"
+
+
+def _report_data(**overrides: Any) -> dict[str, Any]:
+    """One valid report payload, with overrides for the case under test."""
+    payload: dict[str, Any] = {
+        "schema": 1,
+        "target_class": "item",
+        "target": "t0",
+        "item": "t0",
+        "run": None,
+        "nothing_to_report": False,
+        "what_happened": "the login form signed a user in with a bad password",
+        "expected": "a bad password is refused",
+        "observed": "the form signed the user in",
+        "impact": "medium",
+        "evidence": ["01JVERDICT000000000000001"],
+        "fingerprint": None,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _write_report_file(path: Path, payload: dict[str, Any]) -> Path:
+    path.write_text(json.dumps(payload), encoding="utf-8", newline="\n")
+    return path
+
+
+@pytest.fixture
+def report_payload() -> Callable[..., dict[str, Any]]:
+    """A factory for one valid report payload with overrides."""
+    return _report_data
+
+
+@pytest.fixture
+def completed_run(tmp_path: Path) -> SimpleNamespace:
+    """A store with one verified run and the report file that run owes."""
+    store = make_store(tmp_path / "completed", 3)
+    run = "01JRUN000000000000000101"
+    write_run(store, run, item="t0", status="verified")
+    report_file = _write_report_file(tmp_path / "rail-report.json", _report_data())
+    return SimpleNamespace(store=store, item="t0", run=run, report_file=report_file)
+
+
+def _seed_report(
+    store: Path, report_id: str, **overrides: Any
+) -> str:
+    payload = _report_data(**overrides)
+    write_record(store, report_id, "report.filed", payload, at=_REPORT_STAMP)
+    return report_id
+
+
+@pytest.fixture
+def triage_store(tmp_path: Path) -> SimpleNamespace:
+    """One nonempty report whose single run recorded no failure."""
+    store = make_store(tmp_path / "triage-one", 3)
+    run = "01JRUN000000000000000201"
+    write_run(store, run, item="t0", status="verified", at=_REPORT_STAMP)
+    report = _seed_report(
+        store,
+        "01JREPORT0000000000000201",
+        run=run,
+        fingerprint="item|t0|a bad password is refused|the form signed the user in",
+    )
+    return SimpleNamespace(store=store, item="t0", run=run, report=report)
+
+
+@pytest.fixture
+def triage_store_two_reports(tmp_path: Path) -> SimpleNamespace:
+    """Two runs, one failed, whose reports share one exact fingerprint."""
+    store = make_store(tmp_path / "triage-two", 3)
+    fingerprint = "item|t0|a bad password is refused|the form signed the user in"
+    good = "01JRUN000000000000000301"
+    bad = "01JRUN000000000000000302"
+    write_run(store, good, item="t0", status="verified", at=_REPORT_STAMP)
+    write_run(store, bad, item="t0", status="failed", at=_REPORT_STAMP)
+    first = _seed_report(
+        store, "01JREPORT0000000000000301", run=good, fingerprint=fingerprint
+    )
+    second = _seed_report(
+        store, "01JREPORT0000000000000302", run=bad, fingerprint=fingerprint
+    )
+    return SimpleNamespace(
+        store=store,
+        item="t0",
+        runs=(good, bad),
+        report_ids=(first, second),
+        fingerprint=fingerprint,
+    )
+
+
+@pytest.fixture
+def triage_store_human_target(tmp_path: Path, answers: Path) -> SimpleNamespace:
+    """Two reports whose cluster asks for a change to the approved charter."""
+    result = invoke(
+        "init",
+        {"dir": str(tmp_path), "answers_file": str(answers), "confirm": "APPROVE charter"},
+        actor="human",
+    )
+    assert is_ok(result), result
+    store = tmp_path / "context-rail"
+    approved = approve_picture(store)
+    assert is_ok(approved), approved
+    fingerprint = "item|charter|the charter keeps the budget|the budget grew"
+    runs = ("01JRUN000000000000000401", "01JRUN000000000000000402")
+    for run in runs:
+        write_run(store, run, item="charter", status="verified", at=_REPORT_STAMP)
+    reports = (
+        _seed_report(
+            store,
+            "01JREPORT0000000000000401",
+            target="charter",
+            item="charter",
+            run=runs[0],
+            fingerprint=fingerprint,
+            what_happened="a worker grew the charter budget without approval",
+            expected="the charter keeps the budget",
+            observed="the budget grew",
+        ),
+        _seed_report(
+            store,
+            "01JREPORT0000000000000402",
+            target="charter",
+            item="charter",
+            run=runs[1],
+            fingerprint=fingerprint,
+            what_happened="a worker grew the charter budget without approval",
+            expected="the charter keeps the budget",
+            observed="the budget grew",
+        ),
+    )
+    return SimpleNamespace(
+        store=store, item="charter", report_ids=reports, fingerprint=fingerprint
+    )
+
+
+@pytest.fixture
+def triage_store_engine(tmp_path: Path) -> SimpleNamespace:
+    """Two engine reports that share one fingerprint and bounded evidence."""
+    store = make_store(tmp_path / "triage-engine", 3)
+    fingerprint = "engine|parser|every token is kept|one token is lost"
+    runs = ("01JRUN000000000000000501", "01JRUN000000000000000502")
+    for run in runs:
+        write_run(store, run, item="t0", status="verified", at=_REPORT_STAMP)
+    reports = (
+        _seed_report(
+            store,
+            "01JREPORT0000000000000501",
+            target_class="engine",
+            target="parser",
+            run=runs[0],
+            fingerprint=fingerprint,
+            what_happened="the parser dropped a token",
+            expected="every token is kept",
+            observed="one token is lost",
+            evidence=[f"evidence-{number}" for number in range(15)],
+        ),
+        _seed_report(
+            store,
+            "01JREPORT0000000000000502",
+            target_class="engine",
+            target="parser",
+            run=runs[1],
+            fingerprint=fingerprint,
+            what_happened="the parser dropped a token",
+            expected="every token is kept",
+            observed="one token is lost",
+            evidence=[f"evidence-{number}" for number in range(15, 30)],
+        ),
+    )
+    return SimpleNamespace(
+        store=store, item="t0", report_ids=reports, fingerprint=fingerprint
+    )
+
+
+@pytest.fixture
+def triage_store_anonymous(tmp_path: Path) -> SimpleNamespace:
+    """Two reports that carry no run id and share one exact fingerprint."""
+    store = make_store(tmp_path / "triage-anonymous", 2)
+    fingerprint = "item|t0|a bad password is refused|the form signed the user in"
+    reports = (
+        _seed_report(
+            store, "01JREPORT0000000000000701", run=None, fingerprint=fingerprint
+        ),
+        _seed_report(
+            store, "01JREPORT0000000000000702", run=None, fingerprint=fingerprint
+        ),
+    )
+    return SimpleNamespace(
+        store=store, item="t0", report_ids=reports, fingerprint=fingerprint
+    )
+
+
+@pytest.fixture
+def triage_store_nothing(tmp_path: Path) -> SimpleNamespace:
+    """One nothing-to-report record, filed by a verified run."""
+    store = make_store(tmp_path / "triage-nothing", 3)
+    run = "01JRUN000000000000000601"
+    write_run(store, run, item="t0", status="verified", at=_REPORT_STAMP)
+    report = _seed_report(
+        store,
+        "01JREPORT0000000000000601",
+        run=run,
+        nothing_to_report=True,
+        what_happened="",
+        expected="",
+        observed="",
+        evidence=[],
+        fingerprint="item|t0||",
+    )
+    return SimpleNamespace(store=store, item="t0", run=run, report=report)
+
+
+@pytest.fixture
+def skill_store(tmp_path: Path) -> Path:
+    """A store holding one shared skill Note at ``workspace/skills/test-first.md``."""
+    store = make_store(tmp_path / "skill", 1)
+    added = invoke(
+        "add",
+        {
+            "preset": "skill",
+            "title": "test-first",
+            "set": ["version=1", "description=Write the failing test first"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(added), added
+    assert (store / "workspace" / "skills" / "test-first.md").is_file()
+    return store
 
 
 @pytest.fixture
