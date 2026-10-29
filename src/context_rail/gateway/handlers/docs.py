@@ -18,6 +18,7 @@ from context_rail.gateway.handlers.common import (
     parse_set_values,
     parse_tags,
     preset_for,
+    protected_change,
     read_doc,
     record_data,
     record_path_for,
@@ -27,7 +28,7 @@ from context_rail.gateway.handlers.common import (
     unique_slug,
     validate_field_values,
 )
-from context_rail.kernel import gates
+from context_rail.kernel import gates, rights
 from context_rail.kernel.lifecycle import category_of, check_transition
 from context_rail.model.cto import SKILL_SCHEMA
 from context_rail.model.manifest import render_path
@@ -502,7 +503,8 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 {"path": rel, "expected": expect, "actual": actual},
             )
         resolve_unique(index, dst)
-        targets = list(doc.relations.get(name, ()))
+        before = list(doc.relations.get(name, ()))
+        targets = list(before)
         if remove:
             if dst not in targets:
                 raise WriteRefused(
@@ -525,6 +527,13 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         else:
             front.pop(name, None)
         front["updated"] = now_iso()
+        decision = _decision_record(
+            ctx,
+            args,
+            doc,
+            before=_relation_values(before),
+            after=_relation_values(targets),
+        )
         result = commit(
             store,
             ctx.manifest,
@@ -537,12 +546,60 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             actor=actor,
             key=key,
             index=index,
+            extra_records=() if decision is None else (decision,),
         )
     return {
         **_response(store, index, result),
         "rel": name,
         "dst": dst,
         "removed": remove,
+    }
+
+
+def _relation_values(targets: Any) -> list[str]:
+    """The canonical sorted, de-duplicated values of one technical field."""
+    return sorted({target for target in targets if isinstance(target, str)})
+
+
+def _decision_record(
+    ctx: Context,
+    args: dict[str, Any],
+    doc: Doc,
+    *,
+    before: list[str],
+    after: list[str],
+) -> dict[str, Any] | None:
+    """The decision Record a reversible relation change appends, if any.
+
+    The class comes from the same facts the gateway authorized, so the handler
+    never decides it: a protected document stays human-only and owes no CTO
+    decision, and only a class the policy names cto-reversible produces one.
+    """
+    name = args["rel"]
+    policy = ctx.policy
+    if policy is None:
+        return None
+    facts = protected_change(ctx, args, "link", relation=name)
+    if facts.decision_id is None:
+        return None
+    if rights.decision_class("link", facts, policy) != "cto-reversible":
+        return None
+    dst = args["dst"]
+    reason = args["reason"]
+    return {
+        "preset": "decision",
+        "kind": "decision.made",
+        "about": [doc.slug],
+        "slug": unique_slug(ctx.index, f"{facts.decision_id}-{dst}"),
+        "title": f"Dependency on {dst}",
+        "body": reason or "",
+        "data": {
+            "schema": 1,
+            "decision_class": "cto-reversible",
+            "reason": reason,
+            "before": {name: before},
+            "after": {name: after},
+        },
     }
 
 

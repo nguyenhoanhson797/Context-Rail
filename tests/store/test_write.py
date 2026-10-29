@@ -1021,3 +1021,177 @@ def test_json_record_refuses_markdown_only_request_keys(store_factory):
     assert excinfo.value.code == "VALIDATION_FAILED"
     assert [path for path in (store / "records").rglob("*") if path.is_file()] == []
 
+
+# ── extra records: one commit, two Records ────────────────────────────────
+
+DECISION = {
+    "preset": "decision",
+    "kind": "decision.made",
+    "about": ["a"],
+    "slug": "dependency-login-page",
+    "title": "Dependency on login-page",
+    "body": "needs the parser",
+    "data": {
+        "schema": 1,
+        "decision_class": "cto-reversible",
+        "reason": "needs the parser",
+        "before": {"depends_on": []},
+        "after": {"depends_on": ["login-page"]},
+    },
+}
+
+
+def test_commit_appends_an_extra_record_in_one_commit(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+
+    result = commit(
+        store,
+        manifest,
+        [Op("items/task/a.md", b"v1", "absent")],
+        EVENT,
+        actor="cto",
+        extra_records=[DECISION],
+    )
+
+    event_files = _record_files(store)
+    assert len(event_files) == 1
+    event = json.loads(event_files[0].read_text(encoding="utf-8"))
+    assert result == {"written": ["items/task/a.md"], "record": event["id"]}
+    decision = store / "records/decisions/dependency-login-page.md"
+    assert decision.is_file()
+    assert (store / "items/task/a.md").read_bytes() == b"v1"
+    assert list(_intents_dir(store).glob("*")) == []
+    assert list(store.rglob("*.tmp")) == []
+
+
+def test_extra_records_keep_the_result_shape(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+
+    result = commit(
+        store,
+        manifest,
+        [],
+        MARKDOWN_RECORD,
+        actor="cto",
+        extra_records=[{"kind": "doc.created", "about": ["a"], "data": {}}],
+    )
+
+    assert set(result) == {"written", "record"}
+    assert result["written"] == ["records/decisions/use-sqlite.md"]
+    assert len(_record_files(store)) == 1
+    assert (store / "records/decisions/use-sqlite.md").is_file()
+
+
+def test_an_extra_record_colliding_with_an_op_refuses_before_writes(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+    target = "records/decisions/use-sqlite.md"
+
+    with pytest.raises(WriteRefused) as excinfo:
+        commit(
+            store,
+            manifest,
+            [Op(target, b"doc bytes", "absent")],
+            None,
+            actor="cto",
+            extra_records=[
+                {"preset": "decision", "kind": "decision.made", "slug": "use-sqlite", "about": [], "data": {}}
+            ],
+        )
+
+    assert excinfo.value.code == "CONFLICT"
+    assert not (store / target).exists()
+
+
+def test_two_extra_records_claiming_one_path_are_refused(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+    request = {
+        "preset": "decision",
+        "kind": "decision.made",
+        "slug": "one-path",
+        "about": [],
+        "data": {},
+    }
+
+    with pytest.raises(WriteRefused) as excinfo:
+        commit(store, manifest, [], None, actor="cto", extra_records=[request, dict(request)])
+
+    assert excinfo.value.code == "CONFLICT"
+    assert [path for path in (store / "records").rglob("*") if path.is_file()] == []
+
+
+def test_extra_records_must_be_mappings(store_factory):
+    store = store_factory()
+    manifest = load_manifest(store)
+
+    with pytest.raises(WriteRefused) as excinfo:
+        commit(store, manifest, [], None, actor="cto", extra_records=["not-a-record"])
+
+    assert excinfo.value.code == "VALIDATION_FAILED"
+    assert not (store / "records").exists()
+
+
+def test_repair_completes_a_second_record_after_a_kill_between_creates(
+    store_factory, monkeypatch
+):
+    store = store_factory()
+    manifest = load_manifest(store)
+    created: list[str] = []
+    real_create = write_module._create_record
+
+    def dying_create(planned):
+        created.append(planned.rel)
+        if len(created) == 2:
+            raise SystemExit(9)
+        real_create(planned)
+
+    monkeypatch.setattr(write_module, "_create_record", dying_create)
+    with pytest.raises(SystemExit):
+        commit(
+            store,
+            manifest,
+            [Op("items/task/a.md", b"v1", "absent")],
+            EVENT,
+            actor="cto",
+            extra_records=[DECISION],
+        )
+
+    assert len(created) == 2
+    assert len(_record_files(store)) == 1
+    assert len(list(_intents_dir(store).glob("*.json"))) == 1
+
+    report = repair(store)
+
+    assert len(report["completed"]) == 1
+    assert report["unrecoverable"] == []
+    assert list(_intents_dir(store).glob("*")) == []
+    assert (store / "items/task/a.md").read_bytes() == b"v1"
+    assert len(_record_files(store)) == 1
+    assert (store / "records/decisions/dependency-login-page.md").is_file()
+
+
+def test_an_intent_with_a_malformed_extra_record_entry_is_unrecoverable(store_factory):
+    store = store_factory()
+    intent_id = "01JEXTRAS0000000000000000"
+    path = _craft_intent(
+        store,
+        _intent(
+            intent_id,
+            [],
+            {"written": [], "record": None},
+            extra_records=[{"path": "records/decisions/extra.md", "etag": "0123456789abcdef"}],
+        ),
+    )
+
+    first = repair(store)
+    second = repair(store)
+
+    expected = {"intent": intent_id, "path": None}
+    assert expected in first["unrecoverable"]
+    assert expected in second["unrecoverable"]
+    assert path.exists()
+    assert not (store / "records/decisions/extra.md").exists()
+

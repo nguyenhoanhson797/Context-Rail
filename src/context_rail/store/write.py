@@ -3,7 +3,7 @@
 Every change to store files goes through :func:`commit`. It confines each
 target, honours the caller's idempotency key, compares expected etags, publishes
 a durable version-1 intent, stages flushed temp files, replaces targets in
-order, creates the record exclusively, saves the idempotency result and syncs
+order, creates the records exclusively, saves the idempotency result and syncs
 the index — all while holding the store lock. A crash anywhere after the intent
 is published is rolled forward by :func:`repair`; anything it cannot prove safe
 is kept and reported instead of being guessed at.
@@ -170,15 +170,23 @@ def commit(
     actor: str,
     key: str | None = None,
     index: Index | None = None,
+    extra_records: Sequence[dict[str, Any]] = (),
 ) -> dict[str, Any]:
-    """Apply ``ops`` and optionally append one record; return what was written."""
+    """Apply ``ops`` and append the requested records; return what was written.
+
+    ``record`` is the primary event a keyed replay reports; ``extra_records``
+    ride in the same intent and commit, after the primary one, and are created
+    exclusively like every other record. Only the primary markdown record joins
+    ``written``, so a caller's result shape never depends on how many records
+    the change owes.
+    """
     store = Path(store)
     if not isinstance(actor, str) or not actor.strip():
         raise WriteRefused("VALIDATION_FAILED", "a commit needs an actor")
     if key is not None and (not isinstance(key, str) or not key.strip()):
         raise WriteRefused("VALIDATION_FAILED", "an idempotency key must be text")
     targets = _plan_ops(store, ops)
-    request = _record_request(record)
+    requests = _record_requests(record, extra_records)
 
     if key is not None:
         saved = replay(store, key)
@@ -192,22 +200,23 @@ def commit(
                 return saved
         _prune_idem(store)
         _check_etags(targets)
-        planned = _build_record(store, manifest, request, targets, actor)
+        planned = _build_records(store, manifest, requests, targets, actor)
+        primary = planned[0] if planned else None
         written = [target.rel for target in targets]
-        if planned is not None and planned.rel.lower().endswith(".md"):
+        if primary is not None and primary.rel.lower().endswith(".md"):
             # A markdown record is a store document, so its path belongs in the
             # result a keyed replay hands back.
-            written.append(planned.rel)
+            written.append(primary.rel)
         result = {
             "written": written,
-            "record": planned.payload["id"] if planned is not None else None,
+            "record": primary.payload["id"] if primary is not None else None,
         }
         intent = _build_intent(store, targets, planned, result, actor, key)
         intent_path = _publish_intent(store, intent)
         _stage_temps(store, targets, intent["intent_id"])
         _replace_targets(targets, intent["intent_id"])
-        if planned is not None:
-            _create_record(planned)
+        for planned_record in planned:
+            _create_record(planned_record)
         if key is not None:
             _save_idem(store, sha256_hex(key.encode("utf-8")), result)
         intent_path.unlink(missing_ok=True)
@@ -277,6 +286,28 @@ def resolve_unique(ix: Index, slug: str) -> str:
 # ── commit internals ──────────────────────────────────────────────────────
 
 
+def _record_requests(
+    record: dict[str, Any] | None, extra_records: Sequence[dict[str, Any]]
+) -> tuple[_RecordRequest, ...]:
+    """Validate the primary request and every extra one, in commit order."""
+    if isinstance(extra_records, (str, bytes)) or not isinstance(
+        extra_records, Sequence
+    ):
+        raise WriteRefused("VALIDATION_FAILED", "extra records must be a sequence")
+    requests: list[_RecordRequest] = []
+    primary = _record_request(record)
+    if primary is not None:
+        requests.append(primary)
+    for entry in extra_records:
+        extra = _record_request(entry)
+        if extra is None:
+            raise WriteRefused(
+                "VALIDATION_FAILED", "an extra record must be a mapping"
+            )
+        requests.append(extra)
+    return tuple(requests)
+
+
 def _plan_ops(store: Path, ops: Sequence[Op]) -> list[_Target]:
     """Validate, confine and normalize every operation; refuse duplicates.
 
@@ -309,7 +340,7 @@ def _plan_ops(store: Path, ops: Sequence[Op]) -> list[_Target]:
             path = confine(store, op.path)
         except PathEscape as exc:
             raise WriteRefused("FORBIDDEN", str(exc), {"path": op.path}) from exc
-        identity = os.path.normcase(os.fspath(path))
+        identity = _identity(path)
         if identity in seen:
             raise WriteRefused(
                 "VALIDATION_FAILED", f"{rel!r} is written twice", {"path": rel}
@@ -430,16 +461,54 @@ def _record_relations(value: Any) -> dict[str, tuple[str, ...]]:
     return relations
 
 
+def _build_records(
+    store: Path,
+    manifest: Manifest,
+    requests: Sequence[_RecordRequest],
+    targets: list[_Target],
+    actor: str,
+) -> tuple[_Record, ...]:
+    """Stamp, confine and preflight every record the commit will create.
+
+    A record may never take a document's path or another record's, and every
+    refusal happens here, before the intent is published or any bytes move.
+    """
+    op_paths = {_identity(target.path) for target in targets}
+    op_rels = {target.rel for target in targets}
+    seen: set[str] = set()
+    planned: list[_Record] = []
+    for request in requests:
+        record = _build_record(store, manifest, request, actor)
+        identity = _identity(record.path)
+        if record.rel in op_rels or identity in op_paths:
+            raise WriteRefused(
+                "CONFLICT",
+                f"{record.rel!r} is both a document and a record",
+                {"path": record.rel},
+            )
+        if identity in seen:
+            raise WriteRefused(
+                "CONFLICT",
+                f"{record.rel!r} is claimed by more than one record",
+                {"path": record.rel},
+            )
+        seen.add(identity)
+        planned.append(record)
+    return tuple(planned)
+
+
+def _identity(path: Path) -> str:
+    """The filesystem identity of a path, so case variants collide on Windows."""
+    return os.path.normcase(os.fspath(path))
+
+
 def _build_record(
     store: Path,
     manifest: Manifest,
-    request: _RecordRequest | None,
-    targets: list[_Target],
+    request: _RecordRequest,
     actor: str,
-) -> _Record | None:
-    """Stamp identity on the request and preflight where the record may land."""
-    if request is None:
-        return None
+) -> _Record:
+    """Stamp identity on one request and render where it may land."""
     record_id = new_ulid()
     at = now_iso()
     rel = _normalize(
@@ -471,10 +540,6 @@ def _build_record(
     if rel in _PROTOCOL_FILES:
         raise WriteRefused(
             "VALIDATION_FAILED", f"{rel!r} is a store protocol file", {"path": rel}
-        )
-    if any(target.rel == rel for target in targets):
-        raise WriteRefused(
-            "CONFLICT", f"{rel!r} is both a document and a record", {"path": rel}
         )
     try:
         path = confine(store, rel)
@@ -548,7 +613,7 @@ def _check_etags(targets: list[_Target]) -> None:
 def _build_intent(
     store: Path,
     targets: list[_Target],
-    planned: _Record | None,
+    planned: Sequence[_Record],
     result: dict[str, Any],
     actor: str,
     key: str | None,
@@ -576,13 +641,20 @@ def _build_intent(
     }
     if key is not None:
         intent["key_hash"] = sha256_hex(key.encode("utf-8"))
-    if planned is not None:
-        intent["record"] = {
-            "path": planned.rel,
-            "bytes_b64": base64.b64encode(planned.data).decode("ascii"),
-            "etag": etag(planned.data),
-        }
+    if planned:
+        intent["record"] = _record_entry(planned[0])
+        if len(planned) > 1:
+            intent["extra_records"] = [_record_entry(record) for record in planned[1:]]
     return intent
+
+
+def _record_entry(planned: _Record) -> dict[str, Any]:
+    """The saved-bytes entry an intent keeps so repair can recreate a record."""
+    return {
+        "path": planned.rel,
+        "bytes_b64": base64.b64encode(planned.data).decode("ascii"),
+        "etag": etag(planned.data),
+    }
 
 
 def _publish_intent(store: Path, intent: dict[str, Any]) -> Path:
@@ -737,6 +809,11 @@ def _repair_intent(
     record = intent.get("record")
     if problem is None and record is not None:
         problem = _restore_record(store, record)
+    if problem is None:
+        for extra in intent.get("extra_records") or ():
+            problem = _restore_record(store, extra)
+            if problem is not None:
+                break
     if problem is not None:
         unrecoverable.append({"intent": intent_id, "path": problem})
         return
@@ -772,6 +849,14 @@ def _read_intent(path: Path) -> dict[str, Any] | None:
     record = payload.get("record")
     if record is not None and _saved_record_bytes(record) is None:
         return None
+    extras = payload.get("extra_records")
+    if extras is not None:
+        if not isinstance(extras, list) or any(
+            _saved_record_bytes(entry) is None for entry in extras
+        ):
+            # A malformed extra is kept and reported, never dropped: the records
+            # it names may already be on disk.
+            return None
     key_hash = payload.get("key_hash")
     if key_hash is not None and (not isinstance(key_hash, str) or not key_hash):
         return None

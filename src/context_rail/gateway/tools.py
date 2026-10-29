@@ -211,6 +211,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("dst", "str", required=True, positional=True, help="target slug"),
             Param("expect", "str", required=True, help="current source etag"),
             Param("remove", "bool", help="remove the relation instead of adding it"),
+            Param("reason", "str", help="why this reversible decision was made"),
             Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),

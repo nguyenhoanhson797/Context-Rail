@@ -54,13 +54,15 @@ def validate_field_values(fields: dict[str, Any]) -> None:
 
 
 def protected_change(
-    context: Context, params: dict[str, Any], op: str
+    context: Context, params: dict[str, Any], op: str, *, relation: str | None = None
 ) -> rights.ChangeFacts:
     """The technical facts of one generic write, from the documents involved.
 
     A slug that no document carries is left unprotected here; the handler owns
     the NOT_FOUND answer. Acceptance comes from what the write would leave on
     disk: the existing Check's value, or the value the new document receives.
+    ``relation`` names the technical field a link changes; only ``depends_on``
+    is a reversible decision in the document model today.
     """
     from context_rail.store.approval import is_acceptance_path, protected_paths
 
@@ -84,7 +86,7 @@ def protected_change(
         method=op,
         protected=rel is not None and rel in protected_paths(context),
         acceptance=acceptance,
-        decision_id=None,
+        decision_id="dependency" if relation == "depends_on" else None,
         budget_increase=False,
     )
 

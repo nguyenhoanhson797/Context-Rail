@@ -91,6 +91,86 @@ def run_child_commit_with_crash(
     )
 
 
+_CHILD_TWO_RECORDS = r'''
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[2])
+
+from context_rail.core.util import dump_frontmatter
+from context_rail.model.manifest import load_manifest
+from context_rail.store import write as write_module
+from context_rail.store.write import Op, commit
+
+STAMP = "2026-10-28T00:00:00Z"
+
+
+def doc(slug):
+    front = {
+        "primitive": "item",
+        "preset": "task",
+        "title": "Crash " + slug,
+        "status": "todo",
+        "tags": ["task"],
+        "created": STAMP,
+        "updated": STAMP,
+        "part_of": ["[[g0]]"],
+    }
+    return ("---\n" + dump_frontmatter(front) + "---\n# Crash " + slug + "\n").encode("utf-8")
+
+
+store = Path(sys.argv[1])
+ops = [Op("items/task/crash-a.md", doc("crash-a"), "absent")]
+record = {"kind": "doc.created", "about": ["crash-a"], "data": {"path": "items/task/crash-a.md"}}
+decision = {
+    "preset": "decision",
+    "kind": "decision.made",
+    "about": ["crash-a"],
+    "slug": "dependency-crash-b",
+    "title": "Dependency on crash-b",
+    "body": "",
+    "data": {
+        "schema": 1,
+        "decision_class": "cto-reversible",
+        "reason": None,
+        "before": {"depends_on": []},
+        "after": {"depends_on": ["crash-b"]},
+    },
+}
+
+real_create = write_module._create_record
+created = 0
+
+
+def dying_create(planned):
+    global created
+    created += 1
+    if created == 2:
+        os._exit(9)
+    real_create(planned)
+
+
+write_module._create_record = dying_create
+commit(store, load_manifest(store), ops, record, actor="cto", extra_records=[decision])
+print(created)
+'''
+
+
+def run_child_two_records_with_crash(store: Path) -> subprocess.CompletedProcess[str]:
+    """Commit one document with two Records in a child that dies on the second create."""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_REPO_SRC)
+    return subprocess.run(
+        [sys.executable, "-c", _CHILD_TWO_RECORDS, str(store), str(_REPO_SRC)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        timeout=120,
+    )
+
+
 def _after_bytes(slug: str) -> bytes:
     front = {
         "primitive": "item",
@@ -185,3 +265,32 @@ def test_kill_during_intent_publication_is_repairable(store_factory):
         assert not (store / rel).exists(), rel
     assert list((store / "items/task").glob("*.tmp")) == []
     assert invoke("doctor", {}, store=store)["value"]["counts"]["error"] == 0
+
+
+def test_a_kill_between_two_record_creates_is_repairable(store_factory):
+    store = store_factory(docs=20)
+    assert invoke("doctor", {}, store=store)["value"]["counts"]["error"] == 0
+
+    proc = run_child_two_records_with_crash(store)
+    assert proc.returncode == 9, proc.stderr
+
+    doctor = invoke("doctor", {}, store=store)
+    assert doctor["value"]["counts"]["error"] >= 1
+    assert "intent_pending" in [issue["code"] for issue in doctor["value"]["issues"]]
+    decision = store / "records/decisions/dependency-crash-b.md"
+    assert not decision.exists()
+
+    completed = repair(store)
+
+    assert completed["unrecoverable"] == []
+    assert invoke("doctor", {}, store=store)["value"]["counts"]["error"] == 0
+    assert (store / "items/task/crash-a.md").read_bytes() == _after_bytes("crash-a")
+    records = _created_records(store)
+    assert len(records) == 1
+    payload = dict(records[0])
+    digest = payload.pop("digest")
+    assert digest == record_digest(payload)
+    assert decision.is_file()
+    text = decision.read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert "kind: decision.made" in text
+    assert "decision_class: cto-reversible" in text

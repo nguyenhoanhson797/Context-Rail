@@ -191,7 +191,8 @@ def effective_decision(
         return tool.decision
     from context_rail.gateway.handlers.common import protected_change
 
-    facts = protected_change(context, params, tool.name)
+    relation = params.get("rel") if tool.name == "link" else None
+    facts = protected_change(context, params, tool.name, relation=relation)
     return rights.decision_class(tool.name, facts, context.policy)
 
 

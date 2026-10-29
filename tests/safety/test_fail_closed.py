@@ -46,6 +46,7 @@ _ARGS: dict[str, dict[str, Any]] = {
         "rel": "part_of",
         "dst": "g0",
         "expect": "0123456789abcdef",
+        "reason": "planning",
     },
     "find": {"preset": "task"},
     "show": {"slug": "t0"},
