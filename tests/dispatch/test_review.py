@@ -15,7 +15,7 @@ from context_rail.runner.dispatch import review_paths, worktree_root
 from context_rail.store import query
 from context_rail.store.index import Index
 from context_rail.store.location import local_dir
-from helpers import latest_record, run_git
+from helpers import item_status, latest_record, records_of, run_git
 
 REVIEW_TOOLS_CSV = "read-cli,ls-cli,grep_tool_cli,glob-search-cli"
 REVIEW_MODEL = "custom:gemini-3.8-flash-LTN-0"
@@ -29,15 +29,6 @@ def review(run: SimpleNamespace, key: str, **extra: Any) -> dict[str, Any]:
     return invoke("review", args, store=run.store, actor="cto")
 
 
-def records_of(store: Path, kind: str) -> list[dict[str, Any]]:
-    found: list[dict[str, Any]] = []
-    for path in sorted((store / "records").rglob("*.json")):
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if payload.get("kind") == kind:
-            found.append(payload)
-    return found
-
-
 def head(worktree: Path) -> str:
     return run_git(worktree, "rev-parse", "HEAD").stdout.strip()
 
@@ -48,12 +39,6 @@ def branches(project: Path, pattern: str) -> list[str]:
         for line in run_git(project, "branch", "--list", pattern).stdout.splitlines()
         if line.strip()
     ]
-
-
-def item_status(run: SimpleNamespace) -> str:
-    shown = invoke("show", {"slug": run.item}, store=run.store, actor="cto")
-    assert shown["ok"], shown
-    return shown["value"]["doc"]["status"]
 
 
 def ledger_rows(run: SimpleNamespace) -> list[dict[str, Any]]:

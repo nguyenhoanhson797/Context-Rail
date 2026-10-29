@@ -267,8 +267,14 @@ def verify_decision(ctx: Context, params: Mapping[str, Any]) -> str:
     return "cto-alone"
 
 
-def freshness_of(ctx: Context, row: Mapping[str, Any] | None) -> str:
-    """How much a stored verdict still says about the checkout, from files only."""
+def freshness_of(
+    ctx: Context, row: Mapping[str, Any] | None, *, worktree: Path | None = None
+) -> str:
+    """How much a stored verdict still says about a checkout, from files only.
+
+    ``worktree`` names the checkout the proof should describe, which is the
+    dispatch worktree while its candidate has not reached the default branch.
+    """
     if row is None:
         return "missing"
     verdict: dict[str, Any] | None = None
@@ -283,7 +289,7 @@ def freshness_of(ctx: Context, row: Mapping[str, Any] | None) -> str:
         "inputs": list(row.get("inputs") or ()),
         "definition_etag": row.get("definition_etag"),
     }
-    located = worktree_git_dir(ctx.store)
+    located = worktree_git_dir(Path(worktree) if worktree is not None else ctx.store)
     if located is None:
         if verdict is None:
             return "missing"

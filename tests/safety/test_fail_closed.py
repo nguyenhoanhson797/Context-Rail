@@ -32,6 +32,7 @@ _REFUSED_TOOLS = (
     "verify",
     "dispatch",
     "review",
+    "merge",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -55,6 +56,7 @@ _ARGS: dict[str, dict[str, Any]] = {
     "verify": {"target": "smoke"},
     "dispatch": {"item": "t0", "expect": "0123456789abcdef", "key": "k"},
     "review": {"item": "t0", "run": "01JRUN000000000000000001", "key": "k"},
+    "merge": {"item": "t0", "run": "01JRUN000000000000000001", "expect": "0123456789abcdef", "key": "k"},
 }
 _ZONK = f"""---
 primitive: item

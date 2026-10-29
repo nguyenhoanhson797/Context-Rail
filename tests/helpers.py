@@ -187,6 +187,62 @@ def write_record(
     return path
 
 
+def records_of(store: Path, kind: str) -> list[dict[str, Any]]:
+    """Every JSON Record of ``kind``, oldest path first."""
+    found: list[dict[str, Any]] = []
+    for path in sorted((Path(store) / "records").rglob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(payload, dict) and payload.get("kind") == kind:
+            found.append(payload)
+    return found
+
+
+def item_status(run: Any) -> str:
+    """The current status of one fixture's Item, read through the gateway."""
+    from context_rail.gateway.gateway import invoke
+
+    shown = invoke("show", {"slug": run.item}, store=run.store, actor="cto")
+    if not shown["ok"]:
+        raise AssertionError(shown)
+    return shown["value"]["doc"]["status"]
+
+
+def item_etag(run: Any) -> str:
+    """The current etag of one fixture's Item, read through the gateway."""
+    from context_rail.gateway.gateway import invoke
+
+    shown = invoke("show", {"slug": run.item}, store=run.store, actor="cto")
+    if not shown["ok"]:
+        raise AssertionError(shown)
+    return shown["value"]["doc"]["etag"]
+
+
+def merge_call(run: Any, key: str, **extra: Any) -> dict[str, Any]:
+    """Invoke ``rail merge`` for one fixture through the gateway as the CTO."""
+    from context_rail.gateway.gateway import invoke
+
+    args: dict[str, Any] = {
+        "item": run.item,
+        "run": run.run,
+        "expect": run.etag,
+        "key": key,
+    }
+    args.update(extra)
+    return invoke("merge", args, store=run.store, actor="cto")
+
+
+def review_call(run: Any, key: str, **extra: Any) -> dict[str, Any]:
+    """Invoke ``rail review`` for one fixture through the gateway as the CTO."""
+    from context_rail.gateway.gateway import invoke
+
+    args: dict[str, Any] = {"item": run.item, "run": run.run, "key": key}
+    args.update(extra)
+    return invoke("review", args, store=run.store, actor="cto")
+
+
 def latest_record(store: Path, kind: str) -> dict[str, Any]:
     """The newest JSON Record of ``kind`` by ``(at, id)``.
 
@@ -203,6 +259,44 @@ def latest_record(store: Path, kind: str) -> dict[str, Any]:
     if not found:
         raise LookupError(f"no {kind} record")
     return max(found, key=lambda row: (str(row.get("at") or ""), str(row.get("id") or "")))
+
+
+def default_head(run: Any) -> str:
+    """The canonical default branch HEAD of one dispatch or merge fixture."""
+    return run_git(Path(run.project), "rev-parse", "HEAD").stdout.strip()
+
+
+def remote_head(run: Any) -> str | None:
+    """The bare remote's default branch HEAD, or None when it has no such ref."""
+    remote = getattr(run, "remote", None)
+    if remote is None:
+        return None
+    listed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(remote),
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            f"refs/heads/{run.branch}",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return listed.stdout.strip() or None
+
+
+def advance_default_branch(run: Any, filename: str) -> str:
+    """Commit one human change on the canonical default branch and return it."""
+    project = Path(run.project)
+    target = project / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("human work\n", encoding="utf-8", newline="\n")
+    run_git(project, "add", "--", filename)
+    run_git(project, "commit", "-m", f"human: {filename}")
+    return default_head(run)
 
 
 def touch_doc(store: Path, rel: str, **frontmatter: Any) -> None:

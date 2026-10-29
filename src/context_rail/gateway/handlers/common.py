@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from context_rail.core.util import dump_frontmatter, load_yaml, slugify
-from context_rail.kernel import rights
+from context_rail.kernel import gates, rights
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import RELATIONS
 from context_rail.store.doc import Doc, parse_doc
@@ -358,6 +358,36 @@ def slug_of_path(rel: str) -> str:
     if leaf.name == "profile.md":
         return leaf.parent.name or leaf.stem
     return leaf.stem
+
+
+def check_gate_state(
+    context: Context, row: dict[str, Any], *, worktree: Path | None = None
+) -> gates.CheckState:
+    """One indexed Check as a gate reads it, with freshness read from files."""
+    from context_rail.gateway.handlers.checks import freshness_of
+
+    return gates.CheckState(
+        slug=str(row["slug"]),
+        passed=bool(row["passed"]),
+        freshness=freshness_of(context, row, worktree=worktree),
+        candidate=row["candidate_commit"],
+        acceptance=bool(row["acceptance"]),
+    )
+
+
+def review_gate_state(review: dict[str, Any] | None) -> gates.ReviewState | None:
+    """The newest review of one Item as a gate reads it, or None."""
+    if review is None:
+        return None
+    data = review.get("data") or {}
+    return gates.ReviewState(
+        verdict=str(review.get("verdict") or ""),
+        candidate=str(review.get("candidate_commit") or ""),
+        reviewer=str(review.get("reviewer") or ""),
+        model=str(data.get("reviewer_model") or ""),
+        implementer=str(data.get("implementer_actor") or "") or None,
+        implementer_model=str(data.get("implementer_model") or "") or None,
+    )
 
 
 def record_path_for(index: Index, record_id: str | None) -> str | None:

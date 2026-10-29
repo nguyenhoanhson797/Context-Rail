@@ -9,6 +9,7 @@ from context_rail.core.util import now_iso, slugify
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import (
     apply_tag_edits,
+    check_gate_state,
     compose_doc,
     doc_frontmatter,
     load_body,
@@ -19,6 +20,7 @@ from context_rail.gateway.handlers.common import (
     read_doc,
     record_data,
     record_path_for,
+    review_gate_state,
     slug_of_path,
     template_body,
     unique_slug,
@@ -409,19 +411,25 @@ def _response(store: Path, index: Index, result: dict[str, Any]) -> dict[str, An
 
 
 def _require_done_gate(ctx: Context, doc: Doc, actor: str) -> None:
-    """Refuse a done move when the charter gate has no current proof for it."""
+    """Refuse a done move when the charter gate has no current proof for it.
+
+    The newest separated review of the Item supplies the candidate commit the
+    gate binds its Checks to; without one the gate stays shut, so an approval
+    can never be implied by the transition itself.
+    """
     policy = ctx.policy
     if policy is None:
         return
     name = "scope_done" if doc.slug in policy.project.get("scope", ()) else "item_done"
+    review = review_gate_state(query.review_for_item(ctx.index, doc.slug))
     decision = gates.evaluate_gate(
         policy,
         name,
         doc.slug,
-        [_gate_state(ctx, row) for row in query.check_states(ctx.index, doc.slug)],
-        None,
+        [check_gate_state(ctx, row) for row in query.check_states(ctx.index, doc.slug)],
+        review,
         actor == "human",
-        None,
+        review.candidate if review is not None else None,
     )
     if decision.allowed:
         return
@@ -429,17 +437,4 @@ def _require_done_gate(ctx: Context, doc: Doc, actor: str) -> None:
         "BUSINESS_RULE_VIOLATED",
         f"the {name} gate is not satisfied",
         {"gate": name, "path": doc.path, "reasons": list(decision.reasons)},
-    )
-
-
-def _gate_state(ctx: Context, row: dict[str, Any]) -> gates.CheckState:
-    """The proof a verdict carries, with freshness read from the Git index."""
-    from context_rail.gateway.handlers.checks import freshness_of
-
-    return gates.CheckState(
-        slug=row["slug"],
-        passed=bool(row["passed"]),
-        freshness=freshness_of(ctx, row),
-        candidate=row["candidate_commit"],
-        acceptance=bool(row["acceptance"]),
     )

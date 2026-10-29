@@ -61,8 +61,11 @@ MODES = frozenset(
         "large_output",
         "review_approve",
         "review_reject",
+        "merge_resolve",
+        "merge_conflict",
     }
 )
+RESOLUTION = "resolved by the implementer\n"
 SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", re.I)
 
 FULL_USAGE = {
@@ -148,6 +151,18 @@ def main() -> int:
         verdict = "approve"
     elif mode == "review_reject":
         verdict = "reject"
+    if mode == "merge_conflict":
+        print("the rebase conflict is still unresolved", file=sys.stderr)
+        return 3
+    if mode == "merge_resolve":
+        if not _resolve_conflict(worktree):
+            print("no resolved conflict to continue", file=sys.stderr)
+            return 3
+        return _emit(
+            _text(behavior, reviewer, None, _order_metadata(flags.get("-f"))),
+            session,
+            FULL_USAGE,
+        )
     if not reviewer and verdict is None:
         _leave_commit(
             worktree,
@@ -307,6 +322,33 @@ def _hang() -> int:
     sys.stdout.flush()
     time.sleep(600)
     return 0
+
+
+def _resolve_conflict(worktree: Path) -> bool:
+    listed = subprocess.run(
+        ["git", "-C", str(worktree), "diff", "--name-only", "--diff-filter=U", "-z"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    names = [name for name in listed.stdout.split("\0") if name]
+    if listed.returncode != 0 or not names:
+        return False
+    for name in names:
+        target = worktree / name
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(RESOLUTION, encoding="utf-8", newline="\n")
+        except OSError:
+            return False
+    _git(worktree, "add", "-A")
+    continued = subprocess.run(
+        ["git", "-C", str(worktree), "-c", "core.editor=true", "rebase", "--continue"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return continued.returncode == 0
 
 
 def _leave_commit(

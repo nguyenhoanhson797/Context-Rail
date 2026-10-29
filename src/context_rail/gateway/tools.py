@@ -122,6 +122,19 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.dispatch:review",
     ),
     Tool(
+        name="merge",
+        summary="Rebase an approved candidate onto the default branch and fast-forward it.",
+        permission="write",
+        params=(
+            Param("item", "str", required=True, positional=True, help="leaf Item slug"),
+            Param("run", "str", required=True, help="the verified implementer run id"),
+            Param("expect", "str", required=True, help="the Item's current etag"),
+            Param("push", "bool", help="push the default branch when the charter allows it"),
+            Param("key", "str", required=True, help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.dispatch:merge",
+    ),
+    Tool(
         name="add",
         summary="Create one document from a preset.",
         permission="write",

@@ -25,7 +25,9 @@ from context_rail.store.index import Index
 from helpers import (
     DEFAULT_FAKE_BEHAVIORS,
     FakeDroid,
+    advance_default_branch,
     approve_picture,
+    item_etag,
     run_git,
     write_record,
 )
@@ -710,12 +712,16 @@ def leaf_item(tmp_path: Path, answers: Path) -> SimpleNamespace:
 
 @pytest.fixture
 def verified_run(
-    leaf_item: SimpleNamespace, fake_droid: FakeDroid, droid_env: dict[str, str]
+    leaf_item: SimpleNamespace,
+    fake_droid: FakeDroid,
+    droid_env: dict[str, str],
+    tmp_path: Path,
 ) -> SimpleNamespace:
     """An approved checkout whose single implementer run verified one candidate.
 
     The candidate and both worktrees stay on disk, so a review can be launched
-    against exactly the commit the implementer produced.
+    against exactly the commit the implementer produced. A configured but empty
+    bare remote sits beside the project, so a push can be proven not to happen.
     """
     dispatched = invoke(
         "dispatch",
@@ -729,6 +735,10 @@ def verified_run(
     assert is_ok(shown), shown
     worktree = Path(dispatched["value"]["worktree"])
     candidate = run_git(worktree, "rev-parse", "HEAD").stdout.strip()
+    remote = tmp_path / "remote.git"
+    run_git(tmp_path, "init", "--bare", str(remote))
+    run_git(leaf_item.root, "remote", "add", "origin", str(remote))
+    base = run_git(leaf_item.root, "rev-parse", "HEAD").stdout.strip()
     return SimpleNamespace(
         store=leaf_item.store,
         project=leaf_item.root,
@@ -741,7 +751,61 @@ def verified_run(
         dispatch_worktree=worktree,
         dispatch_branch=dispatched["value"]["branch"],
         candidate=candidate,
+        remote=remote,
+        branch="main",
+        base=base,
     )
+
+
+@pytest.fixture
+def rejected_run(
+    verified_run: SimpleNamespace, fake_droid: FakeDroid
+) -> SimpleNamespace:
+    """The verified run after one separated reviewer rejected its candidate."""
+    fake_droid.set_behaviors([{"mode": "review_reject", "review": {"findings": ["no"]}}])
+    rejected = invoke(
+        "review",
+        {"item": verified_run.item, "run": verified_run.run, "key": "fixture-rejected"},
+        store=verified_run.store,
+        actor="cto",
+    )
+    assert is_ok(rejected), rejected
+    assert rejected["value"]["verdict"] == "reject", rejected
+    return SimpleNamespace(
+        **{**vars(verified_run), "etag": item_etag(verified_run)}
+    )
+
+
+@pytest.fixture
+def conflicting_run(verified_run: SimpleNamespace) -> SimpleNamespace:
+    """The verified candidate plus a human commit that touches the same lines.
+
+    The candidate edited ``fake-droid-work.txt``, so moving the default branch
+    with a human edit of that file makes the merge's rebase conflict.
+    """
+    head = advance_default_branch(verified_run, "fake-droid-work.txt")
+    return SimpleNamespace(**{**vars(verified_run), "base": head})
+
+
+@pytest.fixture
+def push_run(verified_run: SimpleNamespace, fake_droid: FakeDroid) -> SimpleNamespace:
+    """The verified candidate in a project whose approved charter allows pushes.
+
+    The bare remote already holds the pre-merge default branch, so the pushed
+    head proves a normal fast-forward.
+    """
+    charter = verified_run.store / "charter.md"
+    text = charter.read_text(encoding="utf-8")
+    assert "allow_push: false" in text
+    charter.write_text(
+        text.replace("allow_push: false", "allow_push: true"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    approved = approve_picture(verified_run.store)
+    assert is_ok(approved), approved
+    run_git(verified_run.project, "push", "origin", verified_run.branch)
+    return SimpleNamespace(**{**vars(verified_run), "etag": item_etag(verified_run)})
 
 
 @pytest.fixture
