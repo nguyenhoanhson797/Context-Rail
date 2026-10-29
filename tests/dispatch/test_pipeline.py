@@ -451,14 +451,25 @@ def test_a_hand_closed_item_is_ci_visible_after_the_pipeline(
     assert "gate_bypassed" in codes
 
 
-def test_make_pilot_repo_is_reusable_and_idempotent(tmp_path: Path) -> None:
+def test_each_generated_pilot_gets_its_own_project_and_remote(tmp_path: Path) -> None:
     first = make_pilot_repo(tmp_path / "one")
     second = make_pilot_repo(tmp_path / "two")
 
     assert first.project != second.project
     assert first.remote != second.remote
+    assert first.root != second.root
     assert run_git(first.project, "rev-parse", "HEAD").stdout.strip()
     assert run_git(second.project, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_a_generator_refuses_an_occupied_folder(tmp_path: Path) -> None:
+    from support.pilot_repo import PilotError
+
+    make_pilot_repo(tmp_path / "pilot-root")
+
+    with pytest.raises(PilotError) as raised:
+        make_pilot_repo(tmp_path / "pilot-root")
+    assert "not empty" in str(raised.value)
 
 
 @pytest.mark.parametrize("rel", ["pilot", "pilot-remote.git"])
