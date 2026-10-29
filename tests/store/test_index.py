@@ -20,7 +20,7 @@ from context_rail.store.doc import record_digest
 from context_rail.store.index import INDEX_SCHEMA, Index, IndexBusy, SyncStats
 from context_rail.store.location import index_path
 from context_rail.store.query import find
-from helpers import touch_doc
+from helpers import junction, touch_doc
 
 _SRC = Path(__file__).resolve().parents[2] / "src"
 
@@ -113,20 +113,6 @@ def outside_store(root: Path) -> Path:
     (outside / "items" / "task").mkdir(parents=True)
     (outside / "items" / "task" / "escaped.md").write_bytes(OUTSIDE_DOC)
     return outside
-
-
-def junction(link: Path, target: Path) -> None:
-    """Create a real Windows directory junction, skipping where unsupported."""
-    if os.name != "nt":
-        pytest.skip("directory junctions are a Windows feature")
-    link.parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(
-        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        pytest.skip(f"cannot create a junction: {(proc.stderr or proc.stdout).strip()}")
 
 
 def symlink(link: Path, target: Path, *, directory: bool = False) -> None:

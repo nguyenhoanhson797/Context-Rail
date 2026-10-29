@@ -14,6 +14,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from context_rail.core.util import dump_frontmatter, load_yaml
 from context_rail.store.doc import record_digest
 
@@ -88,6 +90,25 @@ def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     if proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {proc.stderr.strip()}")
     return proc
+
+
+def junction(link: Path, target: Path) -> None:
+    """Create a real Windows directory junction, skipping where unsupported."""
+    if os.name != "nt":
+        pytest.skip("directory junctions are a Windows feature")
+    Path(link).parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        pytest.skip(f"cannot create a junction: {(proc.stderr or proc.stdout).strip()}")
+
+
+def edited_block_before(path: Path) -> str:
+    """The hand-edited text a refused adapter sync must leave byte-for-byte."""
+    return Path(path).read_text(encoding="utf-8")
 
 
 def process_alive(pid: int) -> bool:

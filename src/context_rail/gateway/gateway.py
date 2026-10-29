@@ -177,6 +177,8 @@ def effective_decision(
         return "human-only"
     if tool.name == "init":
         return "cto-alone" if params.get("draft_file") else "human-only"
+    if tool.name == "adapters sync":
+        return "human-only" if params.get("force") else "cto-alone"
     if context is None or context.policy is None:
         return tool.decision
     if tool.name == "check":
@@ -223,6 +225,26 @@ def _authorize(
         )
     if tool.permission == "read":
         return None
+    if tool.name == "adapters sync" and params.get("force"):
+        # Replacing a hand-edited generated file is a human action even in a
+        # store with no charter yet, so it is checked before the policy rules.
+        if actor != _HUMAN:
+            return fail(
+                "PERMISSION_DENIED",
+                "forcing generated adapter files is a human-only action",
+                {"tool": tool.name, "actor": actor},
+            )
+        reason = validate_confirmation("adapters_force", "adapters", params.get("confirm"))
+        if reason is not None:
+            return fail(
+                "VALIDATION_FAILED",
+                reason,
+                {
+                    "target": "adapters",
+                    "confirm": confirmation_phrase("adapters_force", "adapters"),
+                },
+            )
+        return None
     policy = context.policy
     if policy is None:
         return None
@@ -244,16 +266,16 @@ def _authorize(
             {"tool": tool.name, "decision": decision, "actor": actor},
         )
     if decision == "human-only" and actor == _HUMAN:
-        target = _confirmation_target(tool, params, context)
+        action, target = _confirmation(tool, params, context)
         if target is not None:
-            reason = validate_confirmation("approve", target, params.get("confirm"))
+            reason = validate_confirmation(action, target, params.get("confirm"))
             if reason is not None:
                 return fail(
                     "VALIDATION_FAILED",
                     reason,
                     {
                         "target": target,
-                        "confirm": confirmation_phrase("approve", target),
+                        "confirm": confirmation_phrase(action, target),
                     },
                 )
     return None
@@ -279,6 +301,15 @@ def _is_execution(tool: Tool, params: dict[str, Any], context: Context) -> bool:
     status = params.get("status")
     category = category_of(context.pack, status) if isinstance(status, str) else None
     return category in LOCKED_CATEGORIES
+
+
+def _confirmation(
+    tool: Tool, params: dict[str, Any], context: Context
+) -> tuple[str, str | None]:
+    """The confirmation action and target a human-only call needs."""
+    if tool.name == "adapters sync":
+        return ("adapters_force", "adapters") if params.get("force") else ("approve", None)
+    return "approve", _confirmation_target(tool, params, context)
 
 
 def _confirmation_target(

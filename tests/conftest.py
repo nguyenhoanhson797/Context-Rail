@@ -23,6 +23,7 @@ from context_rail.model.pack import Pack, load_pack
 from context_rail.model.policy import DECISION_RIGHTS, HUMAN_ONLY_IDS
 from context_rail.store.doc import etag
 from context_rail.store.index import Index
+from context_rail.store.location import local_dir
 from helpers import (
     DEFAULT_FAKE_BEHAVIORS,
     FakeDroid,
@@ -569,6 +570,48 @@ def skill_store(tmp_path: Path) -> Path:
     assert is_ok(added), added
     assert (store / "workspace" / "skills" / "test-first.md").is_file()
     return store
+
+
+@pytest.fixture
+def edited_block(skill_store: Path) -> Path:
+    """The synced ``AGENTS.md`` whose managed block was then hand edited."""
+    synced = invoke("adapters sync", {}, store=skill_store, actor="cto")
+    assert is_ok(synced), synced
+    agents = skill_store.parent / "AGENTS.md"
+    text = agents.read_text(encoding="utf-8")
+    agents.write_text(
+        text.replace(
+            "<!-- CONTEXT-RAIL-END -->",
+            "A human typed this line.\n<!-- CONTEXT-RAIL-END -->",
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return agents
+
+
+class _Interrupted(Exception):
+    """A crash raised from the replace step, before any target is swapped in."""
+
+
+@pytest.fixture
+def crash_before_replace(skill_store: Path) -> None:
+    """Leave one interrupted adapter commit: published intent and staged temps."""
+    from context_rail.store import write as write_module
+
+    original = write_module._replace
+
+    def crash(tmp: Path, target: Path, rel: str) -> None:
+        raise _Interrupted()
+
+    write_module._replace = crash
+    try:
+        invoke("adapters sync", {}, store=skill_store, actor="cto")
+    finally:
+        write_module._replace = original
+    intents = local_dir(skill_store) / "intents"
+    assert intents.is_dir() and list(intents.glob("*.json")), "the crash never published an intent"
+    assert not (skill_store.parent / "AGENTS.md").exists()
 
 
 @pytest.fixture

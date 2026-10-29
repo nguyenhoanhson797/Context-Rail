@@ -55,6 +55,7 @@ SEVERITIES: dict[str, str] = {
     "placement_mismatch": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
+    "adapter_modified": "warning",
 }
 
 _REPAIR = "rail doctor --repair"
@@ -94,6 +95,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_intent_issues(store))
     issues.extend(_approval_issues(store, manifest, pack, ix))
     issues.extend(_report_issues(ix))
+    issues.extend(_adapter_issues(store))
     issues.sort(key=lambda issue: (issue["path"], issue["code"]))
 
     counts = {"error": 0, "warning": 0, "info": 0}
@@ -412,6 +414,67 @@ def _report_issues(ix: Index) -> list[dict[str, Any]]:
             )
         )
     return issues
+
+
+def _adapter_issues(store: Path) -> list[dict[str, Any]]:
+    """One issue per generated adapter file whose owned payload no longer matches.
+
+    Only the payloads the latest ``adapters.synced`` Record declares are hashed;
+    source trees are never read for drift, and nothing regenerates or launches.
+    """
+    from context_rail.store import adapters
+    from context_rail.store.location import PathEscape
+
+    record = _latest_record(store, "adapters.synced")
+    if record is None:
+        return []
+    data = record.get("data")
+    digests = data.get("payload_digests") if isinstance(data, dict) else None
+    if not isinstance(digests, dict):
+        return []
+    root = adapters.project_root(store)
+    issues: list[dict[str, Any]] = []
+    for rel, expected in sorted(digests.items()):
+        if not isinstance(rel, str) or not isinstance(expected, str):
+            continue
+        try:
+            path = adapters.resolve_adapter(root, adapters.ADAPTER_PREFIX + rel)
+        except PathEscape:
+            issues.append(_issue("adapter_modified", rel, f"{rel!r} is not a confined adapter path"))
+            continue
+        if not path.is_file():
+            issues.append(_issue("adapter_modified", rel, f"{rel!r} is missing"))
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            issues.append(_issue("adapter_modified", rel, f"{rel!r} cannot be read as UTF-8"))
+            continue
+        state = adapters.read_managed(text)
+        if state is None:
+            issues.append(
+                _issue("adapter_modified", rel, f"{rel!r} no longer carries paired ownership markers")
+            )
+            continue
+        payload, digest = state
+        if digest != expected or adapters.payload_digest(payload) != digest:
+            issues.append(_issue("adapter_modified", rel, f"{rel!r} changed outside rail"))
+    return issues
+
+
+def _latest_record(store: Path, kind: str) -> dict[str, Any] | None:
+    """The newest Record of ``kind``, read newest-first from the records tree."""
+    folder = Path(store) / "records"
+    if not folder.is_dir():
+        return None
+    for path in sorted(folder.rglob("*.json"), reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(payload, dict) and payload.get("kind") == kind:
+            return payload
+    return None
 
 
 def _issue(code: str, path: str, message: str, fix: str | None = None) -> dict[str, Any]:

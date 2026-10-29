@@ -190,6 +190,18 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.views:ledger",
     ),
     Tool(
+        name="adapters sync",
+        summary="Write the managed AGENTS.md block and one .agents skill file per skill Note.",
+        permission="write",
+        params=(
+            Param("dry_run", "bool", help="report the targets without writing them"),
+            Param("force", "bool", help="replace a hand-edited block (human only)"),
+            Param("confirm", "str", help="the typed phrase FORCE ADAPTERS adapters"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.adapters:sync",
+    ),
+    Tool(
         name="add",
         summary="Create one document from a preset.",
         permission="write",

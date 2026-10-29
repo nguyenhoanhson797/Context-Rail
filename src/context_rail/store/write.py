@@ -7,6 +7,12 @@ order, creates the records exclusively, saves the idempotency result and syncs
 the index — all while holding the store lock. A crash anywhere after the intent
 is published is rolled forward by :func:`repair`; anything it cannot prove safe
 is kept and reported instead of being guessed at.
+
+One declared exception places bytes outside the store: an operation whose path
+starts with ``@adapter/`` resolves through :func:`context_rail.store.adapters.
+resolve_adapter` to the generated instruction files in the checkout. Everything
+else in the pipeline — expectation, intent, temp, replace, record, replay and
+repair — is the same code for both spaces.
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ from context_rail.core.util import (
 )
 from context_rail.model.manifest import Manifest, render_path
 from context_rail.model.primitives import RELATIONS
+from context_rail.store.adapters import ADAPTER_PREFIX, project_root, resolve_adapter
 from context_rail.store.doc import etag, record_digest
 from context_rail.store.index import Index
 from context_rail.store.location import PathEscape, confine, local_dir
@@ -121,6 +128,14 @@ class _Target:
     path: Path
     data: bytes | None
     expect: str
+    space: str = "store"
+
+    @property
+    def display(self) -> str:
+        """The path a caller sees; the adapter namespace stays internal."""
+        if self.space == "adapter" and self.rel.startswith(ADAPTER_PREFIX):
+            return self.rel[len(ADAPTER_PREFIX) :]
+        return self.rel
 
 
 @dataclass(frozen=True)
@@ -202,7 +217,7 @@ def commit(
         _check_etags(targets)
         planned = _build_records(store, manifest, requests, targets, actor)
         primary = planned[0] if planned else None
-        written = [target.rel for target in targets]
+        written = [target.display for target in targets]
         if primary is not None and primary.rel.lower().endswith(".md"):
             # A markdown record is a store document, so its path belongs in the
             # result a keyed replay hands back.
@@ -318,6 +333,7 @@ def _plan_ops(store: Path, ops: Sequence[Op]) -> list[_Target]:
     if isinstance(ops, (str, bytes)) or not isinstance(ops, Sequence):
         raise WriteRefused("VALIDATION_FAILED", "operations must be a sequence of Op")
     local = local_dir(store).resolve()
+    root = project_root(store)
     seen: set[str] = set()
     targets: list[_Target] = []
     for op in ops:
@@ -336,8 +352,12 @@ def _plan_ops(store: Path, ops: Sequence[Op]) -> list[_Target]:
                 {"path": op.path, "expected": expect},
             )
         rel = _normalize(op.path)
+        space = "adapter" if rel.startswith(ADAPTER_PREFIX) else "store"
         try:
-            path = confine(store, op.path)
+            if space == "adapter":
+                path = resolve_adapter(root, op.path)
+            else:
+                path = confine(store, op.path)
         except PathEscape as exc:
             raise WriteRefused("FORBIDDEN", str(exc), {"path": op.path}) from exc
         identity = _identity(path)
@@ -346,12 +366,18 @@ def _plan_ops(store: Path, ops: Sequence[Op]) -> list[_Target]:
                 "VALIDATION_FAILED", f"{rel!r} is written twice", {"path": rel}
             )
         seen.add(identity)
-        if path == local or path.is_relative_to(local):
+        if space == "store" and (path == local or path.is_relative_to(local)):
             raise WriteRefused(
                 "FORBIDDEN", f"{rel!r} is local state, not store content", {"path": rel}
             )
         targets.append(
-            _Target(rel=rel, path=path, data=None if data is None else bytes(data), expect=expect)
+            _Target(
+                rel=rel,
+                path=path,
+                data=None if data is None else bytes(data),
+                expect=expect,
+                space=space,
+            )
         )
     return targets
 
@@ -626,6 +652,7 @@ def _build_intent(
         ops.append(
             {
                 "path": target.rel,
+                "space": target.space,
                 "tmp": None if deleted else f"{target.rel}.{intent_id}.tmp",
                 "before_etag": target.expect,
                 "after_etag": ABSENT if deleted else etag(target.data or b""),
@@ -821,7 +848,7 @@ def _repair_intent(
         _save_idem(store, intent["key_hash"], intent["result"])
     for op in intent["ops"]:
         if op["tmp"] is not None:
-            _discard_tmp(store, op["tmp"])
+            _discard_tmp(store, op["path"], op.get("space", "store"), intent_id)
     path.unlink(missing_ok=True)
     completed.append(intent_id)
 
@@ -866,7 +893,12 @@ def _read_intent(path: Path) -> dict[str, Any] | None:
             # A keyed intent without its saved result could never be replayed
             # truthfully, so it is kept and reported rather than completed.
             return None
-        result = {"written": [_normalize(op["path"]) for op in ops], "record": None}
+        result = {
+            "written": [
+                _display(_normalize(op["path"]), op.get("space", "store")) for op in ops
+            ],
+            "record": None,
+        }
     normalized = dict(payload)
     normalized["ops"] = ops
     normalized["result"] = result
@@ -890,6 +922,8 @@ def _valid_op(op: Any) -> bool:
         return False
     if not isinstance(op.get("path"), str) or not op["path"]:
         return False
+    if op.get("space", "store") not in ("store", "adapter"):
+        return False
     deleted = op.get("delete")
     if not isinstance(deleted, bool):
         return False
@@ -908,25 +942,24 @@ def _valid_op(op: Any) -> bool:
 def _roll_op_forward(store: Path, intent_id: str, op: dict[str, Any]) -> str | None:
     """Bring one target to its after state, or report the path that blocks it."""
     rel = _normalize(op["path"])
-    target = _confined(store, op["path"])
+    space = op.get("space", "store")
+    target = _resolve_op(store, op["path"], space)
     if target is None:
-        return rel
+        return _display(rel, space)
     tmp: Path | None = None
     if not op["delete"]:
-        tmp = _confined(store, op["tmp"])
-        if tmp is None or tmp.parent != target.parent:
-            return rel
-        if tmp.name != f"{target.name}.{intent_id}.tmp":
-            return rel
+        if _normalize(op["tmp"]) != f"{rel}.{intent_id}.tmp":
+            return _display(rel, space)
+        tmp = target.with_name(f"{target.name}.{intent_id}.tmp")
     try:
         actual = _current_etag(target, rel)
     except WriteRefused:
-        return rel
+        return _display(rel, space)
     if op["delete"]:
         if actual == ABSENT:
             return None
         if actual != op["before_etag"]:
-            return rel
+            return _display(rel, space)
         try:
             target.unlink()
         except FileNotFoundError:
@@ -935,15 +968,15 @@ def _roll_op_forward(store: Path, intent_id: str, op: dict[str, Any]) -> str | N
     if actual == op["after_etag"]:
         return None
     if actual != op["before_etag"]:
-        return rel
+        return _display(rel, space)
     if tmp is None or not tmp.is_file():
-        return rel
+        return _display(rel, space)
     if etag(tmp.read_bytes()) != op["after_etag"]:
-        return rel
+        return _display(rel, space)
     try:
         _replace(tmp, target, rel)
     except WriteRefused:
-        return rel
+        return _display(rel, space)
     return None
 
 
@@ -998,12 +1031,28 @@ def _confined(store: Path, rel: str) -> Path | None:
         return None
 
 
-def _discard_tmp(store: Path, rel: str) -> None:
-    tmp = _confined(store, rel)
-    if tmp is None:
+def _resolve_op(store: Path, rel: str, space: str) -> Path | None:
+    """The absolute path an intent operation names, in its own namespace."""
+    try:
+        if space == "adapter":
+            return resolve_adapter(project_root(store), rel)
+        return confine(store, rel)
+    except PathEscape:
+        return None
+
+
+def _display(rel: str, space: str) -> str:
+    if space == "adapter" and rel.startswith(ADAPTER_PREFIX):
+        return rel[len(ADAPTER_PREFIX) :]
+    return rel
+
+
+def _discard_tmp(store: Path, rel: str, space: str, intent_id: str) -> None:
+    target = _resolve_op(store, rel, space)
+    if target is None:
         return
     try:
-        tmp.unlink()
+        target.with_name(f"{target.name}.{intent_id}.tmp").unlink()
     except FileNotFoundError:
         pass
     except OSError:
