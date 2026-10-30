@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from context_rail.runner.run import run
+from context_rail.store.location import owns_path
 from context_rail.store.write import WriteRefused
 
 __all__ = [
@@ -272,7 +273,7 @@ def capture_changes(
         if _OMISSION_MARKER in name:
             cut = True
             continue
-        if _inside(name, prefixes):
+        if owns_path(name, prefixes):
             store_changed.append(name)
         else:
             files.append(name)
@@ -310,19 +311,6 @@ def _revision(value: str, what: str) -> str:
     if "\x00" in value:
         raise WriteRefused("VALIDATION_FAILED", f"{what} contains a NUL byte")
     return value
-
-
-def _inside(path: str, prefixes: Sequence[str]) -> bool:
-    """Whether ``path`` is the prefix itself or lies below it.
-
-    A store rooted at the checkout itself renders as ``.``, which owns every
-    path in the tree; reading it as a literal name would let a worker's edit to
-    a store file look like ordinary project work.
-    """
-    for prefix in prefixes:
-        if prefix in ("", ".") or path == prefix or path.startswith(prefix + "/"):
-            return True
-    return False
 
 
 def _checked(

@@ -444,7 +444,7 @@ def test_a_failed_checkpoint_add_forces_the_paths_then_refuses(
     leaf_item, fake_droid, droid_env
 ) -> None:
     """A global excludesfile must never make the checkpoint silently drop paths."""
-    import context_rail.gateway.handlers.dispatch as dispatch_module
+    from context_rail.gateway.handlers.dispatch import checkpoint as dispatch_module
 
     agents = leaf_item.root / ".agents" / "skills" / "hint" / "SKILL.md"
     agents.parent.mkdir(parents=True, exist_ok=True)
@@ -468,7 +468,7 @@ def test_a_checkpoint_that_cannot_add_a_path_refuses_instead_of_reporting_succes
     leaf_item, fake_droid, droid_env
 ) -> None:
     """When even the forced add fails, the checkpoint must not claim success."""
-    import context_rail.gateway.handlers.dispatch as dispatch_module
+    from context_rail.gateway.handlers.dispatch import checkpoint as dispatch_module
 
     real = dispatch_module._git
     runner, seen = _fake_git(real, {"add": [_git_failure(), _git_failure()]})

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 from context_rail.core.util import sha256_hex, slugify
@@ -40,6 +41,19 @@ def find_store(start: Path) -> Path | None:
         if (nested / "rail.yaml").is_file():
             return nested
     return None
+
+
+def owns_path(path: str, prefixes: Sequence[str]) -> bool:
+    """Whether ``path`` is the prefix itself or lies below it.
+
+    A store rooted at the checkout itself renders as ``.``, which owns every
+    path in the tree; reading it as a literal name would let a worker's edit to
+    a store file look like ordinary project work.
+    """
+    for prefix in prefixes:
+        if prefix in ("", ".") or path == prefix or path.startswith(prefix + "/"):
+            return True
+    return False
 
 
 def local_dir(store: Path) -> Path:

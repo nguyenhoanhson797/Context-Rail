@@ -17,7 +17,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import new_ulid, now_iso, sha256_hex
-from context_rail.gateway.handlers.common import bounded, profile_document, skill_pins
+from context_rail.gateway.handlers.common import (
+    append_report,
+    bounded,
+    checkout,
+    profile_document,
+    required,
+    skill_pins,
+)
 from context_rail.model.cto import (
     USAGE_KEYS,
     Profile,
@@ -37,7 +44,6 @@ from context_rail.runner.droid import (
     write_role_file,
 )
 from context_rail.store import approval as store_approval
-from context_rail.store.location import worktree_git_dir
 from context_rail.store.write import ABSENT, WriteRefused, commit
 
 if TYPE_CHECKING:
@@ -143,7 +149,7 @@ def brief(context: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 def tick(context: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Run one CTO session behind the single-instance lock."""
     store = Path(context.store)
-    key = _required(args.get("key"), "a tick key")
+    key = required(args.get("key"), "a tick key", action="a tick")
 
     replayed = _replayed(store, key)
     if replayed is not None:
@@ -271,14 +277,7 @@ def _effective_seconds(profile: Profile, context: Context) -> float:
 
 
 def _checkout(context: Context) -> tuple[Path, Path]:
-    located = worktree_git_dir(context.store)
-    if located is None:
-        raise WriteRefused(
-            "INTEGRATION_FAILURE",
-            "a tick needs the canonical store inside a Git worktree",
-            {"store": str(context.store)},
-        )
-    return located[1].resolve(), located[0]
+    return checkout(context, action="a tick")
 
 
 def _execute(
@@ -419,16 +418,7 @@ def _report_payload(ran: Any, *, status: str) -> dict[str, Any]:
 
 
 def _append_report(context: Context, *, actor: str, data: dict[str, Any]) -> str | None:
-    parse_report(data)
-    result = commit(
-        context.store,
-        context.manifest,
-        [],
-        {"kind": "report.filed", "about": [], "data": data},
-        actor=actor,
-        index=context.index,
-    )
-    return result.get("record")
+    return append_report(context, data, actor=actor, about=[])
 
 
 def _started_record(
@@ -568,9 +558,3 @@ def _replayed(store: Path, key: str) -> dict[str, Any] | None:
         "a tick with this key has not completed; inspect the pending launch",
         {"key": key, "tick_id": tick_id, "phase": progress.get("phase", "unknown")},
     )
-
-
-def _required(value: Any, what: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise WriteRefused("VALIDATION_FAILED", f"a tick needs {what}")
-    return value.strip()
