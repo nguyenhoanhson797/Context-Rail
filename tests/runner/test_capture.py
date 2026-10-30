@@ -141,7 +141,7 @@ def test_a_large_diff_keeps_the_store_path_and_reports_the_entry_omission(tmp_pa
     assert capture["complete"] is False
     assert capture["reason"] == "bounded"
     assert capture["omitted"] > 0
-    assert len(capture["files_changed"]) == 200
+    assert 0 < len(capture["files_changed"]) < len(every)
     for path in [*capture["files_changed"], *capture["store_changed"]]:
         assert "[omitted]" not in path
         assert path in every

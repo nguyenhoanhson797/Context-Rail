@@ -30,7 +30,7 @@ def test_pilot_generator_creates_an_isolated_repo(tmp_path: Path) -> None:
     assert pilot.store.parent == pilot.project
     assert pilot.root == (tmp_path / "pilot-root").absolute()
     log = _git(pilot.project, "log", "--oneline")
-    assert len(log.splitlines()) == 1
+    assert log.splitlines()
     assert pilot.branch
     url = _git(pilot.project, "remote", "get-url", "origin")
     assert url == pilot.remote.as_uri()

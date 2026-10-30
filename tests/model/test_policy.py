@@ -159,7 +159,7 @@ def test_gate_entry_requires_every_key() -> None:
         parse_charter(fields)
 
 
-def test_change_rule_cannot_be_disabled_or_delegated() -> None:
+def test_change_rule_cannot_be_disabled_or_delegated_in_the_charter() -> None:
     with pytest.raises(ModelError):
         parse_charter(charter_fields(change_rule={"approval_required": True, "delegable": True}))
     with pytest.raises(ModelError):

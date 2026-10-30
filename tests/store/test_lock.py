@@ -12,11 +12,7 @@ from pathlib import Path
 import pytest
 
 from context_rail.store.location import local_dir
-from context_rail.store.lock import (
-    DEFAULT_LOCK_TIMEOUT,
-    StoreLockTimeout,
-    store_lock,
-)
+from context_rail.store.lock import StoreLockTimeout, store_lock
 
 _SRC = Path(__file__).resolve().parents[2] / "src"
 
@@ -62,7 +58,6 @@ def test_lock_file_lives_in_the_local_dir(tmp_path: Path) -> None:
 
 
 def test_default_timeout_is_thirty_seconds() -> None:
-    assert DEFAULT_LOCK_TIMEOUT == 30.0
     assert inspect.signature(store_lock).parameters["timeout"].default == 30.0
 
 

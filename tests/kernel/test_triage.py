@@ -69,7 +69,7 @@ def test_a_report_from_an_unknown_run_weighs_one():
     assert cluster_reports((report(run_id="missing"),), (), thresholds)[0].action == "deferred"
 
 
-def test_nothing_to_report_is_acknowledged_without_a_fix():
+def test_an_acknowledged_cluster_asks_for_no_fix():
     reports = (report("r1", "run1", nothing_to_report=True),)
     decision = cluster_reports(reports, (run(),), THRESHOLDS)[0]
     assert decision.action == "acknowledged"

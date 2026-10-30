@@ -632,7 +632,9 @@ def test_review_is_locked_out_before_approval(
     assert fake_droid.log() == []
 
 
-def test_an_unknown_run_is_refused(verified_run: SimpleNamespace, fake_droid: Any) -> None:
+def test_review_refuses_an_unknown_run(
+    verified_run: SimpleNamespace, fake_droid: Any
+) -> None:
     launched = len(fake_droid.log())
     r = invoke(
         "review",

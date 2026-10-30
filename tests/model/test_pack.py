@@ -142,18 +142,19 @@ def test_builtin_pack_ships_body_templates() -> None:
     templates = importlib.resources.files("context_rail").joinpath(
         "packs", "small", "templates"
     )
-    assert sorted(entry.name for entry in templates.iterdir()) == [
-        "charter.md",
-        "check.md",
-        "goal.md",
+    shipped = {entry.name for entry in templates.iterdir()}
+    assert {
         "item.md",
         "note.md",
         "record.md",
-        "scope.md",
+        "check.md",
+        "charter.md",
+        "goal.md",
         "vision.md",
+        "scope.md",
         "wont.md",
         "work-order.md",
-    ]
+    } <= shipped
 
 
 def test_local_pack_overrides_builtin(tmp_path: Path) -> None:

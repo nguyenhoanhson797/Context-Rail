@@ -347,7 +347,7 @@ def test_fifth_gate_and_missing_release_are_refused(
     assert not (tmp_path / STORE).exists()
 
 
-def test_change_rule_cannot_be_disabled_or_delegated(
+def test_answers_file_change_rule_cannot_be_disabled_or_delegated(
     tmp_path: Path, picture_answers: dict[str, Any]
 ) -> None:
     delegated = copy.deepcopy(picture_answers)

@@ -297,7 +297,7 @@ def test_replay_never_duplicates_the_merge(verified_run: SimpleNamespace) -> Non
     ) == 1
 
 
-def test_an_unknown_run_is_refused(
+def test_merge_refuses_an_unknown_run(
     verified_run: SimpleNamespace, fake_droid: Any
 ) -> None:
     launched = len(fake_droid.log())

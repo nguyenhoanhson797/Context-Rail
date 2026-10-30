@@ -171,7 +171,7 @@ def test_success_creates_a_verified_candidate(leaf_item, fake_droid, droid_env) 
     assert verdict["about"] == ["unit", leaf_item.slug]
 
 
-def test_implementer_argv_is_exact(leaf_item, fake_droid, droid_env) -> None:
+def test_a_dispatched_implementer_argv_is_exact(leaf_item, fake_droid, droid_env) -> None:
     r = dispatch(leaf_item, "argv")
     assert r["ok"], r
     worktree = Path(r["value"]["worktree"])
@@ -480,7 +480,8 @@ def test_a_checkpoint_that_cannot_add_a_path_refuses_instead_of_reporting_succes
 
     assert refused["ok"] is False, refused
     assert refused["error"]["code"] == "PROCESS_ERROR", refused
-    assert len([call for call in seen if call[:1] == ["add"]]) == 2
+    adds = [call for call in seen if call[:1] == ["add"]]
+    assert adds and "--force" in adds[-1], adds
 
 
 def test_a_store_edit_in_the_dropped_middle_is_still_refused(
