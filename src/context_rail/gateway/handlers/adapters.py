@@ -11,10 +11,13 @@ writes anything, and unmanaged prose is left byte-for-byte alone.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from context_rail.core.util import sha256_hex
+from context_rail.gateway.handlers.common import is_skill_path, record_data
 from context_rail.model.errors import ModelError
 from context_rail.store import adapters
 from context_rail.store.doc import Doc, etag, parse_doc
@@ -77,6 +80,7 @@ class _Target:
     new_text: str
     digest: str
     existing_bytes: bytes | None
+    existing_text: str | None
     whole_file: bool = False
     conflict: str | None = None
 
@@ -85,10 +89,8 @@ class _Target:
         return self.rel[len(adapters.ADAPTER_PREFIX) :]
 
     @property
-    def existing(self) -> str | None:
-        if self.existing_bytes is None:
-            return None
-        return self.existing_bytes.decode("utf-8", "replace")
+    def current_etag(self) -> str:
+        return ABSENT if self.existing_bytes is None else etag(self.existing_bytes)
 
 
 def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -98,10 +100,6 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     forced = args["force"] is True
     dry_run = args["dry_run"] is True
 
-    saved = replay(store, args["key"])
-    if saved is not None and not dry_run:
-        return _value(saved["written"], [], [], saved["record"], dry_run=False)
-
     skills, profiles, sources = _sources(store, ctx)
     targets = _plan(root, skills, profiles)
     written: list[str] = []
@@ -109,12 +107,14 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     refused: list[str] = []
     reasons: dict[str, str] = {}
     expected: dict[str, str] = {}
+    digests: dict[str, str] = {}
     for target in targets:
         state, current, reason = _reconcile(target, forced=forced)
         if state == "refused":
             refused.append(target.display)
             reasons[target.display] = reason or "the generated file cannot be replaced"
             continue
+        digests[target.display] = target.digest
         if state == "unchanged":
             unchanged.append(target.display)
             continue
@@ -128,10 +128,21 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "for a hand-edited block, let a human force the rewrite",
             {"refused": refused, "reasons": reasons},
         )
-    if dry_run or not written:
+    if dry_run:
+        return _value(written, unchanged, refused, None, dry_run=True)
+
+    binding = _binding(sources, digests, refused, forced=forced)
+    saved = replay(store, args["key"])
+    if not written:
         return _value(
-            written if dry_run else [], unchanged, refused, None, dry_run=dry_run
+            [],
+            unchanged,
+            refused,
+            saved["record"] if _saved_binding(ctx, saved) == binding else None,
+            dry_run=False,
         )
+    if saved is not None and _saved_binding(ctx, saved) == binding:
+        return _value(saved["written"], [], [], saved["record"], dry_run=False)
 
     ops = [
         Op(
@@ -148,6 +159,7 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "payload_digests": {target.display: target.digest for target in targets},
         "source_etags": sources,
         "harnesses": [],
+        "binding": binding,
     }
     result = commit(
         store,
@@ -155,10 +167,51 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         ops,
         {"kind": RECORD_KIND, "data": data},
         actor=actor,
-        key=args["key"],
+        key=_bound_key(args["key"], binding),
         index=ctx.index,
     )
     return _value(result["written"], unchanged, [], result["record"], dry_run=False)
+
+
+def _binding(
+    sources: dict[str, str],
+    digests: dict[str, str],
+    refused: list[str],
+    *,
+    forced: bool,
+) -> str:
+    """What this sync reconciles: its sources, its outputs and its force flag.
+
+    A keyed replay is only honoured for the binding it saved, so a reused key
+    after a source or target change performs the new work instead of replaying
+    a stale result.
+    """
+    payload = json.dumps(
+        {
+            "sources": sources,
+            "digests": digests,
+            "refused": refused,
+            "forced": forced,
+        },
+        sort_keys=True,
+    )
+    return sha256_hex(payload.encode("utf-8"))
+
+
+def _bound_key(key: str | None, binding: str) -> str | None:
+    """The idempotency key a commit binds to one reconciliation, or None."""
+    if key is None:
+        return None
+    return f"{key}#{binding}"
+
+
+def _saved_binding(ctx: Context, saved: dict[str, Any] | None) -> str | None:
+    """The binding a keyed sync saved, when it saved one."""
+    if saved is None:
+        return None
+    data = record_data(ctx.index, saved.get("record"))
+    value = data.get("binding")
+    return value if isinstance(value, str) else None
 
 
 def _value(
@@ -181,14 +234,14 @@ def _value(
 
 def _reconcile(target: _Target, *, forced: bool) -> tuple[str, str, str | None]:
     """``("write"|"unchanged"|"refused", current etag, refusal reason)``."""
-    current = ABSENT if target.existing_bytes is None else etag(target.existing_bytes)
+    current = target.current_etag
     if target.conflict is not None:
         return "refused", current, target.conflict
-    if target.existing_bytes is None:
+    if target.existing_text is None:
         return "write", current, None
-    existing = target.existing or ""
-    if target.existing == target.new_text:
+    if target.existing_text == target.new_text:
         return "unchanged", current, None
+    existing = target.existing_text
     state = adapters.read_managed(existing)
     if state is None:
         if target.whole_file or adapters.START_MARK in existing or adapters.END_MARK in existing:
@@ -204,17 +257,28 @@ def _reconcile(target: _Target, *, forced: bool) -> tuple[str, str, str | None]:
 
 
 def _plan(root: Path, skills: list[_Skill], profiles: list[_Profile]) -> list[_Target]:
-    """Every adapter target, rendered in a deterministic order."""
+    """Every adapter target, rendered in a deterministic order.
+
+    Skills render first so a marker-bearing skill body is refused by name,
+    before the block that would embed it is assembled.
+    """
+    rendered: list[tuple[str, str, str, bytes | None]] = []
+    for skill in skills:
+        text, digest = adapters.render_skill(skill.name, skill.text)
+        rel = adapters.adapter_rel("skill", skill.name)
+        rendered.append((rel, text, digest, _read(adapters.resolve_adapter(root, rel))))
     agents_rel = adapters.AGENTS_PATH
     agents_path = adapters.resolve_adapter(root, agents_rel)
     existing = _read(agents_path)
-    existing_text = None if existing is None else existing.decode("utf-8", "replace")
+    existing_text, undecodable = _decode(existing, agents_rel)
     payload = _agents_payload(skills, profiles)
-    conflict: str | None = None
-    try:
-        agents_text, agents_digest = adapters.render_agents(existing_text, payload)
-    except adapters.AdapterConflict as exc:
-        agents_text, agents_digest, conflict = "", "", str(exc)
+    conflict = undecodable
+    agents_text, agents_digest = "", ""
+    if conflict is None:
+        try:
+            agents_text, agents_digest = adapters.render_agents(existing_text, payload)
+        except adapters.AdapterConflict as exc:
+            conflict = str(exc)
     targets = [
         _Target(
             rel=agents_rel,
@@ -222,24 +286,41 @@ def _plan(root: Path, skills: list[_Skill], profiles: list[_Profile]) -> list[_T
             new_text=agents_text,
             digest=agents_digest,
             existing_bytes=existing,
+            existing_text=existing_text,
             conflict=conflict,
         )
     ]
-    for skill in skills:
-        rel = adapters.adapter_rel("skill", skill.name)
-        path = adapters.resolve_adapter(root, rel)
-        text, digest = adapters.render_skill(skill.name, skill.text)
+    for rel, text, digest, current in rendered:
+        current_text, unreadable = _decode(current, rel)
         targets.append(
             _Target(
                 rel=rel,
-                path=path,
+                path=adapters.resolve_adapter(root, rel),
                 new_text=text,
                 digest=digest,
-                existing_bytes=_read(path),
+                existing_bytes=current,
+                existing_text=current_text,
                 whole_file=True,
+                conflict=unreadable,
             )
         )
     return targets
+
+
+def _decode(data: bytes | None, rel: str) -> tuple[str | None, str | None]:
+    """One target's current text, or the reason its bytes cannot be rewritten.
+
+    Unmanaged prose is not ours to normalize, so a file that is not valid UTF-8
+    is refused by name rather than re-encoded with replacement characters: that
+    would silently corrupt text a human typed.
+    """
+    if data is None:
+        return None, None
+    try:
+        return data.decode("utf-8"), None
+    except UnicodeDecodeError:
+        display = rel[len(adapters.ADAPTER_PREFIX) :]
+        return None, f"{display} is not valid UTF-8; convert it to UTF-8 by hand"
 
 
 def _agents_payload(skills: list[_Skill], profiles: list[_Profile]) -> str:
@@ -298,7 +379,7 @@ def _sources(
     ).fetchall()
     for path, primitive in rows:
         if primitive == "note":
-            if not _is_skill_path(path):
+            if not is_skill_path(path):
                 continue
             skill = _skill(store, path)
             if skill.name in names:
@@ -315,10 +396,6 @@ def _sources(
             profiles.append(profile)
             sources[path] = profile.doc.etag
     return skills, profiles, sources
-
-
-def _is_skill_path(path: str) -> bool:
-    return path.startswith("workspace/") and "/skills/" in path
 
 
 def _skill(store: Path, path: str) -> _Skill:

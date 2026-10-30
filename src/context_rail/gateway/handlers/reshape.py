@@ -21,9 +21,12 @@ from context_rail.core.util import dump_frontmatter, now_iso, slugify
 from context_rail.gateway.handlers.common import (
     compose_doc,
     doc_frontmatter,
+    document_version,
     preset_for,
     read_doc,
     record_data,
+    versioned_change_record,
+    versioned_kind,
 )
 from context_rail.model.manifest import render_path
 from context_rail.model.primitives import RELATIONS
@@ -56,7 +59,13 @@ _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
 
 
 def rename(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Move one mutable document to a new slug and retarget every link to it."""
+    """Move one mutable document to a new slug and retarget every link to it.
+
+    A skill or profile is a versioned document, so its rename is an identity
+    change: the moved bytes carry the new ``name`` for a skill, the version
+    increments once, and one ``skill.changed``/``profile.changed`` Record keeps
+    the complete before and after text beside the ``doc.renamed`` event.
+    """
     old = args["old"]
     new = args["new"]
     key = args["key"]
@@ -82,7 +91,12 @@ def rename(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             slug=new,
         )
         _free(index, store, new, target)
-        moved = _rewrite(source, data, old, new, stamp=True)
+        kind = versioned_kind(doc, source)
+        change = None
+        if kind is None:
+            moved = _rewrite(source, data, old, new, stamp=True)
+        else:
+            moved, change = _versioned_move(doc, data, source, target, old, new, kind)
         if moved is None:
             raise WriteRefused(
                 "VALIDATION_FAILED", f"{source!r} cannot be rewritten", {"path": source}
@@ -111,6 +125,7 @@ def rename(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             actor=actor,
             key=key,
             index=index,
+            extra_records=() if change is None else (change,),
         )
     return {
         "slug": new,
@@ -121,6 +136,41 @@ def rename(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "to": new,
         "rewritten": rewritten,
     }
+
+
+def _versioned_move(
+    doc: Doc, data: bytes, source: str, target: str, old: str, new: str, kind: str
+) -> tuple[bytes, dict[str, Any]]:
+    """The moved bytes of a versioned document and its change Record.
+
+    A skill's ``name`` follows the file stem, so it is rewritten here rather
+    than left behind: ``name != stem`` would wedge ``adapters sync`` and make
+    every ``skill_pins`` lookup fail afterwards.
+    """
+    rewritten = _rewrite(source, data, old, new, stamp=True)
+    if rewritten is None:
+        raise WriteRefused(
+            "VALIDATION_FAILED", f"{source!r} cannot be rewritten", {"path": source}
+        )
+    before_version = document_version(doc.fields, source)
+    moved_doc = parse_doc(target, rewritten)
+    front = doc_frontmatter(moved_doc)
+    if kind == "skill":
+        front["name"] = new
+    front["version"] = before_version + 1
+    moved = compose_doc(front, moved_doc.body)
+    record = versioned_change_record(
+        kind=kind,
+        rel=target,
+        slug=new,
+        before_version=before_version,
+        after_version=before_version + 1,
+        before_text=data.decode("utf-8"),
+        after_text=moved.decode("utf-8"),
+        before_etag=etag(data),
+        after_etag=etag(moved),
+    )
+    return moved, record
 
 
 def relocate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

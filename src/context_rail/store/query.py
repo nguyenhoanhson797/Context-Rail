@@ -34,7 +34,10 @@ __all__ = [
     "ledger",
     "records_about",
     "rejected_reviews",
+    "count_reports_by_fingerprint",
     "report_for_run",
+    "report_named_by_run",
+    "reports_by_fingerprint",
     "reversible_decisions",
     "review_for",
     "review_for_item",
@@ -591,10 +594,45 @@ def untriaged_reports(ix: Index, limit: int = 100) -> list[dict[str, Any]]:
     return [_report_row(row) for row in rows]
 
 
-#: The report columns every report feed returns, in one place.
+def reports_by_fingerprint(
+    ix: Index, fingerprint: str, limit: int = 40
+) -> list[dict[str, Any]]:
+    """Every report filed under one fingerprint, newest first.
+
+    A triaged report is claimed by its triage Record and never appears on an
+    untriaged page again, so a recurrence of the same fingerprint needs this
+    whole-store selection to keep the evidence an earlier triage exported.
+    """
+    limit = _bounded(limit, REPORT_LIMIT_BOUNDS, "limit")
+    rows = ix.conn.execute(
+        f"{_REPORT_SELECT} WHERE p.fingerprint = ? "
+        "ORDER BY p.at DESC, p.record_id DESC LIMIT ?",
+        (fingerprint, limit),
+    ).fetchall()
+    return [_report_row(row) for row in rows]
+
+
+def count_reports_by_fingerprint(ix: Index, fingerprint: str) -> int:
+    """How many reports one fingerprint has on file, counted in the index.
+
+    A bounded read cannot report what it never fetched, so an export's omission
+    count comes from here rather than from the page it happens to hold.
+    """
+    row = ix.conn.execute(
+        "SELECT COUNT(*) FROM reports WHERE fingerprint = ?", (fingerprint,)
+    ).fetchone()
+    return 0 if row is None else int(row[0])
+
+
+#: The report columns every report feed returns, in one place. A dispatch files
+#: its report before the run exists, so a runless report is attributed through
+#: the run whose payload names it; ``linked_run`` is that run's Record id.
 _REPORT_SELECT = (
     "SELECT p.record_id, p.item, p.run_id, p.target_class, p.target, "
-    'p.fingerprint, p.impact, p."nothing", p.at, p.data_json, p.path FROM reports p'
+    'p.fingerprint, p.impact, p."nothing", p.at, p.data_json, p.path, '
+    "(SELECT r.record_id FROM runs r "
+    "WHERE json_extract(r.data_json, '$.report') = p.record_id "
+    "ORDER BY r.record_id LIMIT 1) FROM reports p"
 )
 _UNTRIAGED_ONLY = (
     "NOT EXISTS (SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id)"
@@ -603,13 +641,27 @@ _UNTRIAGED = f"WHERE {_UNTRIAGED_ONLY}"
 
 
 def _report_row(row: Sequence[Any]) -> dict[str, Any]:
-    """One indexed report row as the views read it."""
-    record_id, item, run_id, target_class, target, fingerprint, impact, nothing, at, data, path = row
+    """One indexed report row as the views read it, with its attributed run."""
+    (
+        record_id,
+        item,
+        run_id,
+        target_class,
+        target,
+        fingerprint,
+        impact,
+        nothing,
+        at,
+        data,
+        path,
+        linked_run,
+    ) = row
     return {
         "report": record_id,
         "record_id": record_id,
         "item": item,
         "run": run_id,
+        "linked_run": linked_run,
         "target_class": target_class,
         "target": target,
         "fingerprint": fingerprint,
@@ -646,6 +698,24 @@ def report_for_run(ix: Index, run_id: str) -> str | None:
         (run_id,),
     ).fetchone()
     return None if row is None else row[0]
+
+
+def report_named_by_run(ix: Index, run_id: str) -> str | None:
+    """The Record id a completed run's own payload links, if any.
+
+    The other direction of :func:`report_for_run`: dispatch files the report
+    before the run records it, so a run's ``data.report`` is the only link a
+    runless report has. Both directions are read so one run never ends with
+    two attributed reports.
+    """
+    row = ix.conn.execute(
+        "SELECT json_extract(data_json, '$.report') FROM runs "
+        "WHERE record_id = ? ORDER BY path LIMIT 1",
+        (run_id,),
+    ).fetchone()
+    if row is None or not isinstance(row[0], str) or not row[0]:
+        return None
+    return row[0]
 
 
 def triage_runs(ix: Index, run_ids: Sequence[str]) -> list[dict[str, Any]]:

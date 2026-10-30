@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import now_iso, slugify
@@ -13,6 +12,7 @@ from context_rail.gateway.handlers.common import (
     check_gate_state,
     compose_doc,
     doc_frontmatter,
+    document_version,
     load_body,
     parse_relations,
     parse_set_values,
@@ -27,10 +27,12 @@ from context_rail.gateway.handlers.common import (
     template_body,
     unique_slug,
     validate_field_values,
+    versioned_change_record,
+    versioned_kind,
 )
 from context_rail.kernel import gates, rights
 from context_rail.kernel.lifecycle import category_of, check_transition
-from context_rail.model.cto import SKILL_SCHEMA
+from context_rail.model.cto import SKILL_SCHEMA, TOOL_IDS
 from context_rail.model.manifest import render_path
 from context_rail.model.pack import Preset
 from context_rail.model.primitives import RELATIONS
@@ -225,7 +227,7 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             raise WriteRefused(
                 "VALIDATION_FAILED", f"{rel!r} has no primitive", {"path": rel}
             )
-        versioned = _versioned_kind(doc, rel)
+        versioned = versioned_kind(doc, rel)
         actual = etag(data)
         if actual != expect:
             raise WriteRefused(
@@ -258,17 +260,18 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             raise WriteRefused(
                 "VALIDATION_FAILED", "the update changes nothing", {"path": rel}
             )
+        if versioned == "skill":
+            _check_skill_payload(front, doc.slug)
         before_version: int | None = None
         if versioned is not None:
-            before_version = _document_version(front, rel)
+            before_version = document_version(front, rel)
             front["version"] = before_version + 1
         front["updated"] = now_iso()
         after = compose_doc(front, new_body)
         record = None
         if versioned is not None:
-            record = _change_record(
-                kind=_VERSIONED_KINDS[versioned],
-                target_class=versioned,
+            record = versioned_change_record(
+                kind=versioned,
                 rel=rel,
                 before_version=before_version,
                 after_version=front["version"],
@@ -295,10 +298,6 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     return _response(store, index, result)
 
 
-#: The versioned document kinds and the Record kinds their changes append.
-_VERSIONED_KINDS = {"skill": "skill.changed", "profile": "profile.changed"}
-
-
 def _initial_version(value: Any, preset: str) -> int:
     """The first version a skill or profile carries: one unless stated."""
     if value is None:
@@ -313,7 +312,12 @@ def _initial_version(value: Any, preset: str) -> int:
 
 
 def _skill_identity(fields: dict[str, Any], slug: str) -> None:
-    """Pin a skill's name to its file stem and its payload to schema one."""
+    """Pin a skill's name to its file stem and validate its payload strictly.
+
+    The pinned skill schema refuses a missing description or an unknown tool,
+    so a skill that would wedge ``adapters sync`` is refused at write time
+    rather than after it is stored.
+    """
     supplied = fields.get("name")
     if supplied is not None and supplied != slug:
         raise WriteRefused(
@@ -329,6 +333,36 @@ def _skill_identity(fields: dict[str, Any], slug: str) -> None:
             {"schema": schema},
         )
     fields["name"] = slug
+    _check_skill_payload(fields, slug)
+
+
+def _check_skill_payload(front: dict[str, Any], slug: str) -> None:
+    """Refuse a skill frontmatter the pinned schema cannot carry back."""
+    description = front.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"skill {slug!r} needs a non-empty description",
+            {"slug": slug, "key": "description"},
+        )
+    if "allowed_tools" not in front:
+        return
+    tools = front["allowed_tools"]
+    if not isinstance(tools, (list, tuple)) or not all(
+        isinstance(tool, str) for tool in tools
+    ):
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"skill {slug!r} allowed_tools must be a list of tool ids",
+            {"slug": slug, "key": "allowed_tools"},
+        )
+    unknown = sorted(set(tools) - set(TOOL_IDS))
+    if unknown:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"skill {slug!r} names unknown tool id(s): " + ", ".join(unknown),
+            {"slug": slug, "allowed_tools": unknown},
+        )
 
 
 def _refuse_skill_identity_change(values: dict[str, Any], doc: Doc) -> None:
@@ -345,69 +379,6 @@ def _refuse_skill_identity_change(values: dict[str, Any], doc: Doc) -> None:
             f"a skill carries schema {SKILL_SCHEMA}",
             {"schema": values["schema"]},
         )
-
-
-def _versioned_kind(doc: Doc, rel: str) -> str | None:
-    """Which versioned kind one document is, or None for an ordinary document."""
-    if doc.primitive == "actor":
-        return "profile"
-    if doc.preset == "skill":
-        return "skill"
-    if doc.primitive == "note" and _is_skill_path(rel):
-        return "skill"
-    return None
-
-
-def _is_skill_path(rel: str) -> bool:
-    parts = PurePosixPath(rel).parts
-    return len(parts) > 2 and parts[0] == "workspace" and "skills" in parts[:-1]
-
-
-def _document_version(front: dict[str, Any], rel: str) -> int:
-    version = front.get("version")
-    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            f"{rel!r} has no positive integer version to increment",
-            {"path": rel, "version": version},
-        )
-    return version
-
-
-def _change_record(
-    *,
-    kind: str,
-    target_class: str,
-    rel: str,
-    before_version: int,
-    after_version: int,
-    before_text: str,
-    after_text: str,
-    before_etag: str,
-    after_etag: str,
-    slug: str,
-) -> dict[str, Any]:
-    """One versioned change Record carrying both complete documents."""
-    return {
-        "kind": kind,
-        "about": [slug],
-        "data": {
-            "schema": 1,
-            "target_class": target_class,
-            "target": rel,
-            "before": before_version,
-            "after": after_version,
-            "before_etag": before_etag,
-            "after_etag": after_etag,
-            "before_text": before_text,
-            "after_text": after_text,
-            "before_digest": hashlib.sha256(before_text.encode("utf-8")).hexdigest(),
-            "after_digest": hashlib.sha256(after_text.encode("utf-8")).hexdigest(),
-            "reason": None,
-            "reports": [],
-            "restored_from_version": None,
-        },
-    }
 
 
 def move(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -526,7 +497,13 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             front[name] = [f"[[{target}]]" for target in targets]
         else:
             front.pop(name, None)
+        versioned = versioned_kind(doc, rel)
+        before_version: int | None = None
+        if versioned is not None:
+            before_version = document_version(front, rel)
+            front["version"] = before_version + 1
         front["updated"] = now_iso()
+        after = compose_doc(front, doc.body)
         decision = _decision_record(
             ctx,
             args,
@@ -534,10 +511,27 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             before=_relation_values(before),
             after=_relation_values(targets),
         )
+        extra: list[dict[str, Any]] = []
+        if versioned is not None:
+            extra.append(
+                versioned_change_record(
+                    kind=versioned,
+                    rel=rel,
+                    before_version=before_version,
+                    after_version=front["version"],
+                    before_text=data.decode("utf-8"),
+                    after_text=after.decode("utf-8"),
+                    before_etag=actual,
+                    after_etag=etag(after),
+                    slug=doc.slug,
+                )
+            )
+        if decision is not None:
+            extra.append(decision)
         result = commit(
             store,
             ctx.manifest,
-            [Op(rel, compose_doc(front, doc.body), actual)],
+            [Op(rel, after, actual)],
             {
                 "kind": "relation.changed",
                 "about": [doc.slug],
@@ -546,7 +540,7 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             actor=actor,
             key=key,
             index=index,
-            extra_records=() if decision is None else (decision,),
+            extra_records=tuple(extra),
         )
     return {
         **_response(store, index, result),

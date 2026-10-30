@@ -663,3 +663,71 @@ def test_verifying_an_item_leaves_review_checks_to_the_review(
     assert is_ok(single), single
     assert single["value"]["passed"] is False
     assert "no separated reviewer verdict" in single["value"]["reason"]
+
+
+def test_an_approving_review_makes_the_review_check_verify(
+    verified_run: Any, fake_droid: Any
+) -> None:
+    """The post-review path: a candidate-bound approval verifies the Item's review Check."""
+    store = verified_run.store
+    fake_droid.set_behaviors(["review_approve"])
+    reviewed = invoke(
+        "review",
+        {"item": verified_run.item, "run": verified_run.run, "key": "rv-verify"},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(reviewed), reviewed
+    assert reviewed["value"]["verdict"] == "approve"
+    slug = next(
+        row["check"]
+        for row in invoke("status", {}, store=store, actor="cto")["value"]["check_states"]
+        if row["check"].startswith("review-") and row["check"].endswith(verified_run.item)
+    )
+
+    checked = invoke("verify", {"target": slug}, store=store, actor="cto")
+
+    assert is_ok(checked), checked
+    assert checked["value"]["passed"] is True
+    entry = checked["value"]["verdicts"][0]
+    assert entry["check"] == slug
+    assert entry["passed"] is True
+    assert entry["freshness"] == "fresh"
+    assert entry["record"]
+
+    shown = invoke("show", {"slug": slug}, store=store)["value"]
+    assert shown["freshness"] == "fresh"
+    assert shown["doc"]["fields"]["mode"] == "review"
+
+
+def test_the_post_review_verdict_only_goes_stale_when_the_check_changes(
+    verified_run: Any, fake_droid: Any
+) -> None:
+    store = verified_run.store
+    fake_droid.set_behaviors(["review_approve"])
+    reviewed = invoke(
+        "review",
+        {"item": verified_run.item, "run": verified_run.run, "key": "rv-verify-2"},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(reviewed), reviewed
+    slug = next(
+        row["check"]
+        for row in invoke("status", {}, store=store, actor="cto")["value"]["check_states"]
+        if row["check"].startswith("review-")
+    )
+    assert invoke("show", {"slug": slug}, store=store)["value"]["freshness"] == "fresh"
+
+    again = invoke("verify", {"target": slug}, store=store, actor="cto")
+    assert is_ok(again), again
+    assert again["value"]["verdicts"][0]["freshness"] == "fresh"
+    assert invoke("show", {"slug": slug}, store=store)["value"]["freshness"] == "fresh"
+
+    touch_doc(store, f"checks/{slug}.md", timeout_s=60)
+
+    assert invoke("show", {"slug": slug}, store=store)["value"]["freshness"] == "stale"
+    rechecked = invoke("verify", {"target": slug}, store=store, actor="cto")
+    assert is_ok(rechecked), rechecked
+    assert rechecked["value"]["passed"] is True
+    assert rechecked["value"]["verdicts"][0]["freshness"] == "fresh"

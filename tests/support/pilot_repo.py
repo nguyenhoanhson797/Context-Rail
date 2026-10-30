@@ -80,14 +80,15 @@ _GITIGNORE = """__pycache__/
 .rail-local/
 """
 
-_NEXT_COMMANDS = """next steps (run from this checkout, with RAIL_ACTOR unset):
-  1. rail --store {store} init --dir {project} --interview --answers-file <answers.json> \\
-       --confirm "APPROVE charter"
-  2. rail --store {store} check <slug> --target <item> --spec-file <acceptance.json> \\
-       --expect absent --actor human --confirm "APPROVE <slug>"
-  3. rail --store {store} approve charter --confirm "APPROVE charter" --confirmer <you>
-  4. rail --store {store} ci
-  5. rail --store {store} cto tick --key pilot-tick-1 --timeout 1800
+_NEXT_COMMANDS = """next steps (run from this checkout, with RAIL_ACTOR unset).
+Each step is one command line: the global flags --store and --actor always
+precede the subcommand, exactly one init mode is named, and every argument
+that can carry a space is quoted.
+  1. rail --store "{store}" --actor human init --dir "{project}" --answers-file "<answers.json>" --confirm "APPROVE charter"
+  2. rail --store "{store}" --actor human check "<slug>" --target "<item>" --spec-file "<acceptance.json>" --expect absent --confirm "APPROVE <slug>"
+  3. rail --store "{store}" --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"
+  4. rail --store "{store}" --actor human ci
+  5. rail --store "{store}" --actor cto cto tick --key pilot-tick-1 --timeout 1800
 model check: custom:Deepseek-V4-flash-0 (implementer, CTO) and
              custom:gemini-3.8-flash-LTN-0 (reviewer); never print a key.
 """

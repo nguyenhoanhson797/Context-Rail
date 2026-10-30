@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from importlib import resources
 from pathlib import Path, PurePosixPath
@@ -364,6 +365,75 @@ def slug_of_path(rel: str) -> str:
     if leaf.name == "profile.md":
         return leaf.parent.name or leaf.stem
     return leaf.stem
+
+
+#: The versioned document kinds and the Record kinds their changes append.
+VERSIONED_KINDS = {"skill": "skill.changed", "profile": "profile.changed"}
+
+
+def is_skill_path(rel: str) -> bool:
+    """Whether a note lives under a skills folder and is therefore a skill."""
+    parts = PurePosixPath(rel).parts
+    return len(parts) > 2 and parts[0] == "workspace" and "skills" in parts[:-1]
+
+
+def versioned_kind(doc: Doc, rel: str) -> str | None:
+    """Which versioned kind one document is, or None for an ordinary document."""
+    if doc.primitive == "actor":
+        return "profile"
+    if doc.preset == "skill":
+        return "skill"
+    if doc.primitive == "note" and is_skill_path(rel):
+        return "skill"
+    return None
+
+
+def document_version(front: dict[str, Any], rel: str) -> int:
+    """The positive integer version a versioned document carries."""
+    version = front.get("version")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"{rel!r} has no positive integer version to increment",
+            {"path": rel, "version": version},
+        )
+    return version
+
+
+def versioned_change_record(
+    *,
+    kind: str,
+    rel: str,
+    slug: str,
+    before_version: int,
+    after_version: int,
+    before_text: str,
+    after_text: str,
+    before_etag: str,
+    after_etag: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """One versioned change Record carrying both complete documents."""
+    return {
+        "kind": VERSIONED_KINDS[kind],
+        "about": [slug],
+        "data": {
+            "schema": 1,
+            "target_class": kind,
+            "target": rel,
+            "before": before_version,
+            "after": after_version,
+            "before_etag": before_etag,
+            "after_etag": after_etag,
+            "before_text": before_text,
+            "after_text": after_text,
+            "before_digest": hashlib.sha256(before_text.encode("utf-8")).hexdigest(),
+            "after_digest": hashlib.sha256(after_text.encode("utf-8")).hexdigest(),
+            "reason": reason,
+            "reports": [],
+            "restored_from_version": None,
+        },
+    }
 
 
 def check_gate_state(

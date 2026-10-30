@@ -118,6 +118,12 @@ def payload_digest(payload: str) -> str:
 
 def render_agents(existing: str | None, payload: str) -> tuple[str, str]:
     """The ``AGENTS.md`` text holding the managed ``payload``, and its digest."""
+    offending = _marker_line(payload)
+    if offending is not None:
+        raise AdapterConflict(
+            f"the generated payload carries a {offending} line, so the managed block "
+            "would hold two marker pairs; escape that line in the source Note"
+        )
     payload = _terminated(payload)
     digest = payload_digest(payload)
     block = _block(payload, digest)
@@ -175,6 +181,13 @@ def render_skill(name: str, text: str) -> tuple[str, str]:
     frontmatter = "---\n" + dump_frontmatter(front) + "---\n"
     body = _terminated(doc.body)
     payload = frontmatter + body
+    offending = _marker_line(payload)
+    if offending is not None:
+        raise ModelError(
+            "VALIDATION_FAILED",
+            f"skill {name!r} carries a {offending} line, so its SKILL.md would hold "
+            "two marker pairs; escape or remove that line in the skill Note",
+        )
     digest = payload_digest(payload)
     text_out = (
         frontmatter
@@ -261,20 +274,48 @@ def _markers(text: str) -> tuple[int, int, int, int] | None:
     Returns ``(start_line, start_body, end_line, end_after)``: where the START
     line begins, where its content ends, where the END line begins, and where
     it ends including its newline.
+
+    The pair is anchored on the digest line a rendered block always puts
+    directly under START, so a marker-shaped line inside the owned payload never
+    moves the boundary. Every marker line outside that region is then a real
+    second boundary: a file with one is malformed and needs manual repair.
     """
-    starts: list[tuple[int, int]] = []
-    ends: list[tuple[int, int]] = []
+    lines = text.splitlines(keepends=True)
+    offsets: list[int] = []
     offset = 0
-    for line in text.splitlines(keepends=True):
-        stripped = line.strip()
-        if stripped == START_MARK:
-            starts.append((offset, offset + len(line)))
-        elif stripped == END_MARK:
-            ends.append((offset, offset + len(line)))
+    for line in lines:
+        offsets.append(offset)
         offset += len(line)
-    if len(starts) != 1 or len(ends) != 1 or starts[0][0] > ends[0][0]:
+    start = None
+    for index, line in enumerate(lines[:-1]):
+        if line.strip() == START_MARK and _DIGEST.fullmatch(lines[index + 1].strip()):
+            start = index
+            break
+    if start is None:
         return None
-    return starts[0][0], starts[0][1], ends[0][0], ends[0][1]
+    end = None
+    for index in range(start + 2, len(lines)):
+        if lines[index].strip() == END_MARK:
+            end = index
+            break
+    if end is None:
+        return None
+    for index, line in enumerate(lines):
+        if start < index < end:
+            continue
+        if line.strip() in (START_MARK, END_MARK) and index != start and index != end:
+            return None
+    start_body = offsets[start] + len(lines[start])
+    return offsets[start], start_body, offsets[end], offsets[end] + len(lines[end])
+
+
+def _marker_line(payload: str) -> str | None:
+    """The ownership marker a rendered payload carries, when it carries one."""
+    for line in _lines(payload).splitlines():
+        stripped = line.strip()
+        if stripped in (START_MARK, END_MARK):
+            return stripped
+    return None
 
 
 def _frontmatter(prefix: str) -> str:

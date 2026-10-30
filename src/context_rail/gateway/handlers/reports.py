@@ -84,6 +84,13 @@ def report(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 f"run {run!r} already has report {existing!r}",
                 {"run": run, "report": existing},
             )
+        linked = query.report_named_by_run(index, run)
+        if linked is not None:
+            raise WriteRefused(
+                "CONFLICT",
+                f"run {run!r} already links report {linked!r}",
+                {"run": run, "report": linked},
+            )
         result = commit(
             store,
             ctx.manifest,
@@ -221,22 +228,36 @@ def _thresholds(ctx: Context) -> TriageThresholds:
 
 
 def _run_ids(rows: Sequence[dict[str, Any]]) -> list[str]:
-    """The run ids a page of reports names, ignoring a report with none."""
-    return [
-        row["run"] for row in rows if isinstance(row["run"], str) and row["run"]
-    ]
+    """The runs a page of reports is attributed to, ignoring an unattributed one."""
+    return [run for run in (_attributed_run(row) for row in rows) if run is not None]
+
+
+def _attributed_run(row: dict[str, Any]) -> str | None:
+    """The run a report belongs to, by its own field or the run's report link.
+
+    Dispatch files its report before the run exists, so a runless report is
+    attributed through the completion payload that names it. Without that,
+    every production report would vote alone and the failure evidence a run
+    recorded could never double its weight.
+    """
+    run_id = row.get("run")
+    if isinstance(run_id, str) and run_id:
+        return run_id
+    linked = row.get("linked_run")
+    if isinstance(linked, str) and linked:
+        return linked
+    return None
 
 
 def _vote_identity(row: dict[str, Any]) -> str:
-    """The run a report votes for; a report filed without a run votes alone.
+    """The run a report votes for; a report no run names votes alone.
 
-    Dispatch files a report before the run exists, so a store can hold real
-    reports that name no run. Treating every such report as one unknown run
-    would merge unrelated dispatches into a single vote and no cluster could
-    ever reach the threshold.
+    A store can hold real reports that no run names; treating every one of them
+    as one unknown run would merge unrelated reports into a single vote and no
+    cluster could ever reach the threshold.
     """
-    run_id = row["run"]
-    if isinstance(run_id, str) and run_id:
+    run_id = _attributed_run(row)
+    if run_id is not None:
         return run_id
     return f"report:{row['record_id']}"
 
@@ -323,7 +344,7 @@ def _act(
         outputs.append(slug_of_path(rel))
         ops.append(Op(rel, data, ABSENT))
     elif action == "export":
-        rel, data, expect = _engine_export(ctx.store, decision, rows)
+        rel, data, expect = _engine_export(ctx, decision, rows)
         outputs.append(rel)
         ops.append(Op(rel, data, expect))
     record = {
@@ -344,10 +365,37 @@ def _act(
         ops,
         record,
         actor=actor,
-        key=None if key is None else f"{key}:{decision.fingerprint}",
+        key=_binding(key, decision),
         index=ctx.index,
     )
-    return outputs
+    return _existing_outputs(ctx, action, outputs)
+
+
+def _binding(key: str | None, decision: ClusterDecision) -> str | None:
+    """The idempotency binding for one cluster commit.
+
+    The report set is part of the binding, so a reused key over new reports for
+    the same fingerprint is a new piece of work rather than a replay of an
+    older one. Only an identical request replays.
+    """
+    if key is None:
+        return None
+    reports = ",".join(decision.reports)
+    return f"{key}:{decision.fingerprint}:{reports}"
+
+
+def _existing_outputs(ctx: Context, action: str, outputs: Sequence[str]) -> list[str]:
+    """Only the outputs that actually exist after the commit just applied."""
+    if action == "export":
+        return [path for path in outputs if (ctx.store / path).is_file()]
+    found: list[str] = []
+    for slug in outputs:
+        row = ctx.index.conn.execute(
+            "SELECT 1 FROM docs WHERE slug = ? LIMIT 1", (slug,)
+        ).fetchone()
+        if row is not None:
+            found.append(slug)
+    return found
 
 
 def _fix_document(
@@ -418,16 +466,42 @@ def _proposal_document(
 
 
 def _engine_export(
-    store: Path, decision: ClusterDecision, rows: Sequence[dict[str, Any]]
+    ctx: Context, decision: ClusterDecision, rows: Sequence[dict[str, Any]]
 ) -> tuple[str, bytes, str]:
+    """Rewrite one cluster's export from its whole bounded selection.
+
+    A recurrence of the same fingerprint replaces the previous section instead
+    of appending another, so the file always holds one heading and never more
+    than the bounded evidence, no matter how often triage runs.
+    """
     name = _cluster_name(decision.fingerprint)
     rel = f"{ENGINE_DIR}/{name}.md"
-    section = _export_section(decision, rows)
-    path = store / rel
+    history = _cluster_history(ctx, decision.fingerprint, rows)
+    total = query.count_reports_by_fingerprint(ctx.index, decision.fingerprint)
+    text = _export_section(decision, history, total=max(total, len(history)))
+    path = ctx.store / rel
     if not path.is_file():
-        return rel, section.encode("utf-8"), ABSENT
-    existing = path.read_bytes()
-    return rel, existing + b"\n" + section.encode("utf-8"), etag(existing)
+        return rel, text.encode("utf-8"), ABSENT
+    return rel, text.encode("utf-8"), etag(path.read_bytes())
+
+
+def _cluster_history(
+    ctx: Context, fingerprint: str, rows: Sequence[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Every report ever filed under one fingerprint, newest first.
+
+    The page being triaged supplies the new members; the whole-store selection
+    supplies the members an earlier triage already claimed, so a recurrence
+    keeps the evidence the first export held instead of dropping it.
+    """
+    seen = {row["record_id"]: row for row in rows}
+    for row in query.reports_by_fingerprint(ctx.index, fingerprint, EVIDENCE_CAP * 2):
+        seen.setdefault(row["record_id"], row)
+    return sorted(
+        seen.values(),
+        key=lambda item: (str(item.get("at") or ""), str(item["record_id"])),
+        reverse=True,
+    )
 
 
 def _cluster_name(fingerprint: str) -> str:
@@ -440,8 +514,18 @@ def _cluster_name(fingerprint: str) -> str:
 
 
 def _export_section(
-    decision: ClusterDecision, rows: Sequence[dict[str, Any]]
+    decision: ClusterDecision,
+    rows: Sequence[dict[str, Any]],
+    *,
+    total: int | None = None,
 ) -> str:
+    """One bounded export body: one heading, capped reports and evidence.
+
+    ``total`` is how many reports the cluster has on file; the omission line is
+    the difference against the reports this export could carry, so a capped
+    read never claims it showed everything.
+    """
+    filed = len(rows) if total is None else max(total, len(rows))
     evidence: list[str] = []
     for row in rows:
         for entry in (row["data"].get("evidence") or [])[:EVIDENCE_CAP]:
@@ -453,7 +537,8 @@ def _export_section(
     lines = [
         f"# Engine issue: {decision.fingerprint}",
         "",
-        f"- weight: {decision.weight}",
+        f"- weight: {decision.weight} (this triage)",
+        f"- reports on file: {filed}",
         f"- runs: {', '.join(decision.runs) or '(none)'}",
         f"- reports: {', '.join(decision.reports)}",
         "",
@@ -466,8 +551,8 @@ def _export_section(
             f"- {row['record_id']} ({row['target_class']} {row['target']}): "
             f"{_bounded(str(data.get('what_happened') or '(nothing reported)'))}"
         )
-    if len(rows) > EVIDENCE_CAP:
-        lines.append(f"- ({len(rows) - EVIDENCE_CAP} more report(s) omitted)")
+    if filed > EVIDENCE_CAP:
+        lines.append(f"- ({filed - EVIDENCE_CAP} more report(s) omitted)")
     lines.extend(["", "## Evidence", ""])
     lines.extend(f"- {entry}" for entry in evidence)
     if not evidence:
