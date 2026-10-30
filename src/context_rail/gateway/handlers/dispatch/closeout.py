@@ -6,7 +6,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from context_rail.gateway.handlers.common import bounded, check_gate_state, read_doc, review_gate_state
+from context_rail.gateway.handlers.common import (
+    bounded,
+    check_gate_state,
+    read_doc,
+    review_gate_state,
+)
 from context_rail.gateway.handlers.docs import move as move_item
 from context_rail.kernel import gates
 from context_rail.kernel.lifecycle import category_of

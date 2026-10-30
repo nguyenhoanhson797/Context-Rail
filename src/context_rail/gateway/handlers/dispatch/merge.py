@@ -7,9 +7,17 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from context_rail.core.util import new_ulid
-from context_rail.gateway.handlers.common import bounded, checkout, profile_document, read_doc, required
+from context_rail.gateway.handlers.common import (
+    bounded,
+    checkout,
+    profile_document,
+    read_doc,
+    required,
+)
 from context_rail.kernel.lifecycle import category_of
-from context_rail.runner import dispatch as local_dispatch, git as git_runner, merge as local_merge
+from context_rail.runner import dispatch as local_dispatch
+from context_rail.runner import git as git_runner
+from context_rail.runner import merge as local_merge
 from context_rail.runner.droid import droid_profile
 from context_rail.store import query
 from context_rail.store.write import WriteRefused, resolve_unique
@@ -17,7 +25,15 @@ from context_rail.store.write import WriteRefused, resolve_unique
 from .budget import _effective_budget, _run_facts
 from .checkpoint import _checkpoint, _current_branch, _store_paths
 from .closeout import _close_item, _fast_forward, _merge_gate, _merge_record, _push_default
-from .common import BUILTIN_SECONDS, IMPL_ROLE, MERGE_CHECKPOINT_MESSAGE, REVIEW_ROLE, _refuse_pending, _resolve_item, _verify_worktree
+from .common import (
+    BUILTIN_SECONDS,
+    IMPL_ROLE,
+    MERGE_CHECKPOINT_MESSAGE,
+    REVIEW_ROLE,
+    _refuse_pending,
+    _resolve_item,
+    _verify_worktree,
+)
 from .conflict import _continue_conflict, _merge_escalated
 from .review import _review_candidate, _separation_reason
 

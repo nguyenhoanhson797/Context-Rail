@@ -12,15 +12,36 @@ from context_rail.gateway.handlers.common import checkout, profile_document, req
 from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import Profile
 from context_rail.runner import dispatch as local_dispatch
-from context_rail.runner.droid import DroidProfile, droid_profile, run_droid, write_order_file, write_role_file
+from context_rail.runner.droid import (
+    DroidProfile,
+    droid_profile,
+    run_droid,
+    write_order_file,
+    write_role_file,
+)
 from context_rail.store import query
 from context_rail.store.write import WriteRefused
 
 from .budget import _effective_budget, _run_facts
 from .checkpoint import _create_worktree
-from .common import BUILTIN_SECONDS, IMPL_ROLE, REVIEW_ROLE, _optional, _refuse_pending, _resolve_item
+from .common import (
+    BUILTIN_SECONDS,
+    IMPL_ROLE,
+    REVIEW_ROLE,
+    _optional,
+    _refuse_pending,
+    _resolve_item,
+)
 from .review_order import _review_metadata, _review_outcome, _review_sections
-from .review_records import _candidate_checks_pass, _evaluation_record, _review_report, _review_run_record, _review_verdict_record, _verdict_ids, _verify_review_check
+from .review_records import (
+    _candidate_checks_pass,
+    _evaluation_record,
+    _review_report,
+    _review_run_record,
+    _review_verdict_record,
+    _verdict_ids,
+    _verify_review_check,
+)
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context

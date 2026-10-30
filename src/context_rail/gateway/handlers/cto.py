@@ -20,7 +20,7 @@ from context_rail.core.util import new_ulid, now_iso, sha256_hex
 from context_rail.gateway.handlers.common import (
     append_report,
     bounded,
-    checkout,
+    checkout as canonical_checkout,
     profile_document,
     required,
     skill_pins,
@@ -174,7 +174,7 @@ def tick(context: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     droid = droid_profile(profile, name=CTO_ROLE)
     timeout = _timeout(args.get("timeout"), profile, context)
 
-    checkout, _git_dir = _checkout(context)
+    checkout, _git_dir = canonical_checkout(context, action="a tick")
     brief_value = brief(
         context, {"max_chars": BRIEF_CHARS, "item_limit": BRIEF_LIMIT}, actor
     )
@@ -276,10 +276,6 @@ def _effective_seconds(profile: Profile, context: Context) -> float:
     return min(bounds) if bounds else DEFAULT_TICK_SECONDS
 
 
-def _checkout(context: Context) -> tuple[Path, Path]:
-    return checkout(context, action="a tick")
-
-
 def _execute(
     context: Context,
     *,
@@ -322,7 +318,7 @@ def _execute(
         "status": status,
     }
     report_data = _report_payload(ran, status=status)
-    report_id = _append_report(context, actor=actor, data=report_data)
+    report_id = append_report(context, report_data, actor=actor, about=[])
 
     run_data = {
         "schema": 1,
@@ -415,10 +411,6 @@ def _report_payload(ran: Any, *, status: str) -> dict[str, Any]:
         "evidence": [],
         "fingerprint": None,
     }
-
-
-def _append_report(context: Context, *, actor: str, data: dict[str, Any]) -> str | None:
-    return append_report(context, data, actor=actor, about=[])
 
 
 def _started_record(

@@ -20,7 +20,8 @@ def _store_paths(ctx: Context, root: Path) -> tuple[str, ...]:
     """The checkout-relative store folder plus the adapters, as path prefixes.
 
     A store rooted at the checkout itself has no folder of its own, so ``.``
-    stands for the whole tree; :func:`_inside` reads it that way.
+    stands for the whole tree; :func:`context_rail.store.location.owns_path`
+    reads it that way.
     """
     try:
         rel = Path(ctx.store).resolve().relative_to(root).as_posix()

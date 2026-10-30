@@ -16,19 +16,57 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from context_rail.core.util import new_ulid, now_iso, sha256_hex
-from context_rail.gateway.handlers.common import append_report, bounded, checkout, profile_document, read_doc, required, skill_pins
+from context_rail.gateway.handlers.common import (
+    append_report,
+    bounded,
+    checkout,
+    profile_document,
+    read_doc,
+    required,
+    skill_pins,
+)
 from context_rail.kernel.budgets import launch_refusal
 from context_rail.model.cto import aggregate_usage, parse_report, parse_run
 from context_rail.model.errors import ModelError
-from context_rail.runner import dispatch as local_dispatch, git as git_runner
-from context_rail.runner.droid import droid_profile, extract_block, run_droid, write_order_file, write_role_file
+from context_rail.runner import dispatch as local_dispatch
+from context_rail.runner import git as git_runner
+from context_rail.runner.droid import (
+    droid_profile,
+    extract_block,
+    run_droid,
+    write_order_file,
+    write_role_file,
+)
 from context_rail.store import query
 from context_rail.store.doc import Doc
 from context_rail.store.write import WriteRefused, commit
 
-from .budget import _effective_budget, _move_active, _move_blocked, _require_executable, _run_facts
-from .checkpoint import _checkpoint, _create_worktree, _current_branch, _status_entries, _store_paths
-from .common import BUILTIN_ATTEMPTS, BUILTIN_SECONDS, IMPL_ROLE, SUMMARY_MAX, _Plan, _capture_payload, _optional, _refuse_pending, _resolve_item, _verify_worktree
+from .budget import (
+    _effective_budget,
+    _move_active,
+    _move_blocked,
+    _require_executable,
+    _run_facts,
+)
+from .checkpoint import (
+    _checkpoint,
+    _create_worktree,
+    _current_branch,
+    _status_entries,
+    _store_paths,
+)
+from .common import (
+    BUILTIN_ATTEMPTS,
+    BUILTIN_SECONDS,
+    IMPL_ROLE,
+    SUMMARY_MAX,
+    _Plan,
+    _capture_payload,
+    _optional,
+    _refuse_pending,
+    _resolve_item,
+    _verify_worktree,
+)
 from .records import _escalation_record, _failure_report, _started_record
 
 if TYPE_CHECKING:
@@ -340,7 +378,7 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
     candidate = _candidate(plan)
     public_capture = _capture_payload(capture, output_omitted)
     report_data = last_report if verified else _failure_report(plan, summary, verdicts)
-    report_id = _append_report(plan, report_data)
+    report_id = append_report(plan.ctx, report_data, actor=plan.actor, about=[plan.slug])
     run_data = {
         "schema": 1,
         "dispatch_id": plan.dispatch_id,
@@ -528,7 +566,3 @@ def _candidate(plan: _Plan) -> str | None:
     except WriteRefused:
         return None
     return None if head == plan.base else head
-
-
-def _append_report(plan: _Plan, data: dict[str, Any]) -> str | None:
-    return append_report(plan.ctx, data, actor=plan.actor, about=[plan.slug])

@@ -12,7 +12,13 @@ from context_rail.gateway.handlers.common import bounded, profile_document, read
 from context_rail.model.cto import Profile, aggregate_usage, parse_report, parse_run
 from context_rail.model.errors import ModelError
 from context_rail.runner import git as git_runner
-from context_rail.runner.droid import droid_profile, extract_block, run_droid, write_order_file, write_role_file
+from context_rail.runner.droid import (
+    droid_profile,
+    extract_block,
+    run_droid,
+    write_order_file,
+    write_role_file,
+)
 from context_rail.store import query
 from context_rail.store.doc import Doc, etag
 from context_rail.store.write import commit
