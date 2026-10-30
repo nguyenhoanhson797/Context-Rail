@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from context_rail.model.manifest import load_manifest
 from context_rail.runner.git import capture_changes
 from context_rail.store.write import WriteRefused
 from helpers import run_git
@@ -168,3 +169,50 @@ def test_an_option_like_revision_is_refused_before_git_runs(tmp_path):
                 worktree=root, confine_to=root, base_commit=bad, store_paths=()
             )
         assert refused.value.code == "VALIDATION_FAILED"
+
+
+def test_a_rooted_store_classifies_project_work_and_store_work_apart(tmp_path):
+    """With the checkout as the store, ``src/app.py`` is work and ``items/`` is not."""
+    from context_rail.store.location import store_prefixes
+
+    root = _repo(tmp_path)
+    (root / "context-rail" / "rail.yaml").unlink()
+    (root / "context-rail").rmdir()
+    (root / "rail.yaml").write_text(
+        "schema: 3\npack: small\n"
+        "placement:\n"
+        "  item: items/{preset}/{slug}.md\n"
+        "  note: notes/{preset}/{slug}.md\n"
+        "  check: checks/{slug}.md\n"
+        "  record: records/{yyyy}-{mm}/{id}.json\n"
+        "  actor: workspace/profiles/{slug}/profile.md\n"
+        "  policy: policies/{slug}.md\n"
+        "presets:\n"
+        "  goal: project/{slug}.md\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    run_git(root, "add", "-A")
+    run_git(root, "commit", "-m", "rooted manifest")
+    base = run_git(root, "rev-parse", "HEAD").stdout.strip()
+    prefixes = store_prefixes(root, root, load_manifest(root))
+
+    (root / "app.py").write_text("VALUE = 2\n", encoding="utf-8", newline="\n")
+    run_git(root, "commit", "-am", "the worker's own edit")
+    work_capture = capture_changes(
+        worktree=root, confine_to=root, base_commit=base, store_paths=prefixes
+    )
+    assert work_capture["files_changed"] == ["app.py"]
+    assert work_capture["store_changed"] == []
+
+    (root / "items" / "task").mkdir(parents=True, exist_ok=True)
+    (root / "items" / "task" / "worker-note.md").write_text(
+        "a worker must never write the store\n", encoding="utf-8", newline="\n"
+    )
+    run_git(root, "add", "-A")
+    run_git(root, "commit", "-m", "a worker store edit")
+    store_capture = capture_changes(
+        worktree=root, confine_to=root, base_commit=base, store_paths=prefixes
+    )
+    assert store_capture["files_changed"] == ["app.py"]
+    assert store_capture["store_changed"] == ["items/task/worker-note.md"]

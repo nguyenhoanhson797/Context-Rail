@@ -12,12 +12,32 @@ import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from context_rail.core.util import sha256_hex, slugify
+
+if TYPE_CHECKING:
+    from context_rail.model.manifest import Manifest
 
 LOCAL_DIR = ".rail-local"
 GIT_SUBDIR = "context-rail"
 ROOT_KEY = "_root"
+
+#: The store's own content, as its documented layout names it. A store rooted at
+#: the checkout has no folder of its own, so these are what it owns there.
+STORE_ROOTS: tuple[str, ...] = (
+    "rail.yaml",
+    ".gitignore",
+    "items",
+    "notes",
+    "checks",
+    "policies",
+    "records",
+    "workspace",
+    "packs",
+    "templates",
+    "engine-issues",
+)
 
 _RESERVED_NAMES = frozenset(
     ["CON", "PRN", "AUX", "NUL"]
@@ -44,16 +64,46 @@ def find_store(start: Path) -> Path | None:
 
 
 def owns_path(path: str, prefixes: Sequence[str]) -> bool:
-    """Whether ``path`` is the prefix itself or lies below it.
+    """Whether ``path`` is one of ``prefixes`` or lies below it.
 
-    A store rooted at the checkout itself renders as ``.``, which owns every
-    path in the tree; reading it as a literal name would let a worker's edit to
-    a store file look like ordinary project work.
+    Every prefix is a literal checkout-relative name: nothing here means "the
+    whole tree", so a path a project owns but the store does not stays foreign.
     """
     for prefix in prefixes:
-        if prefix in ("", ".") or path == prefix or path.startswith(prefix + "/"):
+        if prefix and (path == prefix or path.startswith(prefix.rstrip("/") + "/")):
             return True
     return False
+
+
+def store_prefixes(store: Path, root: Path, manifest: Manifest) -> tuple[str, ...]:
+    """The checkout-relative paths the store owns, as literal prefixes.
+
+    A store in its own folder owns that folder. A store rooted at the checkout
+    has no folder of its own, so it owns the layout it writes: the manifest's
+    own placement patterns and the store's fixed roots. That set is derived from
+    the store's structure, never from "everything the project is not".
+    """
+    try:
+        rel = Path(store).resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        # A store outside this checkout owns nothing inside it.
+        return ()
+    if rel not in ("", "."):
+        return (rel,)
+    owned = set(STORE_ROOTS)
+    for template in (*manifest.placement.values(), *manifest.preset_placement.values()):
+        first = _first_segment(template)
+        if first is not None:
+            owned.add(first)
+    return tuple(sorted(owned))
+
+
+def _first_segment(template: str) -> str | None:
+    """The literal first segment of a placement pattern, or None when it is a token."""
+    head = template.replace("\\", "/").split("/", 1)[0].strip("/")
+    if not head or "{" in head or "}" in head:
+        return None
+    return head
 
 
 def local_dir(store: Path) -> Path:

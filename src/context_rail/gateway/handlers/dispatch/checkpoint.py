@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from context_rail.runner import dispatch as local_dispatch, git as git_runner
-from context_rail.store.location import owns_path
+from context_rail.store.location import LOCAL_DIR, owns_path, store_prefixes
 from context_rail.store.write import WriteRefused
 
 from .common import ADAPTER_PATHS, CHECKOUT_MESSAGE
@@ -17,17 +17,8 @@ if TYPE_CHECKING:
 
 
 def _store_paths(ctx: Context, root: Path) -> tuple[str, ...]:
-    """The checkout-relative store folder plus the adapters, as path prefixes.
-
-    A store rooted at the checkout itself has no folder of its own, so ``.``
-    stands for the whole tree; :func:`context_rail.store.location.owns_path`
-    reads it that way.
-    """
-    try:
-        rel = Path(ctx.store).resolve().relative_to(root).as_posix()
-    except ValueError:
-        rel = Path(ctx.store).name
-    return tuple([rel, *ADAPTER_PATHS])
+    """The checkout-relative store paths plus the adapters, as literal prefixes."""
+    return tuple([*store_prefixes(Path(ctx.store), root, ctx.manifest), *ADAPTER_PATHS])
 
 
 def _checkpoint(
@@ -53,38 +44,71 @@ def _checkpoint(
             "the project checkout has changes outside the store",
             {"paths": foreign[:20]},
         )
-    present = [path for path in store_paths if (root / path).exists()]
+    store_roots = [path for path in store_paths if path not in ADAPTER_PATHS]
+    present = [path for path in store_roots if (root / path).exists()]
     if not present:
         raise WriteRefused(
             "INVALID_STATE",
             "the project checkout has no store folder to checkpoint",
             {"paths": entries[:20]},
         )
-    _stage_store(root, present)
+    adapters = [path for path in ADAPTER_PATHS if (root / path).exists()]
+    _stage_store(Path(ctx.store), root, present, adapters)
     _git(["commit", "-m", message], root)
     return git_runner.rev_parse_head(root, root)
 
 
-def _stage_store(root: Path, present: list[str]) -> None:
-    """Stage the store paths, forcing them past any global excludesfile.
+def _stage_store(
+    store: Path, root: Path, present: list[str], adapters: list[str]
+) -> None:
+    """Stage the store paths and the adapter outputs, never the local cache.
 
-    ``git add`` exits nonzero when an excludesfile drops one of the paths; a
-    checkpoint that ignored that exit would commit a partial store and report
-    success. The forced retry keeps adapter paths, then a second failure is a
-    process error, never a silent omission.
+    A global excludesfile routinely hides adapter output and may hide a store
+    path too, so those are staged with ``--force``; the store's own
+    ``.gitignore`` keeps ``.rail-local`` out, and the cache paths are unstaged
+    again so no checkpoint ever commits the index or its lock.
     """
-    staged = _git(["add", "-A", "--", *present], root)
+    _add(root, present)
+    if adapters:
+        _add(root, adapters)
+    _unstage_local(store, root, present)
+
+
+def _add(root: Path, paths: list[str]) -> None:
+    """Stage ``paths``, retrying once with ``--force`` for an excluding config."""
+    staged = _git(["add", "-A", "--", *paths], root)
     if staged["exit"] == 0 and not staged["timed_out"]:
         return
-    forced = _git(["add", "-A", "--force", "--", *present], root)
+    forced = _git(["add", "-A", "--force", "--", *paths], root)
     if forced["exit"] == 0 and not forced["timed_out"]:
         return
     detail = (forced["stderr"] or forced["stdout"] or staged["stderr"] or "").strip()
     raise WriteRefused(
         "PROCESS_ERROR",
         f"the store paths could not be staged: {detail or 'git add failed'}",
-        {"paths": present[:20]},
+        {"paths": paths[:20]},
     )
+
+
+def _unstage_local(store: Path, root: Path, present: list[str]) -> None:
+    """Drop ``<store>/.rail-local`` from the index; the cache never joins a commit."""
+    reset = _git(["reset", "-q", "--", _local_rel(store, root)], root)
+    if reset["timed_out"] or reset["exit"] != 0:
+        detail = (reset["stderr"] or reset["stdout"] or "").strip()
+        raise WriteRefused(
+            "PROCESS_ERROR",
+            f"the local cache could not be unstaged: {detail or 'git reset failed'}",
+            {"paths": present[:20]},
+        )
+
+
+def _local_rel(store: Path, root: Path) -> str:
+    """``<store>/.rail-local`` as a checkout-relative POSIX path."""
+    try:
+        rel = Path(store).resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        rel = Path(store).name
+    return f"{LOCAL_DIR}/" if rel in ("", ".") else f"{rel}/{LOCAL_DIR}/"
 
 
 def _status_entries(root: Path) -> list[str]:

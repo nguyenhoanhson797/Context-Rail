@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from context_rail.gateway.gateway import invoke
 from helpers import (
     advance_default_branch,
@@ -194,6 +196,77 @@ def test_a_checkout_off_the_default_branch_is_refused(
     assert r["ok"] is False, r
     assert r["error"]["code"] == "INVALID_STATE"
     assert r["error"]["details"]["current"] == "side"
+
+
+def _rooted_repo(tmp_path: Path) -> tuple[Path, str, str]:
+    """A rooted store checkout, the observed default HEAD and a candidate commit."""
+    root = tmp_path / "rooted-merge"
+    root.mkdir()
+    (root / "rail.yaml").write_text(
+        "schema: 3\npack: small\n"
+        "placement:\n"
+        "  item: items/{preset}/{slug}.md\n"
+        "  note: notes/{preset}/{slug}.md\n"
+        "  check: checks/{slug}.md\n"
+        "  record: records/{yyyy}-{mm}/{id}.json\n"
+        "  actor: workspace/profiles/{slug}/profile.md\n"
+        "  policy: policies/{slug}.md\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (root / "items" / "task").mkdir(parents=True)
+    (root / "items" / "task" / "a.md").write_text("a\n", encoding="utf-8", newline="\n")
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    (root / ".gitignore").write_text(".rail-local/\n", encoding="utf-8", newline="\n")
+    run_git(root, "init", "-b", "main")
+    # Line-ending normalization would report a restored file as modified, which
+    # would make the clean direction prove nothing about the ownership predicate.
+    run_git(root, "config", "core.autocrlf", "false")
+    run_git(root, "add", "-A")
+    run_git(root, "commit", "-m", "base")
+    observed = run_git(root, "rev-parse", "HEAD").stdout.strip()
+
+    run_git(root, "checkout", "-b", "candidate")
+    (root / "src" / "app.py").write_text("VALUE = 2\n", encoding="utf-8", newline="\n")
+    run_git(root, "commit", "-am", "candidate work")
+    candidate = run_git(root, "rev-parse", "HEAD").stdout.strip()
+    run_git(root, "checkout", "main")
+
+    return root, observed, candidate
+
+
+def test_a_rooted_checkout_refuses_a_human_change_and_allows_a_clean_merge(
+    tmp_path: Path,
+) -> None:
+    """``--root .`` must not disable the fast-forward dirty-checkout refusal."""
+    from context_rail.gateway.handlers.dispatch.closeout import _fast_forward
+    from context_rail.model.manifest import load_manifest
+    from context_rail.store.location import store_prefixes
+    from context_rail.store.write import WriteRefused
+
+    root, observed, candidate = _rooted_repo(tmp_path)
+    prefixes = store_prefixes(root, root, load_manifest(root))
+
+    mine = b"VALUE = 9\n"
+    (root / "src" / "app.py").write_bytes(mine)
+    (root / "items" / "task" / "b.md").write_text("b\n", encoding="utf-8", newline="\n")
+
+    with pytest.raises(WriteRefused) as refused:
+        _fast_forward(
+            None, root=root, candidate=candidate, observed=observed, store_paths=prefixes
+        )
+    assert refused.value.code == "INVALID_STATE"
+    assert "src/app.py" in refused.value.details["paths"]
+    assert run_git(root, "rev-parse", "HEAD").stdout.strip() == observed
+    assert (root / "src" / "app.py").read_bytes() == mine
+
+    (root / "src" / "app.py").write_bytes(b"VALUE = 1\n")
+    merged = _fast_forward(
+        None, root=root, candidate=candidate, observed=observed, store_paths=prefixes
+    )
+    assert merged == candidate
+    assert (root / "src" / "app.py").read_bytes() == b"VALUE = 2\n"
 
 
 # ── conflicts ─────────────────────────────────────────────────────────────

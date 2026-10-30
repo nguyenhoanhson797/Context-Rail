@@ -622,14 +622,14 @@ def _compose(base: str, bodies: Sequence[str]) -> str:
 
 
 def _clip(text: str, cap: int) -> str:
-    """``text`` cut to ``cap`` characters with the head and tail kept."""
+    """``text`` cut to at most ``cap`` characters with head and tail kept."""
     if len(text) <= cap:
         return text
     if cap <= len(_OMITTED):
         return text[: max(cap, 0)]
-    head = cap // 2
-    tail = cap - head - len(_OMITTED)
-    return text[:head] + _OMITTED + text[-tail:]
+    head = (cap - len(_OMITTED)) // 2
+    tail = cap - len(_OMITTED) - head
+    return text[:head] + _OMITTED + (text[-tail:] if tail else "")
 
 
 def _work_order_metadata(raw: Mapping[str, Any], dispatch_id: str) -> dict[str, Any]:

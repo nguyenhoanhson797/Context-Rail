@@ -215,3 +215,76 @@ def test_an_unchanged_reused_key_still_replays_without_a_new_record(
     assert is_ok(second), second
     assert second["value"]["written"] == []
     assert sorted((skill_store / "records").rglob("*.json")) == records_before
+
+
+# ── a reused key reconciles the target bytes it wrote ──────────────────────
+
+
+def test_a_reused_key_after_a_deleted_target_writes_it_again(skill_store: Path) -> None:
+    first = invoke("adapters sync", {"key": "k1"}, store=skill_store, actor="cto")
+    assert is_ok(first), first
+    assert _agents(skill_store).is_file()
+    record = first["value"]["record"]
+
+    _agents(skill_store).unlink()
+    second = invoke("adapters sync", {"key": "k1"}, store=skill_store, actor="cto")
+
+    assert is_ok(second), second
+    assert _agents(skill_store).is_file(), "the replay reported a write it never made"
+    assert AGENTS in second["value"]["written"]
+    assert second["value"]["record"] != record
+
+
+def test_a_second_hand_edit_under_one_force_key_is_rewritten(skill_store: Path) -> None:
+    """A forced rewrite must happen on every hand edit, not only the first."""
+    assert is_ok(invoke("adapters sync", {"key": "k2"}, store=skill_store, actor="cto"))
+    agents = _agents(skill_store)
+    force = {
+        "key": "k2",
+        "force": True,
+        "confirm": "FORCE ADAPTERS adapters",
+    }
+
+    agents.write_text(
+        agents.read_text(encoding="utf-8").replace(
+            END_MARK, "first hand edit\n" + END_MARK
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    once = invoke("adapters sync", force, store=skill_store, actor="human")
+    assert is_ok(once), once
+    assert "first hand edit" not in agents.read_text(encoding="utf-8")
+
+    agents.write_text(
+        agents.read_text(encoding="utf-8").replace(
+            END_MARK, "second hand edit\n" + END_MARK
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    twice = invoke("adapters sync", force, store=skill_store, actor="human")
+
+    assert is_ok(twice), twice
+    after = agents.read_text(encoding="utf-8")
+    assert "second hand edit" not in after, "the forced rewrite silently did nothing"
+    assert twice["value"]["record"] != once["value"]["record"]
+
+
+def test_a_reused_key_with_an_unchanged_target_writes_nothing(
+    skill_store: Path,
+) -> None:
+    """The other direction: an identical target is a no-op, not a rewrite."""
+    first = invoke("adapters sync", {"key": "k3"}, store=skill_store, actor="cto")
+    assert is_ok(first), first
+    assert sorted(first["value"]["written"]) == sorted([AGENTS, SKILL])
+    records_before = sorted((skill_store / "records").rglob("*.json"))
+    before = _agents(skill_store).read_bytes()
+
+    second = invoke("adapters sync", {"key": "k3"}, store=skill_store, actor="cto")
+
+    assert is_ok(second), second
+    assert second["value"]["written"] == []
+    assert sorted(second["value"]["unchanged"]) == sorted([AGENTS, SKILL])
+    assert _agents(skill_store).read_bytes() == before
+    assert sorted((skill_store / "records").rglob("*.json")) == records_before

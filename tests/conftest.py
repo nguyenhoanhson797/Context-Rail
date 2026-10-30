@@ -926,15 +926,35 @@ def leaf_item(tmp_path: Path, answers: Path) -> SimpleNamespace:
     The project lives in its own child folder so a test's other temporary
     files (the fake droid, for one) never appear as changes in the checkout.
     """
-    project = tmp_path / "project"
-    project.mkdir()
-    result = invoke(
-        "init",
-        {"dir": str(project), "answers_file": str(answers), "confirm": "APPROVE charter"},
-        actor="human",
-    )
+    return build_leaf_item(tmp_path / "project", answers)
+
+
+@pytest.fixture
+def rooted_item(tmp_path: Path, answers: Path) -> SimpleNamespace:
+    """The leaf task in a checkout that is itself the store (``--root .``)."""
+    return build_leaf_item(tmp_path / "rooted", answers, root=".")
+
+
+def build_leaf_item(
+    project: Path, answers: Path, *, root: str | None = None
+) -> SimpleNamespace:
+    """An approved checkout with one executable leaf task and a cmd Check.
+
+    ``root`` selects the store's own folder inside the checkout; ``None`` keeps
+    the default ``context-rail`` child, ``"."`` makes the checkout the store.
+    """
+    project = Path(project)
+    project.mkdir(exist_ok=True)
+    args: dict[str, Any] = {
+        "dir": str(project),
+        "answers_file": str(answers),
+        "confirm": "APPROVE charter",
+    }
+    if root is not None:
+        args["root"] = root
+    result = invoke("init", args, actor="human")
     assert is_ok(result), result
-    store = project / "context-rail"
+    store = project if root == "." else project / "context-rail"
     approved = approve_picture(store)
     assert is_ok(approved), approved
     added = invoke(
@@ -944,7 +964,7 @@ def leaf_item(tmp_path: Path, answers: Path) -> SimpleNamespace:
         actor="cto",
     )
     assert is_ok(added), added
-    spec = tmp_path / "unit.json"
+    spec = project.parent / f"{project.name}-unit.json"
     spec.write_text(
         json.dumps(
             {
@@ -1101,6 +1121,48 @@ def droid_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
             monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("FACTORY_API_KEY", "SECRET-TEST-7f3a")
     return dict(os.environ)
+
+
+@pytest.fixture
+def global_excludes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..., Path]:
+    """A real global git excludesfile, returned by a writer of ignore patterns.
+
+    A temporary home carries a ``.gitconfig`` that includes the developer's own
+    global config (so an identity and every other setting stay intact) and then
+    points ``core.excludesfile`` at a temp ignore file. ``HOME`` and
+    ``USERPROFILE`` are the allow-listed variables the runner hands to a git
+    child, so the override reaches both a test's direct git call and rail's own.
+    """
+    real = _real_global_gitconfig()
+    home = tmp_path / "global-home"
+    home.mkdir(exist_ok=True)
+    ignore = tmp_path / "global-ignore"
+    include = f"[include]\n\tpath = {real}\n" if real else ""
+    (home / ".gitconfig").write_text(
+        include + f"[core]\n\texcludesfile = {ignore.as_posix()}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    def writer(*patterns: str) -> Path:
+        ignore.write_text("".join(f"{pattern}\n" for pattern in patterns), encoding="utf-8")
+        return ignore
+
+    return writer
+
+
+def _real_global_gitconfig() -> str | None:
+    """The developer's real global gitconfig, so an identity survives the override."""
+    for candidate in (
+        Path(os.environ.get("USERPROFILE", "")) / ".gitconfig",
+        Path(os.environ.get("HOME", "")) / ".gitconfig",
+        Path(os.environ.get("HOME", "")) / ".config" / "git" / "config",
+    ):
+        if candidate.is_file():
+            return candidate.as_posix()
+    return None
 
 
 @pytest.fixture

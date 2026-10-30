@@ -11,12 +11,15 @@ from pathlib import Path
 import pytest
 
 from context_rail.core.util import sha256_hex, slugify
+from context_rail.model.manifest import load_manifest
 from context_rail.store.location import (
     PathEscape,
     confine,
     find_store,
     index_path,
     local_dir,
+    owns_path,
+    store_prefixes,
 )
 from helpers import run_git
 
@@ -267,3 +270,100 @@ def test_confine_allows_a_symlink_that_stays_inside_the_store(tmp_path: Path) ->
     except OSError as exc:
         pytest.skip(f"symlinks are not permitted here: {exc}")
     assert confine(store, "items/alias/a.md") == (store / "items" / "real" / "a.md").resolve()
+
+
+# ── which paths the store owns ─────────────────────────────────────────────
+
+
+def _rooted_store(tmp_path: Path) -> Path:
+    (tmp_path / "src").mkdir(parents=True)
+    (tmp_path / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    (tmp_path / "rail.yaml").write_text(
+        "schema: 3\npack: small\n"
+        "placement:\n"
+        "  item: items/{preset}/{slug}.md\n"
+        "  note: notes/{preset}/{slug}.md\n"
+        "  check: checks/{slug}.md\n"
+        "  record: records/{yyyy}-{mm}/{id}.json\n"
+        "  actor: workspace/profiles/{slug}/profile.md\n"
+        "  policy: policies/{slug}.md\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return tmp_path
+
+
+def test_owns_path_is_a_literal_prefix_matcher(tmp_path: Path) -> None:
+    assert owns_path("context-rail/items/a.md", ("context-rail",)) is True
+    assert owns_path("context-rail", ("context-rail",)) is True
+    assert owns_path("context-railish/x.md", ("context-rail",)) is False
+    assert owns_path("src/app.py", ("context-rail", "AGENTS.md", ".agents")) is False
+    # Nothing a caller passes may mean "everything": the rooted layout is
+    # classified from the store's own structure instead.
+    assert owns_path("src/app.py", (".",)) is False
+    assert owns_path("src/app.py", ("",)) is False
+
+
+def test_a_nested_store_owns_its_folder_and_not_the_project(tmp_path: Path) -> None:
+    store = _rooted_store(tmp_path / "project") / "context-rail"
+    store.mkdir()
+    (store / "rail.yaml").write_text(
+        (tmp_path / "project" / "rail.yaml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    manifest = load_manifest(store)
+    prefixes = store_prefixes(store, tmp_path / "project", manifest)
+
+    assert prefixes == ("context-rail",)
+    assert owns_path("context-rail/items/task/a.md", prefixes) is True
+    assert owns_path("src/app.py", prefixes) is False
+    assert owns_path("AGENTS.md", prefixes) is False
+
+
+def test_a_rooted_store_owns_its_layout_and_not_the_project(tmp_path: Path) -> None:
+    store = _rooted_store(tmp_path / "project")
+    manifest = load_manifest(store)
+    prefixes = store_prefixes(store, store, manifest)
+
+    for owned in (
+        "rail.yaml",
+        "items/task/a.md",
+        "notes/note/a.md",
+        "checks/unit.md",
+        "records/2026-10/01J.json",
+        "workspace/profiles/cto/profile.md",
+        "policies/charter.md",
+        "packs/small/pack.yaml",
+        "templates/item.md",
+        "engine-issues/2026-10-01.md",
+    ):
+        assert owns_path(owned, prefixes) is True, owned
+    for foreign in ("src/app.py", "README.md", ".env", "AGENTS.md", ".agents/skills/x/SKILL.md"):
+        assert owns_path(foreign, prefixes) is False, foreign
+    assert "." not in prefixes and "" not in prefixes
+
+
+def test_a_rooted_store_owns_a_non_default_manifest_placement_root(tmp_path: Path) -> None:
+    """Ownership follows the manifest's own placement, not a hardcoded folder list."""
+    store = _rooted_store(tmp_path / "project")
+    (store / "rail.yaml").write_text(
+        "schema: 3\npack: small\n"
+        "placement:\n"
+        "  item: tickets/{preset}/{slug}.md\n"
+        "  note: notes/{preset}/{slug}.md\n"
+        "  check: checks/{slug}.md\n"
+        "  record: records/{yyyy}-{mm}/{id}.json\n"
+        "  actor: workspace/profiles/{slug}/profile.md\n"
+        "  policy: policies/{slug}.md\n"
+        "presets:\n"
+        "  goal: goals/{slug}.md\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    manifest = load_manifest(store)
+    prefixes = store_prefixes(store, store, manifest)
+
+    assert owns_path("tickets/task/a.md", prefixes) is True
+    assert owns_path("goals/g.md", prefixes) is True
+    assert owns_path("src/app.py", prefixes) is False

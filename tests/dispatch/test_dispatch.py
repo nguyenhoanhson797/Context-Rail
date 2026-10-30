@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -502,85 +501,99 @@ def test_a_store_edit_in_the_dropped_middle_is_still_refused(
 
 
 def test_a_store_at_the_project_root_still_refuses_a_worker_edit(
-    tmp_path: Path, picture_answers: dict[str, Any], fake_droid: Any, droid_env
+    rooted_item, fake_droid, droid_env
 ) -> None:
     """``--root .`` makes the project root the store; a store edit is still an edit."""
-    project = tmp_path / "rooted"
-    project.mkdir()
-    answers = tmp_path / "rooted-answers.json"
-    answers.write_text(json.dumps(picture_answers, indent=2), encoding="utf-8")
-    started = invoke(
-        "init",
-        {
-            "dir": str(project),
-            "root": ".",
-            "answers_file": str(answers),
-            "confirm": "APPROVE charter",
-        },
-        actor="human",
-    )
-    assert started["ok"], started
-    store = project
-    from helpers import approve_picture
-
-    approved = approve_picture(store)
-    assert approved["ok"], approved
-    added = invoke(
-        "add",
-        {"preset": "task", "title": "Login page", "rel": ["part_of=send-invoice"]},
-        store=store,
-        actor="cto",
-    )
-    assert added["ok"], added
-    spec = tmp_path / "rooted-unit.json"
-    spec.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "mode": "cmd",
-                "acceptance": False,
-                "cmd": [sys.executable, "-c", "print('ok')"],
-                "inputs": ["src/*.py"],
-                "timeout_s": 60,
-            }
-        ),
-        encoding="utf-8",
-    )
-    declared = invoke(
-        "check",
-        {"slug": "unit", "target": "login-page", "spec_file": str(spec), "expect": "absent"},
-        store=store,
-        actor="cto",
-    )
-    assert declared["ok"], declared
-    (project / "src").mkdir()
-    (project / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
-    (project / "README.md").write_text("fixture\n", encoding="utf-8", newline="\n")
-    run_git(project, "init", "-b", "main")
-    run_git(project, "add", "-A")
-    run_git(project, "commit", "-m", "picture and leaf task")
-    shown = invoke("show", {"slug": "login-page"}, store=store, actor="cto")
-    assert shown["ok"], shown
-
     fake_droid.set_behaviors(
-        [{"mode": "success", "store_path": "worker-note.txt"}]
+        [{"mode": "success", "store_path": "items/task/worker-note.md"}]
     )
-    r = invoke(
-        "dispatch",
-        {
-            "item": "login-page",
-            "expect": shown["value"]["doc"]["etag"],
-            "key": "rooted-store-edit",
-        },
-        store=store,
-        actor="cto",
-    )
+    r = dispatch(rooted_item, "rooted-store-edit")
 
     assert r["ok"], r
     assert r["value"]["status"] == "escalated", r
-    report = latest_record(store, "report.filed")
-    assert "worker-note.txt" in report["data"]["observed"]
-    assert not (store / "worker-note.txt").exists()
+    report = latest_record(rooted_item.store, "report.filed")
+    assert "items/task/worker-note.md" in report["data"]["observed"]
+    assert not (rooted_item.store / "items" / "task" / "worker-note.md").exists()
+
+
+def test_a_store_at_the_project_root_accepts_and_verifies_project_work(
+    rooted_item, fake_droid, droid_env
+) -> None:
+    """The other direction: ordinary project work in a rooted store verifies."""
+    fake_droid.set_behaviors(
+        [{"mode": "success", "work": "VALUE = 2\n"}]
+    )
+    r = dispatch(rooted_item, "rooted-project-work")
+
+    assert r["ok"], r
+    assert r["value"]["status"] == "verified", r
+    assert r["value"]["escalation"] is None, r
+    run = latest_record(rooted_item.store, "run.completed")
+    assert run["data"]["files_changed"] == ["fake-droid-work.txt"]
+    assert run["data"]["capture"]["complete"] is True
+    assert (rooted_item.root / "src" / "app.py").read_bytes() == b"VALUE = 1\n"
+
+
+def test_a_rooted_store_refuses_a_human_change_outside_the_store(
+    rooted_item, fake_droid, droid_env, global_excludes
+) -> None:
+    """``--root .`` must not turn the store-only checkpoint into commit-everything."""
+    global_excludes(".agents")
+    (rooted_item.root / ".agents" / "skills" / "hint").mkdir(parents=True)
+    (rooted_item.root / ".agents" / "skills" / "hint" / "SKILL.md").write_text(
+        "# hint\n", encoding="utf-8", newline="\n"
+    )
+    mine = b"VALUE = 9\n"
+    (rooted_item.root / "src" / "app.py").write_bytes(mine)
+    (rooted_item.root / ".env").write_text("TOKEN=secret\n", encoding="utf-8")
+    head_before = run_git(rooted_item.root, "rev-parse", "HEAD").stdout.strip()
+
+    r = dispatch(rooted_item, "rooted-foreign")
+
+    assert r["ok"] is False, r
+    assert r["error"]["code"] == "INVALID_STATE", r
+    assert "src/app.py" in r["error"]["details"]["paths"]
+    assert run_git(rooted_item.root, "rev-parse", "HEAD").stdout.strip() == head_before
+    assert (rooted_item.root / "src" / "app.py").read_bytes() == mine
+    tracked = run_git(rooted_item.root, "ls-files", "--", ".env").stdout.strip()
+    assert tracked == ""
+
+
+def test_the_pre_dispatch_checkpoint_commits_adapters_and_not_the_local_cache(
+    leaf_item, fake_droid, droid_env, global_excludes
+) -> None:
+    """A forced staging retry must not carry ``<store>/.rail-local`` into history."""
+    global_excludes(".agents")
+    hint = leaf_item.root / ".agents" / "skills" / "hint" / "SKILL.md"
+    hint.parent.mkdir(parents=True, exist_ok=True)
+    hint.write_text("# hint\n", encoding="utf-8", newline="\n")
+    (leaf_item.root / "AGENTS.md").write_text("# Project\n", encoding="utf-8", newline="\n")
+    cache = leaf_item.store / ".rail-local"
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "index.sqlite3").write_bytes(b"cache\n")
+    (cache / "write.lock").write_bytes(b"lock\n")
+
+    r = dispatch(leaf_item, "checkpoint-cache")
+
+    assert r["ok"], r
+    assert r["value"]["status"] == "verified", r
+    shown = run_git(
+        leaf_item.root,
+        "show",
+        "--name-only",
+        "--pretty=format:%s",
+        "-1",
+        "HEAD",
+    ).stdout
+    assert "chore: checkpoint the store before a dispatch" in shown
+    names = [line for line in shown.splitlines() if line.strip()]
+    assert any(name.startswith(".agents/skills/hint/") for name in names), names
+    assert any(name == "AGENTS.md" for name in names), names
+    assert not any(".rail-local" in name for name in names), names
+    assert not any(
+        ".rail-local" in name
+        for name in run_git(leaf_item.root, "ls-files").stdout.splitlines()
+    )
 
 
 @pytest.mark.timeout(120)

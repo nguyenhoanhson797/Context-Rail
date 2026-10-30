@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import sha256_hex
-from context_rail.gateway.handlers.common import is_skill_path, record_data
+from context_rail.gateway.handlers.common import is_skill_path
 from context_rail.model.errors import ModelError
 from context_rail.store import adapters
 from context_rail.store.doc import Doc, etag, parse_doc
@@ -131,17 +131,25 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     if dry_run:
         return _value(written, unchanged, refused, None, dry_run=True)
 
-    binding = _binding(sources, digests, refused, forced=forced)
-    saved = replay(store, args["key"])
+    binding = _binding(
+        sources,
+        digests,
+        refused,
+        forced=forced,
+        current={target.display: target.current_etag for target in targets},
+        writes={
+            target.display: etag(target.new_text.encode("utf-8"))
+            for target in targets
+            if target.display in expected
+        },
+    )
+    key = _bound_key(args["key"], binding)
+    saved = replay(store, key)
     if not written:
         return _value(
-            [],
-            unchanged,
-            refused,
-            saved["record"] if _saved_binding(ctx, saved) == binding else None,
-            dry_run=False,
+            [], unchanged, refused, saved["record"] if saved else None, dry_run=False
         )
-    if saved is not None and _saved_binding(ctx, saved) == binding:
+    if saved is not None:
         return _value(saved["written"], [], [], saved["record"], dry_run=False)
 
     ops = [
@@ -167,7 +175,7 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         ops,
         {"kind": RECORD_KIND, "data": data},
         actor=actor,
-        key=_bound_key(args["key"], binding),
+        key=key,
         index=ctx.index,
     )
     return _value(result["written"], unchanged, [], result["record"], dry_run=False)
@@ -179,12 +187,16 @@ def _binding(
     refused: list[str],
     *,
     forced: bool,
+    current: dict[str, str],
+    writes: dict[str, str],
 ) -> str:
-    """What this sync reconciles: its sources, its outputs and its force flag.
+    """What this sync reconciles: its sources, its outputs and the target bytes.
 
-    A keyed replay is only honoured for the binding it saved, so a reused key
-    after a source or target change performs the new work instead of replaying
-    a stale result.
+    The rendered digests describe what rail would write, so on their own they
+    say nothing about the file on disk. The current etag of every target and
+    the bytes this pass would write both join the binding: a deleted or
+    hand-edited target changes it, so a reused key performs the real work, while
+    an identical repeat still matches and replays the saved outcome.
     """
     payload = json.dumps(
         {
@@ -192,6 +204,8 @@ def _binding(
             "digests": digests,
             "refused": refused,
             "forced": forced,
+            "current": current,
+            "writes": writes,
         },
         sort_keys=True,
     )
@@ -199,19 +213,10 @@ def _binding(
 
 
 def _bound_key(key: str | None, binding: str) -> str | None:
-    """The idempotency key a commit binds to one reconciliation, or None."""
+    """The idempotency key one reconciliation binds to, or None for no key."""
     if key is None:
         return None
     return f"{key}#{binding}"
-
-
-def _saved_binding(ctx: Context, saved: dict[str, Any] | None) -> str | None:
-    """The binding a keyed sync saved, when it saved one."""
-    if saved is None:
-        return None
-    data = record_data(ctx.index, saved.get("record"))
-    value = data.get("binding")
-    return value if isinstance(value, str) else None
 
 
 def _value(
