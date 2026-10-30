@@ -69,6 +69,58 @@ def test_brief_shows_the_approved_picture_and_the_decision(brief_store: Path) ->
     assert "Ship invoicing" in value["text"]
 
 
+def test_section_two_renders_the_approved_wont_entry(brief_store: Path) -> None:
+    """The Won't note's decisions live in its ``entries`` field, not its title."""
+    text = _brief(brief_store)["text"]
+    goal = text[text.index("## Goal") : text.index("## Charter")]
+    assert "won't: Payroll" in goal
+    assert "won't: Won't" not in goal
+
+
+def _many_human_waits(store: Path, count: int) -> list[str]:
+    from helpers import write_record
+
+    needles: list[str] = []
+    for index in range(count):
+        record_id = f"01JWAITBRIEF{index:013d}"
+        needle = f"the copy for case {index} needs a human"
+        write_record(
+            store,
+            record_id,
+            "report.filed",
+            {
+                "schema": 1,
+                "target_class": "human-wait",
+                "target": f"decision-{index}",
+                "item": "login-page",
+                "run": None,
+                "nothing_to_report": False,
+                "what_happened": needle,
+                "expected": "a human decides",
+                "observed": "undecided",
+                "impact": "medium",
+                "evidence": [],
+                "fingerprint": f"human-wait|{index}",
+            },
+            at="2026-10-28T12:00:00Z",
+            about=("login-page",),
+        )
+        needles.append(needle)
+    return needles
+
+
+def test_a_tight_budget_trims_goals_before_human_waits(brief_store: Path) -> None:
+    """Approval blockers and human waits outrank excerpt-like goal lines."""
+    waits = _many_human_waits(brief_store, 8)
+    value = _brief(brief_store, max_chars=700, item_limit=20)
+    text = value["text"]
+    kept = [needle for needle in waits if needle in text]
+    goal_lines = [line for line in text.splitlines() if line.startswith("Goal: ")]
+    assert kept, f"every human wait was trimmed while goal lines survived:\n{text}"
+    assert len(kept) > len(goal_lines), text
+    assert value["omitted"]["approval"] >= 1
+
+
 def test_brief_runs_no_process(brief_store: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def refuse(*args: object, **kwargs: object) -> None:
         raise AssertionError("a brief never executes anything")

@@ -17,6 +17,7 @@ from context_rail.store.write import WriteRefused
 
 __all__ = [
     "CAPTURE_LIMIT",
+    "CAPTURE_MAX_OUTPUT",
     "capture_changes",
     "current_branch",
     "fast_forward",
@@ -34,19 +35,31 @@ __all__ = [
 
 DEFAULT_TIMEOUT = 120.0
 CAPTURE_LIMIT = 200
+#: A changed-file listing is a proof, not a log: read it generously so a large
+#: candidate is never silently cut, and report it as truncated when it is.
+CAPTURE_MAX_OUTPUT = 4 * 1024 * 1024
+#: The runner's own omission marker; a path carrying it was cut mid-entry.
+_OMISSION_MARKER = "[omitted]"
 
 
 def git(
-    args: Sequence[str], *, cwd: Path, confine_to: Path, timeout: float = DEFAULT_TIMEOUT
+    args: Sequence[str],
+    *,
+    cwd: Path,
+    confine_to: Path,
+    timeout: float = DEFAULT_TIMEOUT,
+    max_output: int | None = None,
 ) -> dict:
     """Run ``git <args>`` inside ``confine_to`` and return the bounded result."""
     if not args:
         raise WriteRefused("VALIDATION_FAILED", "git needs at least one argument")
+    extra = {} if max_output is None else {"max_output": max_output}
     return run(
         ["git", *args],
         cwd=Path(cwd),
         confine_to=Path(confine_to),
         timeout=timeout,
+        **extra,
     )
 
 
@@ -225,7 +238,9 @@ def capture_changes(
 
     Store-owned paths are reported separately: they are observations the parent
     must refuse rather than authorship proof. Both lists are capped at
-    ``limit``; a capped capture is incomplete and says how much it dropped.
+    ``limit``; so is the diff listing itself, at :data:`CAPTURE_MAX_OUTPUT`
+    bytes. Either cap makes the capture incomplete, and a listing the runner had
+    to cut is reported as ``truncated`` rather than as a complete set of paths.
     """
     base = _revision(base_commit, "base_commit")
     candidate = _revision(candidate_commit, "candidate_commit")
@@ -235,11 +250,13 @@ def capture_changes(
         ["diff", "--name-only", "-z", base, candidate],
         cwd=worktree,
         confine_to=confine_to,
+        max_output=CAPTURE_MAX_OUTPUT,
     )
     commits_result = _checked(
         ["rev-list", "--reverse", f"{base}..{candidate}"],
         cwd=worktree,
         confine_to=confine_to,
+        max_output=CAPTURE_MAX_OUTPUT,
     )
     prefixes = tuple(
         text.replace("\\", "/").strip("/")
@@ -248,19 +265,39 @@ def capture_changes(
     )
     files: list[str] = []
     store_changed: list[str] = []
-    for path in sorted(name for name in files_result["stdout"].split("\0") if name):
-        if _inside(path, prefixes):
-            store_changed.append(path)
+    cut = False
+    for name in sorted(files_result["stdout"].split("\0")):
+        if not name.strip():
+            continue
+        if _OMISSION_MARKER in name:
+            cut = True
+            continue
+        if _inside(name, prefixes):
+            store_changed.append(name)
         else:
-            files.append(path)
+            files.append(name)
     commits = [line.strip() for line in commits_result["stdout"].splitlines() if line.strip()]
-    omitted = max(0, len(files) - limit) + max(0, len(commits) - limit)
+    cut = cut or bool(files_result["omitted_bytes"]) or bool(commits_result["omitted_bytes"])
+    omitted = (
+        max(0, len(files) - limit)
+        + max(0, len(commits) - limit)
+        + max(0, len(store_changed) - limit)
+    )
+    if cut:
+        reason: str | None = "truncated"
+        # A cut listing cannot be counted, only bounded below: at least one
+        # entry is missing, and the caller must never read zero as complete.
+        omitted = max(omitted, 1)
+    elif omitted:
+        reason = "bounded"
+    else:
+        reason = None
     return {
         "files_changed": files[:limit],
         "commits_changed": commits[:limit],
         "store_changed": store_changed[:limit],
-        "complete": omitted == 0,
-        "reason": None if omitted == 0 else "bounded",
+        "complete": reason is None,
+        "reason": reason,
         "omitted": omitted,
     }
 
@@ -276,11 +313,22 @@ def _revision(value: str, what: str) -> str:
 
 
 def _inside(path: str, prefixes: Sequence[str]) -> bool:
-    return any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
+    """Whether ``path`` is the prefix itself or lies below it.
+
+    A store rooted at the checkout itself renders as ``.``, which owns every
+    path in the tree; reading it as a literal name would let a worker's edit to
+    a store file look like ordinary project work.
+    """
+    for prefix in prefixes:
+        if prefix in ("", ".") or path == prefix or path.startswith(prefix + "/"):
+            return True
+    return False
 
 
-def _checked(args: Sequence[str], *, cwd: Path, confine_to: Path) -> dict:
-    result = git(args, cwd=cwd, confine_to=confine_to)
+def _checked(
+    args: Sequence[str], *, cwd: Path, confine_to: Path, max_output: int | None = None
+) -> dict:
+    result = git(args, cwd=cwd, confine_to=confine_to, max_output=max_output)
     if result["timed_out"]:
         raise WriteRefused("PROCESS_ERROR", f"git {args[0]} timed out")
     if result["exit"] != 0:

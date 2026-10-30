@@ -117,6 +117,31 @@ def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
     assert truth_files(store) == before
 
 
+def test_a_cache_built_before_a_seek_index_gains_it_on_open(tmp_path):
+    """The human-wait seek is additive, so an older cache keeps its rows."""
+    store = make_store(tmp_path, 20)
+    ix = Index.open(store, load_pack("small", store))
+    ix.sync()
+    ix.close()
+    conn = sqlite3.connect(index_path(store))
+    conn.execute("DROP INDEX reports_class_at")
+    conn.commit()
+    conn.close()
+
+    ix = Index.open(store, load_pack("small", store))
+    try:
+        assert scalar(ix, "SELECT count(*) FROM docs") == 20
+        found = {
+            row[0]
+            for row in ix.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'reports_class_at'"
+            )
+        }
+        assert found == {"reports_class_at"}
+    finally:
+        ix.close()
+
+
 def test_corrupt_database_is_rebuilt_with_the_typed_tables(store_factory):
     store = store_factory(docs=20)
     path = index_path(store)

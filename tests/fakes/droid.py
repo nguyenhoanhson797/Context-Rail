@@ -168,6 +168,8 @@ def main() -> int:
             worktree,
             work=behavior.get("work"),
             store_edit=bool(behavior.get("store_edit")),
+            store_path=behavior.get("store_path"),
+            bulk=int(behavior.get("bulk") or 0),
         )
     return _emit(
         _text(behavior, reviewer, verdict, _order_metadata(flags.get("-f"))),
@@ -352,7 +354,12 @@ def _resolve_conflict(worktree: Path) -> bool:
 
 
 def _leave_commit(
-    worktree: Path, *, work: str | None = None, store_edit: bool = False
+    worktree: Path,
+    *,
+    work: str | None = None,
+    store_edit: bool = False,
+    store_path: str | None = None,
+    bulk: int = 0,
 ) -> None:
     content = work if isinstance(work, str) and work.strip() else "fake droid work\n"
     staged = [WORK_FILE]
@@ -361,6 +368,19 @@ def _leave_commit(
         target.write_text(content, encoding="utf-8", newline="\n")
     except OSError:
         return
+    if bulk:
+        # Long paths on both sides of the store path, so a byte-truncated diff
+        # drops the middle, which is exactly where the store edit sits.
+        for prefix in ("aaa", "zzz"):
+            for index in range(bulk):
+                name = f"{prefix}/entry-{index:04d}-" + "x" * 70 + ".py"
+                try:
+                    path = worktree / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("x\n", encoding="utf-8", newline="\n")
+                except OSError:
+                    continue
+                staged.append(name)
     if store_edit:
         note = worktree / "context-rail" / "worker-note.txt"
         try:
@@ -369,9 +389,19 @@ def _leave_commit(
             staged.append("context-rail/worker-note.txt")
         except OSError:
             pass
+    if isinstance(store_path, str) and store_path.strip():
+        edited = worktree / store_path
+        try:
+            edited.parent.mkdir(parents=True, exist_ok=True)
+            edited.write_text("a worker must never write the store\n", encoding="utf-8")
+            staged.append(store_path)
+        except OSError:
+            pass
     if not (worktree / ".git").exists():
         return
-    _git(worktree, "add", "--", *staged)
+    # Hundreds of long paths overflow one argv on Windows, so stage in chunks.
+    for start in range(0, len(staged), 50):
+        _git(worktree, "add", "--", *staged[start : start + 50])
     _git(worktree, "commit", "-m", "fake droid candidate")
 
 

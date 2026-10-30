@@ -43,6 +43,8 @@ USAGE_COUNTERS = (
 )
 ATTEMPT_TOKEN_COUNTERS = ("input_tokens", "output_tokens")
 WORKER_ROLES = ("implementer", "reviewer")
+#: The role that spends the launch budget; a review is an attempt's outcome.
+IMPLEMENTER_ROLE = "implementer"
 
 
 @dataclass(frozen=True)
@@ -148,11 +150,17 @@ def budget_state(
 
 
 def launch_refusal(runs: Sequence[RunFacts], budget: Budget) -> str | None:
-    """Refuse a new attempt when no attempt or time budget remains."""
-    used_attempts = sum(run.attempts for run in runs)
+    """Refuse a new attempt when no implementer attempt or time budget remains.
+
+    Only implementer runs spend the launch budget: a review is the outcome of an
+    attempt, and dispatching again after one is the loop's intended next step.
+    The budget *state* and the too-long report still count both worker roles.
+    """
+    spent = [run for run in runs if run.role == IMPLEMENTER_ROLE]
+    used_attempts = sum(run.attempts for run in spent)
     if budget.attempts is not None and used_attempts >= budget.attempts:
         return f"no attempts remain: {_fmt(used_attempts)} of {_fmt(budget.attempts)} used"
-    used_seconds = sum(run.seconds for run in runs)
+    used_seconds = sum(run.seconds for run in spent)
     if budget.seconds is not None and used_seconds >= budget.seconds:
         return f"no time remains: {_fmt(used_seconds)} of {_fmt(budget.seconds)} seconds used"
     return None

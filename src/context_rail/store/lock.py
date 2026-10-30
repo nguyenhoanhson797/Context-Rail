@@ -15,7 +15,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 from context_rail.store.location import local_dir
 
@@ -142,13 +142,33 @@ def exclusive_lock(path: Path) -> Iterator[None]:
     so this always takes a fresh descriptor. Raises ``StoreLockTimeout`` when
     another holder has it.
     """
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = _acquire_os_lock(path, 0.0)
+    release = take_exclusive(path)
     try:
         yield
     finally:
+        release()
+
+
+def take_exclusive(path: Path) -> Callable[[], None]:
+    """Take the non-blocking lock now and return the function that releases it.
+
+    A caller that must tell "this lock is busy" apart from a later failure wraps
+    only this call: a ``StoreLockTimeout`` from the work inside the lock is a
+    different problem and keeps its own error.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = _acquire_os_lock(path, 0.0)
+    released = False
+
+    def release() -> None:
+        nonlocal released
+        if released:
+            return
+        released = True
         _os_unlock(fd)
+
+    return release
 
 
 @contextlib.contextmanager

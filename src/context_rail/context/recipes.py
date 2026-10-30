@@ -230,35 +230,37 @@ def check_rows(context: Context, limit: int) -> tuple[list[dict[str, Any]], int]
     return shown, max(len(rows) - limit, 0)
 
 
-def human_waits(
-    context: Context, reports: Sequence[dict[str, Any]], limit: int
-) -> tuple[list[dict[str, Any]], int]:
-    """Items and proposals waiting on a human, bounded, with the omitted count."""
-    rows: list[dict[str, Any]] = []
-    for report in reports:
-        if report.get("target_class") != "human-wait":
-            continue
-        rows.append(
-            {
-                "kind": "report",
-                "item": report.get("item"),
-                "report": report.get("report"),
-                "reason": _narrative(report.get("data"), "what_happened")
-                or report.get("target"),
-                "at": report.get("at"),
-            }
-        )
-    for proposal in query.human_proposals(context.index, limit):
-        rows.append(
-            {
-                "kind": "proposal",
-                "item": proposal.get("slug"),
-                "report": None,
-                "reason": proposal.get("proposed_change"),
-                "at": proposal.get("updated"),
-            }
-        )
-    return rows[:limit], max(len(rows) - limit, 0)
+def human_waits(context: Context, limit: int) -> tuple[list[dict[str, Any]], int]:
+    """Items and proposals waiting on a human, bounded, with the omitted count.
+
+    Waits are queried on their own bound rather than filtered out of a page of
+    newest reports, so a wait older than that page still reaches a human.
+    """
+    reports, reports_total = query.human_wait_reports(context.index, limit)
+    proposals, proposals_total = query.human_proposals(context.index, limit)
+    rows: list[dict[str, Any]] = [
+        {
+            "kind": "report",
+            "item": report.get("item"),
+            "report": report.get("report"),
+            "reason": _narrative(report.get("data"), "what_happened")
+            or report.get("target"),
+            "at": report.get("at"),
+        }
+        for report in reports
+    ]
+    rows.extend(
+        {
+            "kind": "proposal",
+            "item": proposal.get("slug"),
+            "report": None,
+            "reason": proposal.get("proposed_change"),
+            "at": proposal.get("updated"),
+        }
+        for proposal in proposals
+    )
+    shown = rows[:limit]
+    return shown, max(reports_total + proposals_total - len(shown), 0)
 
 
 # ── the brief ─────────────────────────────────────────────────────────────
@@ -279,8 +281,8 @@ def brief(
     now_ms = int(time.time() * 1000)
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
     long_items = too_long_rows(context, items)
-    waits, waits_omitted = human_waits(context, rows["reports"], limit)
-    decisions = query.reversible_decisions(index, limit=limit)
+    waits, waits_omitted = human_waits(context, limit)
+    decisions, decisions_total = query.reversible_decisions(index, limit=limit)
     checks, checks_omitted = check_rows(context, limit)
     sections, omitted = _brief_sections(
         context,
@@ -295,6 +297,7 @@ def brief(
         waits=waits,
         waits_omitted=waits_omitted,
         decisions=decisions,
+        decisions_omitted=decisions_total - len(decisions),
         checks=checks,
         checks_omitted=checks_omitted,
         limit=limit,
@@ -331,6 +334,7 @@ def _brief_sections(
     waits: Sequence[dict[str, Any]],
     waits_omitted: int,
     decisions: Sequence[dict[str, Any]],
+    decisions_omitted: int,
     checks: Sequence[dict[str, Any]],
     checks_omitted: int,
     limit: int,
@@ -405,10 +409,11 @@ def _brief_sections(
 
     quality_section = by_key["quality"]
     quality_section.fixed.extend(_quality_lines(activity))
+    rejected, rejected_total = query.rejected_reviews(context.index, limit=limit)
     available = [_run_line(row) for row in activity["runs"]]
     available.extend(
         f"review rejected {row['review']} — {row['item'] or '-'} (run {row['run'] or '-'})"
-        for row in query.rejected_reviews(context.index, limit=limit)
+        for row in rejected
     )
     available.extend(
         f"check {row['check']} — {row['item'] or '-'} "
@@ -416,12 +421,16 @@ def _brief_sections(
         for row in checks
     )
     quality_section.entries.extend(available[:limit])
-    omitted["quality"] = max(len(available) - limit, 0) + checks_omitted
+    omitted["quality"] = (
+        max(len(available) - limit, 0)
+        + checks_omitted
+        + max(rejected_total - len(rejected), 0)
+    )
 
     reversible_section = by_key["reversible"]
     if decisions:
         reversible_section.entries.extend(_decision_line(row) for row in decisions)
-        omitted["reversible"] = max(len(decisions) - limit, 0)
+        omitted["reversible"] = decisions_omitted
     else:
         reversible_section.fixed.append("none")
 
@@ -453,11 +462,9 @@ def digest(
     now_ms = int(time.time() * 1000)
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
     long_items = too_long_rows(context, items)
-    waits, waits_omitted = human_waits(
-        context, query.untriaged_reports(index, page), page
-    )
-    decisions = query.reversible_decisions(index, since, page)
-    rejected = query.rejected_reviews(index, since, page)
+    waits, waits_omitted = human_waits(context, page)
+    decisions, decisions_total = query.reversible_decisions(index, since, page)
+    rejected, rejected_total = query.rejected_reviews(index, since, page)
     counts = activity["counts"]
     runnable = structure.executable(list(items))
     recent_reports = activity["reports"]
@@ -504,8 +511,8 @@ def digest(
             "needs_human": waits_omitted,
             "stuck": max(len(stuck) - page, 0),
             "too_long": max(len(long_items) - page, 0),
-            "reversible_decisions": max(len(decisions) - page, 0),
-            "rejected_reviews": max(len(rejected) - page, 0),
+            "reversible_decisions": max(decisions_total - len(decisions), 0),
+            "rejected_reviews": max(rejected_total - len(rejected), 0),
             "reports": max(counts["reports"] - len(recent_reports), 0),
         },
     }
@@ -530,29 +537,57 @@ def _summary_text(
 
 
 def picture(ix: Any) -> tuple[list[str], list[tuple[str, str]], list[str]]:
-    """The picture's goal titles, scope items by priority and the Won't titles."""
+    """The picture's goal titles, scope items by priority and the Won't entries.
+
+    A Won't note carries one title and a list of ``entries``; the entries are
+    the decisions the human approved, so they are what the views show. Reading
+    them from the indexed ``fields`` projection keeps this a pure index read.
+    """
     rows = ix.conn.execute(
-        "SELECT d.preset, d.title, f.value_json FROM docs d "
-        "LEFT JOIN fields f ON f.path = d.path AND f.key = 'priority' "
+        "SELECT d.preset, d.title, p.value_json, e.value_json FROM docs d "
+        "LEFT JOIN fields p ON p.path = d.path AND p.key = 'priority' "
+        "LEFT JOIN fields e ON e.path = d.path AND e.key = 'entries' "
         "WHERE d.primitive IN ('item', 'note') AND d.broken = 0 "
         "AND d.preset IN ('goal', 'scope', 'wont') ORDER BY d.slug"
     ).fetchall()
     goal: list[str] = []
     wont: list[str] = []
     scope: list[tuple[str, str]] = []
-    for preset, title, priority in rows:
+    for preset, title, priority, entries in rows:
         name = title or ""
+        if preset == "wont":
+            wont.extend(_wont_entries(entries))
+            continue
         if not name:
             continue
         if preset == "goal":
             goal.append(name)
-        elif preset == "wont":
-            wont.append(name)
         else:
             scope.append((priority or "could", name))
     order = {name: index for index, name in enumerate(_PRIORITIES)}
     scope.sort(key=lambda row: (order.get(row[0], len(order)), row[1]))
     return goal, scope, wont
+
+
+def _wont_entries(raw: Any) -> list[str]:
+    """The titles one Won't note lists, in the order it lists them."""
+    if raw is None:
+        return []
+    try:
+        entries = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(entries, list):
+        return []
+    titles: list[str] = []
+    for entry in entries:
+        if isinstance(entry, str) and entry.strip():
+            titles.append(entry.strip())
+        elif isinstance(entry, dict):
+            title = entry.get("title")
+            if isinstance(title, str) and title.strip():
+                titles.append(title.strip())
+    return titles
 
 
 def approval_state(context: Context) -> dict[str, Any]:
@@ -621,30 +656,83 @@ def _quality_lines(activity: dict[str, Any]) -> list[str]:
 
 
 def _fit(sections: list[Section], limit: int) -> tuple[str, dict[str, int]]:
-    """Render the sections, trimming the lowest-priority lines until they fit."""
-    trimmed = dict.fromkeys([section.key for section in sections], 0)
+    """Render the sections, trimming by the pinned priority until they fit.
+
+    The order is explicit: the weakest excerpts go first, then the picture's
+    goal lines, then the human waits, and the charter's facts and the approval
+    blockers last. A section whose every line has gone is dropped rather than
+    left as a bare heading, and both trimming and dropping count as omissions.
+    """
+    trimmed = {section.key: 0 for section in sections}
     text = _render(sections)
-    while len(text) > limit:
-        target = next((section for section in reversed(sections) if section.entries), None)
-        if target is not None:
-            target.entries.pop()
-            trimmed[target.key] += 1
-            text = _render(sections)
-            continue
-        lowest = next(
-            (section for section in reversed(sections) if section.key != "approval"),
-            None,
-        )
-        if lowest is None:
+    for key, attribute in _TRIM_ORDER:
+        if len(text) <= limit:
             break
-        if lowest.fixed:
-            lowest.fixed.pop()
-            trimmed[lowest.key] += 1
-        else:
-            trimmed[lowest.key] += len(lowest.entries)
-            sections.remove(lowest)
+        section = _section(sections, key)
+        if section is None:
+            continue
+        lines = getattr(section, attribute)
+        while len(text) > limit and lines:
+            lines.pop()
+            trimmed[key] += 1
+            text = _render(sections)
+        if _is_empty(section):
+            sections.remove(section)
+            trimmed[key] += 1
+            text = _render(sections)
+    for key in _DROP_ORDER:
+        if len(text) <= limit:
+            break
+        section = _section(sections, key)
+        if section is None:
+            continue
+        sections.remove(section)
+        trimmed[key] += max(1, len(section.fixed) + len(section.entries))
         text = _render(sections)
     return text[:limit], trimmed
+
+
+def _section(sections: Sequence[Section], key: str) -> Section | None:
+    return next((section for section in sections if section.key == key), None)
+
+
+def _is_empty(section: Section) -> bool:
+    return not section.fixed and not section.entries
+
+
+#: The order a tight budget gives up lines in: weakest excerpt first, the human
+#: waits once the picture's own lines are gone, the charter's facts after them.
+_TRIM_ORDER = (
+    ("conventions", "entries"),
+    ("conventions", "fixed"),
+    ("reversible", "entries"),
+    ("reversible", "fixed"),
+    ("quality", "entries"),
+    ("quality", "fixed"),
+    ("active", "entries"),
+    ("active", "fixed"),
+    ("executable", "entries"),
+    ("executable", "fixed"),
+    ("reports", "entries"),
+    ("reports", "fixed"),
+    ("goal", "entries"),
+    ("goal", "fixed"),
+    ("approval", "entries"),
+    ("charter", "entries"),
+    ("charter", "fixed"),
+)
+
+#: Sections a budget may still drop whole, weakest first; approval is not one.
+_DROP_ORDER = (
+    "conventions",
+    "reversible",
+    "quality",
+    "active",
+    "executable",
+    "reports",
+    "goal",
+    "charter",
+)
 
 
 def _render(sections: Sequence[Section]) -> str:

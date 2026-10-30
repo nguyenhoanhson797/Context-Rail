@@ -18,7 +18,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -565,7 +565,13 @@ def write_order_file(
 def append_failure(
     order_file: Path, failure_text: str, *, max_chars: int = FAILURE_PROMPT_MAX_CHARS
 ) -> Path:
-    """Append a bounded failure section to the work order of a retry."""
+    """Append a bounded failure section to the work order of a retry.
+
+    The appended section is bounded by ``max_chars``, and the whole order stays
+    inside :data:`PROMPT_MAX_CHARS`: the work order is the contract, so older
+    failure excerpts give up room first and the oldest sections go entirely
+    before the order itself would be cut.
+    """
     if not isinstance(failure_text, str):
         raise WriteRefused("VALIDATION_FAILED", "a failure prompt must be text")
     text = failure_text.strip()
@@ -574,15 +580,56 @@ def append_failure(
         return path
     if max_chars <= 0:
         raise WriteRefused("VALIDATION_FAILED", "the failure prompt needs a positive cap")
-    if len(text) > max_chars:
-        head = max_chars // 2
-        tail = max_chars - head - len(_OMITTED)
-        text = text[:head] + _OMITTED + (text[-tail:] if tail > 0 else "")
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-    section = f"## failure\n\n{text}\n"
-    combined = (existing.rstrip("\n") + "\n\n" + section) if existing else section
-    _write_local(path, combined)
+    base, bodies = _failure_parts(existing)
+    bodies.append(_clip(text, max_chars))
+    while len(bodies) > 1 and _overhead(base, len(bodies)) > PROMPT_MAX_CHARS:
+        bodies.pop(0)
+    room = PROMPT_MAX_CHARS - _overhead(base, len(bodies))
+    if room < 0:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"the work order leaves no room for a failure section under "
+            f"{PROMPT_MAX_CHARS} characters",
+        )
+    each = room // len(bodies)
+    _write_local(path, _compose(base, [_clip(body, each) for body in bodies]))
     return path
+
+
+_FAILURE_HEADING = "\n\n## failure\n\n"
+
+
+def _overhead(base: str, count: int) -> int:
+    """The work order's length with ``count`` failure sections of no body."""
+    return len(_compose(base, ["x"] * count)) - count
+
+
+def _failure_parts(existing: str) -> tuple[str, list[str]]:
+    """Split a work order into its own text and the failure bodies appended to it."""
+    if not existing:
+        return "", []
+    chunks = existing.rstrip("\n").split(_FAILURE_HEADING)
+    return chunks[0], [chunk for chunk in chunks[1:]]
+
+
+def _compose(base: str, bodies: Sequence[str]) -> str:
+    """The work order text with one heading per body, each body left as given."""
+    if not base and not bodies:
+        return ""
+    text = base + "".join(_FAILURE_HEADING + body for body in bodies)
+    return text.rstrip("\n") + "\n"
+
+
+def _clip(text: str, cap: int) -> str:
+    """``text`` cut to ``cap`` characters with the head and tail kept."""
+    if len(text) <= cap:
+        return text
+    if cap <= len(_OMITTED):
+        return text[: max(cap, 0)]
+    head = cap // 2
+    tail = cap - head - len(_OMITTED)
+    return text[:head] + _OMITTED + text[-tail:]
 
 
 def _work_order_metadata(raw: Mapping[str, Any], dispatch_id: str) -> dict[str, Any]:

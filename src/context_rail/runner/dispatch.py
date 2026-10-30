@@ -25,7 +25,7 @@ from typing import Any
 
 from context_rail.core.util import sha256_hex
 from context_rail.store.location import local_dir, worktree_git_dir
-from context_rail.store.lock import StoreLockTimeout, exclusive_lock, file_lock
+from context_rail.store.lock import StoreLockTimeout, file_lock, take_exclusive
 from context_rail.store.write import WriteRefused
 
 __all__ = [
@@ -206,15 +206,17 @@ def acquire_tick_lock(store: Path) -> Iterator[Path]:
     """
     path = tick_lock_path(store)
     try:
-        with exclusive_lock(path):
-            yield path
+        release = take_exclusive(path)
     except StoreLockTimeout:
-        holder = _tick_holder(store)
         raise WriteRefused(
             "CONFLICT",
             "another CTO tick holds the single-instance lock",
-            {"lock": str(path), "holder": holder},
+            {"lock": str(path), "holder": _tick_holder(store)},
         ) from None
+    try:
+        yield path
+    finally:
+        release()
 
 
 def _tick_holder(store: Path) -> dict[str, Any]:

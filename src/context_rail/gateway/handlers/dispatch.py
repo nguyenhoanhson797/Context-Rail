@@ -894,7 +894,7 @@ def _review_check_slug(ctx: Context, slug: str, review_id: str, actor: str) -> s
     if found:
         return str(found[0]["slug"])
     for name in (f"review-{slug}", *[f"review-{slug}-{n}" for n in range(2, 10)]):
-        if query.check_state(ctx.index, name) is not None:
+        if _slug_in_use(ctx.index, name):
             continue
         spec = {
             "schema": 1,
@@ -924,6 +924,16 @@ def _review_check_slug(ctx: Context, slug: str, review_id: str, actor: str) -> s
         f"{slug!r} already uses every review Check slug this tool would declare",
         {"item": slug},
     )
+
+
+def _slug_in_use(ix: Any, name: str) -> bool:
+    """Whether any document already answers to ``name``, not only a Check.
+
+    Slugs are unique store-wide, so a Note that happens to carry the review
+    Check's slug would make the declared Check a ``duplicate_slug`` error.
+    """
+    found = ix.conn.execute("SELECT 1 FROM docs WHERE slug = ? LIMIT 1", (name,)).fetchone()
+    return found is not None
 
 
 def _verdict_ids(ctx: Context, slug: str) -> list[str]:
@@ -2248,12 +2258,19 @@ def _stricter(first: Any, second: Any, default: Any) -> Any:
 
 
 def _run_facts(index: Any, slug: str) -> tuple[list[RunFacts], float, int]:
+    """The item's run facts, the seconds every role used, and implementer attempts.
+
+    The attempt count excludes reviews so it agrees with
+    :func:`context_rail.kernel.budgets.launch_refusal`; the elapsed seconds keep
+    counting both worker roles, because review time is spent time.
+    """
     facts: list[RunFacts] = []
     used = 0.0
     used_attempts = 0
     for row in query.run_facts(index, slug):
         used += float(row["seconds"])
-        used_attempts += int(row["attempts"])
+        if row["role"] == IMPL_ROLE:
+            used_attempts += int(row["attempts"])
         facts.append(
             RunFacts(
                 item=slug,
@@ -2377,6 +2394,11 @@ def _status_in(statuses: dict[str, str], category: str) -> str:
 
 
 def _store_paths(ctx: Context, root: Path) -> tuple[str, ...]:
+    """The checkout-relative store folder plus the adapters, as path prefixes.
+
+    A store rooted at the checkout itself has no folder of its own, so ``.``
+    stands for the whole tree; :func:`_inside` reads it that way.
+    """
     try:
         rel = Path(ctx.store).resolve().relative_to(root).as_posix()
     except ValueError:
@@ -2414,9 +2436,31 @@ def _checkpoint(
             "the project checkout has no store folder to checkpoint",
             {"paths": entries[:20]},
         )
-    _git(["add", "-A", "--", *present], root)
+    _stage_store(root, present)
     _git(["commit", "-m", message], root)
     return git_runner.rev_parse_head(root, root)
+
+
+def _stage_store(root: Path, present: list[str]) -> None:
+    """Stage the store paths, forcing them past any global excludesfile.
+
+    ``git add`` exits nonzero when an excludesfile drops one of the paths; a
+    checkpoint that ignored that exit would commit a partial store and report
+    success. The forced retry keeps adapter paths, then a second failure is a
+    process error, never a silent omission.
+    """
+    staged = _git(["add", "-A", "--", *present], root)
+    if staged["exit"] == 0 and not staged["timed_out"]:
+        return
+    forced = _git(["add", "-A", "--force", "--", *present], root)
+    if forced["exit"] == 0 and not forced["timed_out"]:
+        return
+    detail = (forced["stderr"] or forced["stdout"] or staged["stderr"] or "").strip()
+    raise WriteRefused(
+        "PROCESS_ERROR",
+        f"the store paths could not be staged: {detail or 'git add failed'}",
+        {"paths": present[:20]},
+    )
 
 
 def _status_entries(root: Path) -> list[str]:
@@ -2427,7 +2471,11 @@ def _status_entries(root: Path) -> list[str]:
 
 
 def _inside(path: str, prefixes: tuple[str, ...]) -> bool:
-    return any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
+    """Whether ``path`` sits under one of the prefixes, ``.`` meaning all of them."""
+    for prefix in prefixes:
+        if prefix in ("", ".") or path == prefix or path.startswith(prefix + "/"):
+            return True
+    return False
 
 
 def _started_record(

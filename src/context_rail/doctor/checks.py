@@ -116,7 +116,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
         issues.extend(_approval_issues(context))
         issues.extend(_gate_issues(context, policy))
     issues.extend(_check_issues(context, ix))
-    issues.extend(_review_issues(ix))
+    issues.extend(_review_issues(ix, policy))
     issues.extend(_report_issues(ix))
     issues.extend(_run_issues(ix))
     issues.extend(_profile_issues(context, rows))
@@ -521,7 +521,7 @@ def _gate_row(context: Any, policy: Any, slug: str, path: str) -> dict[str, Any]
         slug,
         [check_gate_state(context, row) for row in query.check_states(context.index, slug)],
         review,
-        False,
+        _human_fact(context.index, slug, context.pack),
         review.candidate if review is not None else None,
     )
     return {
@@ -531,6 +531,51 @@ def _gate_row(context: Any, policy: Any, slug: str, path: str) -> dict[str, Any]
         "allowed": decision.allowed,
         "reasons": list(decision.reasons),
     }
+
+
+#: The Record kinds that carry a verdict a human may cast by hand.
+_VERDICT_KINDS = frozenset({"check.verdict", "review.verdict"})
+
+
+def _human_fact(ix: Index, slug: str, pack: Pack) -> bool:
+    """Whether a human's own Record closed ``slug``: a verdict or the done move.
+
+    The Index keeps every Record's ``about`` edge and its projected ``kind``,
+    ``actor`` and ``data`` fields, so this reads no store file.
+    """
+    rows = ix.conn.execute(
+        """
+        SELECT kind.value_json, actor.value_json, data.value_json
+        FROM relations r
+        JOIN fields kind ON kind.path = r.src_path AND kind.key = 'kind'
+        JOIN fields actor ON actor.path = r.src_path AND actor.key = 'actor'
+        LEFT JOIN fields data ON data.path = r.src_path AND data.key = 'data'
+        WHERE r.rel = 'about' AND r.dst = ?
+        """,
+        (slug,),
+    ).fetchall()
+    for kind_json, actor_json, data_json in rows:
+        try:
+            kind = json.loads(kind_json)
+            actor = json.loads(actor_json)
+            payload = json.loads(data_json) if data_json is not None else None
+        except ValueError:
+            continue
+        if actor != "human":
+            continue
+        if kind in _VERDICT_KINDS:
+            return True
+        if kind == "status.changed" and _closed_to(payload, pack):
+            return True
+    return False
+
+
+def _closed_to(payload: object, pack: Pack) -> bool:
+    """Whether a ``status.changed`` payload moved a document into ``done``."""
+    if not isinstance(payload, dict):
+        return False
+    target = payload.get("to")
+    return isinstance(target, str) and pack.statuses.get(target) == "done"
 
 
 def _check_issues(context: Any, ix: Index) -> list[dict[str, Any]]:
@@ -562,10 +607,15 @@ def _check_issues(context: Any, ix: Index) -> list[dict[str, Any]]:
     return issues
 
 
-def _review_issues(ix: Index) -> list[dict[str, Any]]:
-    """One issue per review whose reviewer is not separated from its implementer."""
+def _review_issues(ix: Index, policy: Any) -> list[dict[str, Any]]:
+    """One issue per review whose reviewer is not separated from its implementer.
+
+    The separation rule is the charter's, so a review the review handler
+    accepted under ``reviewer_different_model: false`` is not re-judged here.
+    """
     from context_rail.kernel.rights import review_separation
 
+    different_model = True if policy is None else policy.reviewer_different_model
     issues: list[dict[str, Any]] = []
     for path, record_id, data_json in ix.conn.execute(
         "SELECT r.path, r.record_id, r.data_json FROM reviews r JOIN docs d "
@@ -580,7 +630,7 @@ def _review_issues(ix: Index) -> list[dict[str, Any]]:
             str(data.get("reviewer_actor") or ""),
             str(data.get("implementer_model") or ""),
             str(data.get("reviewer_model") or ""),
-            True,
+            different_model,
         )
         if reason is None:
             continue

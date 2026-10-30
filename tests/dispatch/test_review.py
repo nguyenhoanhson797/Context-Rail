@@ -15,7 +15,7 @@ from context_rail.runner.dispatch import review_paths, worktree_root
 from context_rail.store import query
 from context_rail.store.index import Index
 from context_rail.store.location import local_dir
-from helpers import item_status, latest_record, records_of, run_git
+from helpers import item_status, latest_record, records_of, run_git, write_record
 
 REVIEW_TOOLS_CSV = "read-cli,ls-cli,grep_tool_cli,glob-search-cli"
 REVIEW_MODEL = "custom:gemini-3.8-flash-LTN-0"
@@ -162,6 +162,37 @@ def test_auto_declared_review_check_is_doctor_clean_without_a_title(
     assert missing == []
 
 
+def test_an_existing_note_with_the_review_slug_is_de_conflicted(
+    verified_run: SimpleNamespace, fake_droid: Any
+) -> None:
+    """A Note may already carry ``review-<item>``; the Check must pick another slug."""
+    taken = f"review-{verified_run.slug}"
+    added = invoke(
+        "add",
+        {"preset": "note", "title": taken},
+        store=verified_run.store,
+        actor="cto",
+    )
+    assert added["ok"], added
+    assert added["value"]["slug"] == taken
+
+    fake_droid.set_behaviors(["review_approve"])
+    r = review(verified_run, "rv-slug")
+
+    assert r["ok"], r
+    declared = sorted(
+        path.name
+        for path in (verified_run.store / "checks").glob(f"review-{verified_run.slug}*.md")
+    )
+    assert declared != [f"{taken}.md"], declared
+    report = invoke("doctor", {}, store=verified_run.store, actor="human")
+    assert report["ok"], report
+    codes = [issue["code"] for issue in report["value"]["issues"]]
+    assert "duplicate_slug" not in codes, report["value"]["issues"]
+    checked = invoke("ci", {}, store=verified_run.store, actor="cto")
+    assert checked["ok"] is True, checked
+
+
 def test_reviewer_argv_is_exact(verified_run: SimpleNamespace, fake_droid: Any) -> None:
     fake_droid.set_behaviors(["review_approve"])
     r = review(verified_run, "rv-argv")
@@ -297,6 +328,73 @@ def test_the_same_model_is_allowed_when_the_charter_does_not_require_it(
     review_check = latest_record(verified_run.store, "check.verdict")
     assert review_check["data"]["mode"] == "review"
     assert review_check["data"]["passed"] is True
+
+
+def test_a_permitted_same_model_review_is_doctor_clean_and_ci_passes(
+    verified_run: SimpleNamespace, fake_droid: Any
+) -> None:
+    """The doctor reads the charter, so it cannot contradict the review handler."""
+    charter = verified_run.store / "charter.md"
+    text = charter.read_text(encoding="utf-8")
+    charter.write_text(
+        text.replace("reviewer_different_model: true", "reviewer_different_model: false"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    approved = invoke(
+        "approve",
+        {"target": "charter", "confirm": "APPROVE charter", "confirmer": "validator"},
+        store=verified_run.store,
+        actor="human",
+    )
+    assert approved["ok"], approved
+    set_profile(profile_path(verified_run.store, "reviewer"), model=IMPLEMENTER_MODEL, version=2)
+    fake_droid.set_behaviors(["review_approve"])
+    r = review(verified_run, "rv-doctor-same-model")
+    assert r["ok"], r
+    assert r["value"]["verdict"] == "approve"
+
+    report = invoke("doctor", {}, store=verified_run.store, actor="human")
+    assert report["ok"], report
+    assert [issue for issue in report["value"]["issues"] if issue["code"] == "review_invalid"] == []
+    checked = invoke("ci", {}, store=verified_run.store, actor="cto")
+    assert checked["ok"] is True, checked
+    assert checked["value"]["passed"] is True
+
+
+def test_a_charter_that_requires_separation_still_reports_the_same_model_review(
+    verified_run: SimpleNamespace,
+) -> None:
+    """The same-model rule is never weakened: a requiring charter still reports."""
+    write_record(
+        verified_run.store,
+        "01JSAMEMODELREVIEW000000001",
+        "review.verdict",
+        {
+            "schema": 1,
+            "item": verified_run.item,
+            "implementation_run": verified_run.run,
+            "implementer_actor": "implementer",
+            "reviewer_actor": "reviewer",
+            "implementer_model": IMPLEMENTER_MODEL,
+            "reviewer_model": IMPLEMENTER_MODEL,
+            "candidate_commit": verified_run.candidate,
+            "verdict": "approve",
+            "findings": [],
+            "evidence": [],
+            "profile_version": 1,
+        },
+        at="2099-01-01T00:00:00Z",
+        about=(verified_run.item,),
+    )
+    charter = (verified_run.store / "charter.md").read_text(encoding="utf-8")
+    assert "reviewer_different_model: true" in charter
+
+    report = invoke("doctor", {}, store=verified_run.store, actor="human")
+
+    assert report["ok"], report
+    codes = [issue["code"] for issue in report["value"]["issues"]]
+    assert "review_invalid" in codes
 
 
 # ── verdicts and acceptance ───────────────────────────────────────────────

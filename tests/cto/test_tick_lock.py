@@ -168,3 +168,35 @@ def test_the_lock_file_lives_under_local_dir(leaf_item, fake_droid, droid_env) -
     assert path == local_dir(leaf_item.store) / "cto.lock"
     assert path.is_file()
     assert not path.is_relative_to(leaf_item.store)
+
+
+def test_an_unrelated_lock_timeout_is_not_rewritten_as_a_tick_conflict(
+    leaf_item, fake_droid, droid_env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A store-lock timeout keeps its own error and still runs the abort cleanup."""
+    from context_rail.gateway.handlers import cto as cto_handler
+    from context_rail.store.lock import StoreLockTimeout
+    from helpers import records_of
+
+    def refuse(*_args: Any, **_kwargs: Any) -> Any:
+        raise StoreLockTimeout(local_dir(leaf_item.store) / "write.lock", 30.0)
+
+    original = cto_handler.commit
+    monkeypatch.setattr(cto_handler, "commit", refuse)
+    before = len(records_of(leaf_item.store, "tick.started"))
+    try:
+        r = tick(leaf_item.store, "t12")
+    finally:
+        monkeypatch.setattr(cto_handler, "commit", original)
+
+    assert r["ok"] is False, r
+    assert r["error"]["code"] != "CONFLICT", r
+    assert "single-instance" not in r["error"]["message"]
+    assert len(records_of(leaf_item.store, "tick.started")) == before
+    assert fake_droid.log() == []
+    assert local_dispatch.read_tick_binding(leaf_item.store, "t12") is None
+    folder = local_dir(leaf_item.store) / "tick"
+    assert [path for path in folder.glob("*.json")] == []
+
+    # The aborted tick released the lock, so a fresh key can still take it.
+    assert is_ok(tick(leaf_item.store, "t12b"))

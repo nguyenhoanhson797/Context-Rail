@@ -538,6 +538,124 @@ def test_ci_fails_on_a_bypassed_gate(tmp_path: Path, answers: Path) -> None:
     assert [issue["code"] for issue in shown["issues"]] == ["gate_bypassed"]
 
 
+def _require_human_charter(store: Path) -> None:
+    """Make ``item_done`` need a human verdict, then re-approve the charter."""
+    charter = store / "charter.md"
+    text = charter.read_text(encoding="utf-8")
+    edited = text.replace(
+        "  item_done:\n"
+        "    require_checks: true\n"
+        "    require_acceptance: false\n"
+        "    require_review: true\n"
+        "    require_human: false\n",
+        "  item_done:\n"
+        "    require_checks: true\n"
+        "    require_acceptance: false\n"
+        "    require_review: true\n"
+        "    require_human: true\n",
+    )
+    assert edited != text, "the fixture charter did not carry item_done"
+    charter.write_text(edited, encoding="utf-8", newline="\n")
+    approved = approve_picture(store)
+    assert is_ok(approved), approved
+
+
+def _verified_item(project: Path, store: Path, tmp_path: Path) -> tuple[str, str]:
+    """One task whose cmd Check proves the project HEAD; returns its slug and HEAD."""
+    added = invoke(
+        "add", {"preset": "task", "title": "Login page"}, store=store, actor="cto"
+    )
+    assert is_ok(added), added
+    declared = _declare(
+        store, tmp_path, "unit", target="login-page", payload=_cmd_spec(PASSING_CMD)
+    )
+    assert is_ok(declared), declared
+    verified = invoke("verify", {"target": "unit"}, store=store, actor="cto")
+    assert is_ok(verified), verified
+    assert verified["value"]["passed"] is True, verified
+    return "login-page", run_git(project, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_a_legitimate_human_close_on_a_require_human_charter_is_doctor_clean(
+    tmp_path: Path, answers: Path
+) -> None:
+    """The doctor reads the store's own Records, so a human close is not a bypass."""
+    project, store = _approved(tmp_path, answers, "human-close", git=True)
+    item, candidate = _verified_item(project, store, tmp_path)
+    _require_human_charter(store)
+    write_record(
+        store,
+        "01JHUMANREVIEW000000000001",
+        "review.verdict",
+        {
+            "schema": 1,
+            "item": item,
+            "implementation_run": "01JHUMANRUN0000000000001",
+            "implementer_actor": "implementer",
+            "reviewer_actor": "reviewer",
+            "implementer_model": "custom:Deepseek-V4-flash-0",
+            "reviewer_model": "custom:gemini-3.8-flash-LTN-0",
+            "candidate_commit": candidate,
+            "verdict": "approve",
+            "findings": [],
+            "evidence": [],
+            "profile_version": 1,
+        },
+        at="2026-10-28T12:00:00Z",
+        about=(item,),
+    )
+    shown = invoke("show", {"slug": item}, store=store, actor="cto")
+    started = invoke(
+        "move",
+        {
+            "slug": item,
+            "status": "doing",
+            "expect": shown["value"]["doc"]["etag"],
+            "resolution": None,
+        },
+        store=store,
+        actor="human",
+    )
+    assert started["ok"], started
+    moved = invoke(
+        "move",
+        {
+            "slug": item,
+            "status": "done",
+            "expect": started["value"]["etag"],
+            "resolution": "a human closed it",
+        },
+        store=store,
+        actor="human",
+    )
+    assert moved["ok"], moved
+
+    report = invoke("doctor", {}, store=store, actor="human")
+
+    assert report["ok"], report
+    codes = [issue["code"] for issue in report["value"]["issues"]]
+    assert "gate_bypassed" not in codes, report["value"]["issues"]
+
+
+def test_a_non_human_close_on_a_require_human_charter_still_reports_gate_bypassed(
+    tmp_path: Path, answers: Path
+) -> None:
+    """Do not drop the require_human term: a hand-edited close is still a bypass."""
+    _project, store = _approved(tmp_path, answers, "non-human-close")
+    added = invoke(
+        "add", {"preset": "task", "title": "Hand closed"}, store=store, actor="cto"
+    )
+    assert is_ok(added), added
+    _require_human_charter(store)
+    touch_doc(store, "items/task/hand-closed.md", status="done")
+
+    report = invoke("doctor", {}, store=store, actor="human")
+
+    assert report["ok"], report
+    codes = [issue["code"] for issue in report["value"]["issues"]]
+    assert "gate_bypassed" in codes, report["value"]["issues"]
+
+
 def test_ci_warnings_pass_unless_warnings_as_errors(tmp_path: Path, answers: Path) -> None:
     project, store = _approved(tmp_path, answers, "ci-warning", git=True)
     added = invoke(

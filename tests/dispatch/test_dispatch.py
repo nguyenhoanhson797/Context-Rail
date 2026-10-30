@@ -16,7 +16,7 @@ import pytest
 
 from context_rail.gateway.gateway import invoke
 from context_rail.store.location import local_dir
-from helpers import latest_record, process_alive, run_cli, run_git, start_cli
+from helpers import item_etag, latest_record, process_alive, run_cli, run_git, start_cli
 
 RESULT_KEYS = {
     "dispatch_id",
@@ -342,6 +342,55 @@ def test_budget_spent_refused(leaf_item, fake_droid, droid_env) -> None:
     assert len(fake_droid.log()) == launched
 
 
+def test_a_fresh_dispatch_launches_after_an_approving_review(
+    verified_run, fake_droid, droid_env
+) -> None:
+    """VAL-DISPATCH-008 refused on two spent *implementer* attempts, not on a review."""
+    fake_droid.set_behaviors(["review_approve"])
+    reviewed = invoke(
+        "review",
+        {"item": verified_run.item, "run": verified_run.run, "key": "after-approve-r"},
+        store=verified_run.store,
+        actor="cto",
+    )
+    assert reviewed["ok"], reviewed
+    launched = len(fake_droid.log())
+
+    fake_droid.set_behaviors(["success"])
+    etag = item_etag(verified_run)
+    again = invoke(
+        "dispatch",
+        {"item": verified_run.item, "expect": etag, "key": "after-approve-d"},
+        store=verified_run.store,
+        actor="cto",
+    )
+
+    assert again["ok"], again
+    assert again["value"]["dispatch_id"] != verified_run.dispatch_id
+    assert again["value"]["status"] == "verified"
+    assert len(fake_droid.log()) == launched + 1
+
+
+def test_a_fresh_dispatch_launches_after_a_rejecting_review(
+    rejected_run, fake_droid, droid_env
+) -> None:
+    """A rejection is the approved Stage 1b re-dispatch loop; attempts stay open."""
+    launched = len(fake_droid.log())
+
+    fake_droid.set_behaviors(["success"])
+    again = invoke(
+        "dispatch",
+        {"item": rejected_run.item, "expect": item_etag(rejected_run), "key": "after-reject-d"},
+        store=rejected_run.store,
+        actor="cto",
+    )
+
+    assert again["ok"], again
+    assert again["value"]["status"] == "verified"
+    assert again["value"]["dispatch_id"] != rejected_run.dispatch_id
+    assert len(fake_droid.log()) == launched + 1
+
+
 def test_worker_store_edits_are_refused(leaf_item, fake_droid, droid_env) -> None:
     fake_droid.set_behaviors([{"mode": "success", "store_edit": True}])
     r = dispatch(leaf_item, "store")
@@ -355,6 +404,182 @@ def test_worker_store_edits_are_refused(leaf_item, fake_droid, droid_env) -> Non
     run = latest_record(leaf_item.store, "run.completed")
     assert "context-rail/worker-note.txt" not in run["data"]["files_changed"]
     assert (leaf_item.root / "src" / "app.py").read_bytes() == b"VALUE = 1\n"
+
+
+def _fake_git(
+    real: Any, scripted: dict[str, list[dict[str, Any] | None]]
+) -> tuple[Any, list[list[str]]]:
+    """Replace ``git``'s first subcommand with a scripted sequence per command.
+
+    A ``None`` step means "run the real command", so a test can fail one call
+    and let the next one behave normally.
+    """
+    seen: list[list[str]] = []
+
+    def runner(args: list[str], cwd: Path, timeout: float = 120.0) -> dict[str, Any]:
+        seen.append(list(args))
+        queue = scripted.get(args[0]) if args else None
+        if queue:
+            step = queue.pop(0) if len(queue) > 1 else queue[0]
+            if step is not None:
+                return step
+        return real(args, cwd=cwd, timeout=timeout)
+
+    return runner, seen
+
+
+def _git_failure() -> dict[str, Any]:
+    return {
+        "exit": 1,
+        "timed_out": False,
+        "duration_s": 0.01,
+        "stdout": "",
+        "stderr": "The following paths are ignored by one of your .gitignore files",
+        "omitted_bytes": 0,
+        "digest": "sha256:0000",
+    }
+
+
+def test_a_failed_checkpoint_add_forces_the_paths_then_refuses(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    """A global excludesfile must never make the checkpoint silently drop paths."""
+    import context_rail.gateway.handlers.dispatch as dispatch_module
+
+    agents = leaf_item.root / ".agents" / "skills" / "hint" / "SKILL.md"
+    agents.parent.mkdir(parents=True, exist_ok=True)
+    agents.write_text("# hint\n", encoding="utf-8", newline="\n")
+    real = dispatch_module._git
+    runner, seen = _fake_git(real, {"add": [_git_failure(), None]})
+    dispatch_module._git = runner
+    try:
+        forced = dispatch(leaf_item, "checkpoint-forced")
+    finally:
+        dispatch_module._git = real
+
+    adds = [call for call in seen if call[:1] == ["add"]]
+    assert any("--force" in call for call in adds), adds
+    assert forced["ok"], forced
+    staged = run_git(leaf_item.root, "ls-files", ".agents").stdout.strip()
+    assert staged, "the checkpoint left .agents untracked"
+
+
+def test_a_checkpoint_that_cannot_add_a_path_refuses_instead_of_reporting_success(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    """When even the forced add fails, the checkpoint must not claim success."""
+    import context_rail.gateway.handlers.dispatch as dispatch_module
+
+    real = dispatch_module._git
+    runner, seen = _fake_git(real, {"add": [_git_failure(), _git_failure()]})
+    dispatch_module._git = runner
+    try:
+        refused = dispatch(leaf_item, "checkpoint-refused")
+    finally:
+        dispatch_module._git = real
+
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "PROCESS_ERROR", refused
+    assert len([call for call in seen if call[:1] == ["add"]]) == 2
+
+
+def test_a_store_edit_in_the_dropped_middle_is_still_refused(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    """A truncated diff must not hide the store path a worker committed."""
+    fake_droid.set_behaviors([{"mode": "success", "store_edit": True, "bulk": 200}])
+    r = dispatch(leaf_item, "store-middle")
+    assert r["ok"], r
+    assert r["value"]["status"] == "escalated", r
+    report = latest_record(leaf_item.store, "report.filed")
+    assert "context-rail/worker-note.txt" in report["data"]["observed"]
+    run = latest_record(leaf_item.store, "run.completed")
+    capture = run["data"]["capture"]
+    assert capture["complete"] is False
+    assert capture["omitted"] > 0
+    assert not (leaf_item.store / "worker-note.txt").exists()
+
+
+def test_a_store_at_the_project_root_still_refuses_a_worker_edit(
+    tmp_path: Path, picture_answers: dict[str, Any], fake_droid: Any, droid_env
+) -> None:
+    """``--root .`` makes the project root the store; a store edit is still an edit."""
+    project = tmp_path / "rooted"
+    project.mkdir()
+    answers = tmp_path / "rooted-answers.json"
+    answers.write_text(json.dumps(picture_answers, indent=2), encoding="utf-8")
+    started = invoke(
+        "init",
+        {
+            "dir": str(project),
+            "root": ".",
+            "answers_file": str(answers),
+            "confirm": "APPROVE charter",
+        },
+        actor="human",
+    )
+    assert started["ok"], started
+    store = project
+    from helpers import approve_picture
+
+    approved = approve_picture(store)
+    assert approved["ok"], approved
+    added = invoke(
+        "add",
+        {"preset": "task", "title": "Login page", "rel": ["part_of=send-invoice"]},
+        store=store,
+        actor="cto",
+    )
+    assert added["ok"], added
+    spec = tmp_path / "rooted-unit.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "cmd",
+                "acceptance": False,
+                "cmd": [sys.executable, "-c", "print('ok')"],
+                "inputs": ["src/*.py"],
+                "timeout_s": 60,
+            }
+        ),
+        encoding="utf-8",
+    )
+    declared = invoke(
+        "check",
+        {"slug": "unit", "target": "login-page", "spec_file": str(spec), "expect": "absent"},
+        store=store,
+        actor="cto",
+    )
+    assert declared["ok"], declared
+    (project / "src").mkdir()
+    (project / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    (project / "README.md").write_text("fixture\n", encoding="utf-8", newline="\n")
+    run_git(project, "init", "-b", "main")
+    run_git(project, "add", "-A")
+    run_git(project, "commit", "-m", "picture and leaf task")
+    shown = invoke("show", {"slug": "login-page"}, store=store, actor="cto")
+    assert shown["ok"], shown
+
+    fake_droid.set_behaviors(
+        [{"mode": "success", "store_path": "worker-note.txt"}]
+    )
+    r = invoke(
+        "dispatch",
+        {
+            "item": "login-page",
+            "expect": shown["value"]["doc"]["etag"],
+            "key": "rooted-store-edit",
+        },
+        store=store,
+        actor="cto",
+    )
+
+    assert r["ok"], r
+    assert r["value"]["status"] == "escalated", r
+    report = latest_record(store, "report.filed")
+    assert "worker-note.txt" in report["data"]["observed"]
+    assert not (store / "worker-note.txt").exists()
 
 
 @pytest.mark.timeout(120)

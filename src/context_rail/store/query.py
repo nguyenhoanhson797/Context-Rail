@@ -29,6 +29,7 @@ __all__ = [
     "digest_rows",
     "find",
     "human_proposals",
+    "human_wait_reports",
     "last_activity_ms",
     "ledger",
     "records_about",
@@ -583,46 +584,58 @@ def untriaged_reports(ix: Index, limit: int = 100) -> list[dict[str, Any]]:
     """Reports no triage Record has claimed yet, newest first."""
     limit = _bounded(limit, REPORT_LIMIT_BOUNDS, "limit")
     rows = ix.conn.execute(
-        """
-        SELECT p.record_id, p.item, p.run_id, p.target_class, p.target,
-               p.fingerprint, p.impact, p."nothing", p.at, p.data_json, p.path
-        FROM reports p
-        WHERE NOT EXISTS (
-            SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id
-        )
-        ORDER BY p.at DESC, p.record_id DESC LIMIT ?
-        """,
+        f"{_REPORT_SELECT} {_UNTRIAGED} "
+        "ORDER BY p.at DESC, p.record_id DESC LIMIT ?",
         (limit,),
     ).fetchall()
-    return [
-        {
-            "report": record_id,
-            "record_id": record_id,
-            "item": item,
-            "run": run_id,
-            "target_class": target_class,
-            "target": target,
-            "fingerprint": fingerprint,
-            "impact": impact,
-            "nothing": bool(nothing),
-            "at": at,
-            "data": json.loads(data),
-            "path": path,
-        }
-        for (
-            record_id,
-            item,
-            run_id,
-            target_class,
-            target,
-            fingerprint,
-            impact,
-            nothing,
-            at,
-            data,
-            path,
-        ) in rows
-    ]
+    return [_report_row(row) for row in rows]
+
+
+#: The report columns every report feed returns, in one place.
+_REPORT_SELECT = (
+    "SELECT p.record_id, p.item, p.run_id, p.target_class, p.target, "
+    'p.fingerprint, p.impact, p."nothing", p.at, p.data_json, p.path FROM reports p'
+)
+_UNTRIAGED_ONLY = (
+    "NOT EXISTS (SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id)"
+)
+_UNTRIAGED = f"WHERE {_UNTRIAGED_ONLY}"
+
+
+def _report_row(row: Sequence[Any]) -> dict[str, Any]:
+    """One indexed report row as the views read it."""
+    record_id, item, run_id, target_class, target, fingerprint, impact, nothing, at, data, path = row
+    return {
+        "report": record_id,
+        "record_id": record_id,
+        "item": item,
+        "run": run_id,
+        "target_class": target_class,
+        "target": target,
+        "fingerprint": fingerprint,
+        "impact": impact,
+        "nothing": bool(nothing),
+        "at": at,
+        "data": json.loads(data),
+        "path": path,
+    }
+
+
+def human_wait_reports(ix: Index, limit: int = 20) -> tuple[list[dict[str, Any]], int]:
+    """Untriaged human-wait reports, newest first, plus how many exist in total.
+
+    A wait is its own query over the ``(target_class, at)`` index, never a
+    filter over a page of newest reports: a wait older than that page still
+    needs the human, and the total is what a truthful omission count needs.
+    """
+    limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
+    where = f"WHERE p.target_class = 'human-wait' AND {_UNTRIAGED_ONLY}"
+    rows = ix.conn.execute(
+        f"{_REPORT_SELECT} {where} ORDER BY p.at DESC, p.record_id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    total = _scalar(ix, f"SELECT COUNT(*) FROM reports p {where}")
+    return [_report_row(row) for row in rows], total
 
 
 def report_for_run(ix: Index, run_id: str) -> str | None:
@@ -768,11 +781,13 @@ def approval_for(ix: Index, target: str) -> dict[str, Any] | None:
 
 def reversible_decisions(
     ix: Index, since: str | None = None, limit: int = 20
-) -> list[dict[str, Any]]:
-    """Newest decision Records whose payload names ``cto-reversible``.
+) -> tuple[list[dict[str, Any]], int]:
+    """Newest reversible decisions, bounded, plus how many the filter matched.
 
     The class lives in the Record's data, never in its kind, so this reads the
-    payload and re-checks the class it found instead of trusting the filter.
+    payload and re-checks the class it found instead of trusting the filter. The
+    count is what a view needs to report an honest omission, so it is read from
+    the same predicate rather than inferred from the truncated page.
     """
     limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
     since = _since(since)
@@ -784,15 +799,17 @@ def reversible_decisions(
     if since is not None:
         clause += " AND d.record_at IS NOT NULL AND d.record_at >= ?"
         params.append(_iso_ms(since))
-    rows = ix.conn.execute(
-        "SELECT d.slug, d.path, d.record_at, f2.value_json, "
-        "(SELECT group_concat(r.dst, ',') FROM relations r "
-        " WHERE r.src_path = d.path AND r.rel = 'about') "
+    joins = (
         "FROM docs d "
         "JOIN fields f1 ON f1.path = d.path AND f1.key = 'kind' "
         " AND f1.value_json = '\"decision.made\"' "
         "JOIN fields f2 ON f2.path = d.path AND f2.key = 'data' "
-        f"{clause} ORDER BY d.record_at DESC, d.slug DESC LIMIT ?",
+    )
+    rows = ix.conn.execute(
+        "SELECT d.slug, d.path, d.record_at, f2.value_json, "
+        "(SELECT group_concat(r.dst, ',') FROM relations r "
+        " WHERE r.src_path = d.path AND r.rel = 'about') "
+        f"{joins}{clause} ORDER BY d.record_at DESC, d.slug DESC LIMIT ?",
         [*params, limit],
     ).fetchall()
     found: list[dict[str, Any]] = []
@@ -814,22 +831,26 @@ def reversible_decisions(
                 "path": path,
             }
         )
-    return found
+    return found, _scalar(ix, f"SELECT COUNT(*) {joins}{clause}", params)
 
 
-def human_proposals(ix: Index, limit: int = 20) -> list[dict[str, Any]]:
-    """Open proposal Notes whose decision class waits on a human."""
+def human_proposals(ix: Index, limit: int = 20) -> tuple[list[dict[str, Any]], int]:
+    """Open proposal Notes whose decision class waits on a human, and their total."""
     limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
+    where = (
+        "WHERE d.primitive = 'note' AND d.broken = 0 "
+        "AND EXISTS (SELECT 1 FROM fields c WHERE c.path = d.path "
+        "AND c.key = 'decision_class' AND c.value_json = '\"human-only\"')"
+    )
     rows = ix.conn.execute(
         "SELECT d.slug, d.title, d.updated, p.value_json FROM docs d "
         "JOIN fields f ON f.path = d.path AND f.key = 'decision_class' "
         " AND f.value_json = '\"human-only\"' "
         "LEFT JOIN fields p ON p.path = d.path AND p.key = 'proposed_change' "
-        "WHERE d.primitive = 'note' AND d.broken = 0 "
-        "ORDER BY d.updated DESC, d.slug DESC LIMIT ?",
+        f"{where} ORDER BY d.updated DESC, d.slug DESC LIMIT ?",
         (limit,),
     ).fetchall()
-    return [
+    found = [
         {
             "slug": slug,
             "item": slug,
@@ -839,12 +860,18 @@ def human_proposals(ix: Index, limit: int = 20) -> list[dict[str, Any]]:
         }
         for slug, title, updated, change in rows
     ]
+    return found, _scalar(ix, f"SELECT COUNT(*) FROM docs d {where}")
 
 
 def rejected_reviews(
     ix: Index, since: str | None = None, limit: int = 20
-) -> list[dict[str, Any]]:
-    """Newest rejecting reviews, kept apart from what the runs were accepted as."""
+) -> tuple[list[dict[str, Any]], int]:
+    """Newest rejecting reviews, bounded, plus how many the filter matched.
+
+    The count comes from the same predicate, so a view can report the trimming
+    it actually did instead of a remainder computed from a page that was
+    already cut.
+    """
     limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
     since = _since(since)
     clause = "WHERE r.verdict = 'reject'"
@@ -852,13 +879,14 @@ def rejected_reviews(
     if since is not None:
         clause += " AND d.record_at IS NOT NULL AND d.record_at >= ?"
         params.append(_iso_ms(since))
+    joins = "FROM reviews r JOIN docs d ON d.path = r.path "
     rows = ix.conn.execute(
         "SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.reviewer, "
-        f'd.record_at FROM reviews r JOIN docs d ON d.path = r.path {clause} '
-        'ORDER BY d.record_at DESC, r.record_id DESC LIMIT ?',
+        f"d.record_at {joins}{clause} "
+        "ORDER BY d.record_at DESC, r.record_id DESC LIMIT ?",
         [*params, limit],
     ).fetchall()
-    return [
+    found = [
         {
             "review": record_id,
             "record_id": record_id,
@@ -870,6 +898,7 @@ def rejected_reviews(
         }
         for record_id, item, run_id, candidate, reviewer, at in rows
     ]
+    return found, _scalar(ix, f"SELECT COUNT(*) {joins}{clause}", params)
 
 
 def worker_totals(ix: Index) -> dict[str, dict[str, Any]]:

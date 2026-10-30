@@ -145,6 +145,116 @@ def test_untriaged_reports_lists_and_bounds(seeded_runs_store):
         query.untriaged_reports(ix, limit=0)
 
 
+def test_human_wait_reports_count_beyond_the_page(seeded_runs_store):
+    """Waits are queried on their own bound, so the total is never page-derived."""
+    ix = seeded_runs_store.ix
+    assert query.human_wait_reports(ix, 1) == ([], 0)
+
+    def wait(record_id: str, at: str) -> None:
+        write_record(
+            seeded_runs_store.store,
+            record_id,
+            "report.filed",
+            {
+                "schema": 1,
+                "target_class": "human-wait",
+                "target": "payer copy",
+                "item": seeded_runs_store.item,
+                "run": None,
+                "nothing_to_report": False,
+                "what_happened": "an older wait still needs a human",
+                "expected": "a human decides",
+                "observed": "undecided",
+                "impact": "medium",
+                "evidence": [],
+                "fingerprint": "human-wait|payer copy",
+            },
+            at=at,
+            about=(seeded_runs_store.item,),
+        )
+
+    wait("01JWAITSTORE00000000000001", "2026-10-28T10:40:00Z")
+    ix.sync()
+    shown, total = query.human_wait_reports(ix, 1)
+    assert [row["report"] for row in shown] == ["01JWAITSTORE00000000000001"]
+    assert total == 1
+
+    wait("01JWAITSTORE00000000000002", "2026-10-28T09:00:00Z")
+    ix.sync()
+    shown, total = query.human_wait_reports(ix, 1)
+    assert len(shown) == 1
+    assert total == 2
+    with pytest.raises(QueryError):
+        query.human_wait_reports(ix, 0)
+
+
+def test_human_wait_reports_use_their_own_index(seeded_runs_store):
+    """The wait read stays a seek at ten thousand reports, never a table scan."""
+    plan = [
+        row[3]
+        for row in seeded_runs_store.ix.conn.execute(
+            "EXPLAIN QUERY PLAN SELECT p.record_id FROM reports p "
+            "WHERE p.target_class = 'human-wait' AND NOT EXISTS "
+            "(SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id) "
+            "ORDER BY p.at DESC, p.record_id DESC LIMIT 20"
+        )
+    ]
+    assert any("reports_class_at" in step for step in plan), plan
+
+
+def test_reversible_decisions_and_rejected_reviews_report_their_totals(
+    seeded_runs_store,
+):
+    ix = seeded_runs_store.ix
+    decisions, decision_total = query.reversible_decisions(ix, limit=1)
+    rejected, rejected_total = query.rejected_reviews(ix, limit=1)
+    assert decisions == [] and decision_total == 0
+    assert rejected == [] and rejected_total == 0
+
+    write_record(
+        seeded_runs_store.store,
+        "01JREVERSIBLESTORE00000001",
+        "decision.made",
+        {
+            "schema": 1,
+            "decision_class": "cto-reversible",
+            "reason": "reuses the login parser",
+            "before": {"depends_on": []},
+            "after": {"depends_on": ["login-page"]},
+        },
+        at="2026-10-28T10:45:00Z",
+        about=("sign-in",),
+    )
+    write_record(
+        seeded_runs_store.store,
+        "01JREJECTIONSTORE000000001",
+        "review.verdict",
+        {
+            "schema": 1,
+            "item": seeded_runs_store.item,
+            "implementation_run": seeded_runs_store.run,
+            "implementer_actor": "implementer",
+            "reviewer_actor": "reviewer",
+            "implementer_model": "custom:Deepseek-V4-flash-0",
+            "reviewer_model": "custom:gemini-3.8-flash-LTN-0",
+            "candidate_commit": seeded_runs_store.candidate,
+            "verdict": "reject",
+            "findings": ["empty input not handled"],
+            "evidence": [],
+            "profile_version": 1,
+        },
+        at="2026-10-28T10:46:00Z",
+        about=(seeded_runs_store.item,),
+    )
+    ix.sync()
+    decisions, decision_total = query.reversible_decisions(ix, limit=1)
+    rejected, rejected_total = query.rejected_reviews(ix, limit=1)
+    assert [row["class"] for row in decisions] == ["cto-reversible"]
+    assert decision_total == 1
+    assert [row["review"] for row in rejected] == ["01JREJECTIONSTORE000000001"]
+    assert rejected_total == 1
+
+
 def test_review_for_requires_the_exact_candidate(seeded_runs_store):
     ix = seeded_runs_store.ix
     review = query.review_for(ix, seeded_runs_store.candidate)

@@ -428,6 +428,23 @@ def test_a_failure_section_is_appended_and_bounded(tmp_path):
     assert "stderr excerpt" in second
 
 
+def test_append_failure_keeps_the_work_order_inside_the_prompt_cap(tmp_path):
+    """A retry order can never grow past PROMPT_MAX_CHARS."""
+    from context_rail.runner.droid import PROMPT_MAX_CHARS
+
+    sections = {name: "z" * 2500 for name in WORK_ORDER_SECTIONS}
+    order = write_order_file(
+        tmp_path, DISPATCH_ID, metadata=_metadata(), sections=sections
+    )
+    assert len(order.read_text(encoding="utf-8")) <= PROMPT_MAX_CHARS
+
+    for round_number in range(3):
+        append_failure(order, f"failure {round_number}\n" + "y" * 4000)
+        text = order.read_text(encoding="utf-8")
+        assert len(text) <= PROMPT_MAX_CHARS, len(text)
+        assert text.count("## failure") == round_number + 1
+
+
 # ── environment and profile lookup ────────────────────────────────────────
 
 

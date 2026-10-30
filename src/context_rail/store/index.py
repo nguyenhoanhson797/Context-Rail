@@ -77,6 +77,11 @@ _UNCOUNTED_NAMES = frozenset({"rail.yaml", ".gitignore"})
 _UNCOUNTED_DIRS = frozenset({"templates", "packs", "engine-issues"})
 _BROKEN_PROBLEMS = frozenset({PARSE_ERROR, BAD_ENCODING})
 
+#: Seek paths the CTO views need; also added to a cache built without them.
+_SEEK_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS reports_class_at ON reports(target_class, at DESC)",
+)
+
 _SCHEMA = (
     """
     CREATE TABLE docs(
@@ -221,6 +226,9 @@ _SCHEMA = (
     """,
     "CREATE INDEX reports_fingerprint_at ON reports(fingerprint, at)",
     "CREATE INDEX reports_run ON reports(run_id)",
+    # The digest and the brief read human waits by class on every call, so the
+    # scan stays a seek no matter how many reports the store holds.
+    *_SEEK_INDEXES,
     """
     CREATE TABLE triaged_reports(
         report_id TEXT NOT NULL,
@@ -460,6 +468,7 @@ class Index:
                 if _is_busy(exc):
                     raise IndexBusy(f"the index at {target} stayed locked") from exc
             if healthy and conn is not None:
+                _ensure_seek_indexes(conn)
                 return cls(store, pack, conn, busy_timeout_ms=busy_timeout_ms)
             if conn is not None:
                 conn.close()
@@ -1091,6 +1100,17 @@ def _matches(conn: sqlite3.Connection, wanted: str) -> bool:
     if rows.get("schema") != str(INDEX_SCHEMA) or rows.get("pack_hash") != wanted:
         return False
     return conn.execute("PRAGMA user_version").fetchone()[0] == INDEX_SCHEMA
+
+
+def _ensure_seek_indexes(conn: sqlite3.Connection) -> None:
+    """Add the query indexes a cache built before them is still missing.
+
+    They are additive and keyed on existing tables, so an older cache keeps its
+    rows and gains the seek paths the CTO views need at ten thousand documents.
+    """
+    for statement in _SEEK_INDEXES:
+        conn.execute(statement)
+    conn.commit()
 
 
 def _create(conn: sqlite3.Connection, wanted: str) -> None:

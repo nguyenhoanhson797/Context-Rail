@@ -195,3 +195,145 @@ def test_reversible_decisions_read_the_class_from_the_record_payload(
     )
     value = _digest(digest_store.store, since=_a_day_ago())
     assert [row["class"] for row in value["reversible_decisions"]] == ["cto-reversible"]
+
+
+def _human_wait(store: Path, record_id: str, *, item: str, at: str) -> None:
+    write_record(
+        store,
+        record_id,
+        "report.filed",
+        {
+            "schema": 1,
+            "target_class": "human-wait",
+            "target": f"decision {record_id}",
+            "item": item,
+            "run": None,
+            "nothing_to_report": False,
+            "what_happened": "the reminder copy needs a human decision",
+            "expected": "a human decides the copy",
+            "observed": "the copy is undecided",
+            "impact": "medium",
+            "evidence": [],
+            "fingerprint": f"human-wait|{record_id}",
+        },
+        at=at,
+        about=(item,),
+    )
+
+
+def _reversible_decision(store: Path, record_id: str, *, at: str) -> None:
+    write_record(
+        store,
+        record_id,
+        "decision.made",
+        {
+            "schema": 1,
+            "decision_class": "cto-reversible",
+            "reason": "reuses the login parser",
+            "before": {"depends_on": []},
+            "after": {"depends_on": ["login-page"]},
+        },
+        at=at,
+        about=("sign-in",),
+    )
+
+
+def _cto_rejection(store: Path, record_id: str, *, run: str, item: str, at: str) -> None:
+    write_record(
+        store,
+        record_id,
+        "review.verdict",
+        {
+            "schema": 1,
+            "item": item,
+            "implementation_run": run,
+            "implementer_actor": "implementer",
+            "reviewer_actor": "reviewer",
+            "implementer_model": "custom:Deepseek-V4-flash-0",
+            "reviewer_model": "custom:gemini-3.8-flash-LTN-0",
+            "candidate_commit": "b" * 40,
+            "verdict": "reject",
+            "findings": ["no"],
+            "evidence": [],
+            "profile_version": 1,
+        },
+        at=at,
+        about=(item,),
+    )
+
+
+def test_a_human_wait_outside_the_newest_report_page_still_surfaces(
+    digest_store: SimpleNamespace,
+) -> None:
+    """The waits are queried on their own bound, never filtered out of a page."""
+    store = digest_store.store
+    wait_id = "01JHUMANWAIT000000000000001"
+    for index in range(25):
+        _human_wait_later(store, f"01JNEWERREPORT{index:013d}", at=_iso_minutes(25 - index))
+
+    value = _digest(store, limit=20)
+
+    assert wait_id in [row["report"] for row in value["needs_human"]]
+    assert value["omitted"]["needs_human"] == 0
+
+
+def test_human_waits_report_a_truthful_omission_count(
+    digest_store: SimpleNamespace,
+) -> None:
+    store = digest_store.store
+    for index in range(3):
+        _human_wait(store, f"01JWAITCOUNT{index:013d}", item=digest_store.stuck, at=_iso_minutes(10 + index))
+    value = _digest(store, limit=2)
+    shown = [row["report"] for row in value["needs_human"]]
+    assert len(shown) <= 2
+    assert value["omitted"]["needs_human"] == 2
+
+
+def test_reversible_decisions_and_rejections_report_a_real_omission(
+    seeded_runs_store: SimpleNamespace,
+) -> None:
+    store = seeded_runs_store.store
+    for index in range(3):
+        _reversible_decision(store, f"01JREVERSIBLE{index:013d}", at=_iso_minutes(10 + index))
+        _cto_rejection(
+            store,
+            f"01JREJECTION{index:014d}",
+            run=seeded_runs_store.run,
+            item=seeded_runs_store.item,
+            at=_iso_minutes(10 + index),
+        )
+    value = _digest(store, since="2026-10-28T00:00:00Z", limit=2)
+    assert len(value["reversible_decisions"]) == 2
+    assert value["omitted"]["reversible_decisions"] == 1
+    assert len(value["quality"]["rejected_reviews"]) == 2
+    assert value["omitted"]["rejected_reviews"] == 1
+
+
+def _iso_minutes(minutes: int) -> str:
+    stamp = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    return stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _human_wait_later(store: Path, record_id: str, *, at: str) -> None:
+    write_record(
+        store,
+        record_id,
+        "report.filed",
+        {
+            "schema": 1,
+            "target_class": "environment",
+            "target": f"later {record_id}",
+            "item": "login-page",
+            "run": None,
+            "nothing_to_report": False,
+            "what_happened": "a later report pushes the wait off the page",
+            "expected": "the page holds every report",
+            "observed": "it does not",
+            "impact": "low",
+            "evidence": [],
+            "fingerprint": f"environment|{record_id}",
+        },
+        at=at,
+        about=("login-page",),
+    )
+
