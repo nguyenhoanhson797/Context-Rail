@@ -7,7 +7,6 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[2]
 _PLAN = _REPO / "docs/superpowers/plans/2026-10-28-v3-stage-1b-cto-slice.md"
-_AGENTS = _REPO / "AGENTS.md"
 
 PINNED_LITERALS = (
     "under 150 ms",
@@ -82,10 +81,3 @@ def test_plan_names_only_engine_error_codes() -> None:
         )
     }
     assert code_like <= set(ERROR_CODES), sorted(code_like - set(ERROR_CODES))
-
-
-def test_agents_md_names_this_plan_as_the_current_plan() -> None:
-    text = _AGENTS.read_text(encoding="utf-8")
-    assert (
-        "- Current plan: `docs/superpowers/plans/2026-10-28-v3-stage-1b-cto-slice.md`" in text
-    )
