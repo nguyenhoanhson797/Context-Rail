@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import multiprocessing
 import os
 import queue as queue_module
@@ -579,3 +580,31 @@ def write_pack(store: Path, name: str, document: dict[str, Any]) -> Path:
         yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
     )
     return path
+
+
+class InjectedFault(RuntimeError):
+    """Raised by ``inject_fault`` in ``raise`` mode."""
+
+
+def record_inventory(store: Path) -> dict[str, tuple[str, str]]:
+    """Map every Record id to its store-relative path and SHA-256 of its bytes."""
+    from context_rail.store.doc import parse_doc
+
+    found: dict[str, tuple[str, str]] = {}
+    root = Path(store) / "records"
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix not in (".json", ".md"):
+            continue
+        data = path.read_bytes()
+        rel = path.relative_to(store).as_posix()
+        try:
+            if path.suffix == ".json":
+                payload = json.loads(data.decode("utf-8"))
+                record_id = payload.get("id") if isinstance(payload, dict) else None
+            else:
+                record_id = parse_doc(rel, data).fields.get("id")
+        except (OSError, ValueError):
+            continue
+        if isinstance(record_id, str) and record_id:
+            found[record_id] = (rel, hashlib.sha256(data).hexdigest())
+    return found

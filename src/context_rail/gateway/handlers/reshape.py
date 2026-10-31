@@ -347,6 +347,8 @@ def planned_moves(ctx: Context, index: Index) -> list[tuple[str, str]]:
         "AND primitive IS NOT NULL AND primitive != 'record' ORDER BY path"
     ).fetchall()
     for path, slug, preset_name in rows:
+        if _scoped_skill(path):
+            continue
         preset = ctx.pack.presets.get(preset_name) if preset_name else None
         if preset is None:
             raise WriteRefused(
@@ -360,6 +362,11 @@ def planned_moves(ctx: Context, index: Index) -> list[tuple[str, str]]:
         if target != path:
             moves.append((path, target))
     return sorted(moves)
+
+
+def _scoped_skill(path: str) -> bool:
+    parts = path.split("/")
+    return len(parts) > 3 and parts[0] == "workspace" and parts[-2] == "skills"
 
 
 def _move_ops(store: Path, moves: list[tuple[str, str]]) -> list[Op]:

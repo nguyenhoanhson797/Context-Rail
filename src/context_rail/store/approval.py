@@ -188,6 +188,16 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
     pack_name = target[len("pack:") :] if target.startswith("pack:") else None
     hashes = protected_snapshot(context, pack_name=pack_name)
     latest = query.approval_for(context.index, target)
+    if pack_name is not None:
+        changed = query.pack_change_for(context.index, target)
+        if changed is not None and changed["data"].get("candidate_snapshot") == hashes:
+            return {
+                "target": target,
+                "state": "approved",
+                "latest_record": changed["record_id"],
+                "protected_hashes": hashes,
+                "snapshot_digest": snapshot_digest(hashes),
+            }
     if latest is None:
         state = "missing"
     elif latest["protected_hashes"] == hashes:

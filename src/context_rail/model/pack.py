@@ -30,6 +30,7 @@ __all__ = [
     "Pack",
     "Preset",
     "ModelError",
+    "check_pack_name",
     "effective_measurement_min_runs",
     "load_pack",
     "pack_policy_digest",
@@ -78,6 +79,11 @@ def load_pack(name: str, store: Path) -> Pack:
     if builtin is None:
         _refuse(f"unknown pack {name!r}")
     return cached_model(builtin, lambda: _parse_pack(_read_text(builtin), name))
+
+
+def check_pack_name(name: str) -> None:
+    """Refuse a name that cannot safely become a directory under ``packs/``."""
+    _check_name(name)
 
 
 def effective_measurement_min_runs(pack: Pack) -> int:

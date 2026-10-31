@@ -24,7 +24,7 @@ import re
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from context_rail.core.result import ERROR_CODES
@@ -52,6 +52,7 @@ __all__ = [
     "repair",
     "replay",
     "resolve_unique",
+    "store_inventory",
 ]
 
 ABSENT = "absent"
@@ -186,6 +187,7 @@ def commit(
     key: str | None = None,
     index: Index | None = None,
     extra_records: Sequence[dict[str, Any]] = (),
+    inventory: tuple[tuple[str, str], ...] | None = None,
 ) -> dict[str, Any]:
     """Apply ``ops`` and append the requested records; return what was written.
 
@@ -193,7 +195,8 @@ def commit(
     ride in the same intent and commit, after the primary one, and are created
     exclusively like every other record. Only the primary markdown record joins
     ``written``, so a caller's result shape never depends on how many records
-    the change owes.
+    the change owes. When ``inventory`` is set, the authoritative store
+    inventory must still match it before anything is written.
     """
     store = Path(store)
     if not isinstance(actor, str) or not actor.strip():
@@ -215,6 +218,8 @@ def commit(
                 return saved
         _prune_idem(store)
         _check_etags(targets)
+        if inventory is not None:
+            _check_inventory(store, inventory)
         planned = _build_records(store, manifest, requests, targets, actor)
         primary = planned[0] if planned else None
         written = [target.display for target in targets]
@@ -622,6 +627,52 @@ def _markdown_record(
         payload={**payload, "digest": digest},
         data=text.encode("utf-8"),
     )
+
+
+def store_inventory(store: Path) -> tuple[tuple[str, str], ...]:
+    """Every authoritative store file and its etag, as sorted ``(path, etag)``."""
+    found: list[tuple[str, str]] = []
+    store = Path(store)
+    for path in store.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(store).as_posix()
+        if _inventory_path(rel):
+            found.append((rel, _current_etag(path, rel)))
+    return tuple(sorted(found))
+
+
+def _inventory_path(rel: str) -> bool:
+    parts = PurePosixPath(rel).parts
+    if any(part.startswith(".") for part in parts[:-1]):
+        return False
+    if "templates" in parts[:-1]:
+        return False
+    if rel.endswith(".tmp"):
+        return False
+    if rel == "rail.yaml":
+        return True
+    if rel.startswith("packs/") and rel.endswith("/pack.yaml"):
+        return True
+    return rel.endswith((".md", ".json"))
+
+
+def _check_inventory(
+    store: Path, expected: tuple[tuple[str, str], ...]
+) -> None:
+    current = dict(store_inventory(store))
+    wanted = dict(expected)
+    added = sorted(set(current) - set(wanted))
+    removed = sorted(set(wanted) - set(current))
+    changed = sorted(
+        path for path in set(current) & set(wanted) if current[path] != wanted[path]
+    )
+    if added or removed or changed:
+        raise WriteRefused(
+            "CONFLICT",
+            "the store changed while the change was being planned",
+            {"added": added, "removed": removed, "changed": changed},
+        )
 
 
 def _check_etags(targets: list[_Target]) -> None:

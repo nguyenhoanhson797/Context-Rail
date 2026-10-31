@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import functools
+import importlib
 import itertools
 import json
 import os
@@ -27,6 +29,7 @@ from context_rail.store.location import local_dir
 from helpers import (
     DEFAULT_FAKE_BEHAVIORS,
     FakeDroid,
+    InjectedFault,
     advance_default_branch,
     approve_picture,
     item_etag,
@@ -1406,3 +1409,45 @@ def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNames
     return SimpleNamespace(store=store, stuck=stuck, too_long=too_long)
 
 
+
+
+@pytest.fixture
+def inject_fault() -> Iterator[Callable[..., None]]:
+    """Replace ``module.attr`` for one call, then restore it at teardown."""
+    patched: list[tuple[Any, str, bool, Any]] = []
+
+    def patch(
+        module: str,
+        attr: str,
+        *,
+        nth: int = 1,
+        mode: str = "raise",
+        value: object = None,
+    ) -> None:
+        if mode not in {"raise", "return", "exit"}:
+            raise ValueError(f"unknown inject_fault mode {mode!r}")
+        target = importlib.import_module(module)
+        had = hasattr(target, attr)
+        original = getattr(target, attr)
+        calls = {"n": 0}
+
+        @functools.wraps(original)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            calls["n"] += 1
+            if calls["n"] == nth:
+                if mode == "raise":
+                    raise InjectedFault(f"{module}.{attr} fault")
+                if mode == "exit":
+                    os._exit(9)
+                return value
+            return original(*args, **kwargs)
+
+        setattr(target, attr, wrapper)
+        patched.append((target, attr, had, original))
+
+    yield patch
+    for target, attr, had, original in reversed(patched):
+        if had:
+            setattr(target, attr, original)
+        else:
+            delattr(target, attr)

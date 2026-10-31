@@ -30,8 +30,10 @@ __all__ = [
     "find",
     "human_proposals",
     "human_wait_reports",
+    "items_for_migration",
     "last_activity_ms",
     "ledger",
+    "pack_change_for",
     "records_about",
     "rejected_reviews",
     "count_reports_by_fingerprint",
@@ -821,6 +823,46 @@ def review_for_item(ix: Index, item: str) -> dict[str, Any] | None:
         "data": payload,
         "path": path,
     }
+
+
+def items_for_migration(ix: Index) -> list[dict[str, Any]]:
+    """Every indexed Item with its preset, status and frontmatter fields."""
+    rows = ix.conn.execute(
+        "SELECT path, slug, preset, status FROM docs "
+        "WHERE primitive = 'item' AND broken = 0 ORDER BY path"
+    ).fetchall()
+    items: list[dict[str, Any]] = []
+    for path, slug, preset, status in rows:
+        fields: dict[str, Any] = {}
+        for key, value_json in ix.conn.execute(
+            "SELECT key, value_json FROM fields WHERE path = ? ORDER BY rowid",
+            (path,),
+        ):
+            try:
+                fields[key] = json.loads(value_json)
+            except (TypeError, ValueError):
+                continue
+        items.append(
+            {"path": path, "slug": slug, "preset": preset, "status": status, "fields": fields}
+        )
+    return items
+
+
+def pack_change_for(ix: Index, target: str) -> dict[str, Any] | None:
+    """The newest ``pack.changed`` whose ``approval_target`` is ``target``."""
+    target = _text(target, "target")
+    rows = ix.conn.execute(
+        "SELECT d.path, d.slug, d.record_at FROM docs d "
+        "JOIN fields k ON k.path = d.path AND k.key = 'kind' "
+        "WHERE k.value_json = ? ORDER BY d.record_at DESC, d.slug DESC",
+        (json.dumps("pack.changed"),),
+    ).fetchall()
+    for path, slug, at in rows:
+        data = _record_data(ix, path)
+        if data.get("approval_target") != target:
+            continue
+        return {"record_id": slug, "at": at, "path": path, "data": data}
+    return None
 
 
 def approval_for(ix: Index, target: str) -> dict[str, Any] | None:
