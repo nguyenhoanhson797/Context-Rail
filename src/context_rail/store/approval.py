@@ -23,8 +23,10 @@ import yaml
 
 from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.errors import ModelError
+from context_rail.model.fields import relative_path
 from context_rail.model.pack import load_pack
 from context_rail.store import query
+from context_rail.store.location import confine
 
 if TYPE_CHECKING:  # the gateway context is imported lazily to keep imports acyclic
     from context_rail.gateway.gateway import Context
@@ -137,7 +139,11 @@ def protected_paths(context: Context, *, pack_name: str | None = None) -> tuple[
         raise ModelError(
             "VALIDATION_FAILED", "charter.protected_files must be a list of paths"
         )
-    paths = {_posix(entry) for entry in declared}
+    paths = set()
+    for entry in declared:
+        rel = relative_path(entry, "charter.protected_files")
+        confine(context.store, rel)
+        paths.add(_posix(rel))
     index = context.index
     for (path,) in index.conn.execute(
         "SELECT path FROM docs WHERE primitive = ? AND broken = 0",
@@ -170,7 +176,7 @@ def protected_snapshot(
         if rel == MANIFEST_PATH:
             hashes[rel] = _manifest_hash(context, name)
             continue
-        path = Path(context.store) / rel
+        path = confine(context.store, rel)
         hashes[rel] = (
             semantic_hash(path.read_bytes(), format=_format_of(rel))
             if path.is_file()

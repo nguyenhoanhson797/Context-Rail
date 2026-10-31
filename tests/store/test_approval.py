@@ -408,3 +408,75 @@ def test_snapshot_digest_covers_the_whole_map() -> None:
     assert snapshot_digest(hashes) == expected
     changed = {**hashes, "c.md": "4" * 64}
     assert snapshot_digest(changed) != expected
+
+
+ESCAPING_PROTECTED = [
+    "../outside.md",
+    "items/../../x.md",
+    "/etc/passwd",
+    "C:/outside.md",
+    "\\\\server\\share\\x.md",
+    "items\\x.md",
+]
+
+
+@pytest.mark.parametrize("value", ESCAPING_PROTECTED)
+def test_an_escaping_protected_path_reads_nothing_outside(
+    approved_store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    from context_rail.model.errors import ModelError
+    from context_rail.store.location import PathEscape
+
+    outside = tmp_path / "outside.md"
+    outside.write_text("secret\n", encoding="utf-8")
+    touch_doc(approved_store, "charter.md", protected_files=[value])
+    reads: list[Path] = []
+    real = Path.read_bytes
+
+    def tracked(self: Path) -> bytes:
+        reads.append(self)
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", tracked)
+
+    with pytest.raises((ModelError, PathEscape)):
+        approval_state(_context(approved_store), "charter")
+
+    assert outside not in reads
+
+
+@pytest.mark.parametrize(
+    "tool,args",
+    [
+        ("show", {"slug": "charter"}),
+        ("pack show", {"name": "small"}),
+        ("status", {}),
+        ("digest", {}),
+        ("cto brief", {}),
+    ],
+)
+def test_reads_refuse_an_escaping_protected_path(
+    approved_store: Path, tool: str, args: dict[str, Any]
+) -> None:
+    touch_doc(approved_store, "charter.md", protected_files=["../outside.md"])
+
+    result = invoke(tool, args, store=approved_store, actor="cto")
+
+    assert result["ok"] is False, result
+    assert result["error"]["code"] in {"VALIDATION_FAILED", "FORBIDDEN"}
+
+
+def test_execution_tools_parse_the_charter_before_running(
+    approved_store: Path,
+) -> None:
+    touch_doc(approved_store, "charter.md", protected_files=["../outside.md"])
+
+    for tool, args in (
+        ("verify", {"target": "send-invoice"}),
+        ("dispatch", {"item": "send-invoice", "expect": "0" * 16, "key": "k"}),
+        ("review", {"item": "send-invoice", "run": "01JRUN000000000000000001", "key": "k"}),
+        ("cto tick", {"key": "k"}),
+    ):
+        result = invoke(tool, args, store=approved_store, actor="cto")
+        assert result["ok"] is False, (tool, result)
+        assert result["error"]["code"] in {"VALIDATION_FAILED", "FORBIDDEN"}, result
