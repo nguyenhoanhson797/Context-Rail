@@ -32,6 +32,7 @@ from helpers import (
     InjectedFault,
     advance_default_branch,
     approve_picture,
+    init_store,
     item_etag,
     run_git,
     write_record,
@@ -1451,3 +1452,16 @@ def inject_fault() -> Iterator[Callable[..., None]]:
             setattr(target, attr, original)
         else:
             delattr(target, attr)
+
+
+@pytest.fixture
+def measure_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
+    """A fresh small-pack store with an open, synced index for measurement."""
+    store = init_store(tmp_path)
+    pack = load_pack("small", store)
+    index = Index.open(store, pack)
+    index.sync()
+    try:
+        yield SimpleNamespace(store=store, ix=index, pack=pack)
+    finally:
+        index.close()

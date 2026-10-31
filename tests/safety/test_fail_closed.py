@@ -46,6 +46,8 @@ _REFUSED_TOOLS = (
     "pack validate",
     "pack create",
     "pack use",
+    "measure versions",
+    "measure fix",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -88,6 +90,8 @@ _ARGS: dict[str, dict[str, Any]] = {
     "pack validate": {"name": "small"},
     "pack create": {"name": "draft", "from": "small"},
     "pack use": {"name": "indie", "expect": "0" * 16, "confirm": "USE PACK indie"},
+    "measure versions": {"target_class": "skill", "target": "test-first", "before": 1, "after": 2},
+    "measure fix": {"item": "t0"},
 }
 _ZONK = f"""---
 primitive: item

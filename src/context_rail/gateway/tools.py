@@ -259,6 +259,30 @@ TOOLS: tuple[Tool, ...] = (
         decision="human-only",
     ),
     Tool(
+        name="measure versions",
+        summary="Compare two versions of a skill or profile from indexed run facts.",
+        permission="read",
+        params=(
+            Param("target_class", "str", required=True, help="skill or profile"),
+            Param("target", "str", required=True, help="skill path or profile name"),
+            Param("before", "int", required=True, help="the older version"),
+            Param("after", "int", required=True, help="the newer version"),
+            Param("since", "str", help="UTC timestamp: runs from then on"),
+            Param("until", "str", help="UTC timestamp: runs until then"),
+        ),
+        handler="context_rail.gateway.handlers.measure:measure_versions",
+    ),
+    Tool(
+        name="measure fix",
+        summary="Report whether a resolved fix's reports recurred after its boundary.",
+        permission="read",
+        params=(
+            Param("item", "str", required=True, help="the fix Item slug"),
+            Param("until", "str", help="UTC timestamp: reports until then"),
+        ),
+        handler="context_rail.gateway.handlers.measure:measure_fix",
+    ),
+    Tool(
         name="add",
         summary="Create one document from a preset.",
         permission="write",

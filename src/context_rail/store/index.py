@@ -55,7 +55,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 2
+INDEX_SCHEMA = 3
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -178,6 +178,7 @@ _SCHEMA = (
     """,
     "CREATE INDEX runs_item_end ON runs(item, \"end\" DESC)",
     "CREATE INDEX runs_dispatch_role ON runs(dispatch_id, role)",
+    "CREATE INDEX runs_profile_version ON runs(profile, profile_version)",
     """
     CREATE TABLE run_skills(
         run_id TEXT NOT NULL,
@@ -187,6 +188,7 @@ _SCHEMA = (
         PRIMARY KEY(run_id, identity)
     )
     """,
+    "CREATE INDEX run_skills_identity ON run_skills(identity, version, run_id)",
     """
     CREATE TABLE run_evaluations(
         path TEXT PRIMARY KEY,

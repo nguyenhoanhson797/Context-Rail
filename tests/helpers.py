@@ -277,6 +277,85 @@ def write_run(
     )
 
 
+def write_versioned_run(
+    store: Path,
+    run_id: str,
+    *,
+    item: str = "t0",
+    role: str = "implementer",
+    model: str = "custom:Deepseek-V4-flash-0",
+    profile: str = "implementer",
+    profile_version: int = 1,
+    skills: Sequence[tuple[str, int]] = (),
+    attempts: int = 1,
+    duration_s: float = 60.0,
+    accepted: bool | None = None,
+    usage: dict[str, Any] | None = None,
+    at: str = "2026-10-28T12:00:00Z",
+) -> Path:
+    """Write one completed run with skill pins and, when given, its evaluation."""
+    counters = {} if usage is None else dict(usage)
+    pins = [
+        {"identity": identity, "version": version, "etag": f"{index:016x}"}
+        for index, (identity, version) in enumerate(skills, start=1)
+    ]
+    path = write_record(
+        store,
+        run_id,
+        "run.completed",
+        {
+            "schema": 1,
+            "dispatch_id": f"dispatch-{run_id}",
+            "role": role,
+            "actor": "cto",
+            "profile": profile,
+            "profile_version": profile_version,
+            "skills": pins,
+            "model": model,
+            "item": item,
+            "started_at": at,
+            "ended_at": at,
+            "duration_s": duration_s,
+            "exit": 0,
+            "status": "completed",
+            "attempts": [
+                {
+                    "number": number,
+                    "start": at,
+                    "end": at,
+                    "duration_s": duration_s,
+                    "status": "completed",
+                    "usage": dict(counters),
+                }
+                for number in range(1, attempts + 1)
+            ],
+            "candidate_commit": None,
+            "accepted": None,
+            "verdicts": [],
+            "usage": dict(counters),
+            "report": None,
+        },
+        at=at,
+        about=(item,),
+    )
+    if accepted is not None:
+        write_record(
+            store,
+            f"{run_id}-eval",
+            "run.evaluated",
+            {
+                "schema": 1,
+                "run": run_id,
+                "accepted": accepted,
+                "at": at,
+                "candidate_commit": None,
+            },
+            at=at,
+            about=(item,),
+        )
+    return path
+
+
 def records_of(store: Path, kind: str) -> list[dict[str, Any]]:
     """Every JSON Record of ``kind``, oldest path first."""
     found: list[dict[str, Any]] = []
