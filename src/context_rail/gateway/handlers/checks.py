@@ -93,6 +93,19 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
         path = store / rel
         exists = path.is_file()
+        used = [
+            other
+            for (other,) in index.conn.execute(
+                "SELECT path FROM docs WHERE slug = ? ORDER BY path", (slug,)
+            )
+            if other != rel
+        ]
+        if used:
+            raise WriteRefused(
+                "CONFLICT",
+                f"the slug {slug!r} is already used by another document",
+                {"paths": used},
+            )
         target = _trimmed(args.get("target"))
         if expect == ABSENT:
             if exists:

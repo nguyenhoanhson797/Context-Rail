@@ -396,3 +396,101 @@ def test_evidence_urls_and_exists_escapes_are_refused(
 
     assert refused_escape["error"]["code"] in {"FORBIDDEN", "VALIDATION_FAILED"}
     assert not (store / "checks" / "escape.md").exists()
+
+
+def test_a_check_slug_another_document_uses_is_refused(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    note = invoke("add", {"preset": "note", "title": "unit"}, store=store, actor="cto")
+    assert is_ok(note), note
+    spec = spec_file(
+        tmp_path,
+        "unit.json",
+        cmd_spec([sys.executable, "-c", "print('ok')"], ["src/**/*.py"]),
+    )
+
+    refused = invoke(
+        "check",
+        {"slug": "unit", "target": "feature-a", "spec_file": str(spec), "expect": "absent"},
+        store=store,
+        actor="cto",
+    )
+
+    assert refused["error"]["code"] == "CONFLICT", refused
+    assert refused["error"]["details"]["paths"] == ["notes/note/unit.md"]
+    assert not (store / "checks" / "unit.md").exists()
+
+
+def test_editing_an_existing_check_keeps_its_slug(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    spec = spec_file(
+        tmp_path,
+        "unit.json",
+        cmd_spec([sys.executable, "-c", "print('ok')"], ["src/**/*.py"]),
+    )
+    created = invoke(
+        "check",
+        {"slug": "unit", "target": "feature-a", "spec_file": str(spec), "expect": "absent"},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(created), created
+
+    updated = invoke(
+        "check",
+        {
+            "slug": "unit",
+            "target": "feature-a",
+            "spec_file": str(spec),
+            "expect": created["value"]["etag"],
+        },
+        store=store,
+        actor="cto",
+    )
+
+    assert is_ok(updated), updated
+    assert updated["value"]["path"] == "checks/unit.md"
+
+
+def test_a_store_wide_duplicate_slug_is_refused_before_writing(
+    store_with_duplicate: Path, tmp_path: Path
+) -> None:
+    spec = spec_file(
+        tmp_path,
+        "dup.json",
+        cmd_spec([sys.executable, "-c", "print('ok')"], ["src/**/*.py"]),
+    )
+
+    refused = invoke(
+        "check",
+        {"slug": "x", "target": "x", "spec_file": str(spec), "expect": "absent"},
+        store=store_with_duplicate,
+        actor="cto",
+    )
+
+    assert refused["error"]["code"] == "CONFLICT", refused
+    assert not (store_with_duplicate / "checks" / "x.md").exists()
+
+
+def test_the_auto_review_check_slug_avoids_a_used_note_slug(
+    verified_run: Any, fake_droid: Any
+) -> None:
+    store = verified_run.store
+    note = invoke(
+        "add", {"preset": "note", "title": "review-login-page"}, store=store, actor="cto"
+    )
+    assert is_ok(note), note
+
+    reviewed = invoke(
+        "review",
+        {"item": verified_run.item, "run": verified_run.run, "key": "slug-avoid"},
+        store=store,
+        actor="cto",
+    )
+
+    assert is_ok(reviewed), reviewed
+    assert (store / "checks" / "review-login-page-2.md").is_file()
+    assert not (store / "checks" / "review-login-page.md").exists()
