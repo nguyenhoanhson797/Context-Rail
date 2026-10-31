@@ -948,3 +948,100 @@ def test_secrets_are_scrubbed_and_redacted(
     combined = "\n".join(texts)
     assert "SECRET-TEST-7f3a" not in combined
     assert "[redacted]" in combined
+
+
+def _item_lock_path(store: Path, slug: str, kind: str) -> Path:
+    from context_rail.runner import dispatch as local_dispatch
+
+    folder = "merge" if kind == "merge" else local_dispatch.DISPATCH_DIR
+    return local_dir(store) / folder / "locks" / f"{slug}.lock"
+
+
+def test_a_live_item_operation_blocks_a_dispatch(leaf_item) -> None:
+    from context_rail.store.lock import exclusive_lock
+
+    with exclusive_lock(_item_lock_path(leaf_item.store, leaf_item.slug, "dispatch")):
+        refused = dispatch(leaf_item, "locked-dispatch")
+
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "CONFLICT", refused
+
+
+def test_a_merge_requires_the_shared_item_lock(verified_run) -> None:
+    from context_rail.store.lock import exclusive_lock
+
+    with exclusive_lock(_item_lock_path(verified_run.store, verified_run.item, "dispatch")):
+        refused = invoke(
+            "merge",
+            {
+                "item": verified_run.item,
+                "run": verified_run.run,
+                "expect": verified_run.etag,
+                "key": "locked-merge",
+            },
+            store=verified_run.store,
+            actor="cto",
+        )
+
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "CONFLICT", refused
+
+
+def test_a_pending_merge_blocks_a_dispatch(leaf_item) -> None:
+    path = local_dir(leaf_item.store) / "merge" / "01MLOCKEDMERGE000000000001.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "merge_id": "01MLOCKEDMERGE000000000001",
+                "item": leaf_item.slug,
+                "state": "started",
+                "phase": "rebasing",
+            }
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    refused = dispatch(leaf_item, "pending-merge")
+
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "CONFLICT", refused
+    assert refused["error"]["details"]["merge_id"] == "01MLOCKEDMERGE000000000001"
+
+
+def test_a_pending_dispatch_blocks_a_merge(verified_run) -> None:
+    from context_rail.runner import dispatch as local_dispatch
+
+    path = local_dir(verified_run.store) / local_dispatch.DISPATCH_DIR / "01MLOCKEDDISPATCH0000000001.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "dispatch_id": "01MLOCKEDDISPATCH0000000001",
+                "item": verified_run.item,
+                "state": "started",
+                "phase": "running",
+            }
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    refused = invoke(
+        "merge",
+        {
+            "item": verified_run.item,
+            "run": verified_run.run,
+            "expect": verified_run.etag,
+            "key": "pending-dispatch",
+        },
+        store=verified_run.store,
+        actor="cto",
+    )
+
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "CONFLICT", refused
+    assert refused["error"]["details"]["dispatch_id"] == "01MLOCKEDDISPATCH0000000001"

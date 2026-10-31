@@ -25,6 +25,7 @@ __all__ = [
     "acquire_merge_lock",
     "merge_key_binding_path",
     "merge_progress_path",
+    "pending_merges",
     "read_merge_binding",
     "read_merge_progress",
     "remove_merge_binding",
@@ -66,6 +67,33 @@ def acquire_merge_lock(store: Path, item: str) -> Iterator[None]:
             f"another merge for {slug!r} is already running",
             {"item": slug, "lock": str(path)},
         ) from None
+
+
+def pending_merges(store: Path, item: str) -> list[dict[str, Any]]:
+    """Every unfinished merge that may still own this Item."""
+    slug = _slug(item)
+    folder = local_dir(Path(store)) / MERGE_DIR
+    if not folder.is_dir():
+        return []
+    found: list[dict[str, Any]] = []
+    for path in sorted(folder.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            found.append({"merge_id": path.stem, "corrupt": True})
+            continue
+        if not isinstance(payload, dict):
+            found.append({"merge_id": path.stem, "corrupt": True})
+            continue
+        if payload.get("corrupt"):
+            found.append(payload)
+            continue
+        if payload.get("state") in ("completed", "failed"):
+            continue
+        if payload.get("item") != slug:
+            continue
+        found.append(payload)
+    return found
 
 
 def read_merge_progress(store: Path, merge_id: str) -> dict[str, Any] | None:

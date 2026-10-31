@@ -1,4 +1,4 @@
-"""Rebase one approved candidate onto the default branch and fast-forward it, with
+﻿"""Rebase one approved candidate onto the default branch and fast-forward it, with
 one conflict continuation, the closeout and the optional push."""
 
 from __future__ import annotations
@@ -118,6 +118,89 @@ def merge(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     worktree, candidate_branch = _candidate_worktree(store, run, candidate)
     merge_id = new_ulid()
 
+    return _merge_locked(
+        ctx,
+        slug=slug,
+        rel=rel,
+        item=item,
+        run=run,
+        implementation_run=implementation_run,
+        expect=expect,
+        key=key,
+        push=push,
+        actor=actor,
+        candidate=candidate,
+        branch=branch,
+        worktree=worktree,
+        candidate_branch=candidate_branch,
+        merge_id=merge_id,
+        root=root,
+    )
+
+
+def _merge_locked(
+    ctx: Context,
+    *,
+    slug: str,
+    rel: str,
+    item: str,
+    run: dict[str, Any],
+    implementation_run: str,
+    expect: str,
+    key: str,
+    push: bool,
+    actor: str,
+    candidate: str,
+    branch: str,
+    worktree: Path,
+    candidate_branch: str,
+    merge_id: str,
+    root: Path,
+) -> dict[str, Any]:
+    store = Path(ctx.store)
+    with local_dispatch.acquire_dispatch_lock(store, slug, "merge"):
+        _refuse_pending(store, slug)
+        return _run_merge(
+            ctx,
+            slug=slug,
+            rel=rel,
+            item=item,
+            run=run,
+            implementation_run=implementation_run,
+            expect=expect,
+            key=key,
+            push=push,
+            actor=actor,
+            candidate=candidate,
+            branch=branch,
+            worktree=worktree,
+            candidate_branch=candidate_branch,
+            merge_id=merge_id,
+            store=store,
+            root=root,
+        )
+
+
+def _run_merge(
+    ctx: Context,
+    *,
+    slug: str,
+    rel: str,
+    item: str,
+    run: dict[str, Any],
+    implementation_run: str,
+    expect: str,
+    key: str,
+    push: bool,
+    actor: str,
+    candidate: str,
+    branch: str,
+    worktree: Path,
+    candidate_branch: str,
+    merge_id: str,
+    store: Path,
+    root: Path,
+) -> dict[str, Any]:
     reconciled = _reconcile_merge(
         ctx,
         slug=slug,
@@ -153,7 +236,6 @@ def merge(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     observed = git_runner.rev_parse_head(root, root)
 
     with local_merge.acquire_merge_lock(store, slug):
-        _refuse_pending(store, slug)
         if git_runner.rebase_in_progress(worktree, worktree):
             raise WriteRefused(
                 "INVALID_STATE",
@@ -244,6 +326,14 @@ def merge(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
 
     with local_merge.acquire_merge_lock(store, slug):
+        local_merge.write_merge_progress(
+            store,
+            merge_id,
+            item=slug,
+            run=implementation_run,
+            state="started",
+            phase="committing",
+        )
         merged_head = _fast_forward(
             ctx,
             root=root,
@@ -274,6 +364,7 @@ def merge(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         }
         if closeout is not None:
             value["closeout"] = closeout
+            value["retryable"] = True
         if push:
             pushed, pending = _push_default(
                 ctx,
@@ -366,6 +457,11 @@ def _reconcile_merge(
         return None
     recorded = _merge_record_for(ctx, slug, run)
     closed = slug if _category(ctx, slug) == "done" else None
+    closeout = None
+    if closed is None:
+        closed, closeout = _close_item(
+            ctx, slug=slug, actor=actor, commit_id=candidate
+        )
     if recorded is None:
         value: dict[str, Any] = {
             "commit": observed,
@@ -387,6 +483,9 @@ def _reconcile_merge(
             "record": recorded["id"],
             "escalation": None,
         }
+    if closeout is not None:
+        value["closeout"] = closeout
+        value["retryable"] = True
     if push:
         pushed, pending = _push_default(
             ctx,
@@ -570,7 +669,11 @@ def _merge_replayed(
     merge_id = str(binding.get("merge_id"))
     progress = local_merge.read_merge_progress(store, merge_id) or {}
     if progress.get("state") == "completed" and isinstance(progress.get("result"), dict):
-        return progress["result"]
+        result = progress["result"]
+        # A closeout that failed is retryable: reconcile the git HEAD and close again.
+        if not result.get("retryable"):
+            return result
+        return None
     raise WriteRefused(
         "CONFLICT",
         "a merge with this key has not completed; inspect the pending merge",
@@ -610,3 +713,4 @@ def _save_merge(
         phase="completed",
         result=result,
     )
+

@@ -414,3 +414,62 @@ def test_merge_is_locked_out_before_approval(unapproved_store: Path) -> None:
     assert r["ok"] is False, r
     assert r["error"]["code"] == "INVALID_STATE"
     assert r["error"]["details"]["reason"] == "approval_missing"
+
+
+def test_a_failed_closeout_is_retryable_and_closes_once(
+    verified_run: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from context_rail.gateway.handlers.dispatch import closeout as closeout_module
+    from context_rail.store.write import WriteRefused
+
+    real = closeout_module.move_item
+
+    def refused(*args: Any, **kwargs: Any) -> None:
+        raise WriteRefused(
+            "BUSINESS_RULE_VIOLATED", "the item gate is not satisfied", {"gate": "item_done"}
+        )
+
+    monkeypatch.setattr(closeout_module, "move_item", refused)
+    first = merge_call(verified_run, "m-closeout")
+    assert first["ok"], first
+    assert first["value"]["merged"] is True
+    assert first["value"]["closed"] is None
+    assert first["value"]["retryable"] is True
+    assert first["value"]["closeout"]["phase"] == "closeout"
+    assert item_status(verified_run) != "done"
+    assert len(records_of(verified_run.store, "merge.completed")) == 1
+
+    monkeypatch.setattr(closeout_module, "move_item", real)
+    verified_run.etag = item_etag(verified_run)
+    second = merge_call(verified_run, "m-closeout")
+
+    assert second["ok"], second
+    assert second["value"]["closed"] == verified_run.item
+    assert second["value"].get("retryable") is not True
+    assert item_status(verified_run) == "done"
+    assert len(records_of(verified_run.store, "merge.completed")) == 1
+    done = [
+        record
+        for record in records_of(verified_run.store, "status.changed")
+        if record["data"].get("to") == "done"
+    ]
+    assert len(done) == 1
+
+
+def test_a_successful_replay_writes_no_second_closeout(
+    verified_run: SimpleNamespace,
+) -> None:
+    first = merge_call(verified_run, "m-close-replay")
+    assert first["ok"], first
+    verified_run.etag = item_etag(verified_run)
+
+    again = merge_call(verified_run, "m-close-replay")
+
+    assert again["ok"], again
+    assert again["value"] == first["value"]
+    done = [
+        record
+        for record in records_of(verified_run.store, "status.changed")
+        if record["data"].get("to") == "done"
+    ]
+    assert len(done) == 1

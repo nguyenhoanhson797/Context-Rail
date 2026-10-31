@@ -15,6 +15,7 @@ from context_rail.kernel.budgets import Budget
 from context_rail.model.cto import Profile
 from context_rail.model.errors import ModelError
 from context_rail.runner import dispatch as local_dispatch
+from context_rail.runner import merge as local_merge
 from context_rail.runner.droid import DroidProfile
 from context_rail.store.doc import etag
 from context_rail.store.write import WriteRefused, resolve_unique
@@ -101,19 +102,29 @@ def _resolve_item(ctx: Context, item: str) -> tuple[str, str, str]:
 
 def _refuse_pending(store: Path, slug: str) -> None:
     pending = local_dispatch.pending_dispatches(store, slug)
-    if not pending:
-        return
-    entry = pending[0]
-    raise WriteRefused(
-        "CONFLICT",
-        "a dispatch for this Item is already pending; inspect it before retrying",
-        {
-            "dispatch_id": entry.get("dispatch_id"),
-            "phase": entry.get("phase", "unknown"),
-            "worktree": entry.get("worktree"),
-            "branch": entry.get("branch"),
-        },
-    )
+    if pending:
+        entry = pending[0]
+        raise WriteRefused(
+            "CONFLICT",
+            "a dispatch for this Item is already pending; inspect it before retrying",
+            {
+                "dispatch_id": entry.get("dispatch_id"),
+                "phase": entry.get("phase", "unknown"),
+                "worktree": entry.get("worktree"),
+                "branch": entry.get("branch"),
+            },
+        )
+    merges = local_merge.pending_merges(store, slug)
+    if merges:
+        entry = merges[0]
+        raise WriteRefused(
+            "CONFLICT",
+            "a merge for this Item is already pending; inspect it before retrying",
+            {
+                "merge_id": entry.get("merge_id"),
+                "phase": entry.get("phase", "unknown"),
+            },
+        )
 
 
 def _verify_worktree(
