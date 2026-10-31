@@ -315,13 +315,27 @@ def load_body(body_file: str | None) -> str | None:
 def template_body(store: Path, pack: Pack, preset: Preset, title: str) -> str:
     """The preset's body template with ``{title}`` filled in."""
     template = preset.template.replace("{primitive}", preset.primitive)
-    local = store / "packs" / pack.name / template
+    folder = Path(store) / "packs" / pack.name
+    local = confine(folder, template)
     if local.is_file():
-        return _rendered(local.read_text(encoding="utf-8", errors="replace"), title)
-    builtin = resources.files("context_rail").joinpath("packs", pack.name, template)
+        return _rendered(_read_template(local, template), title)
+    builtin = resources.files("context_rail").joinpath(
+        "packs", pack.name, *PurePosixPath(template).parts
+    )
     if builtin.is_file():
-        return _rendered(builtin.read_text(encoding="utf-8"), title)
+        return _rendered(_read_template(builtin, template), title)
     return f"# {title}\n"
+
+
+def _read_template(source: Any, template: str) -> str:
+    try:
+        return source.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"the pack template {template!r} is not UTF-8",
+            {"template": template},
+        ) from None
 
 
 def _rendered(text: str, title: str) -> str:

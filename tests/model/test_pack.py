@@ -263,3 +263,25 @@ def test_pack_cache_tracks_path_mtime_size_and_override_presence(
 
     path.unlink()
     assert load_pack("small", tmp_path).initial == "todo"
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "../../outside.md",
+        "../outside.md",
+        "/outside.md",
+        "C:/outside.md",
+        "templates\\item.md",
+        "templates//item.md",
+    ],
+)
+def test_a_template_must_be_a_safe_relative_path(
+    tmp_path: Path, template: str
+) -> None:
+    _write_pack(tmp_path, _pack(("presets.task.template", template)))
+
+    with pytest.raises(ModelError) as caught:
+        load_pack("small", tmp_path)
+
+    assert caught.value.code == "VALIDATION_FAILED"

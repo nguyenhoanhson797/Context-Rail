@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
@@ -156,14 +157,6 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
     name = args["name"]
     dry_run = args["dry_run"] is True
-    if not dry_run:
-        reason = validate_confirmation("pack_use", name, args.get("confirm"))
-        if reason is not None:
-            raise WriteRefused(
-                "VALIDATION_FAILED",
-                reason,
-                {"target": name, "confirm": confirmation_phrase("pack_use", name)},
-            )
     manifest_path = store / "rail.yaml"
     current_manifest = manifest_path.read_bytes()
     if args["expect"] != etag(current_manifest):
@@ -172,10 +165,18 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "rail.yaml changed since it was read",
             {"path": "rail.yaml", "expect": args["expect"]},
         )
-    _refuse_pending_intents(store)
     target = _load_target(store, name)
+    _refuse_pending_intents(store)
 
     with _quiet(store):
+        if not dry_run:
+            reason = validate_confirmation("pack_use", name, args.get("confirm"))
+            if reason is not None:
+                raise WriteRefused(
+                    "VALIDATION_FAILED",
+                    reason,
+                    {"target": name, "confirm": confirmation_phrase("pack_use", name)},
+                )
         items = query.items_for_migration(ctx.index)
         current = ctx.pack
         explicit, duplicates = parse_map_entries(args["map"])
@@ -340,25 +341,67 @@ def _rewrite_status(data: bytes, status: str) -> bytes:
             "VALIDATION_FAILED", "an Item has no frontmatter to rewrite"
         )
     block, rest = split
-    lines = block.split("\n")
-    for index, line in enumerate(lines):
-        if line.startswith("status:"):
-            lines[index] = f"status: {status}"
-            break
-    else:
-        lines.append(f"status: {status}")
-    return join_frontmatter("\n".join(lines), rest).encode("utf-8")
+    return join_frontmatter(_set_scalar(block, "status", status), rest).encode("utf-8")
 
 
 def _rewrite_manifest(data: bytes, pack_name: str) -> bytes:
     text = data.decode("utf-8")
-    lines = text.splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        if line.startswith("pack:"):
-            ending = line[len(line.rstrip("\r\n")) :]
-            lines[index] = f"pack: {pack_name}{ending}"
-            return "".join(lines).encode("utf-8")
-    raise WriteRefused("VALIDATION_FAILED", "rail.yaml has no pack line")
+    return _set_scalar(text, "pack", pack_name).encode("utf-8")
+
+
+_KEY_LINE = re.compile(r"^([ \t]*)([A-Za-z0-9_.-]+):(.*)$")
+_SAFE_SCALAR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+def _set_scalar(text: str, key: str, value: str) -> str:
+    """Replace one mapping key's scalar, preserving indentation, quote and comment."""
+    if not _SAFE_SCALAR.match(value):
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"{value!r} is not a safe {key} value",
+            {"key": key},
+        )
+    lines = text.split("\n")
+    matches = [index for index, line in enumerate(lines) if _key_match(line, key)]
+    if len(matches) != 1:
+        reason = "duplicate" if matches else "missing"
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"the {key} line is {reason}",
+            {"key": key},
+        )
+    index = matches[0]
+    line = lines[index]
+    ending = "\r" if line.endswith("\r") else ""
+    if ending:
+        line = line[:-1]
+    match = _KEY_LINE.match(line)
+    assert match is not None
+    lines[index] = f"{match.group(1)}{key}:{_replace_value(match.group(3), value)}{ending}"
+    return "\n".join(lines)
+
+
+def _key_match(line: str, key: str) -> bool:
+    match = _KEY_LINE.match(line[:-1] if line.endswith("\r") else line)
+    return match is not None and match.group(2) == key
+
+
+def _replace_value(rest: str, value: str) -> str:
+    lead = re.match(r"^[ \t]*", rest)
+    lead_text = lead.group(0) if lead is not None else ""
+    body = rest[len(lead_text) :]
+    if body[:1] in ("'", '"'):
+        quote = body[0]
+        close = body.find(quote, 1)
+        if close < 0:
+            raise WriteRefused("VALIDATION_FAILED", "a quoted value is not closed")
+        tail = body[close + 1 :]
+        if tail.strip() and not tail.lstrip().startswith("#"):
+            raise WriteRefused("VALIDATION_FAILED", "a quoted value has trailing text")
+        return f"{lead_text}{quote}{value}{quote}{tail}"
+    comment = re.search(r"[ \t]+#", body)
+    tail = body[comment.start() :] if comment is not None else ""
+    return f"{lead_text}{value}{tail}"
 
 
 def _replay_value(ctx: Context, saved: dict[str, Any]) -> dict[str, Any]:

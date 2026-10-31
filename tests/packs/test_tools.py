@@ -122,15 +122,23 @@ def test_pack_create_never_reads_a_pack_outside_the_store(tmp_path, monkeypatch)
 
 
 def test_pack_use_is_human_only_and_needs_the_exact_phrase(tmp_path) -> None:
+    from context_rail.store.doc import etag
+
     store = init_store(tmp_path)
-    etag = (store / "rail.yaml").read_bytes()
+    before = (store / "rail.yaml").read_bytes()
+    etag_value = etag(before)
     manifest = invoke("pack show", {"name": "small"}, store=store, actor="human")
     assert manifest["ok"] is True
     denied = invoke("pack use", {"name": "indie", "expect": "0" * 16}, store=store, actor="cto")
     assert denied["error"]["code"] == "PERMISSION_DENIED"
-    wrong = invoke("pack use", {"name": "indie", "expect": "0" * 16, "confirm": "use pack indie"}, store=store, actor="human")
+    wrong = invoke(
+        "pack use",
+        {"name": "indie", "expect": etag_value, "confirm": "use pack indie"},
+        store=store,
+        actor="human",
+    )
     assert wrong["error"]["code"] == "VALIDATION_FAILED"
-    assert (store / "rail.yaml").read_bytes() == etag
+    assert (store / "rail.yaml").read_bytes() == before
 
 
 def test_dry_run_changes_no_bytes_and_no_records(tmp_path) -> None:
@@ -139,3 +147,111 @@ def test_dry_run_changes_no_bytes_and_no_records(tmp_path) -> None:
     result = invoke("pack use", {"name": "indie", "dry_run": True, "expect": "0" * 16}, store=store, actor="human")
     assert record_inventory(store) == before
     assert result["ok"] is True or result["error"]["code"] == "CONFLICT"
+
+
+def _custom_pack(name: str = "custom") -> dict:
+    return {
+        "name": name,
+        "version": 1,
+        "statuses": {"todo": "not_started", "doing": "active", "done": "done"},
+        "initial": "todo",
+        "transitions": {"todo": ["doing"], "doing": ["done"], "done": []},
+        "presets": {
+            "task": {
+                "primitive": "item",
+                "tags": ["task"],
+                "template": "templates/task.md",
+            }
+        },
+        "policy": {"stuck_hours": 1, "retries": 0},
+    }
+
+
+def test_a_valid_local_template_still_renders(tmp_path) -> None:
+    from context_rail.gateway.handlers.common import template_body
+    from context_rail.model.pack import load_pack
+    from helpers import write_pack
+
+    write_pack(tmp_path, "custom", _custom_pack())
+    template = tmp_path / "packs" / "custom" / "templates" / "task.md"
+    template.parent.mkdir(parents=True)
+    template.write_text("# Task: {title}\n", encoding="utf-8")
+    pack = load_pack("custom", tmp_path)
+
+    assert template_body(tmp_path, pack, pack.presets["task"], "Alpha") == "# Task: Alpha\n"
+
+
+def test_a_non_utf8_template_refuses(tmp_path) -> None:
+    from context_rail.gateway.handlers.common import template_body
+    from context_rail.model.pack import load_pack
+    from context_rail.store.write import WriteRefused
+    from helpers import write_pack
+
+    write_pack(tmp_path, "custom", _custom_pack())
+    template = tmp_path / "packs" / "custom" / "templates" / "task.md"
+    template.parent.mkdir(parents=True)
+    template.write_bytes(b"\xff\xfe")
+    pack = load_pack("custom", tmp_path)
+
+    with pytest.raises(WriteRefused) as caught:
+        template_body(tmp_path, pack, pack.presets["task"], "Alpha")
+
+    assert caught.value.code == "VALIDATION_FAILED"
+
+
+def test_quoted_and_indented_scalars_are_rewritten_without_duplicates() -> None:
+    import yaml
+
+    from context_rail.gateway.handlers.packs import _rewrite_manifest, _rewrite_status
+
+    manifest = _rewrite_manifest(b'pack: "small"\n', "indie").decode("utf-8")
+    assert manifest == 'pack: "indie"\n'
+    assert yaml.safe_load(manifest)["pack"] == "indie"
+
+    status = _rewrite_status(
+        b"---\n  status: 'todo'\n---\nbody\n", "doing"
+    ).decode("utf-8")
+    assert status == "---\n  status: 'doing'\n---\nbody\n"
+    assert status.count("status:") == 1
+    assert yaml.safe_load(status.split("---")[1])["status"] == "doing"
+
+
+def test_a_malformed_or_duplicate_scalar_refuses() -> None:
+    from context_rail.gateway.handlers.packs import _rewrite_manifest, _rewrite_status
+    from context_rail.store.write import WriteRefused
+
+    for data in (b"schema: 3\n", b"pack: small\npack: indie\n"):
+        with pytest.raises(WriteRefused) as caught:
+            _rewrite_manifest(data, "indie")
+        assert caught.value.code == "VALIDATION_FAILED"
+
+    with pytest.raises(WriteRefused) as caught:
+        _rewrite_status(b"no frontmatter\n", "doing")
+    assert caught.value.code == "VALIDATION_FAILED"
+
+
+def test_pack_use_checks_the_pack_and_etag_before_the_phrase(tmp_path) -> None:
+    from context_rail.store.doc import etag
+
+    store = init_store(tmp_path)
+    manifest = (store / "rail.yaml").read_bytes()
+
+    unknown = invoke(
+        "pack use",
+        {
+            "name": "nosuch",
+            "expect": etag(manifest),
+            "confirm": "wrong phrase",
+        },
+        store=store,
+        actor="human",
+    )
+    assert unknown["error"]["code"] == "NOT_FOUND", unknown
+
+    stale = invoke(
+        "pack use",
+        {"name": "nosuch", "expect": "0" * 16, "confirm": "wrong phrase"},
+        store=store,
+        actor="human",
+    )
+    assert stale["error"]["code"] == "CONFLICT", stale

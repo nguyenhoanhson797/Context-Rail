@@ -17,6 +17,7 @@ from typing import Any, NoReturn
 from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
+from context_rail.model.fields import relative_path
 from context_rail.model.primitives import (
     CATEGORIES,
     PACK_POLICY_KEYS,
@@ -202,6 +203,7 @@ def _preset(name: str, raw: Any) -> Preset:
     template = entry.get("template", DEFAULT_TEMPLATE.format(primitive=primitive))
     if not isinstance(template, str) or not template:
         _refuse(f"preset {name!r} template must be a non-empty string")
+    template = relative_path(template, f"preset {name!r} template")
     return Preset(
         name=name,
         primitive=primitive,
