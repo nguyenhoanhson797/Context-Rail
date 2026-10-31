@@ -1588,3 +1588,108 @@ def two_clones(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNamespa
     run_git(a, "config", "core.autocrlf", "false")
     run_git(b, "config", "core.autocrlf", "false")
     return SimpleNamespace(bare=bare, a=a, b=b, store_a=a / "context-rail", store_b=b / "context-rail")
+
+
+def _write_legacy(root: Path, rel: str, text: str) -> Path:
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
+    return path
+
+
+@pytest.fixture
+def legacy_v2_store(tmp_path: Path) -> Path:
+    """A representative v2 tree with documents, links and two event forms."""
+    root = tmp_path / "legacy-v2"
+    root.mkdir()
+    _write_legacy(
+        root,
+        "rail.json",
+        '{"schema_version": 2, "project_id": "legacy-fixture", "overrides": {}}\n',
+    )
+    _write_legacy(
+        root,
+        "context/Goal.md",
+        "---\ntype: goal\ntitle: Ship invoicing\nstatus: active\n"
+        "created: 2026-01-01\nupdated: 2026-01-02\n---\n# Ship invoicing\n\nOne goal.\n",
+    )
+    _write_legacy(
+        root,
+        "context/scope/SC-01.md",
+        "---\ntype: scope\nid: SC-01\ntitle: Invoicing core\nstatus: done\n"
+        "created: 2026-01-01\n---\n# Invoicing core\n\nScope body.\n",
+    )
+    _write_legacy(
+        root,
+        "what/tasks/login.md",
+        "---\ntype: task\ntitle: Login page\nstatus: doing\nsupports: ['[[SC-01]]']\n"
+        "created: 2026-01-03\nupdated: 2026-01-04\n---\n# Login page\n\nBuild it. See [[SC-01]].\n",
+    )
+    _write_legacy(
+        root,
+        "what/requirements/req-1.md",
+        "---\ntype: requirement\ntitle: Email login\nstatus: todo\nscope:\n  item: SC-01\n"
+        "---\n# Email login\n\nRequirement body.\n",
+    )
+    _write_legacy(
+        root,
+        "when/phases/phase-1.md",
+        "---\ntype: phase\ntitle: Build\nstatus: active\n---\n# Build\n\nPhase body.\n",
+    )
+    _write_legacy(
+        root,
+        "now/Current.md",
+        "---\ntype: note\ntitle: Current\n---\n# Current\n\nNow.\n",
+    )
+    _write_legacy(
+        root,
+        "history/decisions/use-sqlite.md",
+        "---\ntype: decision\ntitle: Use SQLite\nstatus: done\n---\n# Use SQLite\n\nBecause it ships.\n",
+    )
+    _write_legacy(
+        root,
+        "inbox/idea.md",
+        "---\ntype: idea\ntitle: An idea\n---\n# An idea\n\nUnconfirmed.\n",
+    )
+    _write_legacy(
+        root,
+        "log/2026-01/01JLEGACYEVENT00000000001.json",
+        '{"v": 1, "id": "01JLEGACYEVENT00000000001", "at": "2026-01-05T10:00:00.000Z", '
+        '"actor": "a+cli", "kind": "task.status", "subject": "task:login", '
+        '"data": {"from": "todo", "to": "doing"}}\n',
+    )
+    _write_legacy(
+        root,
+        "log.jsonl",
+        '{"v": 1, "id": "01JLEGACYEVENT00000000002", "at": "2026-01-06T10:00:00.000Z", '
+        '"actor": "a+cli", "kind": "check.tick", "subject": "task:login", "data": {"ok": true}}\n',
+    )
+    return root
+
+
+@pytest.fixture
+def legacy_v1_store(tmp_path: Path) -> Path:
+    """A representative v1 numbered tree with its registry."""
+    root = tmp_path / "legacy-v1"
+    root.mkdir()
+    _write_legacy(
+        root,
+        "01-docs/tasks/old-task.md",
+        "---\ntype: task\ntitle: Old task\nstatus: todo\n---\n# Old task\n\nLegacy body.\n",
+    )
+    _write_legacy(
+        root,
+        "01-docs/decisions/old-decision.md",
+        "---\ntype: decision\ntitle: Old decision\n---\n# Old decision\n\nDecided.\n",
+    )
+    _write_legacy(
+        root,
+        "02-wiki/Goal.md",
+        "---\ntitle: Old goal\n---\n# Old goal\n\nThe goal.\n",
+    )
+    _write_legacy(
+        root,
+        "05-meta/context-rail.json",
+        '{"core_types": ["task"], "known_types": ["task", "decision"]}\n',
+    )
+    return root
