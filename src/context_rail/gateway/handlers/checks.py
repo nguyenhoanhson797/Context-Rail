@@ -77,8 +77,6 @@ class _DuplicateKey(Exception):
 def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Create or edit one Check document and its declaration Record."""
     slug = _check_slug(args["slug"])
-    spec = parse_check(_read_spec(args["spec_file"]))
-    _validate_definition(spec)
     expect = args["expect"]
     key = args["key"]
     store = ctx.store
@@ -87,6 +85,8 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         saved = replay(store, key)
         if saved is not None:
             return _declared_response(store, saved)
+        spec = parse_check(_read_spec(args["spec_file"]))
+        _validate_definition(spec)
         preset = preset_for(ctx.pack, "check")
         rel = render_path(
             ctx.manifest, primitive=preset.primitive, preset=preset.name, slug=slug

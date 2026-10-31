@@ -47,7 +47,11 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "phrase": confirmation_phrase("approve", slug),
         }
     resolve_unique(index, args["slug"])
-    shown = query.show(index, args["slug"], body_chars=args["body_chars"])
+    try:
+        shown = query.show(index, args["slug"], body_chars=args["body_chars"])
+    except FileNotFoundError:
+        # A document can vanish between the index sync and the body read.
+        raise LookupError("not_found") from None
     doc = shown["doc"]
     if doc["primitive"] == "check":
         shown["freshness"] = recipes.freshness(

@@ -63,9 +63,6 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 {"key": generated},
             )
     tags = parse_tags(args["tag"])
-    body = load_body(args["body_file"])
-    if preset.name == "skill" or preset.primitive == "actor":
-        fields["version"] = _initial_version(fields.get("version"), preset.name)
     key = args["key"]
     store = ctx.store
     with store_lock(store):
@@ -73,6 +70,9 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         saved = replay(store, key)
         if saved is not None:
             return _response(store, index, saved)
+        body = load_body(args["body_file"])
+        if preset.name == "skill" or preset.primitive == "actor":
+            fields["version"] = _initial_version(fields.get("version"), preset.name)
         for targets in relations.values():
             for target in targets:
                 resolve_unique(index, target)
@@ -210,7 +210,6 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         raise WriteRefused(
             "VALIDATION_FAILED", "use --tag or --set tags, not both", {"key": "tags"}
         )
-    body = load_body(args["body_file"])
     expect = args["expect"]
     key = args["key"]
     store = ctx.store
@@ -219,6 +218,7 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         saved = replay(store, key)
         if saved is not None:
             return _response(store, index, saved)
+        body = load_body(args["body_file"])
         rel = resolve_unique(index, args["slug"])
         data, doc = read_doc(store, rel)
         if doc.primitive == "record":

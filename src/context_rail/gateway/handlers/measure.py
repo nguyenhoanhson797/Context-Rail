@@ -88,7 +88,10 @@ def measure_fix(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
     """Report whether a resolved fix's reports recurred after its boundary."""
     item = args["item"]
     until = args["until"]
-    shown = query.show(ctx.index, item)
+    try:
+        shown = query.show(ctx.index, item)
+    except FileNotFoundError:
+        raise LookupError("not_found") from None
     out = shown.get("out") or {}
     resolved = out.get("resolves") or []
     fingerprints = []

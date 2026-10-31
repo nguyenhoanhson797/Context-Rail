@@ -1168,3 +1168,86 @@ def test_keyed_add_replays_the_original_result(tmp_path):
     assert _files(store, "records") == after_first
     found = invoke("find", {"text": "Retry"}, store=store)["value"]
     assert [item["slug"] for item in found["items"]] == ["retry-me"]
+
+
+def test_a_replayed_add_does_not_read_a_missing_body(tmp_path):
+    store = _init(tmp_path)
+    body = tmp_path / "body.md"
+    body.write_text("# With a body\n\nText.\n", encoding="utf-8", newline="\n")
+    args = {
+        "preset": "task",
+        "title": "With body",
+        "body_file": str(body),
+        "key": "k-body",
+    }
+    first = invoke("add", args, store=store, actor="cto")
+    assert is_ok(first), first
+    body.unlink()
+
+    second = invoke("add", args, store=store, actor="cto")
+
+    assert is_ok(second), second
+    assert second["value"] == first["value"]
+
+
+def test_a_replayed_update_does_not_read_a_missing_body(tmp_path):
+    store = _init(tmp_path)
+    added = invoke("add", {"preset": "task", "title": "Editable"}, store=store, actor="cto")
+    assert is_ok(added), added
+    etag = invoke("show", {"slug": "editable"}, store=store)["value"]["doc"]["etag"]
+    body = tmp_path / "update.md"
+    body.write_text("# New body\n", encoding="utf-8", newline="\n")
+    args = {
+        "slug": "editable",
+        "expect": etag,
+        "body_file": str(body),
+        "key": "k-update",
+    }
+    first = invoke("update", args, store=store, actor="cto")
+    assert is_ok(first), first
+    body.unlink()
+
+    second = invoke("update", {**args, "expect": "0" * 16}, store=store, actor="cto")
+
+    assert is_ok(second), second
+    assert second["value"] == first["value"]
+
+
+def test_a_replayed_rename_does_not_validate_the_new_slug(tmp_path):
+    store = _init(tmp_path)
+    assert is_ok(invoke("add", {"preset": "task", "title": "Alpha"}, store=store, actor="cto"))
+    first = invoke("rename", {"old": "alpha", "new": "beta", "key": "k-rename"}, store=store, actor="cto")
+    assert is_ok(first), first
+
+    second = invoke(
+        "rename",
+        {"old": "missing", "new": "../not a slug", "key": "k-rename"},
+        store=store,
+        actor="cto",
+    )
+
+    assert is_ok(second), second
+    assert second["value"] == first["value"]
+
+
+def test_a_replayed_approve_needs_neither_phrase_nor_target(approved_store):
+    shown = invoke("show", {"slug": "charter"}, store=approved_store, actor="human")["value"]
+    args = {
+        "target": "charter",
+        "confirm": "APPROVE charter",
+        "confirmer": "validator",
+        "expect": shown["approval"]["snapshot_digest"],
+        "key": "k-approve",
+    }
+    first = invoke("approve", args, store=approved_store, actor="human")
+    assert is_ok(first), first
+
+    second = invoke(
+        "approve",
+        {"target": "missing-doc", "confirm": "WRONG", "confirmer": "x", "key": "k-approve"},
+        store=approved_store,
+        actor="human",
+    )
+
+    assert is_ok(second), second
+    assert second["value"] == first["value"]

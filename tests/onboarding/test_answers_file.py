@@ -490,3 +490,22 @@ def test_a_pre_existing_charter_blocks_the_whole_write(
     assert _store_files(store) == before
     assert hand_edit.read_text(encoding="utf-8") == "HAND EDIT"
     assert not (store / "project").exists()
+
+
+def test_a_replayed_init_does_not_read_the_answers_file(
+    tmp_path: Path, answers: Path
+) -> None:
+    args = {
+        "dir": str(tmp_path),
+        "answers_file": str(answers),
+        "confirm": "APPROVE charter",
+        "key": "k-init-answers",
+    }
+    first = invoke("init", args, actor="human")
+    assert is_ok(first), first
+    answers.unlink()
+
+    second = invoke("init", args, actor="human")
+
+    assert is_ok(second), second
+    assert second["value"] == first["value"]

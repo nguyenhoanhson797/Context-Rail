@@ -96,7 +96,6 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
             raise WriteRefused(
                 "PERMISSION_DENIED", "only the CTO actor may propose a draft picture"
             )
-        answers = read_answers(Path(args["draft_file"]))
         draft = True
     else:
         if actor != "human":
@@ -109,12 +108,18 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
                 raise WriteRefused(
                     "VALIDATION_FAILED", reason, {"confirm": "APPROVE charter"}
                 )
-            answers = read_answers(Path(args["answers_file"]))
-        else:
-            answers = _interview(args["pack"], Path(args["dir"] or Path.cwd()))
         draft = False
     project_root = Path(args["dir"] or Path.cwd())
     store = confine(project_root, args["root"])
+    saved = replay(store, args["key"])
+    if saved is not None:
+        return _init_replay(store, saved)
+    if draft:
+        answers = read_answers(Path(args["draft_file"]))
+    elif mode == "answers":
+        answers = read_answers(Path(args["answers_file"]))
+    else:
+        answers = _interview(args["pack"], project_root)
     return _materialise(
         store,
         project_root,
@@ -126,22 +131,31 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
     )
 
 
+def _init_replay(store: Path, saved: dict[str, Any]) -> dict[str, Any]:
+    """The result one onboarding key already earned, without its answers file."""
+    data: dict[str, Any] = {}
+    record_id = saved.get("record")
+    if isinstance(record_id, str) and record_id:
+        for path in sorted((Path(store) / "records").rglob(f"{record_id}.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            found = payload.get("data") if isinstance(payload, dict) else None
+            if isinstance(found, dict):
+                data = found
+            break
+    return {
+        "store": str(store),
+        "written": list(saved.get("written") or []),
+        "picture": list(data.get("picture") or []),
+        "charter": data.get("charter") or CHARTER_TARGET,
+        "approval": data.get("approval") or "missing",
+    }
+
+
 def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Record one human approval of the protected picture's current meaning."""
-    target = (args["target"] or "").strip()
-    confirmer = (args["confirmer"] or "").strip()
-    if not confirmer:
-        raise WriteRefused(
-            "VALIDATION_FAILED", "an approval needs a confirmer", {"param": "confirmer"}
-        )
-    reason = validate_confirmation("approve", target, args["confirm"])
-    if reason is not None:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            reason,
-            {"confirm": confirmation_phrase("approve", target)},
-        )
-    pack_name = _approval_target(ctx, target)
     store = ctx.store
     with store_lock(store):
         index = ctx.index
@@ -150,9 +164,25 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             data = record_data(index, saved.get("record"))
             return {
                 "approval": saved.get("record"),
-                "target": target,
+                "target": data.get("target"),
                 "hashes": data.get("protected_hashes", {}),
             }
+        target = (args["target"] or "").strip()
+        confirmer = (args["confirmer"] or "").strip()
+        if not confirmer:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "an approval needs a confirmer",
+                {"param": "confirmer"},
+            )
+        reason = validate_confirmation("approve", target, args["confirm"])
+        if reason is not None:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                reason,
+                {"confirm": confirmation_phrase("approve", target)},
+            )
+        pack_name = _approval_target(ctx, target)
         hashes = protected_snapshot(ctx, pack_name=pack_name)
         missing = sorted(path for path, digest in hashes.items() if digest is None)
         if missing:

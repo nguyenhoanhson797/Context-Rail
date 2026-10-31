@@ -69,17 +69,17 @@ def rename(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     old = args["old"]
     new = args["new"]
     key = args["key"]
-    _canonical(new)
-    if new == old:
-        raise WriteRefused(
-            "VALIDATION_FAILED", f"{new!r} is already the slug", {"slug": new}
-        )
     store = ctx.store
     with store_lock(store):
         index = ctx.index
         saved = replay(store, key)
         if saved is not None:
             return _rename_replay(store, index, saved)
+        _canonical(new)
+        if new == old:
+            raise WriteRefused(
+                "VALIDATION_FAILED", f"{new!r} is already the slug", {"slug": new}
+            )
         source = resolve_unique(index, old)
         data, doc = read_doc(store, source)
         _mutable(doc, source)
