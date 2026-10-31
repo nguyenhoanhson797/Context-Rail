@@ -670,22 +670,24 @@ def _fit(sections: list[Section], limit: int) -> tuple[str, dict[str, int]]:
     left as a bare heading, and both trimming and dropping count as omissions.
     """
     trimmed = {section.key: 0 for section in sections}
-    text = _render(sections)
+    length = len(_render(sections))
     for key, attribute in _TRIM_ORDER:
-        if len(text) <= limit:
+        if length <= limit:
             break
         section = _section(sections, key)
         if section is None:
             continue
         lines = getattr(section, attribute)
-        while len(text) > limit and lines:
-            lines.pop()
+        while length > limit and lines:
+            removed = lines.pop()
             trimmed[key] += 1
-            text = _render(sections)
+            prefix = 2 if attribute == "entries" else 0
+            length -= len(removed) + prefix + 1
         if _is_empty(section):
             sections.remove(section)
             trimmed[key] += 1
-            text = _render(sections)
+            length = len(_render(sections))
+    text = _render(sections)
     for key in _DROP_ORDER:
         if len(text) <= limit:
             break

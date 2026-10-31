@@ -234,3 +234,51 @@ def test_a_finished_item_is_not_reported_as_blocked(
     assert "wait finished" not in text
     assert "wait still-blocked" in text
     assert value["omitted"]["executable"] == 0
+
+
+def test_fit_matches_the_naive_trim_byte_for_byte() -> None:
+    import copy
+
+    from context_rail.context.recipes import Section, _fit
+
+    sections = [
+        Section("conventions", ["fixed convention"], [f"note {index}" for index in range(8)]),
+        Section("active", [], [f"active {index}" for index in range(8)]),
+        Section("goal", [], [f"goal {index}" for index in range(8)]),
+        Section("charter", ["charter fixed"], []),
+        Section("approval", ["approval fixed"], []),
+    ]
+
+    def naive(working: list[Section], limit: int):
+        trimmed = {section.key: 0 for section in working}
+        text = recipes._render(working)
+        for key, attribute in recipes._TRIM_ORDER:
+            if len(text) <= limit:
+                break
+            section = recipes._section(working, key)
+            if section is None:
+                continue
+            lines = getattr(section, attribute)
+            while len(text) > limit and lines:
+                lines.pop()
+                trimmed[key] += 1
+                text = recipes._render(working)
+            if recipes._is_empty(section):
+                working.remove(section)
+                trimmed[key] += 1
+                text = recipes._render(working)
+        for key in recipes._DROP_ORDER:
+            if len(text) <= limit:
+                break
+            section = recipes._section(working, key)
+            if section is None:
+                continue
+            working.remove(section)
+            trimmed[key] += max(1, len(section.fixed) + len(section.entries))
+            text = recipes._render(working)
+        return text[:limit], trimmed
+
+    got = _fit(copy.deepcopy(sections), 120)
+    expected = naive(copy.deepcopy(sections), 120)
+
+    assert got == expected
