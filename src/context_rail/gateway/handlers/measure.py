@@ -254,19 +254,22 @@ def _fix_boundary(
     ctx: Context, item: str
 ) -> tuple[tuple[str, str] | None, str | None]:
     rows = ctx.index.conn.execute(
-        "SELECT d.path, d.slug, d.record_at FROM docs d "
+        "SELECT d.path, d.slug, f.value_json FROM docs d "
+        "JOIN relations r ON r.src_path = d.path AND r.rel = 'about' AND r.dst = ? "
         "JOIN fields k ON k.path = d.path AND k.key = 'kind' "
+        "LEFT JOIN fields f ON f.path = d.path AND f.key = 'at' "
         "WHERE k.value_json = ? ORDER BY d.record_at, d.slug",
-        (json.dumps("status.changed"),),
+        (item, json.dumps("status.changed")),
     ).fetchall()
     found: tuple[str, str] | None = None
-    for path, slug, at in rows:
+    for path, slug, raw_at in rows:
         data = _record_data(ctx, path)
-        if data.get("slug") != item and data.get("item") != item:
-            continue
         status = data.get("to")
         if not isinstance(status, str):
             continue
+        at = _text_value(raw_at)
+        if at is None:
+            return None, "boundary_category_unknown"
         category = _category_at(ctx, at, status)
         if category is None:
             return None, "boundary_category_unknown"
@@ -286,12 +289,17 @@ def _category_at(ctx: Context, at: str, status: str) -> str | None:
 
 def _pack_at(ctx: Context, at: str) -> str:
     rows = ctx.index.conn.execute(
-        "SELECT d.path, d.record_at FROM docs d "
+        "SELECT d.path, f.value_json FROM docs d "
         "JOIN fields k ON k.path = d.path AND k.key = 'kind' "
+        "LEFT JOIN fields f ON f.path = d.path AND f.key = 'at' "
         "WHERE k.value_json = ? ORDER BY d.record_at, d.slug",
         (json.dumps("pack.changed"),),
     ).fetchall()
-    changes = [(record_at, _record_data(ctx, path)) for path, record_at in rows]
+    changes: list[tuple[str, dict[str, Any]]] = []
+    for path, raw_at in rows:
+        change_at = _text_value(raw_at)
+        if change_at is not None:
+            changes.append((change_at, _record_data(ctx, path)))
     if not changes:
         return ctx.pack.name
     before = [change for change in changes if change[0] <= at]
@@ -300,6 +308,17 @@ def _pack_at(ctx: Context, at: str) -> str:
         return name if isinstance(name, str) else ctx.pack.name
     first = changes[0][1].get("from")
     return first if isinstance(first, str) else ctx.pack.name
+
+
+def _text_value(raw: Any) -> str | None:
+    """The string a JSON-encoded field holds, or None when it holds something else."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        return None
+    return value if isinstance(value, str) and value else None
 
 
 def _runs_after(

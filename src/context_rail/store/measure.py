@@ -71,7 +71,7 @@ def reports_after_boundary(
             continue
         if until is not None and at > until:
             continue
-        found.append(ReportSample(record_id=record_id, at=at, fingerprint=fingerprint))
+        found.append(ReportSample(report_id=record_id, at=at, fingerprint=fingerprint))
     return found[:limit], max(0, len(found) - limit)
 
 
