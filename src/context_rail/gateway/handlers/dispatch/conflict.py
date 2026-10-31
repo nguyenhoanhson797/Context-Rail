@@ -1,4 +1,4 @@
-"""One implementer continuation that may resolve only the paths a rebase left
+﻿"""One implementer continuation that may resolve only the paths a rebase left
 conflicted, and the escalation the merge raises when it cannot."""
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from context_rail.store.doc import Doc, etag
 from context_rail.store.write import commit
 
 from .budget import _effective_budget, _move_blocked, _run_facts
-from .common import BUILTIN_SECONDS, IMPL_ROLE, SUMMARY_MAX, _capture_payload
+from .common import IMPL_ROLE, SUMMARY_MAX, _capture_payload, effective_seconds
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -51,7 +51,7 @@ def _continue_conflict(
         ctx.policy.budgets.get("item") or {} if ctx.policy else {}, profile.budgets
     )
     _facts, used_seconds, _attempts = _run_facts(ctx.index, slug)
-    remaining = float(budget.seconds or BUILTIN_SECONDS) - used_seconds
+    remaining = effective_seconds(budget) - used_seconds
     started_at = now_iso()
     clock = time.monotonic()
     if remaining <= 0:
@@ -359,3 +359,4 @@ def _merge_escalated(
             "continuation_run": continuation.get("run"),
         },
     }
+

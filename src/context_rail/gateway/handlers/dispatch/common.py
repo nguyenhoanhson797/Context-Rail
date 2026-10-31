@@ -39,6 +39,16 @@ MERGE_CHECKPOINT_MESSAGE = "chore: checkpoint the store before a merge"
 CLOSEOUT_MESSAGE = "chore: record the merge closeout"
 
 
+def effective_attempts(budget: Budget) -> int:
+    """The attempt cap, with the shared default when the budget leaves it open."""
+    return max(1, int(budget.attempts if budget.attempts is not None else BUILTIN_ATTEMPTS))
+
+
+def effective_seconds(budget: Budget) -> float:
+    """The time cap, with the shared default when the budget leaves it open."""
+    return float(budget.seconds if budget.seconds is not None else BUILTIN_SECONDS)
+
+
 @dataclass
 class _Plan:
     """Everything one launch needs, assembled before the droid can start."""

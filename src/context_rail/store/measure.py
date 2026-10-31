@@ -1,4 +1,4 @@
-"""Store adapters that turn indexed facts into pure measurement samples."""
+﻿"""Store adapters that turn indexed facts into pure measurement samples."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 from context_rail.kernel.measurement import ReportSample, RunSample, UsageSample
 from context_rail.model.cto import USAGE_KEYS, MalformedUsage, usage_value
 from context_rail.store.index import Index
+from context_rail.store.query import record_data
 
 
 def runs_for_versions(
@@ -88,7 +89,7 @@ def active_dispatches(
     ).fetchall()
     active: list[str] = []
     for path, slug in rows:
-        data = _record_data(ix, path)
+        data = record_data(ix, path)
         dispatch_id = data.get("dispatch_id") or slug
         if not isinstance(dispatch_id, str) or not dispatch_id:
             continue
@@ -227,15 +228,6 @@ def _json_object(text: object) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _record_data(ix: Index, path: str) -> dict:
-    row = ix.conn.execute(
-        "SELECT value_json FROM fields WHERE path = ? AND key = 'data' "
-        "ORDER BY rowid LIMIT 1",
-        (path,),
-    ).fetchone()
-    return _json_object(row[0]) if row is not None else {}
-
-
 def _dispatch_reads_skill(data: dict, skill: str) -> bool:
     pins = data.get("skills")
     if isinstance(pins, list):
@@ -245,3 +237,4 @@ def _dispatch_reads_skill(data: dict, skill: str) -> bool:
         )
     named = data.get("skill")
     return named is None or _same_name(named, skill)
+

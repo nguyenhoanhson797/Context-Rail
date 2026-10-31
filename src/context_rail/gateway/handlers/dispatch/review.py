@@ -1,4 +1,4 @@
-"""One separated reviewer on a verified candidate: its own worktree at the exact
+﻿"""One separated reviewer on a verified candidate: its own worktree at the exact
 commit, and the replay a retried review key is answered with."""
 
 from __future__ import annotations
@@ -25,12 +25,12 @@ from context_rail.store.write import WriteRefused
 from .budget import _effective_budget, _run_facts
 from .checkpoint import _create_worktree
 from .common import (
-    BUILTIN_SECONDS,
     IMPL_ROLE,
     REVIEW_ROLE,
     _optional,
     _refuse_pending,
     _resolve_item,
+    effective_seconds,
 )
 from .review_order import _review_metadata, _review_outcome, _review_sections
 from .review_records import (
@@ -113,7 +113,7 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     droid = droid_profile(profile, name=profile_name)
     budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets)
     _facts, used_seconds, _used_attempts = _run_facts(index, slug)
-    remaining = float(budget.seconds or BUILTIN_SECONDS) - used_seconds
+    remaining = effective_seconds(budget) - used_seconds
     if remaining <= 0:
         raise WriteRefused(
             "BUSINESS_RULE_VIOLATED",
@@ -407,3 +407,4 @@ def _review_rollback(store: Path, key: str, review_id: str) -> None:
     """Forget a review that never reached the droid."""
     local_dispatch.remove_review_binding(store, key)
     local_dispatch.review_progress_path(store, review_id).unlink(missing_ok=True)
+

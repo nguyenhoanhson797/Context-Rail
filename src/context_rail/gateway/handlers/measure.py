@@ -1,4 +1,4 @@
-"""Read-only measurement handlers: version comparison and fix recurrence."""
+﻿"""Read-only measurement handlers: version comparison and fix recurrence."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from context_rail.kernel.measurement import (
 from context_rail.model.errors import ModelError
 from context_rail.model.pack import effective_measurement_min_runs, load_pack
 from context_rail.store import query
+from context_rail.store.query import record_data
 from context_rail.store.measure import reports_after_boundary, runs_for_versions
 from context_rail.store.write import WriteRefused
 
@@ -99,7 +100,7 @@ def measure_fix(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
         record = _document_path(ctx, slug)
         if record is None:
             continue
-        data = _record_data(ctx, record)
+        data = record_data(ctx.index, record)
         fingerprint = data.get("fingerprint")
         if isinstance(fingerprint, str) and fingerprint:
             fingerprints.append(fingerprint)
@@ -231,21 +232,6 @@ def _document_path(ctx: Context, slug: str) -> str | None:
     return row[0] if row is not None else None
 
 
-def _record_data(ctx: Context, path: str) -> dict[str, Any]:
-    row = ctx.index.conn.execute(
-        "SELECT value_json FROM fields WHERE path = ? AND key = 'data' "
-        "ORDER BY rowid LIMIT 1",
-        (path,),
-    ).fetchone()
-    if row is None:
-        return {}
-    try:
-        value = json.loads(row[0])
-    except ValueError:
-        return {}
-    return value if isinstance(value, dict) else {}
-
-
 def _category(ctx: Context, slug: str) -> str | None:
     row = ctx.index.conn.execute(
         "SELECT category FROM docs WHERE slug = ? ORDER BY path LIMIT 1", (slug,)
@@ -266,7 +252,7 @@ def _fix_boundary(
     ).fetchall()
     found: tuple[str, str] | None = None
     for path, slug, raw_at in rows:
-        data = _record_data(ctx, path)
+        data = record_data(ctx.index, path)
         status = data.get("to")
         if not isinstance(status, str):
             continue
@@ -302,7 +288,7 @@ def _pack_at(ctx: Context, at: str) -> str:
     for path, raw_at in rows:
         change_at = _text_value(raw_at)
         if change_at is not None:
-            changes.append((change_at, _record_data(ctx, path)))
+            changes.append((change_at, record_data(ctx.index, path)))
     if not changes:
         return ctx.pack.name
     before = [change for change in changes if change[0] <= at]
@@ -336,3 +322,4 @@ def _runs_after(
         f"SELECT count(*) FROM runs WHERE {clause} AND role = 'implementer'", params
     ).fetchone()
     return int(row[0]) if row is not None else 0
+

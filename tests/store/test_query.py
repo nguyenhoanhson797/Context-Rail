@@ -439,3 +439,13 @@ def test_reads_launch_no_processes_and_show_opens_only_its_doc(indexed_store):
 
 def _text(value: str | bytes) -> str:
     return value.decode() if isinstance(value, bytes) else value
+
+
+def test_one_record_data_reader_is_shared() -> None:
+    from context_rail.gateway.handlers import measure as measure_handler
+    from context_rail.store import measure as measure_store
+    from context_rail.store import query, versions
+
+    assert callable(query.record_data)
+    for module in (measure_store, versions, measure_handler):
+        assert not hasattr(module, "_record_data"), module

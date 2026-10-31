@@ -1,4 +1,4 @@
-"""Isolated implementer dispatches: one worktree, one branch, two attempts.
+﻿"""Isolated implementer dispatches: one worktree, one branch, two attempts.
 
 The canonical store is the caller's project checkout. A dispatch moves the Item
 to its active category, checkpoints only store-owned work so the new worktree
@@ -56,8 +56,6 @@ from .checkpoint import (
     _store_paths,
 )
 from .common import (
-    BUILTIN_ATTEMPTS,
-    BUILTIN_SECONDS,
     IMPL_ROLE,
     SUMMARY_MAX,
     _Plan,
@@ -66,6 +64,8 @@ from .common import (
     _refuse_pending,
     _resolve_item,
     _verify_worktree,
+    effective_attempts,
+    effective_seconds,
 )
 from .records import _escalation_record, _failure_report, _started_record
 
@@ -201,7 +201,7 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             checks=checks,
             skill_pins=skill_pins(ctx, profile),
             used_seconds=used_seconds,
-            max_attempts=max(1, int(budget.attempts or BUILTIN_ATTEMPTS) - used_attempts),
+            max_attempts=max(1, effective_attempts(budget) - used_attempts),
         )
         role_file, order_file = _write_prompts(ctx, plan, rel)
         return _execute(plan, role_file, order_file)
@@ -250,7 +250,7 @@ def _sections(plan: _Plan, doc: Doc) -> dict[str, str]:
         ),
         "constraints": (
             f"One session, at most {plan.max_attempts} attempt(s) and "
-            f"{int(plan.budget.seconds or BUILTIN_SECONDS)} seconds. Never stage files to make "
+            f"{int(effective_seconds(plan.budget))} seconds. Never stage files to make "
             "a Check pass, and never widen your own tools, autonomy or budget."
         ),
         "selected files": ", ".join(
@@ -294,7 +294,7 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
     session: str | None = None
     started_at = now_iso()
     flight_started = time.monotonic()
-    deadline = max(1.0, float(plan.budget.seconds or BUILTIN_SECONDS) - plan.used_seconds)
+    deadline = max(1.0, effective_seconds(plan.budget) - plan.used_seconds)
 
     for number in range(1, plan.max_attempts + 1):
         elapsed = time.monotonic() - flight_started
@@ -566,3 +566,4 @@ def _candidate(plan: _Plan) -> str | None:
     except WriteRefused:
         return None
     return None if head == plan.base else head
+

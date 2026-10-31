@@ -1,4 +1,4 @@
-"""Bounded reads over the index: find, show, records and activity.
+﻿"""Bounded reads over the index: find, show, records and activity.
 
 Every query here runs as SQL over the index. Only ``show`` opens a store file,
 and only the requested document; nothing in this module launches a process,
@@ -862,7 +862,7 @@ def pack_change_for(ix: Index, target: str) -> dict[str, Any] | None:
         (json.dumps("pack.changed"),),
     ).fetchall()
     for path, slug, at in rows:
-        data = _record_data(ix, path)
+        data = record_data(ix, path)
         if data.get("approval_target") != target:
             continue
         return {"record_id": slug, "at": at, "path": path, "data": data}
@@ -881,7 +881,7 @@ def approval_for(ix: Index, target: str) -> dict[str, Any] | None:
     if row is None:
         return None
     record_id, found_target, at, hashes_json, confirmer, path = row
-    payload = _record_data(ix, path)
+    payload = record_data(ix, path)
     return {
         "approval": record_id,
         "record_id": record_id,
@@ -1317,7 +1317,7 @@ def _scalar(ix: Index, sql: str, params: Sequence[Any] = ()) -> int:
     return ix.conn.execute(sql, params).fetchone()[0]
 
 
-def _record_data(ix: Index, path: str) -> dict[str, Any]:
+def record_data(ix: Index, path: str) -> dict[str, Any]:
     row = ix.conn.execute(
         "SELECT value_json FROM fields WHERE path = ? AND key = 'data' "
         "ORDER BY rowid LIMIT 1",
@@ -1433,3 +1433,4 @@ def _grouped(rows: Iterable[tuple[str, str]]) -> dict[str, list[str]]:
     for name, value in rows:
         grouped.setdefault(name, set()).add(value)
     return {name: sorted(values) for name, values in grouped.items()}
+

@@ -26,13 +26,13 @@ from .budget import _effective_budget, _run_facts
 from .checkpoint import _checkpoint, _current_branch, _store_paths
 from .closeout import _close_item, _fast_forward, _merge_gate, _merge_record, _push_default
 from .common import (
-    BUILTIN_SECONDS,
     IMPL_ROLE,
     MERGE_CHECKPOINT_MESSAGE,
     REVIEW_ROLE,
     _refuse_pending,
     _resolve_item,
     _verify_worktree,
+    effective_seconds,
 )
 from .conflict import _continue_conflict, _merge_escalated
 from .review import _review_candidate, _separation_reason
@@ -611,7 +611,7 @@ def _review_for_merge(
     droid = droid_profile(profile, name=REVIEW_ROLE)
     budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets)
     _facts, used_seconds, _attempts = _run_facts(ctx.index, slug)
-    remaining = float(budget.seconds or BUILTIN_SECONDS) - used_seconds
+    remaining = effective_seconds(budget) - used_seconds
     if remaining <= 0:
         raise WriteRefused(
             "BUSINESS_RULE_VIOLATED",
@@ -713,4 +713,5 @@ def _save_merge(
         phase="completed",
         result=result,
     )
+
 

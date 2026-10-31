@@ -1,4 +1,4 @@
-"""Version history reads: canonical targets and retained prior text."""
+﻿"""Version history reads: canonical targets and retained prior text."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pathlib import PurePosixPath
 
 from context_rail.model.errors import ModelError
 from context_rail.store.index import Index
+from context_rail.store.query import record_data
 from context_rail.store.location import PathEscape
 
 VERSION_KINDS = ("skill.changed", "profile.changed")
@@ -75,7 +76,7 @@ def prior_version_content(ix: Index, target: str, version: int) -> VersionConten
     after_text: tuple[str, str | None] | None = None
     before_text: tuple[str, str | None] | None = None
     for path, _slug, _at in rows:
-        data = _record_data(ix, path)
+        data = record_data(ix, path)
         if data.get("target") != target:
             continue
         if data.get("after") == version and after_text is None:
@@ -107,17 +108,3 @@ def _unavailable(target: str, version: int) -> Exception:
         {"reason": "prior_content_unavailable", "target": target, "version": version},
     )
 
-
-def _record_data(ix: Index, path: str) -> dict:
-    row = ix.conn.execute(
-        "SELECT value_json FROM fields WHERE path = ? AND key = 'data' "
-        "ORDER BY rowid LIMIT 1",
-        (path,),
-    ).fetchone()
-    if row is None:
-        return {}
-    try:
-        value = json.loads(row[0])
-    except ValueError:
-        return {}
-    return value if isinstance(value, dict) else {}
