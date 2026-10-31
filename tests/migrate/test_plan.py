@@ -69,3 +69,23 @@ def test_v1_documents_keep_their_wiki_types(
     assert _front(by_source["02-wiki/Goal.md"].data)["preset"] == "goal"
     assert _front(by_source["01-docs/tasks/old-task.md"].data)["preset"] == "task"
     assert plan.records == ()
+
+
+def test_an_empty_event_subject_has_no_blank_about() -> None:
+    import json
+
+    from context_rail.store.legacy import LegacyEvent
+    from context_rail.store.migration import _record
+
+    event = LegacyEvent(
+        id="01JLEGACYEMPTY000000000001",
+        at="2026-01-01T00:00:00Z",
+        actor="legacy",
+        kind="task",
+        subject="",
+        data={},
+    )
+    record = _record(event, "2026-02-01T00:00:00Z", {}, [])
+
+    assert record is not None
+    assert json.loads(record.data)["about"] == []

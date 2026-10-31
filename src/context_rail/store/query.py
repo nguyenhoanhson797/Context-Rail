@@ -909,9 +909,9 @@ def reversible_decisions(
     since = _since(since)
     clause = (
         "WHERE d.primitive = 'record' AND d.broken = 0 "
-        "AND f2.value_json LIKE '%\"decision_class\":\"cto-reversible\"%'"
+        "AND json_extract(f2.value_json, '$.decision_class') = ?"
     )
-    params: list[Any] = []
+    params: list[Any] = ["cto-reversible"]
     if since is not None:
         clause += " AND d.record_at IS NOT NULL AND d.record_at >= ?"
         params.append(_iso_ms(since))

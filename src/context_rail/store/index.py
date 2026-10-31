@@ -1147,9 +1147,19 @@ def _transaction(
         try:
             work(conn)
         except BaseException:
-            conn.execute("ROLLBACK")
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
             raise
-        conn.execute("COMMIT")
+        try:
+            conn.execute("COMMIT")
+        except sqlite3.Error:
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+            raise
         return
     raise IndexBusy("the index stayed locked") from last
 

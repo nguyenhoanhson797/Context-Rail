@@ -449,3 +449,33 @@ def test_one_record_data_reader_is_shared() -> None:
     assert callable(query.record_data)
     for module in (measure_store, versions, measure_handler):
         assert not hasattr(module, "_record_data"), module
+
+
+def test_a_reversible_decision_is_found_whatever_the_json_spacing(tmp_path) -> None:
+    from context_rail.store import query
+    from helpers import init_store, write_record
+
+    store = init_store(tmp_path)
+    write_record(
+        store,
+        "01JSPACEDDECISION000000001",
+        "decision.made",
+        {
+            "schema": 1,
+            "decision_class": "cto-reversible",
+            "reason": "a spacing test",
+            "before": {},
+            "after": {},
+        },
+        at="2026-10-28T12:00:00Z",
+        about=("login",),
+    )
+    index = Index.open(store, load_pack("small", store))
+    try:
+        index.sync()
+        rows, total = query.reversible_decisions(index)
+    finally:
+        index.close()
+
+    assert total == 1
+    assert rows[0]["record_id"] == "01JSPACEDDECISION000000001"

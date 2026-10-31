@@ -210,6 +210,7 @@ def _record(
         return None
     stamp = event.at or at
     month = stamp[:7] if len(stamp) >= 7 and stamp[4] == "-" else at[:7]
+    about = _about(event.subject, slugs)
     payload: dict[str, Any] = {
         "id": event_id,
         "primitive": "record",
@@ -217,7 +218,7 @@ def _record(
         "kind": f"legacy.{event.kind}" if event.kind else "legacy.event",
         "at": stamp,
         "actor": event.actor or "legacy",
-        "about": [_about(event.subject, slugs)],
+        "about": [about] if about else [],
         "data": event.data,
     }
     payload["digest"] = record_digest(payload)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib import resources
 from pathlib import Path
+import re
 from typing import Any
 
 from context_rail.model.pack import check_pack_name
@@ -87,15 +88,51 @@ def _walk(root: Any, prefix: str = "") -> list[tuple[str, Any]]:
 
 
 def _rename(data: bytes, source: str, name: str) -> bytes:
-    text = data.decode("utf-8-sig")
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"pack {source!r} is not UTF-8",
+            {"pack": source},
+        ) from None
     lines = text.splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        if line.startswith("name:"):
-            ending = line[len(line.rstrip("\r\n")) :]
-            lines[index] = f"name: {name}{ending}"
-            return "".join(lines).encode("utf-8")
-    raise WriteRefused(
-        "VALIDATION_FAILED",
-        f"pack {source!r} has no name line to rename",
-        {"pack": source},
-    )
+    matches = [
+        index
+        for index, line in enumerate(lines)
+        if line.lstrip().startswith("name:")
+    ]
+    if len(matches) != 1:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"pack {source!r} has no single name line to rename",
+            {"pack": source},
+        )
+    index = matches[0]
+    line = lines[index]
+    ending = line[len(line.rstrip("\r\n")) :]
+    body = line[: len(line) - len(ending)]
+    match = re.match(r"^([ \t]*)name:(.*)$", body)
+    assert match is not None
+    rest = match.group(2)
+    lead = re.match(r"^[ \t]*", rest).group(0)
+    value = rest[len(lead) :]
+    if value[:1] in ("'", '"'):
+        quote = value[0]
+        close = value.find(quote, 1)
+        if close < 0:
+            raise WriteRefused(
+                "VALIDATION_FAILED", f"pack {source!r} has an unclosed name quote"
+            )
+        tail = value[close + 1 :]
+        if tail.strip() and not tail.lstrip().startswith("#"):
+            raise WriteRefused(
+                "VALIDATION_FAILED", f"pack {source!r} has trailing name text"
+            )
+        replacement = f"{lead}{quote}{name}{quote}{tail}"
+    else:
+        comment = re.search(r"[ \t]+#", value)
+        tail = value[comment.start() :] if comment is not None else ""
+        replacement = f"{lead}{name}{tail}"
+    lines[index] = f"{match.group(1)}name:{replacement}{ending}"
+    return "".join(lines).encode("utf-8")

@@ -255,3 +255,21 @@ def test_pack_use_checks_the_pack_and_etag_before_the_phrase(tmp_path) -> None:
         actor="human",
     )
     assert stale["error"]["code"] == "CONFLICT", stale
+
+
+def test_pack_rename_preserves_quotes_and_comments() -> None:
+    from context_rail.store.packs import _rename
+
+    data = b'name: "old"  # keep this\nversion: 1\n'
+
+    assert _rename(data, "old", "new") == b'name: "new"  # keep this\nversion: 1\n'
+
+
+def test_pack_rename_refuses_a_non_utf8_manifest() -> None:
+    from context_rail.store.packs import _rename
+    from context_rail.store.write import WriteRefused
+
+    with pytest.raises(WriteRefused) as caught:
+        _rename(b"name: \xff\n", "old", "new")
+
+    assert caught.value.code == "VALIDATION_FAILED"
