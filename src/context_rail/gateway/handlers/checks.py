@@ -751,14 +751,36 @@ def _read_spec(value: Any) -> dict[str, Any]:
     if text is None:
         raise WriteRefused("VALIDATION_FAILED", "check needs a spec file")
     path = Path(text)
-    size = path.stat().st_size
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        raise WriteRefused(
+            "NOT_FOUND", f"check spec {text!r} does not exist", {"spec_file": text}
+        ) from None
+    except OSError as exc:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"cannot read check spec {text!r}: {exc}",
+            {"spec_file": text},
+        ) from None
     if size > MAX_SPEC_BYTES:
         raise WriteRefused(
             "VALIDATION_FAILED",
             f"the check spec is larger than {MAX_SPEC_BYTES} bytes",
             {"spec_file": text},
         )
-    raw = path.read_text(encoding="utf-8-sig")
+    try:
+        raw = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        raise WriteRefused(
+            "NOT_FOUND", f"check spec {text!r} does not exist", {"spec_file": text}
+        ) from None
+    except OSError as exc:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"cannot read check spec {text!r}: {exc}",
+            {"spec_file": text},
+        ) from None
     try:
         payload = json.loads(raw, object_pairs_hook=_unique_keys)
     except _DuplicateKey as error:

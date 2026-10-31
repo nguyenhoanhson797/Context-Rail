@@ -494,3 +494,13 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.maintenance:ci",
     ),
 )
+
+
+_PARAM_TYPES = ("str", "int", "bool")
+for _tool in TOOLS:
+    for _param in _tool.params:
+        if _param.type not in _PARAM_TYPES:
+            raise ValueError(
+                f"tool {_tool.name!r} parameter {_param.name!r} has unknown type {_param.type!r}"
+            )
+del _tool, _param

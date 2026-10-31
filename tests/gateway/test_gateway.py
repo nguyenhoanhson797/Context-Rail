@@ -1251,3 +1251,19 @@ def test_a_replayed_approve_needs_neither_phrase_nor_target(approved_store):
 
     assert is_ok(second), second
     assert second["value"] == first["value"]
+
+
+def test_an_unexpected_fault_logs_a_traceback_to_stderr(tmp_path, monkeypatch, capsys):
+    store = _init(tmp_path)
+    from context_rail.gateway import gateway as gateway_module
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(gateway_module, "_handler", lambda spec: boom)
+
+    result = invoke("find", {}, store=store)
+
+    assert result["error"]["code"] == "INTERNAL"
+    captured = capsys.readouterr()
+    assert "Traceback" in captured.err

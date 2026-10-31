@@ -30,3 +30,9 @@ def test_permission_is_metadata_not_an_input_property() -> None:
     assert tool_meta(mcp_serve)["context-rail"]["permission"] == "read"
     assert read_only_hint(mcp_serve) is True
     assert "permission" not in input_schema(mcp_serve)["properties"]
+
+
+def test_every_param_type_is_known() -> None:
+    types = {param.type for tool in TOOLS for param in tool.params}
+
+    assert types <= {"str", "int", "bool"}

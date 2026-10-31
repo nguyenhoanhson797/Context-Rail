@@ -531,7 +531,8 @@ def test_cli_check_and_verify_flags_reach_the_gateway(tmp_path):
         store=store,
     )
     assert verified.returncode == 1, verified.stdout
-    assert _json(verified)["error"]["code"] == "NOT_FOUND"
+    assert _json(verified)["error"]["code"] == "INVALID_STATE"
+    assert _json(verified)["error"]["details"]["reason"] == "approval_missing"
 
     for name in ("check", "verify"):
         assert run_cli(tmp_path, name, "--help").returncode == 0

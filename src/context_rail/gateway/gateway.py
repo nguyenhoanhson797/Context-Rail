@@ -14,6 +14,8 @@ human has approved the protected picture.
 from __future__ import annotations
 
 import os
+import sys
+import traceback
 from dataclasses import dataclass, field
 from functools import cached_property
 from importlib import import_module
@@ -486,4 +488,5 @@ def _failure(exc: Exception) -> dict[str, Any]:
         if str(exc) == "not_found":
             return fail("NOT_FOUND", "not found")
         return fail("CONFLICT", str(exc))
+    traceback.print_exc(file=sys.stderr)
     return fail("INTERNAL", str(exc) or exc.__class__.__name__)

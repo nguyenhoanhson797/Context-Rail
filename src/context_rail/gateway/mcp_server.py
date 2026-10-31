@@ -25,7 +25,7 @@ def build_server(*, store: Path | None, actor: str | None) -> Server:
     """One low-level server whose tools and envelopes come from ``invoke``."""
     pinned_actor = resolve_server_actor(actor)
     by_name = {tool.name: tool for tool in TOOLS}
-    lock = anyio.Lock()
+    write_lock = anyio.Lock()
 
     async def on_list_tools(_context: object, _params: object) -> types.ListToolsResult:
         return types.ListToolsResult(
@@ -50,13 +50,25 @@ def build_server(*, store: Path | None, actor: str | None) -> Server:
                 types.INVALID_PARAMS, f"unknown tool {name!r}"
             )
         arguments = getattr(params, "arguments", None) or {}
-        async with lock:
+        tool = by_name[name]
+
+        async def call() -> dict:
             with serving_connection():
-                envelope = await anyio.to_thread.run_sync(
+                return await anyio.to_thread.run_sync(
                     lambda: invoke(
                         name, dict(arguments), store=store, actor=pinned_actor
                     )
                 )
+
+        # Reads never wait on another call; writes stay serialized so a long
+        # mutation cannot interleave with a second one. A cancelled caller leaves
+        # its worker thread to finish, and every write is atomic under the store
+        # lock, so cancellation never leaves partial store state.
+        if tool.permission == "read":
+            envelope = await call()
+        else:
+            async with write_lock:
+                envelope = await call()
         text = json.dumps(envelope, ensure_ascii=False)
         return types.CallToolResult(
             content=[types.TextContent(type="text", text=text)],
