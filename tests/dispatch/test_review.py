@@ -654,3 +654,53 @@ def test_review_paths_use_their_own_branch_and_worktree(tmp_path: Path) -> None:
     paths = review_paths(project / "context-rail", "login-page", "01JREVIEW00000000000000001")
     assert paths.branch == "rail-review/login-page/01JREVIEW00000000000000001"
     assert paths.worktree == worktree_root(project / "context-rail") / "01JREVIEW00000000000000001"
+
+
+def test_a_review_block_needs_a_schema_and_a_candidate() -> None:
+    from context_rail.gateway.handlers.dispatch.review_order import _review_outcome
+
+    class Ran:
+        failure = None
+
+    candidate = "c" * 40
+    ran = Ran()
+
+    ran.text = '```rail-review\n{"verdict": "approve"}\n```'
+    outcome = _review_outcome(ran, candidate)
+    assert outcome["verdict"] is None
+    assert "schema" in outcome["reason"]
+
+    ran.text = '```rail-review\n{"schema": 1, "verdict": "approve"}\n```'
+    outcome = _review_outcome(ran, candidate)
+    assert outcome["verdict"] is None
+    assert "candidate" in outcome["reason"]
+
+
+def test_separation_refusals_carry_structured_reasons() -> None:
+    from types import SimpleNamespace
+
+    from context_rail.gateway.handlers.dispatch.review import _separation_reason
+
+    policy = SimpleNamespace(reviewer_different_model=True)
+
+    same_actor = _separation_reason(
+        policy,
+        implementer="implementer",
+        implementer_model="m1",
+        reviewer="implementer",
+        reviewer_model="m2",
+        invoking="implementer",
+    )
+    assert same_actor is not None
+    assert same_actor.details["reason"] == "reviewer_same_actor"
+
+    same_model = _separation_reason(
+        policy,
+        implementer="implementer",
+        implementer_model="m1",
+        reviewer="reviewer",
+        reviewer_model="m1",
+        invoking="reviewer",
+    )
+    assert same_model is not None
+    assert same_model.details["reason"] == "reviewer_model_required"

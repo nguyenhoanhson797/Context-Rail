@@ -257,3 +257,24 @@ def _doctor_codes(store: Path) -> list[str]:
     result = invoke("doctor", {}, store=store, actor="human")
     assert is_ok(result), result
     return [issue["code"] for issue in result["value"]["issues"]]
+
+
+def test_a_report_file_with_duplicate_keys_refuses(completed_run, tmp_path) -> None:
+    from context_rail.gateway.gateway import invoke
+
+    path = tmp_path / "duplicate.json"
+    path.write_text('{"schema": 1, "schema": 1}', encoding="utf-8", newline="\n")
+
+    result = invoke(
+        "report",
+        {
+            "item": completed_run.item,
+            "run": completed_run.run,
+            "report_file": str(path),
+        },
+        store=completed_run.store,
+        actor="cto",
+    )
+
+    assert result["ok"] is False, result
+    assert result["error"]["code"] == "VALIDATION_FAILED"

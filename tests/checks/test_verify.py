@@ -754,3 +754,27 @@ def test_verify_is_locked_out_when_no_charter_exists(tmp_path: Path) -> None:
 
     assert refused["error"]["code"] == "INVALID_STATE"
     assert refused["error"]["details"]["reason"] == "approval_missing"
+
+
+def test_item_wide_verify_with_only_review_checks_is_explicit(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    spec = spec_file(
+        tmp_path,
+        "review.json",
+        {"schema": 1, "mode": "review", "acceptance": False, "verifies": ["feature-a"]},
+    )
+    declared = invoke(
+        "check",
+        {"slug": "peer-review", "target": "feature-a", "spec_file": str(spec), "expect": "absent"},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(declared), declared
+
+    verified = invoke("verify", {"target": "feature-a"}, store=store, actor="cto")
+
+    assert is_ok(verified), verified
+    assert verified["value"]["verdicts"] == []
+    assert verified["value"]["reason"] == "no_executable_checks"

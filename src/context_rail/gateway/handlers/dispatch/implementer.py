@@ -38,8 +38,8 @@ from context_rail.runner.droid import (
     write_role_file,
 )
 from context_rail.store import query
-from context_rail.store.doc import Doc
-from context_rail.store.write import WriteRefused, commit
+from context_rail.store.doc import Doc, etag
+from context_rail.store.write import WriteRefused, commit, resolve_unique
 
 from .budget import (
     _effective_budget,
@@ -151,6 +151,9 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             phase="started",
             notes=[],
         )
+        _data, original_doc = read_doc(store, rel)
+        original_status = original_doc.status
+        created = False
         try:
             _move_active(ctx, slug, actor)
             store_paths = _store_paths(ctx, root)
@@ -175,11 +178,14 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 started_record=started,
             )
             _create_worktree(root, paths, base)
+            created = True
             local_dispatch.register_worktree(
                 store, dispatch_id, paths.worktree, paths.branch
             )
         except BaseException:
             _rollback(store, key, dispatch_id)
+            if not created:
+                _restore_status(ctx, slug, original_status, actor)
             raise
 
         checks = tuple(row["slug"] for row in query.check_states(index, slug))
@@ -558,6 +564,33 @@ def _rollback(store: Path, key: str, dispatch_id: str) -> None:
     """Forget a launch that never reached the droid."""
     local_dispatch.remove_binding(store, key)
     local_dispatch.progress_path(store, dispatch_id).unlink(missing_ok=True)
+
+
+def _restore_status(ctx: Context, slug: str, status: str | None, actor: str) -> None:
+    """Undo the active move a launch made before it failed to create a worktree."""
+    if not status:
+        return
+    from context_rail.gateway.handlers.docs import move as move_item
+
+    try:
+        rel = resolve_unique(ctx.index, slug)
+        data, doc = read_doc(Path(ctx.store), rel)
+        if doc.status == status:
+            return
+        move_item(
+            ctx,
+            {
+                "slug": slug,
+                "status": status,
+                "expect": etag(data),
+                "resolution": None,
+                "confirm": None,
+                "key": None,
+            },
+            actor,
+        )
+    except WriteRefused:
+        return
 
 
 def _candidate(plan: _Plan) -> str | None:

@@ -148,7 +148,9 @@ def _review_outcome(ran: Any, candidate: str) -> dict[str, Any]:
             "reason": "the review printed no single valid rail-review block",
         }
     schema = block.get("schema")
-    if schema is not None and (isinstance(schema, bool) or schema != 1):
+    if schema is None:
+        return {**invalid, "reason": "the review block names no schema"}
+    if isinstance(schema, bool) or schema != 1:
         return {**invalid, "reason": f"the review schema {schema!r} is not supported"}
     verdict = block.get("verdict")
     if verdict not in REVIEW_VERDICTS:
@@ -157,7 +159,9 @@ def _review_outcome(ran: Any, candidate: str) -> dict[str, Any]:
             "reason": f"the review verdict {verdict!r} is not approve or reject",
         }
     bound = block.get("candidate_commit")
-    if bound is not None and bound != candidate:
+    if not isinstance(bound, str) or not bound:
+        return {**invalid, "reason": "the review block names no candidate commit"}
+    if bound != candidate:
         return {
             **invalid,
             "reason": f"the review names candidate {bound!r}, not {candidate!r}",

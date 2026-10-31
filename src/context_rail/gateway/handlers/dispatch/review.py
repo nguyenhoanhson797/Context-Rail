@@ -390,11 +390,28 @@ def _separation_reason(
         )
     if reason is None:
         return None
-    code = "PERMISSION_DENIED" if "model" not in reason else "VALIDATION_FAILED"
+    same_actor = (
+        not implementer
+        or not reviewer
+        or implementer == reviewer
+        or (invoking != reviewer and implementer == invoking)
+    )
+    model_problem = policy.reviewer_different_model and (
+        not implementer_model
+        or not reviewer_model
+        or implementer_model == reviewer_model
+    )
+    if same_actor:
+        code, structured = "PERMISSION_DENIED", "reviewer_same_actor"
+    elif model_problem:
+        code, structured = "VALIDATION_FAILED", "reviewer_model_required"
+    else:
+        code, structured = "PERMISSION_DENIED", "review_separation_failed"
     return WriteRefused(
         code,
         reason,
         {
+            "reason": structured,
             "implementer_actor": implementer,
             "reviewer_actor": reviewer,
             "implementer_model": implementer_model,

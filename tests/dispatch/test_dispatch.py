@@ -1056,3 +1056,21 @@ def test_a_missing_droid_binary_is_a_process_error(
 
     assert refused["ok"] is False, refused
     assert refused["error"]["code"] == "PROCESS_ERROR", refused
+
+
+def test_a_failed_worktree_creation_restores_the_item_status(
+    leaf_item, fake_droid, droid_env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from context_rail.gateway.handlers.dispatch import implementer as module
+    from context_rail.store.write import WriteRefused
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise WriteRefused("PROCESS_ERROR", "worktree creation failed", {})
+
+    monkeypatch.setattr(module, "_create_worktree", fail)
+
+    refused = dispatch(leaf_item, "no-worktree")
+
+    assert refused["ok"] is False, refused
+    shown = invoke("show", {"slug": leaf_item.slug}, store=leaf_item.store, actor="cto")
+    assert shown["value"]["doc"]["status"] == "todo"

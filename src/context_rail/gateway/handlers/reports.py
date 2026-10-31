@@ -171,7 +171,15 @@ def _load_report_file(report_file: str) -> dict[str, Any]:
             {"path": report_file},
         ) from exc
     try:
-        payload = json.loads(text, parse_constant=_refuse_constant)
+        payload = json.loads(
+            text, parse_constant=_refuse_constant, object_pairs_hook=_unique_keys
+        )
+    except _DuplicateKey as exc:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"report file {report_file!r} repeats the key {exc.args[0]!r}",
+            {"path": report_file},
+        ) from None
     except ValueError as exc:
         raise WriteRefused(
             "VALIDATION_FAILED",
@@ -189,6 +197,19 @@ def _load_report_file(report_file: str) -> dict[str, Any]:
 
 def _refuse_constant(value: str) -> Any:
     raise ValueError(f"{value} is not a JSON number")
+
+
+class _DuplicateKey(Exception):
+    """A JSON object repeated a key; the report is refused instead of guessed."""
+
+
+def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    for name, value in pairs:
+        if name in data:
+            raise _DuplicateKey(name)
+        data[name] = value
+    return data
 
 
 def _report_data(parsed: Report) -> dict[str, Any]:

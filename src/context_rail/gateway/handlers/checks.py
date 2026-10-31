@@ -243,6 +243,12 @@ def verify(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         results.append(
             _verify_one(ctx, selected, supplied, actor, target_worktree, key)
         )
+    if not results:
+        return {
+            "verdicts": [],
+            "passed": False,
+            "reason": "no_executable_checks",
+        }
     return {
         "verdicts": results,
         "passed": bool(results) and all(entry["passed"] for entry in results),
