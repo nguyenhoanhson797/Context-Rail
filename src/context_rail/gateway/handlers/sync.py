@@ -35,7 +35,7 @@ from context_rail.store.doc import etag, parse_doc
 from context_rail.store.frontmatter_edit import join_frontmatter, split_frontmatter
 from context_rail.store.gitattributes import managed_attributes
 from context_rail.store.index import Index
-from context_rail.store.location import local_dir
+from context_rail.store.location import local_dir, owns_path, store_prefixes
 from context_rail.store.lock import StoreLockTimeout, file_lock
 from context_rail.store.sync import (
     SyncIntent,
@@ -292,6 +292,9 @@ def _integrate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
     store = ctx.store
     root = _root(store)
     store_rel = _store_rel(store, root)
+    # A root store owns the layout it writes, never the whole checkout; the
+    # same ownership prefixes drive dirty, incoming and hook-edit checks.
+    owned = store_prefixes(store, root, ctx.manifest)
     with _sync_locks(store):
         existing = load_intent(store)
         if existing and existing.get("phase") in {"published", "committed"}:
@@ -318,7 +321,7 @@ def _integrate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
             raise WriteRefused("INVALID_STATE", "a merge or rebase is in progress")
         if git_sync.unmerged(root, root):
             raise WriteRefused("INVALID_STATE", "the index has unmerged paths")
-        dirty = git_sync.dirty_outside(root, root, store_rel)
+        dirty = git_sync.dirty_outside(root, root, store_rel, prefixes=owned)
         if dirty is not None:
             raise WriteRefused(
                 "INVALID_STATE", "changes outside the store are staged", {"path": dirty}
@@ -369,7 +372,7 @@ def _integrate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
             incoming = git_sync.fetch(root, root, remote, branch)
             changed = git_sync.changed_paths(root, root, base, incoming)
             outside = sorted(
-                path for _status, path in changed if not _under(path, store_rel)
+                path for _status, path in changed if not owns_path(path, owned)
             )
             if outside:
                 raise WriteRefused(
@@ -513,11 +516,12 @@ def _bookkeeping(
     integrated = git_sync.commit_scratch(scratch, scratch, f"rail sync {intent.key}")
     live = dict(store_inventory(store))
     scratch_candidate = _candidate(scratch, intent.store_rel)
+    owned = store_prefixes(store, root, ctx.manifest)
     if scratch_candidate != {path: (store / path).read_bytes() for path in live}:
         outside = [
             path
             for path in scratch_candidate
-            if not _under(path, intent.store_rel)
+            if not owns_path(path, owned)
         ]
         if outside:
             raise WriteRefused(
@@ -734,13 +738,6 @@ def _tree_hash(candidate: dict[str, bytes]) -> str:
         f"{path}:{hashlib.sha256(candidate[path]).hexdigest()}" for path in sorted(candidate)
     )
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
-
-
-def _under(path: str, store_rel: str) -> bool:
-    path = path.replace("\\", "/")
-    if store_rel in ("", "."):
-        return True
-    return path == store_rel or path.startswith(store_rel.rstrip("/") + "/")
 
 
 def _doctor_counts(store: Path) -> dict[str, int]:

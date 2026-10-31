@@ -178,3 +178,65 @@ def test_a_post_publish_doctor_error_stops_the_push(two_clones, monkeypatch) -> 
     assert refused["error"]["details"]["doctor"]["error"] == 1
     assert pushed == []
     assert git(two_clones.bare, "rev-parse", "main").strip() == remote_before
+
+
+def _rooted_repo(tmp_path):
+    from context_rail.core.result import is_ok
+    from helpers import run_git
+
+    root = tmp_path / "rooted"
+    root.mkdir()
+    created = invoke(
+        "init", {"dir": str(root), "root": ".", "pack": "small"}, actor="human"
+    )
+    assert is_ok(created), created
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    run_git(root, "init")
+    run_git(root, "add", "-A")
+    run_git(root, "commit", "-m", "rooted store")
+    return root
+
+
+def test_a_root_store_owns_its_layout_not_the_checkout(tmp_path) -> None:
+    from context_rail.model.manifest import load_manifest
+    from context_rail.store.location import owns_path, store_prefixes
+
+    root = _rooted_repo(tmp_path)
+    prefixes = store_prefixes(root, root, load_manifest(root))
+
+    assert "src" not in prefixes
+    assert owns_path("items/task/a.md", prefixes) is True
+    assert owns_path("rail.yaml", prefixes) is True
+    assert owns_path("src/app.py", prefixes) is False
+
+
+def test_a_dirty_source_file_in_a_root_store_is_outside(tmp_path) -> None:
+    from context_rail.model.manifest import load_manifest
+    from context_rail.runner import git_sync
+    from context_rail.store.location import store_prefixes
+
+    root = _rooted_repo(tmp_path)
+    (root / "src" / "app.py").write_text("VALUE = 2\n", encoding="utf-8", newline="\n")
+    prefixes = store_prefixes(root, root, load_manifest(root))
+
+    dirty = git_sync.dirty_outside(root, root, ".", prefixes=prefixes)
+
+    assert dirty == "src/app.py"
+
+
+def test_dirty_outside_and_incoming_changes_use_the_same_paths(tmp_path) -> None:
+    from context_rail.model.manifest import load_manifest
+    from context_rail.store.location import owns_path, store_prefixes
+
+    root = _rooted_repo(tmp_path)
+    prefixes = store_prefixes(root, root, load_manifest(root))
+
+    for path in (
+        "src/app.py",
+        "README.md",
+        "items/task/a.md",
+        "records/2026-10/01J.json",
+        "rail.yaml",
+    ):
+        assert owns_path(path, prefixes) is (path not in {"src/app.py", "README.md"})

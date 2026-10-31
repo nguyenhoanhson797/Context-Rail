@@ -9,6 +9,7 @@ from typing import Any
 
 from context_rail.runner import git as git_runner
 from context_rail.runner.run import run
+from context_rail.store.location import owns_path
 from context_rail.store.write import WriteRefused
 
 GIT_MAX_OUTPUT = 2_000_000
@@ -79,7 +80,13 @@ def unmerged(cwd: Path, root: Path) -> tuple[str, ...]:
     return tuple(line.split("\t", 1)[-1] for line in text.splitlines() if line.strip())
 
 
-def dirty_outside(cwd: Path, root: Path, store_rel: str) -> str | None:
+def dirty_outside(
+    cwd: Path,
+    root: Path,
+    store_rel: str,
+    *,
+    prefixes: tuple[str, ...] | None = None,
+) -> str | None:
     result = run(
         ["git", "status", "--porcelain=v1", "-z", "--untracked-files=no"],
         cwd=cwd,
@@ -97,11 +104,12 @@ def dirty_outside(cwd: Path, root: Path, store_rel: str) -> str | None:
         raise WriteRefused(
             "INTEGRATION_FAILURE", "git status failed", {"process": "git"}
         )
+    owned = (store_rel,) if prefixes is None else tuple(prefixes)
     for token in result["stdout"].split("\0"):
         if len(token) < 4:
             continue
         path = token[3:]
-        if not _under(path, store_rel):
+        if not owns_path(path, owned):
             return path
     return None
 
@@ -375,12 +383,6 @@ def _revision(value: object, what: str) -> str:
             "VALIDATION_FAILED", f"{what} contains a NUL byte", {"revision": value}
         )
     return value
-
-
-def _under(path: str, store_rel: str) -> bool:
-    path = path.replace("\\", "/")
-    prefix = store_rel.rstrip("/") + "/"
-    return path == store_rel or path.startswith(prefix)
 
 
 def sha_key(value: str) -> str:
