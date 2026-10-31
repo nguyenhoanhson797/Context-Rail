@@ -283,6 +283,21 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.measure:measure_fix",
     ),
     Tool(
+        name="rollback",
+        summary="Restore a retained skill or profile version into a new version.",
+        permission="write",
+        params=(
+            Param("target_class", "str", required=True, help="skill or profile"),
+            Param("target", "str", required=True, help="workspace-relative target"),
+            Param("version", "int", required=True, help="version to restore"),
+            Param("expect", "str", required=True, help="the current etag"),
+            Param("key", "str", help="idempotency key"),
+            Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
+        ),
+        handler="context_rail.gateway.handlers.versions:rollback",
+        decision="cto-alone",
+    ),
+    Tool(
         name="add",
         summary="Create one document from a preset.",
         permission="write",

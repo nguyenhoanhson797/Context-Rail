@@ -687,3 +687,19 @@ def record_inventory(store: Path) -> dict[str, tuple[str, str]]:
         if isinstance(record_id, str) and record_id:
             found[record_id] = (rel, hashlib.sha256(data).hexdigest())
     return found
+
+
+def bump_versioned(
+    store: Path, slug: str, *, body_file: Path, actor: str = "cto"
+) -> dict[str, Any]:
+    """Read the current etag through ``show`` and update the body with it."""
+    from context_rail.gateway.gateway import invoke
+
+    shown = invoke("show", {"slug": slug}, store=store, actor=actor)
+    etag = shown["value"]["doc"]["etag"]
+    return invoke(
+        "update",
+        {"slug": slug, "expect": etag, "body_file": str(body_file)},
+        store=store,
+        actor=actor,
+    )
