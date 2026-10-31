@@ -81,29 +81,35 @@ def blocked(items: list[ItemRow]) -> dict[str, str]:
 
 
 def cycles(items: list[ItemRow]) -> frozenset[str]:
-    """Every slug that lies on a ``depends_on`` cycle."""
-    edges = {item.slug: tuple(dep for dep in item.depends_on) for item in items}
-    state: dict[str, int] = {}
-    stack: list[str] = []
+    """Every slug that lies on a ``depends_on`` cycle (iterative, bounded memory)."""
+    edges = {item.slug: tuple(item.depends_on) for item in items}
+    color: dict[str, int] = {}
     found: set[str] = set()
-
-    def visit(node: str) -> None:
-        marker = state.get(node, 0)
-        if marker == 2:
-            return
-        if marker == 1:
-            if node in stack:
-                found.update(stack[stack.index(node) :])
-            return
-        state[node] = 1
-        stack.append(node)
-        for neighbour in edges.get(node, ()):
-            visit(neighbour)
-        stack.pop()
-        state[node] = 2
-
-    for slug in edges:
-        visit(slug)
+    for root in edges:
+        if color.get(root) == 2:
+            continue
+        color[root] = 1
+        stack: list[tuple[str, int]] = [(root, 0)]
+        path: list[str] = []
+        while stack:
+            node, position = stack[-1]
+            if position == 0:
+                path.append(node)
+            neighbours = edges.get(node, ())
+            if position < len(neighbours):
+                stack[-1] = (node, position + 1)
+                neighbour = neighbours[position]
+                state = color.get(neighbour, 0)
+                if state == 1:
+                    if neighbour in path:
+                        found.update(path[path.index(neighbour) :])
+                elif state == 0:
+                    color[neighbour] = 1
+                    stack.append((neighbour, 0))
+            else:
+                color[node] = 2
+                stack.pop()
+                path.pop()
     return frozenset(found)
 
 
