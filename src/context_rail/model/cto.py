@@ -194,6 +194,16 @@ CTO_METHODS = WORKER_METHODS + (
     "digest",
     "adapters sync",
     "ci",
+    "pack list",
+    "pack show",
+    "pack validate",
+    "pack create",
+    "measure versions",
+    "measure fix",
+    "rollback",
+    "sync",
+    "sync driver",
+    "mcp serve",
 )
 PROFILE_METHODS = CTO_METHODS + ("init", "approve", "cto tick")
 

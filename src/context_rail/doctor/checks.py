@@ -28,6 +28,7 @@ from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, render_path
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import PRIMITIVES
+from context_rail.doctor import stage2
 from context_rail.store.doc import (
     BAD_ENCODING,
     PARSE_ERROR,
@@ -70,6 +71,8 @@ SEVERITIES: dict[str, str] = {
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
+
+SEVERITIES.update(stage2.SEVERITY)
 
 _REPAIR = "rail doctor --repair"
 _APPROVE = 'rail approve charter --confirm "APPROVE charter" --confirmer <you>'
@@ -121,6 +124,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_run_issues(ix))
     issues.extend(_profile_issues(context, rows))
     issues.extend(_adapter_issues(store))
+    issues.extend(stage2.issues(store, manifest, pack, ix))
     issues.sort(key=lambda issue: (issue["path"], issue["code"]))
 
     counts = {"error": 0, "warning": 0, "info": 0}

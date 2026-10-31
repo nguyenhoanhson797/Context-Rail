@@ -13,6 +13,7 @@ import pytest
 from context_rail.core.result import is_ok
 from context_rail.doctor import checks as doctor_checks
 from context_rail.doctor.checks import SEVERITIES, run_doctor
+from context_rail.doctor.stage2 import SEVERITY as STAGE2_SEVERITIES
 from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
@@ -425,7 +426,9 @@ def test_the_pinned_codes_have_the_pinned_severities() -> None:
 
 
 def test_the_doctor_emits_no_other_stage1b_prefix_code() -> None:
-    assert set(SEVERITIES) == set(STAGE1B_CODES) | STAGE1A_CODES
+    assert set(SEVERITIES) == (
+        set(STAGE1B_CODES) | STAGE1A_CODES | set(STAGE2_SEVERITIES)
+    )
 
 
 def test_every_pinned_code_is_a_literal_in_the_doctor_source() -> None:

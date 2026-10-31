@@ -519,6 +519,12 @@ class Index:
         """Close the connection, releasing the database file."""
         self.conn.close()
 
+    def __enter__(self) -> "Index":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
     def _scan(self) -> tuple[dict[str, tuple[int, int]], int]:
         """Every indexable file with its stat, plus the count of skipped ones."""
         root = self.store.resolve()

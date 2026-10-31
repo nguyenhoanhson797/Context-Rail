@@ -49,6 +49,9 @@ _REFUSED_TOOLS = (
     "measure versions",
     "measure fix",
     "rollback",
+    "sync",
+    "sync driver",
+    "mcp serve",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -94,6 +97,9 @@ _ARGS: dict[str, dict[str, Any]] = {
     "measure versions": {"target_class": "skill", "target": "test-first", "before": 1, "after": 2},
     "measure fix": {"item": "t0"},
     "rollback": {"target_class": "skill", "target": "workspace/skills/test-first.md", "version": 1, "expect": "0" * 16},
+    "sync": {},
+    "sync driver": {"kind": "doc", "base": "b", "ours": "o", "theirs": "t", "path": "p"},
+    "mcp serve": {},
 }
 _ZONK = f"""---
 primitive: item

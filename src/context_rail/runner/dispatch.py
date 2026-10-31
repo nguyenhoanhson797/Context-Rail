@@ -97,7 +97,6 @@ def project_root(store: Path) -> Path:
         raise WriteRefused(
             "INTEGRATION_FAILURE",
             "the canonical store is not inside a Git worktree",
-            {"store": str(store)},
         )
     return located[1]
 

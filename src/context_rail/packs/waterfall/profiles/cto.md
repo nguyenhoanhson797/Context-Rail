@@ -4,7 +4,9 @@ version: 1
 recipe: cto
 allowed_methods: [find, show, cto brief, ledger, report, add, update, move, link,
                   rename, relocate, status, reindex, doctor, check, verify, dispatch,
-                  review, merge, triage, digest, adapters sync, ci]
+                  review, merge, triage, digest, adapters sync, ci, pack list, pack show,
+                  pack validate, pack create, measure versions, measure fix, rollback,
+                  sync, sync driver, mcp serve]
 budget: {max_chars: 12000, max_docs: 20}
 model: 'custom:Deepseek-V4-flash-0'
 effort: null
