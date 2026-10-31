@@ -11,7 +11,8 @@ import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -687,6 +688,88 @@ def record_inventory(store: Path) -> dict[str, tuple[str, str]]:
         if isinstance(record_id, str) and record_id:
             found[record_id] = (rel, hashlib.sha256(data).hexdigest())
     return found
+
+
+def tree_bytes(root: Path) -> dict[str, bytes]:
+    """Every file under ``root`` keyed by its relative POSIX path."""
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in sorted(Path(root).rglob("*"))
+        if path.is_file()
+    }
+
+
+def ui_call(
+    base: str,
+    path: str,
+    *,
+    token: str | None,
+    method: str = "GET",
+    body: Any = None,
+    host: str | None = None,
+) -> tuple[int, Any, dict[str, str]]:
+    """One request to the loopback UI: status, decoded payload and headers."""
+    import http.client
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(base)
+    connection = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
+    headers = {"Content-Type": "application/json"}
+    if token is not None:
+        headers["X-Rail-Token"] = token
+    if host is not None:
+        headers["Host"] = host
+    payload = json.dumps(body).encode("utf-8") if body is not None else None
+    try:
+        connection.request(method, path, body=payload, headers=headers)
+        response = connection.getresponse()
+        raw = response.read()
+        returned = {name.lower(): value for name, value in response.getheaders()}
+    finally:
+        connection.close()
+    try:
+        decoded = json.loads(raw)
+    except ValueError:
+        decoded = raw.decode("utf-8", "replace")
+    return response.status, decoded, returned
+
+
+def ui_oversize_probe(base: str, token: str, size: int) -> int:
+    """Announce a ``size``-byte body without sending it; return the status code."""
+    import http.client
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(base)
+    connection = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
+    try:
+        connection.putrequest("POST", "/api/tool/find")
+        connection.putheader("X-Rail-Token", token)
+        connection.putheader("Content-Length", str(size))
+        connection.putheader("Content-Type", "application/json")
+        connection.endheaders()
+        response = connection.getresponse()
+        response.read()
+        return response.status
+    finally:
+        connection.close()
+
+
+@contextmanager
+def serve_ui(store: Path, *, actor: str = "human") -> Iterator[Any]:
+    """Run the loopback UI on an ephemeral port for the duration of the block."""
+    import threading
+
+    from context_rail.ui.server import create_server
+
+    created = create_server(store, actor=actor, port=0)
+    thread = threading.Thread(target=created.server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield created
+    finally:
+        created.server.shutdown()
+        created.server.server_close()
+        thread.join(5)
 
 
 def bump_versioned(

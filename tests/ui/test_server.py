@@ -1,40 +1,12 @@
 from __future__ import annotations
 
-import http.client
 import json
-from urllib.parse import urlsplit
 
 from context_rail.gateway.gateway import invoke
 from context_rail.ui.server import MAX_BODY
+from helpers import ui_call, ui_oversize_probe
 
-
-def _call(
-    base: str,
-    path: str,
-    *,
-    token: str | None,
-    method: str = "GET",
-    body: dict | None = None,
-    host: str | None = None,
-) -> tuple[int, dict, dict]:
-    parts = urlsplit(base)
-    connection = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
-    headers = {"Content-Type": "application/json"}
-    if token is not None:
-        headers["X-Rail-Token"] = token
-    if host is not None:
-        headers["Host"] = host
-    payload = json.dumps(body).encode("utf-8") if body is not None else None
-    connection.request(method, path, body=payload, headers=headers)
-    response = connection.getresponse()
-    raw = response.read()
-    headers_out = {name.lower(): value for name, value in response.getheaders()}
-    connection.close()
-    try:
-        payload = json.loads(raw)
-    except ValueError:
-        payload = raw.decode("utf-8", "replace")
-    return response.status, payload, headers_out
+_call = ui_call
 
 
 def test_context_needs_a_token_and_never_runs_doctor(ui_server) -> None:
@@ -114,17 +86,7 @@ def test_hosts_and_reserved_arguments_are_refused(ui_server) -> None:
 
 
 def test_the_body_cap_refuses_before_reading(ui_server) -> None:
-    parts = urlsplit(ui_server.base)
-    connection = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
-    connection.putrequest("POST", "/api/tool/find")
-    connection.putheader("X-Rail-Token", ui_server.token)
-    connection.putheader("Content-Length", str(MAX_BODY + 1))
-    connection.putheader("Content-Type", "application/json")
-    connection.endheaders()
-    response = connection.getresponse()
-    assert response.status == 413
-    response.read()
-    connection.close()
+    assert ui_oversize_probe(ui_server.base, ui_server.token, MAX_BODY + 1) == 413
 
 
 def test_the_page_is_self_contained(ui_server) -> None:

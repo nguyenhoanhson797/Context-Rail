@@ -380,7 +380,7 @@ def picture_ops(
                 ABSENT,
             )
         )
-    ops.extend(_agent_ops(context.store, manifest, pack_name))
+    ops.extend(agent_ops(context.store, manifest, pack_name))
     picture = [
         slugs["goal"],
         slugs["vision"],
@@ -608,7 +608,7 @@ def _charter_frontmatter(
     }
 
 
-def _agent_ops(store: Path, manifest: Manifest, pack_name: str) -> list[Op]:
+def agent_ops(store: Path, manifest: Manifest, pack_name: str) -> list[Op]:
     """The active pack's Actor profiles and scoped skill Notes, absent-only."""
     ops: list[Op] = []
     skills = load_pack_skills(pack_name)

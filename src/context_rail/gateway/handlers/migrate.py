@@ -10,6 +10,7 @@ import yaml
 
 from context_rail.core.util import now_iso
 from context_rail.gateway.handlers.init import GITIGNORE, PINNED_FOLDERS
+from context_rail.gateway.handlers.onboarding import agent_ops
 from context_rail.model.manifest import DEFAULT_MANIFEST, manifest_from_mapping
 from context_rail.model.pack import load_pack
 from context_rail.store.legacy import read_legacy
@@ -31,9 +32,16 @@ def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, 
             "migrating a legacy store is a human-only action",
             {"tool": "migrate", "actor": actor},
         )
-    source = Path(args["source"])
+    source = Path(args["source"]).resolve()
     directory = Path(args["dir"] or Path.cwd())
     target = confine(directory, args["root"])
+    resolved_target = target.resolve()
+    if source == resolved_target or resolved_target in source.parents:
+        raise WriteRefused(
+            "FORBIDDEN",
+            "the migration source must sit outside the target store",
+            {"source": str(source), "target": str(target)},
+        )
     key = args.get("key")
     saved = replay(target, key)
     if saved is not None:
@@ -69,6 +77,7 @@ def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, 
         Op(".gitignore", GITIGNORE, ABSENT),
         *(Op(document.rel, document.data, ABSENT) for document in plan.documents),
         *(Op(record.rel, record.data, ABSENT) for record in plan.records),
+        *agent_ops(target, manifest, pack.name),
     ]
     record = {
         "kind": "migration.completed",

@@ -9,7 +9,8 @@ repository is a clean rebuild. The legacy v1/v2 code lives in the sibling
 ## Source of truth
 
 - Design: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
-- Current plan: `docs/superpowers/plans/2026-10-28-v3-stage-3.md`
+- Stage 3 plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-3.md`
+- Stage 3 architecture: `library/arch-stage-3.md`
 - Stage 2 plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-2.md`
 - Stage 2 architecture: `library/arch-stage-2.md`
 - Stage 1b plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-1b-cto-slice.md`
@@ -21,7 +22,8 @@ repository is a clean rebuild. The legacy v1/v2 code lives in the sibling
 
 Work the plan task by task, in order. If the plan and the code disagree, or a
 step cannot be done as written, stop and report it rather than improvising a
-different design.
+different design. Stage 3 completes the planned product; a Stage 4 does not
+exist, so new work starts from a new design rather than a new stage plan.
 
 ## Environment (Windows, PowerShell)
 
