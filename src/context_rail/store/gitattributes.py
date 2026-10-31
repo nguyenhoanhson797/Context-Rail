@@ -25,14 +25,30 @@ def managed_attributes(existing: bytes | None) -> bytes:
     block = "\n".join([START, *RULES, END]) + "\n"
     if existing is None:
         return block.encode("utf-8")
-    text = existing.decode("utf-8")
+    try:
+        text = existing.decode("utf-8")
+    except UnicodeDecodeError:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "the .gitattributes file is not UTF-8",
+            {"path": ".gitattributes"},
+        ) from None
     _refuse_foreign_merge(text)
+    if text.count(START) > 1 or text.count(END) > 1:
+        raise WriteRefused(
+            "CONFLICT",
+            "the managed .gitattributes block appears more than once",
+            {"reason": "duplicate_markers"},
+        )
     start = text.find(START)
     end = text.find(END)
     if start != -1 and end != -1 and end > start:
         before = text[:start]
         after = text[end + len(END) :]
-        after = after.lstrip("\r\n")
+        if after.startswith("\r\n"):
+            after = after[2:]
+        elif after.startswith(("\n", "\r")):
+            after = after[1:]
         return (before + block + after).encode("utf-8")
     if start != -1 or end != -1:
         raise WriteRefused(

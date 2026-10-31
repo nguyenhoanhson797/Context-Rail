@@ -35,3 +35,61 @@ def test_driver_config_is_quoted_posix_and_per_kind() -> None:
     assert set(values) == {"merge.rail-doc.driver", "merge.rail-record.driver", "merge.rail-config.driver"}
     assert values["merge.rail-doc.driver"].endswith(" -m context_rail sync driver doc %O %A %B %P")
     assert '"' in values["merge.rail-doc.driver"] and "\\" not in values["merge.rail-doc.driver"].split('"')[1]
+
+
+def test_a_fresh_file_is_exactly_the_managed_block() -> None:
+    from context_rail.store.gitattributes import END, RULES, START
+
+    assert managed_attributes(None).decode("utf-8").splitlines() == [
+        START,
+        *RULES,
+        END,
+    ]
+
+
+def test_non_utf8_existing_bytes_refuse_cleanly() -> None:
+    import pytest
+
+    from context_rail.store.write import WriteRefused
+
+    with pytest.raises(WriteRefused) as caught:
+        managed_attributes(b"*.png binary\n\xff\n")
+
+    assert caught.value.code == "VALIDATION_FAILED"
+
+
+def test_blank_lines_after_the_block_survive() -> None:
+    from context_rail.store.gitattributes import END, START
+
+    existing = f"{START}\n{END}\n\nuser line\n".encode("utf-8")
+
+    merged = managed_attributes(existing)
+
+    assert merged.endswith(f"{END}\n\nuser line\n".encode("utf-8"))
+
+
+def test_user_lines_before_and_after_the_block_survive() -> None:
+    from context_rail.store.gitattributes import END, START
+
+    existing = f"*.png binary\n{START}\n{END}\n*.zip binary\n".encode("utf-8")
+
+    merged = managed_attributes(existing).decode("utf-8")
+
+    assert merged.startswith("*.png binary\n")
+    assert merged.endswith("*.zip binary\n")
+
+
+def test_duplicate_or_malformed_blocks_refuse() -> None:
+    import pytest
+
+    from context_rail.store.gitattributes import END, START
+    from context_rail.store.write import WriteRefused
+
+    for existing in (
+        f"{START}\n{END}\n{START}\n{END}\n",
+        f"{START}\n{END}\n{START}\n",
+        f"{END}\n{START}\n",
+    ):
+        with pytest.raises(WriteRefused) as caught:
+            managed_attributes(existing.encode("utf-8"))
+        assert caught.value.code == "CONFLICT"
