@@ -38,7 +38,7 @@ from context_rail.core.util import (
 from context_rail.model.manifest import Manifest, render_path
 from context_rail.model.primitives import RELATIONS
 from context_rail.store.adapters import ADAPTER_PREFIX, project_root, resolve_adapter
-from context_rail.store.doc import etag, record_digest
+from context_rail.store.doc import etag, parse_doc, record_digest
 from context_rail.store.index import Index
 from context_rail.store.location import PathEscape, confine, local_dir
 from context_rail.store.lock import store_lock
@@ -221,6 +221,7 @@ def commit(
         if inventory is not None:
             _check_inventory(store, inventory)
         planned = _build_records(store, manifest, requests, targets, actor)
+        targets = _record_imports(targets)
         primary = planned[0] if planned else None
         written = [target.display for target in targets]
         if primary is not None and primary.rel.lower().endswith(".md"):
@@ -627,6 +628,52 @@ def _markdown_record(
         payload={**payload, "digest": digest},
         data=text.encode("utf-8"),
     )
+
+
+def _record_imports(targets: list[_Target]) -> list[_Target]:
+    """Records are append-only: an absent added file is kept, a rewrite refused."""
+    kept: list[_Target] = []
+    for target in targets:
+        if not target.rel.startswith("records/"):
+            kept.append(target)
+            continue
+        if target.data is None:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "records are immutable and cannot be deleted",
+                {"path": target.rel},
+            )
+        if target.path.exists():
+            if target.path.read_bytes() == target.data:
+                continue
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "records are immutable and cannot be replaced",
+                {"path": target.rel},
+            )
+        if not _valid_record_bytes(target.data, target.rel):
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "an imported record does not carry valid original bytes",
+                {"path": target.rel},
+            )
+        kept.append(target)
+    return kept
+
+
+def _valid_record_bytes(data: bytes, rel: str) -> bool:
+    if rel.lower().endswith(".json"):
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        if not isinstance(payload.get("id"), str) or not payload["id"]:
+            return False
+        return payload.get("digest") == record_digest(payload)
+    doc = parse_doc(rel, data)
+    return not doc.problems and isinstance(doc.fields.get("id"), str)
 
 
 def store_inventory(store: Path) -> tuple[tuple[str, str], ...]:

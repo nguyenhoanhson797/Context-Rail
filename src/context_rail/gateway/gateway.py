@@ -240,11 +240,12 @@ def _authorize(
         if nested is not None:
             return fail("PERMISSION_DENIED", nested, {"tool": tool.name, "actor": actor})
     profile = context.profile
-    # ``cto tick`` starts the CTO session rather than acting inside one, so the
-    # profile it instantiates does not gate it; every other method still does.
+    # ``cto tick`` starts the CTO session rather than acting inside one, and
+    # ``mcp serve`` only opens a transport whose calls are gated one by one, so
+    # neither is narrowed by the caller's profile.
     if (
         profile is not None
-        and tool.name != "cto tick"
+        and tool.name not in ("cto tick", "mcp serve")
         and tool.name not in profile.allowed_methods
     ):
         return fail(
@@ -461,7 +462,14 @@ def _handler(spec: str) -> Handler:
 def _failure(exc: Exception) -> dict[str, Any]:
     """Map the exception a layer refused with onto its Result code."""
     if isinstance(exc, WriteRefused):
-        return fail(exc.code, exc.message, exc.details)
+        details = dict(exc.details or {})
+        process = details.pop("process", None)
+        return fail(
+            exc.code,
+            exc.message,
+            details or None,
+            process if isinstance(process, str) else None,
+        )
     if isinstance(exc, ModelError):
         return fail(exc.code, exc.message)
     if isinstance(exc, QueryError):
