@@ -94,16 +94,18 @@ def retarget_text(text: str, old_name: str, new_name: str) -> tuple[str, int]:
 def split_frontmatter(text: str) -> tuple[str, str] | None:
     """``(block, rest)`` for text with a closed frontmatter block, else None.
 
-    ``block`` is everything between the delimiters; ``rest`` everything after
-    the closing delimiter. :func:`join_frontmatter` rebuilds the text with the
-    delimiters back in place.
+    A leading BOM is ignored, and both ``---`` and YAML's ``...`` close the
+    block, so every caller accepts the same documents. ``block`` is everything
+    between the delimiters; ``rest`` everything after the closing delimiter.
     """
+    if text.startswith("\ufeff"):
+        text = text[1:]
     lines = text.split("\n")
     if not lines or lines[0].strip() != "---":
         return None
     end = None
     for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
+        if lines[i].strip() in ("---", "..."):
             end = i
             break
     if end is None:
@@ -113,7 +115,9 @@ def split_frontmatter(text: str) -> tuple[str, str] | None:
 
 def join_frontmatter(block: str, rest: str) -> str:
     """Reassemble a file from a frontmatter block and the body after it."""
-    return f"---\n{block}\n---\n{rest}"
+    newline = "\r\n" if "\r\n" in rest else "\n"
+    body = block.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n")
+    return f"---{newline}{body}{newline}---{newline}{rest}"
 
 
 def _split_scalar(rest: str) -> tuple[str | None, str, str, str, bool]:
@@ -206,10 +210,13 @@ def _walk(
                     continue
                 new_value, changed = transform(value, path)
                 count += changed
-                out.append(
-                    f"{key_match.group(1)}{key}:"
-                    f"{_render(new_value, pre, post, quote)}"
-                )
+                if new_value != value:
+                    out.append(
+                        f"{key_match.group(1)}{key}:"
+                        f"{_render(new_value, pre, post, quote)}"
+                    )
+                else:
+                    out.append(line)
                 continue
             if any(field.startswith(path + ".") for field in link_fields):
                 stack.append((indent, key))

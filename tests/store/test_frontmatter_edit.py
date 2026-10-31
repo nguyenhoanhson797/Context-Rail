@@ -94,3 +94,32 @@ def test_split_and_join_frontmatter_round_trip() -> None:
     assert split == ("title: Login", "# Login\n")
     assert join_frontmatter(*split) == text
     assert split_frontmatter("# no frontmatter\n") is None
+
+
+def test_split_accepts_a_dots_closer() -> None:
+    text = "---\ntitle: Login\n...\n# Login\n"
+
+    split = split_frontmatter(text)
+
+    assert split == ("title: Login", "# Login\n")
+
+
+def test_split_accepts_a_bom_and_join_keeps_crlf() -> None:
+    text = "\ufeff---\r\ntitle: Login\r\n---\r\n# Login\r\n"
+
+    split = split_frontmatter(text)
+
+    assert split is not None
+    assert join_frontmatter(*split).endswith("---\r\n# Login\r\n")
+
+
+def test_an_unchanged_link_line_is_not_reemitted() -> None:
+    line = "depends_on:   '[[other]]'   # keep this spacing\n"
+    block = "title: Login\n" + line
+
+    rewritten, count, handled = rewrite_links_block(
+        block, "auth", "authentication", {"depends_on"}
+    )
+
+    assert handled is True and count == 0
+    assert rewritten == block
