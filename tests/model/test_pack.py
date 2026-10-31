@@ -285,3 +285,16 @@ def test_a_template_must_be_a_safe_relative_path(
         load_pack("small", tmp_path)
 
     assert caught.value.code == "VALIDATION_FAILED"
+
+
+def test_duplicate_policy_keys_refuse(tmp_path: Path) -> None:
+    path = tmp_path / "packs" / "small" / "pack.yaml"
+    path.parent.mkdir(parents=True)
+    text = yaml.safe_dump(_pack(), sort_keys=False)
+    text = text.replace("policy:\n", "policy:\n  retries: 1\n", 1)
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+    with pytest.raises(ModelError) as caught:
+        load_pack("small", tmp_path)
+
+    assert caught.value.code == "VALIDATION_FAILED"

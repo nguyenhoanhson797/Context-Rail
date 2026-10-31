@@ -155,8 +155,10 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
 
     project = parse_project(data["project"])
     protected_files = tuple(
-        relative_path(path, "charter.protected_files")
-        for path in _list(data.get("protected_files", []), "charter.protected_files")
+        dict.fromkeys(
+            relative_path(path, "charter.protected_files")
+            for path in _list(data.get("protected_files", []), "charter.protected_files")
+        )
     )
     gates = _gates(data.get("gates"))
     decision_rights = _decision_rights(data.get("decision_rights"))

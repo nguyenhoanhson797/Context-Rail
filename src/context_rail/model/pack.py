@@ -14,6 +14,8 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, NoReturn
 
+import yaml
+
 from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
@@ -27,7 +29,6 @@ from context_rail.model.primitives import (
 __all__ = [
     "PACK_KEYS",
     "PACK_VERSION",
-    "POLICY_KEYS",
     "Pack",
     "Preset",
     "ModelError",
@@ -39,7 +40,6 @@ __all__ = [
 
 PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
 PRESET_KEYS = ("primitive", "tags", "fields", "template")
-POLICY_KEYS = PACK_POLICY_KEYS
 PACK_VERSION = 1
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
 DEFAULT_MEASUREMENT_MIN_RUNS = 10
@@ -107,7 +107,7 @@ def _builtin_pack(name: str) -> Any | None:
 
 
 def _parse_pack(text: str, requested_name: str) -> Pack:
-    data = _mapping(load_yaml(text), "pack.yaml")
+    data = _mapping(_strict_yaml(text), "pack.yaml")
 
     if "version" not in data:
         _refuse("pack.yaml is missing version")
@@ -223,7 +223,7 @@ def _fields(raw: Any, preset: str) -> dict[str, tuple[str, ...]]:
 
 def _policy(raw: Any) -> dict[str, Any]:
     policy = _mapping(raw, "policy")
-    unknown = sorted(set(policy) - set(POLICY_KEYS))
+    unknown = sorted(set(policy) - set(PACK_POLICY_KEYS))
     if unknown:
         _refuse("unknown policy key(s): " + ", ".join(unknown))
     missing = [key for key in ("stuck_hours", "retries") if key not in policy]
@@ -290,6 +290,34 @@ def _read_text(source: Any) -> str:
         _refuse(f"pack.yaml is not valid UTF-8: {exc}")
     except OSError as exc:
         _refuse(f"cannot read pack.yaml: {exc}")
+
+
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def _strict_yaml(text: str) -> Any:
+    try:
+        node = yaml.compose(text, Loader=_LOADER)
+    except yaml.YAMLError:
+        _refuse("pack.yaml is not valid YAML")
+    if node is not None:
+        _reject_duplicate_keys(node)
+    return load_yaml(text)
+
+
+def _reject_duplicate_keys(node: Any) -> None:
+    if isinstance(node, yaml.MappingNode):
+        seen: set[tuple[str, str]] = set()
+        for key_node, value_node in node.value:
+            if isinstance(key_node, yaml.ScalarNode):
+                marker = (key_node.tag, key_node.value)
+                if marker in seen:
+                    _refuse(f"pack.yaml repeats the key {key_node.value!r}")
+                seen.add(marker)
+            _reject_duplicate_keys(value_node)
+    elif isinstance(node, yaml.SequenceNode):
+        for item in node.value:
+            _reject_duplicate_keys(item)
 
 
 def _refuse(message: str) -> NoReturn:

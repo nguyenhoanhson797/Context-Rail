@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, NoReturn
 
-from context_rail.core.util import load_yaml
+from context_rail.core.util import canonical_iso, load_yaml
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
 from context_rail.model.pack import load_pack
@@ -200,13 +200,10 @@ def _check_template(template: Any, where: str) -> None:
 
 
 def _parse_at(at: str) -> datetime:
-    try:
-        stamp = datetime.fromisoformat(at.replace("Z", "+00:00"))
-    except (AttributeError, ValueError) as exc:
-        _refuse(f"cannot read timestamp {at!r}: {exc}")
-    if stamp.tzinfo is None:
-        return stamp
-    return stamp.astimezone(timezone.utc)
+    value = canonical_iso(at) if isinstance(at, str) else None
+    if value is None:
+        _refuse(f"cannot read timestamp {at!r}")
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _mapping(value: Any, what: str) -> dict[str, Any]:

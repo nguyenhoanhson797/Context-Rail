@@ -322,3 +322,27 @@ def test_local_pack_appearance_and_removal_recheck_preset_override(
 
     path.unlink()
     assert load_manifest(tmp_path).preset_placement == expected
+
+
+def test_z_timestamps_canonicalize_the_same_way() -> None:
+    from context_rail.model.manifest import manifest_from_mapping
+
+    manifest = manifest_from_mapping(copy.deepcopy(DEFAULT_MANIFEST))
+    stamps = (
+        "2026-10-28T12:00:00Z",
+        "2026-10-28T12:00:00z",
+        "2026-10-28T13:00:00+01:00",
+    )
+    rendered = {
+        render_path(
+            manifest,
+            primitive="record",
+            preset="event",
+            slug="event",
+            record_id="01J00000000000000000000000",
+            at=stamp,
+        )
+        for stamp in stamps
+    }
+
+    assert len(rendered) == 1

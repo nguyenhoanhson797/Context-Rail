@@ -7,6 +7,7 @@ impossible value raises a ``ModelError`` so the caller can fail closed.
 from __future__ import annotations
 
 import math
+import os
 import re
 from typing import Any, Iterable, NoReturn
 
@@ -147,6 +148,8 @@ def relative_path(value: Any, what: str, *, glob: bool = False) -> str:
     segments = text.split("/")
     if any(segment in ("", ".", "..") for segment in segments):
         refuse(f"{what} must not contain empty, '.' or '..' segments: {text!r}")
+    if os.name == "nt" and any(":" in segment for segment in segments[1:]):
+        refuse(f"{what} must not name an alternate data stream: {text!r}")
     if not glob and _GLOB_CHARS & set(text):
         refuse(f"{what} must be a plain path, not a glob: {text!r}")
     return text

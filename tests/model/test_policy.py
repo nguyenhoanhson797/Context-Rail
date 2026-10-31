@@ -471,7 +471,7 @@ def test_answers_return_the_validated_picture() -> None:
 def test_policy_allowlist_is_extended_once_centrally() -> None:
     assert PACK_POLICY_KEYS == ("stuck_hours", "retries", "measurement_min_runs")
     assert POLICY_KEYS == PACK_POLICY_KEYS + CHARTER_KEYS
-    assert pack_module.POLICY_KEYS == PACK_POLICY_KEYS
+    assert not hasattr(pack_module, "POLICY_KEYS")
     assert set(CHARTER_KEYS) == {
         "schema",
         "project",
@@ -528,3 +528,23 @@ def test_pinned_decision_rights_match_the_design() -> None:
         "stuck_exhausted",
         "charter",
     )
+
+
+def test_duplicate_protected_files_are_deduplicated() -> None:
+    charter = parse_charter(
+        charter_fields(protected_files=["rail.yaml", "rail.yaml", "charter.md"])
+    )
+
+    assert charter.protected_files == ("rail.yaml", "charter.md")
+
+
+def test_a_windows_alternate_data_stream_is_refused() -> None:
+    import os
+
+    if os.name != "nt":
+        pytest.skip("alternate data streams are a Windows path feature")
+
+    with pytest.raises(ModelError):
+        parse_charter(
+            charter_fields(protected_files=["items/task/a.md:stream"])
+        )
