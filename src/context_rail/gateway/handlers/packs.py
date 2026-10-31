@@ -119,6 +119,9 @@ def pack_create(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
     name = args["name"]
     source = args["from"]
     check_pack_name(name)
+    check_pack_name(source)
+    if source not in pack_origins(ctx.store):
+        raise WriteRefused("NOT_FOUND", f"unknown pack {source!r}", {"pack": source})
     destination = Path(ctx.store) / "packs" / name / "pack.yaml"
     if destination.exists():
         raise WriteRefused(

@@ -6,6 +6,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from context_rail.model.pack import check_pack_name
 from context_rail.store.write import ABSENT, Op, WriteRefused
 
 
@@ -16,6 +17,7 @@ def _builtin_root(name: str) -> Any | None:
 
 def pack_root(store: Path, name: str) -> Any | None:
     """The store-local pack directory, else the built-in one."""
+    check_pack_name(name)
     local = Path(store) / "packs" / name
     if (local / "pack.yaml").is_file():
         return local
