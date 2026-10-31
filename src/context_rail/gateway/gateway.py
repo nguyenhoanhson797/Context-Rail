@@ -157,7 +157,7 @@ def invoke(
     try:
         tool = _tool(name)
         params = _parameters(tool, args)
-        if tool.name != "init":
+        if tool.name not in {"init", "migrate"}:
             context = _open_context(store, resolved_actor)
         refusal = _authorize(tool, params, context, resolved_actor, actor_env)
         if refusal is not None:

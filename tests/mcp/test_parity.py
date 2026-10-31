@@ -18,6 +18,7 @@ PARITY_CASES = {
     "measure versions": ({"target_class": "skill", "target": "workspace/skills/test-first.md", "before": 1, "after": 2}, "cto"),
     "rollback": ({"target_class": "skill", "target": "workspace/skills/test-first.md", "version": 1, "expect": "0" * 16}, "cto"),
     "sync": ({"install": True}, "cto"),
+    "migrate": ({"source": "missing-legacy", "dir": "missing-target"}, "human"),
 }
 
 

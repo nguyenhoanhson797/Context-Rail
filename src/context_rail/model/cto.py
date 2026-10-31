@@ -205,7 +205,7 @@ CTO_METHODS = WORKER_METHODS + (
     "sync driver",
     "mcp serve",
 )
-PROFILE_METHODS = CTO_METHODS + ("init", "approve", "cto tick")
+PROFILE_METHODS = CTO_METHODS + ("init", "approve", "cto tick", "migrate")
 
 REPORT_TARGET_CLASSES = (
     "item",

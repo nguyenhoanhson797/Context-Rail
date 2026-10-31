@@ -53,6 +53,21 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.onboarding:init",
     ),
     Tool(
+        name="migrate",
+        summary="Import a v1/v2 legacy store into a fresh v3 store in one commit.",
+        permission="human",
+        params=(
+            Param("source", "str", required=True, help="v1 or v2 legacy store folder"),
+            Param("dir", "str", required=True, help="project directory for the new store"),
+            Param("root", "str", default="context-rail", help="store folder inside the project"),
+            Param("pack", "str", default="small", help="pack name"),
+            Param("dry_run", "bool", default=False, help="plan without writing"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.migrate:migrate",
+        decision="human-only",
+    ),
+    Tool(
         name="approve",
         summary="Record the human's approval of the protected picture's meaning.",
         permission="human",
