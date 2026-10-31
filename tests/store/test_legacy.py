@@ -66,6 +66,16 @@ def test_an_unreadable_document_is_kept_as_a_warning(legacy_v2_store: Path) -> N
     assert doc.title == "broken"
 
 
+def test_a_byte_order_mark_does_not_hide_a_legacy_store(legacy_v2_store: Path) -> None:
+    for rel in ("rail.json", "log/2026-01/01JLEGACYEVENT00000000001.json"):
+        path = legacy_v2_store / rel
+        path.write_bytes(b"\xef\xbb\xbf" + path.read_bytes())
+    store = read_legacy(legacy_v2_store)
+    assert store.schema == 2
+    assert store.registry["project_id"] == "legacy-fixture"
+    assert store.events[0].id == "01JLEGACYEVENT00000000001"
+
+
 def test_duplicate_event_ids_keep_the_first(legacy_v2_store: Path) -> None:
     journal = legacy_v2_store / "log.jsonl"
     journal.write_text(

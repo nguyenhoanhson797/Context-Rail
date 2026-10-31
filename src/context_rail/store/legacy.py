@@ -155,7 +155,7 @@ def read_legacy(root: Path) -> LegacyStore:
 def _schema(root: Path) -> int:
     if (root / "rail.json").is_file():
         try:
-            data = json.loads((root / "rail.json").read_text(encoding="utf-8"))
+            data = json.loads((root / "rail.json").read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             raise WriteRefused(
                 "VALIDATION_FAILED", "rail.json is not valid JSON", {"path": "rail.json"}
@@ -315,7 +315,7 @@ def _events(root: Path, warnings: list[str]) -> list[LegacyEvent]:
     journal = root / "log.jsonl"
     if journal.is_file():
         try:
-            lines = journal.read_text(encoding="utf-8").splitlines()
+            lines = journal.read_text(encoding="utf-8-sig").splitlines()
         except (OSError, UnicodeDecodeError):
             warnings.append("log.jsonl: unreadable; no events imported")
             lines = []
@@ -330,7 +330,7 @@ def _events(root: Path, warnings: list[str]) -> list[LegacyEvent]:
 
 def _event(path: Path, warnings: list[str]) -> LegacyEvent | None:
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeDecodeError):
         warnings.append(f"{path.name}: unreadable event")
         return None
@@ -367,7 +367,7 @@ def _registry(root: Path) -> dict[str, Any]:
         if not path.is_file():
             continue
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             continue
         if isinstance(data, dict):
