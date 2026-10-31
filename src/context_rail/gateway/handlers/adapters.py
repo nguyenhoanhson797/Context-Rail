@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from context_rail.core.util import sha256_hex
+from context_rail.core.util import dump_frontmatter, sha256_hex
 from context_rail.gateway.handlers.common import is_skill_path
 from context_rail.model.errors import ModelError
 from context_rail.store import adapters
@@ -101,7 +101,9 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     dry_run = args["dry_run"] is True
 
     skills, profiles, sources = _sources(store, ctx)
-    targets = _plan(root, skills, profiles)
+    requested = args.get("harness") or []
+    harnesses = _harnesses(requested)
+    targets = _plan(root, skills, profiles, harnesses)
     written: list[str] = []
     unchanged: list[str] = []
     refused: list[str] = []
@@ -166,7 +168,7 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "paths": [target.display for target in targets],
         "payload_digests": {target.display: target.digest for target in targets},
         "source_etags": sources,
-        "harnesses": [],
+        "harnesses": list(harnesses) if requested else [],
         "binding": binding,
     }
     result = commit(
@@ -261,55 +263,127 @@ def _reconcile(target: _Target, *, forced: bool) -> tuple[str, str, str | None]:
     return "write", current, None
 
 
-def _plan(root: Path, skills: list[_Skill], profiles: list[_Profile]) -> list[_Target]:
-    """Every adapter target, rendered in a deterministic order.
-
-    Skills render first so a marker-bearing skill body is refused by name,
-    before the block that would embed it is assembled.
-    """
-    rendered: list[tuple[str, str, str, bytes | None]] = []
-    for skill in skills:
-        text, digest = adapters.render_skill(skill.name, skill.text)
-        rel = adapters.adapter_rel("skill", skill.name)
-        rendered.append((rel, text, digest, _read(adapters.resolve_adapter(root, rel))))
-    agents_rel = adapters.AGENTS_PATH
-    agents_path = adapters.resolve_adapter(root, agents_rel)
-    existing = _read(agents_path)
-    existing_text, undecodable = _decode(existing, agents_rel)
-    payload = _agents_payload(skills, profiles)
-    conflict = undecodable
-    agents_text, agents_digest = "", ""
-    if conflict is None:
-        try:
-            agents_text, agents_digest = adapters.render_agents(existing_text, payload)
-        except adapters.AdapterConflict as exc:
-            conflict = str(exc)
-    targets = [
-        _Target(
-            rel=agents_rel,
-            path=agents_path,
-            new_text=agents_text,
-            digest=agents_digest,
-            existing_bytes=existing,
-            existing_text=existing_text,
-            conflict=conflict,
+def _harnesses(raw: list[str]) -> tuple[str, ...]:
+    """The requested harnesses, deduped in request order."""
+    if not raw:
+        return ("agents",)
+    names = tuple(dict.fromkeys(raw))
+    unknown = [name for name in names if name not in adapters.HARNESSES]
+    if unknown:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "unknown harness name(s): " + ", ".join(unknown),
+            {"harnesses": unknown, "allowed": list(adapters.HARNESSES)},
         )
-    ]
-    for rel, text, digest, current in rendered:
-        current_text, unreadable = _decode(current, rel)
+    return names
+
+
+def _plan(
+    root: Path,
+    skills: list[_Skill],
+    profiles: list[_Profile],
+    harnesses: tuple[str, ...],
+) -> list[_Target]:
+    """Every adapter target, rendered in a deterministic order."""
+    targets: list[_Target] = []
+    if "agents" in harnesses:
+        for skill in skills:
+            text, digest = adapters.render_skill(skill.name, skill.text)
+            rel = adapters.adapter_rel("skill", skill.name)
+            targets.append(
+                _whole(root, rel, text, digest, adapters.resolve_adapter(root, rel))
+            )
         targets.append(
-            _Target(
-                rel=rel,
-                path=adapters.resolve_adapter(root, rel),
-                new_text=text,
-                digest=digest,
-                existing_bytes=current,
-                existing_text=current_text,
-                whole_file=True,
-                conflict=unreadable,
+            _managed(
+                root,
+                adapters.AGENTS_PATH,
+                _agents_payload(skills, profiles),
+            )
+        )
+    if "claude" in harnesses:
+        payload = _agents_payload(skills, profiles)
+        targets.append(_managed(root, adapters.adapter_rel("claude"), payload))
+        for profile in profiles:
+            if profile.name not in adapters.CLAUDE_ROLES:
+                continue
+            model = profile.doc.fields.get("model")
+            front = {
+                "name": f"context-rail-{profile.name}",
+                "description": f"Context Rail {profile.name} role",
+                "model": model if isinstance(model, str) and model else "inherit",
+            }
+            frontmatter = "---\n" + dump_frontmatter(front) + "---\n"
+            body = f"# Context Rail {profile.name}\n\n{profile.doc.body.strip(chr(10))}\n"
+            targets.append(
+                _managed(
+                    root,
+                    adapters.adapter_rel("claude-agent", profile.name),
+                    body,
+                    frontmatter=frontmatter,
+                )
+            )
+    if "cursor" in harnesses:
+        frontmatter = "---\ndescription: Context Rail store rules\nalwaysApply: true\n---\n"
+        targets.append(
+            _managed(
+                root,
+                adapters.adapter_rel("cursor"),
+                _agents_payload(skills, profiles),
+                frontmatter=frontmatter,
+            )
+        )
+    if "gemini" in harnesses:
+        targets.append(
+            _managed(
+                root,
+                adapters.adapter_rel("gemini"),
+                _agents_payload(skills, profiles),
             )
         )
     return targets
+
+
+def _managed(
+    root: Path, rel: str, payload: str, *, frontmatter: str = ""
+) -> _Target:
+    path = adapters.resolve_adapter(root, rel)
+    existing = _read(path)
+    existing_text, undecodable = _decode(existing, rel)
+    conflict = undecodable
+    text, digest = "", ""
+    if conflict is None:
+        try:
+            text, digest = adapters.render_managed(
+                existing_text, payload, frontmatter=frontmatter
+            )
+        except adapters.AdapterConflict as exc:
+            conflict = str(exc)
+    return _Target(
+        rel=rel,
+        path=path,
+        new_text=text,
+        digest=digest,
+        existing_bytes=existing,
+        existing_text=existing_text,
+        conflict=conflict,
+    )
+
+
+def _whole(
+    root: Path, rel: str, text: str, digest: str, path: Path
+) -> _Target:
+    existing = _read(path)
+    existing_text, unreadable = _decode(existing, rel)
+    return _Target(
+        rel=rel,
+        path=path,
+        new_text=text,
+        digest=digest,
+        existing_bytes=existing,
+        existing_text=existing_text,
+        whole_file=True,
+        conflict=unreadable,
+    )
 
 
 def _decode(data: bytes | None, rel: str) -> tuple[str | None, str | None]:

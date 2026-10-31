@@ -219,6 +219,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("dry_run", "bool", help="report the targets without writing them"),
             Param("force", "bool", help="replace a hand-edited block (human only)"),
             Param("confirm", "str", help="the typed phrase FORCE ADAPTERS adapters"),
+            Param("harness", "str", repeat=True, help="agents, claude, cursor or gemini"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.adapters:sync",

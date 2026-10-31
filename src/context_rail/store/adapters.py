@@ -27,11 +27,13 @@ __all__ = [
     "ADAPTER_PREFIX",
     "AGENTS_PATH",
     "AdapterConflict",
+    "HARNESSES",
     "adapter_rel",
     "payload_digest",
     "project_root",
     "read_managed",
     "render_agents",
+    "render_managed",
     "render_skill",
     "resolve_adapter",
 ]
@@ -40,6 +42,12 @@ ADAPTER_PREFIX = "@adapter/"
 AGENTS_PATH = "@adapter/AGENTS.md"
 AGENTS_REL = "AGENTS.md"
 SKILLS_REL = ".agents/skills"
+CLAUDE_REL = "CLAUDE.md"
+GEMINI_REL = "GEMINI.md"
+CURSOR_REL = ".cursor/rules/context-rail.mdc"
+CLAUDE_AGENTS_REL = ".claude/agents"
+HARNESSES = ("agents", "claude", "cursor", "gemini")
+CLAUDE_ROLES = ("cto", "implementer", "reviewer")
 START_MARK = "<!-- CONTEXT-RAIL-START -->"
 END_MARK = "<!-- CONTEXT-RAIL-END -->"
 DIGEST_LINE = "<!-- digest: sha256:{digest} -->"
@@ -65,9 +73,20 @@ def project_root(store: Path) -> Path:
 
 
 def adapter_rel(kind: str, name: str | None = None) -> str:
-    """The adapter path for the ``agents`` file or one ``skill`` directory."""
+    """The adapter path for one managed target kind."""
     if kind == "agents":
         return AGENTS_PATH
+    if kind == "claude":
+        return f"{ADAPTER_PREFIX}{CLAUDE_REL}"
+    if kind == "gemini":
+        return f"{ADAPTER_PREFIX}{GEMINI_REL}"
+    if kind == "cursor":
+        return f"{ADAPTER_PREFIX}{CURSOR_REL}"
+    if kind == "claude-agent":
+        _check_name(name)
+        if name not in CLAUDE_ROLES:
+            raise PathEscape(f"{name!r} is not a declared Claude agent role")
+        return f"{ADAPTER_PREFIX}{CLAUDE_AGENTS_REL}/{name}.md"
     if kind != "skill":
         raise PathEscape(f"unknown adapter kind {kind!r}")
     _check_name(name)
@@ -93,7 +112,11 @@ def resolve_adapter(project_root: Path, rel: str) -> Path:
             raise PathEscape(f"parent segment in {rel!r}")
         if segment.split(".", 1)[0].upper() in _RESERVED_NAMES:
             raise PathEscape(f"{segment!r} is a reserved name")
-    if segments == [AGENTS_REL]:
+    if segments == [AGENTS_REL] or segments in (
+        [CLAUDE_REL],
+        [GEMINI_REL],
+        [".cursor", "rules", "context-rail.mdc"],
+    ):
         pass
     elif (
         len(segments) == 4
@@ -102,6 +125,15 @@ def resolve_adapter(project_root: Path, rel: str) -> Path:
         and segments[3] == "SKILL.md"
     ):
         _check_name(segments[2])
+    elif (
+        len(segments) == 3
+        and segments[0] == ".claude"
+        and segments[1] == "agents"
+        and segments[2].endswith(".md")
+    ):
+        role = segments[2][:-3]
+        if role not in CLAUDE_ROLES:
+            raise PathEscape(f"{rel!r} is not a declared Claude agent target")
     else:
         raise PathEscape(f"{rel!r} is not a declared adapter target")
     root = Path(project_root).resolve()
@@ -139,6 +171,38 @@ def render_agents(existing: str | None, payload: str) -> tuple[str, str]:
         return existing + separator + block, digest
     start, _start_body, _end_line, end = bounds
     return existing[:start] + block + existing[end:], digest
+
+
+def render_managed(
+    existing: str | None, payload: str, *, frontmatter: str = ""
+) -> tuple[str, str]:
+    """A managed file with optional generated frontmatter outside the block.
+
+    The digest covers the frontmatter and the payload, matching
+    :func:`read_managed`, which returns both.
+    """
+    offending = _marker_line(payload)
+    if offending is not None:
+        raise AdapterConflict(
+            f"the generated payload carries a {offending} line, so the managed block "
+            "would hold two marker pairs"
+        )
+    payload = _terminated(payload)
+    digest = payload_digest(frontmatter + payload)
+    block = _block(payload, digest)
+    if existing is None:
+        return frontmatter + block, digest
+    remainder = _strip_frontmatter(existing) if frontmatter else existing
+    bounds = _markers(remainder)
+    if bounds is None:
+        if START_MARK in remainder or END_MARK in remainder:
+            raise AdapterConflict(
+                "the file carries malformed CONTEXT-RAIL markers; repair them by hand"
+            )
+        separator = _separator(remainder)
+        return frontmatter + remainder + separator + block, digest
+    start, _start_body, _end_line, end = bounds
+    return frontmatter + remainder[:start] + block + remainder[end:], digest
 
 
 def render_skill(name: str, text: str) -> tuple[str, str]:
@@ -238,6 +302,18 @@ def _check_name(name: object) -> None:
         raise PathEscape(f"{name!r} is not a safe skill directory name")
     if name.split(".", 1)[0].upper() in _RESERVED_NAMES:
         raise PathEscape(f"{name!r} is a reserved name")
+
+
+def _strip_frontmatter(text: str) -> str:
+    """The text after one leading YAML frontmatter block, when present."""
+    normalized = _lines(text)
+    if not normalized.startswith("---\n"):
+        return normalized
+    lines = normalized.split("\n")
+    for index in range(1, len(lines)):
+        if lines[index].strip() in ("---", "..."):
+            return "\n".join(lines[index + 1 :])
+    return normalized
 
 
 def _terminated(text: str) -> str:
