@@ -703,3 +703,162 @@ def bump_versioned(
         store=store,
         actor=actor,
     )
+
+
+def twin_stores(tmp_path: Path, fixed_clock: Any) -> Any:
+    """Two stores populated by one identical, fixed-clock invoke sequence."""
+    from types import SimpleNamespace
+
+    from context_rail.gateway.gateway import invoke
+
+    def populate(store: Path) -> None:
+        for title in ("Login", "Parity Task"):
+            result = invoke(
+                "add", {"preset": "task", "title": title}, store=store, actor="cto"
+            )
+            assert result["ok"] is True, result
+        skill = invoke(
+            "add",
+            {
+                "preset": "skill",
+                "title": "test-first",
+                "set": ["version=1", "description=Write the failing test first"],
+            },
+            store=store,
+            actor="cto",
+        )
+        assert skill["ok"] is True, skill
+
+    stores = []
+    for name in ("a", "b"):
+        fixed_clock.reset()
+        store = init_store(tmp_path / name)
+        fixed_clock.reset()
+        populate(store)
+        stores.append(store)
+    return SimpleNamespace(a=stores[0], b=stores[1])
+
+
+def mcp_call(
+    store: Path,
+    name: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    actor: str | None = None,
+) -> dict[str, Any]:
+    """One in-memory MCP tool call, with a protocol error reported separately."""
+    import anyio
+    from mcp.client import Client
+    from mcp.shared.exceptions import MCPError
+
+    from context_rail.gateway.mcp_server import build_server
+
+    outcome: dict[str, Any] = {
+        "is_error": False,
+        "structured": None,
+        "text": "",
+        "rpc_error": None,
+    }
+
+    async def scenario() -> None:
+        async with Client(
+            build_server(store=store, actor=actor), raise_exceptions=True
+        ) as client:
+            try:
+                response = await client.call_tool(name, arguments or {})
+            except MCPError as exc:
+                outcome["rpc_error"] = exc.code
+                return
+            outcome["is_error"] = bool(response.is_error)
+            outcome["structured"] = response.structured_content
+            outcome["text"] = response.content[0].text if response.content else ""
+
+    saved = os.environ.pop("RAIL_ACTOR", None)
+    try:
+        anyio.run(scenario)
+    finally:
+        if saved is not None:
+            os.environ["RAIL_ACTOR"] = saved
+    return outcome
+
+
+def mcp_list(store: Path, *, actor: str | None = None) -> list[dict[str, Any]]:
+    """Every tool one in-memory MCP server lists."""
+    import anyio
+    from mcp.client import Client
+
+    from context_rail.gateway.mcp_server import build_server
+
+    found: list[dict[str, Any]] = []
+
+    async def scenario() -> None:
+        async with Client(
+            build_server(store=store, actor=actor), raise_exceptions=True
+        ) as client:
+            response = await client.list_tools()
+            for tool in response.tools:
+                annotations = tool.annotations
+                found.append(
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "inputSchema": tool.input_schema,
+                        "meta": tool.meta,
+                        "annotations": (
+                            annotations.model_dump(by_alias=True)
+                            if annotations is not None
+                            else None
+                        ),
+                    }
+                )
+
+    saved = os.environ.pop("RAIL_ACTOR", None)
+    try:
+        anyio.run(scenario)
+    finally:
+        if saved is not None:
+            os.environ["RAIL_ACTOR"] = saved
+    return found
+
+
+def stdio_session(store: Path, *, actor: str | None = None) -> Any:
+    """An initialized client session against ``context_rail mcp serve``."""
+    import contextlib
+    import os
+
+    @contextlib.asynccontextmanager
+    async def session():
+        from mcp import ClientSession
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(_REPO_SRC)
+        env.pop("RAIL_ACTOR", None)
+        command = [sys.executable, "-m", "context_rail", "--store", str(store)]
+        if actor is not None:
+            command += ["--actor", actor]
+        command += ["mcp", "serve"]
+        params = StdioServerParameters(command=command[0], args=command[1:], env=env)
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as client:
+                await client.initialize()
+                yield client
+
+    return session()
+
+
+def require_git_identity() -> None:
+    """Skip a commit-producing test when no Git author identity is configured."""
+    probe = subprocess.run(
+        ["git", "var", "GIT_COMMITTER_IDENT"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if probe.returncode != 0:
+        pytest.skip("git author identity is not configured")
+
+
+def git(cwd: Path, *args: str) -> str:
+    """Run one git command and return its stdout, as the plan's snippets expect."""
+    return run_git(cwd, *args).stdout

@@ -7,14 +7,12 @@ imported only when a tool is invoked.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 __all__ = ["TOOLS", "Param", "Tool"]
 
 
-@dataclass(frozen=True)
-class Param:
+class Param(NamedTuple):
     """One declared argument. ``type`` is ``str``, ``int`` or ``bool``."""
 
     name: str
@@ -26,8 +24,7 @@ class Param:
     repeat: bool = False
 
 
-@dataclass(frozen=True)
-class Tool:
+class Tool(NamedTuple):
     """One command: its permission, its decision class, its handler."""
 
     name: str
@@ -295,6 +292,40 @@ TOOLS: tuple[Tool, ...] = (
             Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
         ),
         handler="context_rail.gateway.handlers.versions:rollback",
+        decision="cto-alone",
+    ),
+    Tool(
+        name="mcp serve",
+        summary="Serve the tool table over one MCP stdio connection.",
+        permission="read",
+        params=(),
+        handler="context_rail.gateway.handlers.mcp:serve",
+    ),
+    Tool(
+        name="sync driver",
+        summary="Merge one scratch file for Git without touching the live store.",
+        permission="write",
+        params=(
+            Param("kind", "str", required=True, positional=True, help="doc, record or config"),
+            Param("base", "str", required=True, positional=True, help="the merge base file"),
+            Param("ours", "str", required=True, positional=True, help="the file Git writes %A into"),
+            Param("theirs", "str", required=True, positional=True, help="the incoming file"),
+            Param("path", "str", required=True, positional=True, help="the store-relative path"),
+        ),
+        handler="context_rail.gateway.handlers.sync:sync_driver",
+        decision="cto-alone",
+    ),
+    Tool(
+        name="sync",
+        summary="Integrate and publish store-only clone changes, or install drivers.",
+        permission="write",
+        params=(
+            Param("install", "bool", help="write .gitattributes and clone-local drivers"),
+            Param("remote", "str", help="remote name (default: the upstream)"),
+            Param("branch", "str", help="branch name (default: the upstream)"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.sync:sync",
         decision="cto-alone",
     ),
     Tool(

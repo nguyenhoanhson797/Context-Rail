@@ -7,7 +7,7 @@ name = "ctx-rail"
 version = "3.0.0.dev0"
 description = "An agentic project workspace: files are the truth, agents work through one write path"
 requires-python = ">=3.11"
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "mcp>=2.3.0,<3"]
 
 [project.optional-dependencies]
 test = ["pytest>=8", "pytest-timeout>=2.3"]

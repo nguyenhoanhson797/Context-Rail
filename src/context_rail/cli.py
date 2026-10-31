@@ -9,7 +9,6 @@ exits 2. Parser errors print one VALIDATION_FAILED envelope and exit 1.
 import argparse
 import json
 import sys
-from dataclasses import replace
 
 from context_rail.gateway.tools import TOOLS, Param, Tool
 
@@ -44,26 +43,42 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _subcommands(
-    parent: argparse.ArgumentParser, tools: tuple[Tool, ...], prefix: str = ""
+    parent: argparse.ArgumentParser,
+    tools: tuple[Tool, ...],
+    prefix: str = "",
+    *,
+    required: bool = True,
 ) -> None:
-    subparsers = parent.add_subparsers(dest="group", required=True, metavar="command")
+    subparsers = parent.add_subparsers(metavar="command", required=required)
     nested: dict[str, list[Tool]] = {}
+    leaves: dict[str, Tool] = {}
     for tool in tools:
         head, _, rest = tool.name.partition(" ")
         if rest:
             nested.setdefault(head, []).append(tool)
-            continue
+        else:
+            leaves[head] = tool
+    for head in sorted(set(leaves) | set(nested)):
+        leaf = leaves.get(head)
+        grouped = nested.get(head)
         parser = subparsers.add_parser(
-            tool.name, help=tool.summary, description=tool.summary
+            head,
+            help=(leaf.summary if leaf is not None else f"{head} commands"),
+            description=(leaf.summary if leaf is not None else None),
         )
-        parser.set_defaults(_tool=prefix + tool.name)
-        _tool_params(parser, tool)
-    for head, grouped in nested.items():
-        parser = subparsers.add_parser(head, help=f"{head} commands")
-        rest_names = tuple(
-            replace(tool, name=tool.name[len(head) + 1 :]) for tool in grouped
-        )
-        _subcommands(parser, rest_names, f"{prefix}{head} ")
+        if leaf is not None:
+            parser.set_defaults(_tool=prefix + head)
+            _tool_params(parser, leaf)
+        if grouped:
+            rest_names = tuple(
+                tool._replace(name=tool.name[len(head) + 1 :]) for tool in grouped
+            )
+            _subcommands(
+                parser,
+                rest_names,
+                f"{prefix}{head} ",
+                required=leaf is None,
+            )
 
 
 def _tool_params(parser: argparse.ArgumentParser, tool: Tool) -> None:
@@ -146,19 +161,20 @@ def _is_dash_value(token: str) -> bool:
     )
 
 
-def _emit(result: dict) -> None:
+def _emit(result: dict, *, stderr: bool = False) -> None:
     """Write one Result envelope as UTF-8 bytes, whatever the console declares.
 
     A redirected stream can be any legacy code page (cp1252 here); JSON is UTF-8,
     so the bytes go to the binary buffer instead of through a lossy codec.
     """
     payload = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
-    buffer = getattr(sys.stdout, "buffer", None)
+    stream = sys.stderr if stderr else sys.stdout
+    buffer = getattr(stream, "buffer", None)
     if buffer is None:
-        sys.stdout.write(payload)
-        sys.stdout.flush()
+        stream.write(payload)
+        stream.flush()
         return
-    sys.stdout.flush()
+    stream.flush()
     buffer.write(payload.encode("utf-8"))
     buffer.flush()
 
@@ -171,18 +187,33 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code or 0)
     reserved = {"store", "actor", "group", "_tool"}
+    tool = getattr(namespace, "_tool", None)
+    declared = next(
+        (entry for entry in TOOLS if entry.name == tool), None
+    )
+    names = {param.name for param in declared.params} if declared else set()
     params = {
-        name: value for name, value in vars(namespace).items() if name not in reserved
+        name: value
+        for name, value in vars(namespace).items()
+        if name not in reserved and name in names
     }
     from context_rail.core.result import INFRA_CODES
+    from context_rail.gateway.execution import EXPLICIT_ACTOR
     from context_rail.gateway.gateway import invoke
 
+    EXPLICIT_ACTOR.set(namespace.actor)
     result = invoke(
-        getattr(namespace, "_tool", None),
+        tool,
         params,
         store=namespace.store,
         actor=namespace.actor,
     )
+    if tool in {"mcp serve", "sync driver"}:
+        if result.get("ok") is True:
+            return 0
+        _emit(result, stderr=True)
+        code = (result.get("error") or {}).get("code")
+        return 2 if code in INFRA_CODES else 1
     _emit(result)
     if result.get("ok") is True:
         return 0

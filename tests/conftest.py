@@ -34,6 +34,7 @@ from helpers import (
     approve_picture,
     init_store,
     item_etag,
+    require_git_identity,
     run_git,
     write_record,
     write_run,
@@ -1465,3 +1466,125 @@ def measure_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
         yield SimpleNamespace(store=store, ix=index, pack=pack)
     finally:
         index.close()
+
+
+class _FixedClock(str):
+    """The fixed timestamp, carrying a resettable ULID counter."""
+
+    def __new__(cls, value: str) -> "_FixedClock":
+        instance = super().__new__(cls, value)
+        instance.counter = 0
+        return instance
+
+    def reset(self) -> None:
+        self.counter = 0
+
+    def mark(self) -> int:
+        return self.counter
+
+    def seek(self, position: int) -> None:
+        self.counter = position
+
+
+@pytest.fixture
+def fixed_clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    """Freeze ``now_iso`` and make ``new_ulid`` deterministic and resettable."""
+    import context_rail.core.util as util
+
+    clock = _FixedClock("2026-10-28T12:00:00Z")
+    original_now, original_ulid = util.now_iso, util.new_ulid
+    patched: list[tuple[Any, str]] = []
+    for name, module in list(sys.modules.items()):
+        if not name.startswith("context_rail") or module is util:
+            continue
+        if getattr(module, "now_iso", None) is original_now:
+            setattr(module, "now_iso", lambda: str(clock))
+            patched.append((module, "now_iso"))
+        if getattr(module, "new_ulid", None) is original_ulid:
+            setattr(module, "new_ulid", lambda ms=None: _next_ulid(clock))
+            patched.append((module, "new_ulid"))
+
+    def fixed_now() -> str:
+        return str(clock)
+
+    def fixed_ulid(ms: int | None = None) -> str:
+        return _next_ulid(clock)
+
+    monkeypatch.setattr(util, "now_iso", fixed_now)
+    monkeypatch.setattr(util, "new_ulid", fixed_ulid)
+    try:
+        yield clock
+    finally:
+        for module, attr in reversed(patched):
+            setattr(module, attr, original_now if attr == "now_iso" else original_ulid)
+
+
+def _next_ulid(clock: _FixedClock) -> str:
+    value = f"01J{clock.counter:023d}"
+    clock.counter += 1
+    return value
+
+
+@pytest.fixture
+def sync_scratch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    """A scratch-only driver context with its manifest in the environment."""
+    store = init_store(tmp_path)
+    nonce = "n1"
+    scratch = local_dir(store) / "sync" / "scratch" / nonce
+    scratch.mkdir(parents=True, exist_ok=True)
+    manifest = scratch / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {"schema": 1, "store": str(store), "scratch": str(scratch), "nonce": nonce}
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("RAIL_SYNC_SCRATCH", str(manifest))
+    return SimpleNamespace(store=store, scratch=scratch, manifest=manifest, nonce=nonce)
+
+
+@pytest.fixture
+def branch_fixture_repo(tmp_path: Path) -> SimpleNamespace:
+    """A repository path carrying a space and a non-ASCII character."""
+    root = tmp_path / "repo with space \u00fc"
+    root.mkdir()
+    run_git(root, "init")
+    return SimpleNamespace(root=root, path_with_space=str(root))
+
+
+@pytest.fixture
+def two_clones(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNamespace:
+    """An approved, pushed store cloned twice from a bare remote."""
+    require_git_identity()
+    picture = copy.deepcopy(picture_answers)
+    picture["charter"]["allow_push"] = True
+    picture["charter"]["default_branch"] = "main"
+    answers = _write_answers(tmp_path / "sync-answers.json", picture)
+    root = tmp_path / "origin"
+    root.mkdir()
+    started = invoke(
+        "init",
+        {"dir": str(root), "answers_file": str(answers), "confirm": "APPROVE charter"},
+        actor="human",
+    )
+    assert is_ok(started), started
+    store = root / "context-rail"
+    approve_picture(store)
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    (root / "README.md").write_text("fixture\n", encoding="utf-8", newline="\n")
+    run_git(root, "init", "-b", "main")
+    run_git(root, "add", "-A")
+    run_git(root, "commit", "-m", "picture")
+    bare = tmp_path / "remote.git"
+    run_git(tmp_path, "init", "--bare", str(bare))
+    run_git(root, "remote", "add", "origin", str(bare))
+    run_git(root, "push", "-u", "origin", "main")
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    run_git(tmp_path, "clone", "-c", "core.autocrlf=false", "-b", "main", str(bare), str(a))
+    run_git(tmp_path, "clone", "-c", "core.autocrlf=false", "-b", "main", str(bare), str(b))
+    run_git(a, "config", "core.autocrlf", "false")
+    run_git(b, "config", "core.autocrlf", "false")
+    return SimpleNamespace(bare=bare, a=a, b=b, store_a=a / "context-rail", store_b=b / "context-rail")
