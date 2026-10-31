@@ -421,7 +421,8 @@ def _integrate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
                     details,
                 )
             candidate = _candidate(scratch, store_rel)
-            _validate_candidate(candidate)
+            candidate_root = scratch if store_rel in ("", ".") else scratch / store_rel
+            _validate_candidate(candidate, candidate_root)
             live = dict(store_inventory(store))
             ops = candidate_differences(live, candidate)
             record = {
@@ -700,7 +701,7 @@ def _store_file(rel: str) -> bool:
     return rel.endswith((".md", ".json"))
 
 
-def _validate_candidate(candidate: dict[str, bytes]) -> None:
+def _validate_candidate(candidate: dict[str, bytes], store: Path) -> None:
     if "rail.yaml" not in candidate:
         raise WriteRefused("VALIDATION_FAILED", "the candidate has no rail.yaml")
     try:
@@ -709,6 +710,23 @@ def _validate_candidate(candidate: dict[str, bytes]) -> None:
         raise WriteRefused("VALIDATION_FAILED", f"the candidate manifest is invalid: {exc}") from None
     if not isinstance(data, dict):
         raise WriteRefused("VALIDATION_FAILED", "the candidate manifest is not a mapping")
+    from context_rail.gateway.gateway import Context
+    from context_rail.store.approval import approval_state
+
+    manifest = load_manifest(store)
+    pack = load_pack(manifest.pack, store)
+    context = Context(store=store, manifest=manifest, pack=pack, actor="cto")
+    try:
+        state = approval_state(context, "charter")["state"]
+    finally:
+        context.close()
+    if state == "approved":
+        return
+    raise WriteRefused(
+        "INVALID_STATE",
+        "the candidate charter is not approved",
+        {"reason": "approval_missing" if state == "missing" else "approval_mismatch"},
+    )
 
 
 def _tree_hash(candidate: dict[str, bytes]) -> str:
@@ -736,11 +754,7 @@ def _doctor_counts(store: Path) -> dict[str, int]:
         report = run_doctor(store, manifest, pack, index)
     finally:
         index.close()
-    counts = {"error": 0, "warning": 0, "info": 0}
-    for issue in report["issues"]:
-        severity = issue.get("severity", "info")
-        counts[severity] = counts.get(severity, 0) + 1
-    return counts
+    return dict(report["counts"])
 
 
 def _copy_record(store: Path, scratch: Path, store_rel: str, record_id: Any) -> None:

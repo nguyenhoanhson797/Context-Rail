@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from context_rail.gateway.gateway import invoke
-from helpers import require_git_identity
+from helpers import init_store, require_git_identity
 
 
 def test_disjoint_changes_converge_after_sync(two_clones) -> None:
@@ -76,3 +76,105 @@ def test_missing_identity_is_an_explicit_failure_and_commits_nothing(two_clones,
     result = invoke("sync", {}, store=two_clones.store_a, actor="human")
     assert result["error"]["code"] == "INTEGRATION_FAILURE"
     assert result["error"]["process"] == "git"
+
+
+def test_doctor_counts_are_complete_beyond_the_issue_cap(tmp_path, monkeypatch) -> None:
+    from context_rail.gateway.handlers import sync as sync_module
+    import context_rail.doctor.checks as doctor
+
+    store = init_store(tmp_path)
+
+    def report(store, manifest, pack, index):
+        return {
+            "issues": [{"severity": "info"}],
+            "counts": {"error": 101, "warning": 2, "info": 3},
+        }
+
+    monkeypatch.setattr(doctor, "run_doctor", report)
+
+    assert sync_module._doctor_counts(store) == {"error": 101, "warning": 2, "info": 3}
+
+
+def test_a_candidate_with_a_mismatched_approval_never_publishes(two_clones) -> None:
+    require_git_identity()
+    from helpers import git
+
+    charter = two_clones.store_a / "charter.md"
+    charter.write_text(
+        charter.read_text(encoding="utf-8") + "\nAn unapproved change.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    git(two_clones.a, "add", "-A")
+    git(two_clones.a, "commit", "-m", "unapproved charter change")
+    git(two_clones.a, "push", "origin", "main")
+    remote_before = git(two_clones.bare, "rev-parse", "main").strip()
+    local_before = git(two_clones.b, "rev-parse", "HEAD").strip()
+
+    refused = invoke("sync", {}, store=two_clones.store_b, actor="human")
+
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "INVALID_STATE", refused
+    assert refused["error"]["details"]["reason"] == "approval_mismatch"
+    assert git(two_clones.b, "rev-parse", "HEAD").strip() == local_before
+    assert git(two_clones.bare, "rev-parse", "main").strip() == remote_before
+
+
+def test_a_candidate_with_a_matching_approval_still_publishes(two_clones) -> None:
+    require_git_identity()
+    from helpers import git
+
+    added = invoke(
+        "add",
+        {"preset": "task", "title": "Approved change"},
+        store=two_clones.store_a,
+        actor="cto",
+    )
+    assert added["ok"] is True, added
+    git(two_clones.a, "add", "-A")
+    git(two_clones.a, "commit", "-m", "approved store change")
+    git(two_clones.a, "push", "origin", "main")
+
+    synced = invoke("sync", {}, store=two_clones.store_b, actor="human")
+
+    assert synced["ok"] is True, synced
+    assert (two_clones.store_b / "items" / "task" / "approved-change.md").is_file()
+
+
+def test_the_candidate_manifest_is_validated_before_any_commit(tmp_path) -> None:
+    from context_rail.gateway.handlers import sync as sync_module
+    from context_rail.store.write import WriteRefused
+
+    for candidate in ({}, {"rail.yaml": b"not: [valid"}):
+        try:
+            sync_module._validate_candidate(candidate, tmp_path)
+        except WriteRefused as refused:
+            assert refused.code == "VALIDATION_FAILED"
+        else:
+            raise AssertionError("an invalid candidate was accepted")
+
+
+def test_a_post_publish_doctor_error_stops_the_push(two_clones, monkeypatch) -> None:
+    require_git_identity()
+    from context_rail.gateway.handlers import sync as sync_module
+    from helpers import git
+
+    pushed = []
+    monkeypatch.setattr(
+        sync_module, "_doctor_counts", lambda store: {"error": 1, "warning": 0, "info": 0}
+    )
+    monkeypatch.setattr(
+        sync_module.git_sync, "push", lambda *a, **k: pushed.append(a)
+    )
+    added = invoke(
+        "add", {"preset": "task", "title": "Hook edit"}, store=two_clones.store_a, actor="cto"
+    )
+    assert added["ok"] is True, added
+    remote_before = git(two_clones.bare, "rev-parse", "main").strip()
+
+    refused = invoke("sync", {}, store=two_clones.store_a, actor="human")
+
+    assert refused["error"]["code"] == "INTEGRATION_FAILURE", refused
+    assert refused["error"]["details"]["doctor"]["error"] == 1
+    assert pushed == []
+    assert git(two_clones.bare, "rev-parse", "main").strip() == remote_before
