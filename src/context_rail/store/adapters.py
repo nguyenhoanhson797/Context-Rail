@@ -1,4 +1,4 @@
-"""The generic adapter targets: repo-root ``AGENTS.md`` and ``.agents/skills``.
+﻿"""The generic adapter targets: repo-root ``AGENTS.md`` and ``.agents/skills``.
 
 This is the only module that names a destination outside the store. The write
 pipeline resolves an ``@adapter/`` operation through :func:`resolve_adapter`,
@@ -20,6 +20,7 @@ from pathlib import Path
 from context_rail.core.util import dump_frontmatter, sha256_hex
 from context_rail.model.cto import TOOL_IDS
 from context_rail.model.errors import ModelError
+from context_rail.model.primitives import ROLES, WINDOWS_RESERVED_NAMES
 from context_rail.store.doc import parse_doc
 from context_rail.store.location import PathEscape, worktree_git_dir
 
@@ -47,18 +48,13 @@ GEMINI_REL = "GEMINI.md"
 CURSOR_REL = ".cursor/rules/context-rail.mdc"
 CLAUDE_AGENTS_REL = ".claude/agents"
 HARNESSES = ("agents", "claude", "cursor", "gemini")
-CLAUDE_ROLES = ("cto", "implementer", "reviewer")
+CLAUDE_ROLES = ROLES
 START_MARK = "<!-- CONTEXT-RAIL-START -->"
 END_MARK = "<!-- CONTEXT-RAIL-END -->"
 DIGEST_LINE = "<!-- digest: sha256:{digest} -->"
 
 _DIGEST = re.compile(r"^<!-- digest: sha256:([0-9a-f]{64}) -->$")
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
-_RESERVED_NAMES = frozenset(
-    ["CON", "PRN", "AUX", "NUL"]
-    + [f"COM{i}" for i in range(1, 10)]
-    + [f"LPT{i}" for i in range(1, 10)]
-)
 
 
 class AdapterConflict(Exception):
@@ -110,7 +106,7 @@ def resolve_adapter(project_root: Path, rel: str) -> Path:
     for segment in segments:
         if segment.startswith(".."):
             raise PathEscape(f"parent segment in {rel!r}")
-        if segment.split(".", 1)[0].upper() in _RESERVED_NAMES:
+        if segment.split(".", 1)[0].upper() in WINDOWS_RESERVED_NAMES:
             raise PathEscape(f"{segment!r} is a reserved name")
     if segments == [AGENTS_REL] or segments in (
         [CLAUDE_REL],
@@ -288,7 +284,7 @@ def read_managed(text: str) -> tuple[str, str] | None:
     return _frontmatter(prefix) + body, match.group(1)
 
 
-# ── internals ─────────────────────────────────────────────────────────────
+# â”€â”€ internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _lines(text: str) -> str:
@@ -300,7 +296,7 @@ def _check_name(name: object) -> None:
         raise PathEscape("a skill needs a directory name")
     if not _NAME.fullmatch(name) or name.startswith("."):
         raise PathEscape(f"{name!r} is not a safe skill directory name")
-    if name.split(".", 1)[0].upper() in _RESERVED_NAMES:
+    if name.split(".", 1)[0].upper() in WINDOWS_RESERVED_NAMES:
         raise PathEscape(f"{name!r} is a reserved name")
 
 
@@ -405,3 +401,4 @@ def _frontmatter(prefix: str) -> str:
         if lines[index].strip() in ("---", "..."):
             return "\n".join(lines[: index + 1]) + "\n"
     return ""
+

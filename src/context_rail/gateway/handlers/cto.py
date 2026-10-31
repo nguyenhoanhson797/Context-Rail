@@ -33,6 +33,7 @@ from context_rail.model.cto import (
     parse_run,
 )
 from context_rail.model.errors import ModelError
+from context_rail.model.primitives import ROLES
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner import git as git_runner
 from context_rail.runner.droid import (
@@ -51,7 +52,7 @@ if TYPE_CHECKING:
 
 __all__ = ["brief", "tick"]
 
-CTO_ROLE = "cto"
+CTO_ROLE = ROLES[0]
 TICK_METHOD = "cto tick"
 DEFAULT_TICK_SECONDS = 7200.0
 SUMMARY_MAX = 2000

@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from context_rail.kernel.structure import FINISHED_CATEGORIES
+from context_rail.model.cto import USAGE_KEYS
+from context_rail.model.primitives import ROLES
 
 __all__ = [
     "STATES",
@@ -34,17 +36,11 @@ __all__ = [
 
 UNKNOWN = "unknown"
 STATES = ("ok", "near", "exceeded")
-USAGE_COUNTERS = (
-    "input_tokens",
-    "output_tokens",
-    "cache_read_input_tokens",
-    "cache_creation_input_tokens",
-    "factory_credits",
-)
+USAGE_COUNTERS = USAGE_KEYS
 ATTEMPT_TOKEN_COUNTERS = ("input_tokens", "output_tokens")
-WORKER_ROLES = ("implementer", "reviewer")
+WORKER_ROLES = (ROLES[1], ROLES[2])
 #: The role that spends the launch budget; a review is an attempt's outcome.
-IMPLEMENTER_ROLE = "implementer"
+IMPLEMENTER_ROLE = ROLES[1]
 
 
 @dataclass(frozen=True)

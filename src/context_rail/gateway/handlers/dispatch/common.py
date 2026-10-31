@@ -14,6 +14,7 @@ from context_rail.gateway.handlers.common import read_doc
 from context_rail.kernel.budgets import Budget
 from context_rail.model.cto import Profile
 from context_rail.model.errors import ModelError
+from context_rail.model.primitives import ROLES
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner import merge as local_merge
 from context_rail.runner.droid import DroidProfile
@@ -24,8 +25,8 @@ if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
 
-IMPL_ROLE = "implementer"
-REVIEW_ROLE = "reviewer"
+IMPL_ROLE = ROLES[1]
+REVIEW_ROLE = ROLES[2]
 REVIEW_VERDICTS = ("approve", "reject")
 REVIEW_DIFF_MAX = 12000
 _COMMIT = re.compile(r"^[0-9a-f]{7,64}$")

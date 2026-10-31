@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from context_rail.core.util import sha256_hex, slugify
+from context_rail.model.primitives import WINDOWS_RESERVED_NAMES
 
 if TYPE_CHECKING:
     from context_rail.model.manifest import Manifest
@@ -39,11 +40,6 @@ STORE_ROOTS: tuple[str, ...] = (
     "engine-issues",
 )
 
-_RESERVED_NAMES = frozenset(
-    ["CON", "PRN", "AUX", "NUL"]
-    + [f"COM{i}" for i in range(1, 10)]
-    + [f"LPT{i}" for i in range(1, 10)]
-)
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 
@@ -159,7 +155,7 @@ def confine(store: Path, rel: str) -> Path:
         if segment.startswith("..") and not segment.lstrip(".").strip(" ."):
             raise PathEscape(f"parent segment in {rel!r}")
         name = segment.rstrip(" .")
-        if name.split(".", 1)[0].upper() in _RESERVED_NAMES:
+        if name.split(".", 1)[0].upper() in WINDOWS_RESERVED_NAMES:
             raise PathEscape(f"{segment!r} is a reserved name")
     root = Path(store).resolve()
     target = root.joinpath(*[s for s in segments if s not in ("", ".")]).resolve()

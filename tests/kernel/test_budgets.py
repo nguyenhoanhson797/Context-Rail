@@ -207,3 +207,10 @@ def test_too_long_without_a_cap_is_empty():
     runs = (run(90, 90_000.0, item="login"),)
     assert too_long(items, runs, {}) == ()
     assert too_long(items, runs, {"item": {"attempts": None, "seconds": None}}) == ()
+
+
+def test_usage_vocabulary_is_the_model_vocabulary() -> None:
+    from context_rail.kernel.budgets import USAGE_COUNTERS
+    from context_rail.model.cto import USAGE_KEYS
+
+    assert USAGE_COUNTERS is USAGE_KEYS

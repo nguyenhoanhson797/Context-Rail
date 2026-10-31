@@ -8,10 +8,18 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-__all__ = ["ItemRow", "Score", "blocked", "executable", "rollup", "stuck"]
+from context_rail.model.primitives import FINISHED_CATEGORIES, WORKABLE_CATEGORIES
 
-WORKABLE_CATEGORIES = ("not_started", "active")
-FINISHED_CATEGORIES = ("done", "dropped")
+__all__ = [
+    "FINISHED_CATEGORIES",
+    "WORKABLE_CATEGORIES",
+    "ItemRow",
+    "Score",
+    "blocked",
+    "executable",
+    "rollup",
+    "stuck",
+]
 
 
 @dataclass(frozen=True)

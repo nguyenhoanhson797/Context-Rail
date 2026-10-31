@@ -1,4 +1,4 @@
-"""Local dispatch state: worktrees, branches, locks and progress.
+﻿"""Local dispatch state: worktrees, branches, locks and progress.
 
 Dispatch truth is a pair of immutable Records; this module only keeps the
 control files that make a launch survivable: where its worktree lives, which
@@ -25,6 +25,7 @@ from typing import Any
 
 from context_rail.core.util import sha256_hex
 from context_rail.store.location import local_dir, worktree_git_dir
+from context_rail.model.primitives import WINDOWS_RESERVED_NAMES
 from context_rail.store.lock import StoreLockTimeout, file_lock, take_exclusive
 from context_rail.store.write import WriteRefused
 
@@ -78,7 +79,6 @@ _BRANCH = re.compile(r"^rail/([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/([A-Za-z0-9][A-Za
 _REVIEW_BRANCH = re.compile(
     r"^rail-review/([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/([A-Za-z0-9][A-Za-z0-9_-]{0,63})$"
 )
-_RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.I)
 
 
 @dataclass(frozen=True)
@@ -508,7 +508,7 @@ def _dispatch_id(value: Any) -> str:
     if (
         not isinstance(value, str)
         or not _DISPATCH_ID.match(value)
-        or _RESERVED.match(value)
+        or value.upper() in WINDOWS_RESERVED_NAMES
     ):
         raise WriteRefused(
             "VALIDATION_FAILED",
@@ -516,3 +516,4 @@ def _dispatch_id(value: Any) -> str:
             {"dispatch_id": value},
         )
     return value
+

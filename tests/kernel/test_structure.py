@@ -107,3 +107,24 @@ def test_rollup_cycle_behind_a_leaf_is_refused():
 
 def test_part_of_a_missing_item_does_not_raise():
     assert rollup([row("a", part_of=("ghost",))], {}, {}) == {"a": Score(0, 0)}
+
+
+def test_category_and_role_vocabulary_comes_from_the_model() -> None:
+    from context_rail.gateway.handlers.dispatch import common as dispatch_common
+    from context_rail.kernel import structure
+    from context_rail.model import primitives
+    from context_rail.store import adapters
+
+    assert structure.FINISHED_CATEGORIES is primitives.FINISHED_CATEGORIES
+    assert structure.WORKABLE_CATEGORIES is primitives.WORKABLE_CATEGORIES
+    assert dispatch_common.IMPL_ROLE == primitives.ROLES[1]
+    assert dispatch_common.REVIEW_ROLE == primitives.ROLES[2]
+    assert adapters.CLAUDE_ROLES == primitives.ROLES
+
+
+def test_the_windows_reserved_set_has_one_definition() -> None:
+    from context_rail.model import primitives
+    from context_rail.store import adapters, location
+
+    assert location.WINDOWS_RESERVED_NAMES is primitives.WINDOWS_RESERVED_NAMES
+    assert adapters.WINDOWS_RESERVED_NAMES is primitives.WINDOWS_RESERVED_NAMES

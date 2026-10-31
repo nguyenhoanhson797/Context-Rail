@@ -1,4 +1,4 @@
-"""The ``droid exec`` protocol: pinned argv, bounded capture, strict parsing.
+﻿"""The ``droid exec`` protocol: pinned argv, bounded capture, strict parsing.
 
 One launch is a list argv through :func:`context_rail.runner.run`: never a
 shell, an allow-listed environment, a hard timeout, a process-tree kill and a
@@ -32,6 +32,7 @@ from context_rail.model.cto import (
     parse_profile,
 )
 from context_rail.model.errors import ModelError
+from context_rail.model.primitives import WINDOWS_RESERVED_NAMES
 from context_rail.model.fields import is_number
 from context_rail.model.manifest import render_path
 from context_rail.runner.run import run
@@ -118,7 +119,6 @@ _AUTONOMY = (None, "low", "medium", "high")
 
 _ACTOR_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _DISPATCH_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-_RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.I)
 _FENCE = "```"
 
 
@@ -149,7 +149,7 @@ class DroidRun:
     malformed_usage: bool
 
 
-# ── Profiles ──────────────────────────────────────────────────────────────
+# â”€â”€ Profiles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def droid_profile(profile: Profile, *, name: str | None = None) -> DroidProfile:
@@ -217,7 +217,7 @@ def _store_profile(context: Any, name: str) -> tuple[dict[str, Any], str] | None
     return doc.fields, doc.body
 
 
-# ── Launch ────────────────────────────────────────────────────────────────
+# â”€â”€ Launch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def build_argv(
@@ -363,7 +363,7 @@ def run_droid(
     )
 
 
-# ── Parsing ───────────────────────────────────────────────────────────────
+# â”€â”€ Parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def parse_result(
@@ -515,7 +515,7 @@ def _session_id(raw: object) -> str | None:
     return None
 
 
-# ── Role and work-order files ─────────────────────────────────────────────
+# â”€â”€ Role and work-order files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def prompt_dir(store: Path, dispatch_id: str) -> Path:
@@ -523,7 +523,7 @@ def prompt_dir(store: Path, dispatch_id: str) -> Path:
     if (
         not isinstance(dispatch_id, str)
         or not _DISPATCH_ID.match(dispatch_id)
-        or _RESERVED.match(dispatch_id)
+        or dispatch_id.upper() in WINDOWS_RESERVED_NAMES
     ):
         raise WriteRefused("VALIDATION_FAILED", f"{dispatch_id!r} is not a dispatch id")
     return local_dir(Path(store)) / PROMPT_DIR / dispatch_id
@@ -755,3 +755,4 @@ def _launcher(droid_bin: str) -> list[str]:
     if droid_bin.lower().endswith(".py"):
         return [sys.executable, droid_bin]
     return [droid_bin]
+

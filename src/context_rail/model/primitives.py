@@ -14,6 +14,18 @@ RELATIONS = (
 )
 
 CATEGORIES = ("not_started", "active", "blocked", "done", "dropped")
+#: Categories whose Items need no further work.
+FINISHED_CATEGORIES = ("done", "dropped")
+#: Categories an executable leaf may be in.
+WORKABLE_CATEGORIES = ("not_started", "active")
+#: The fixed Actor roles.
+ROLES = ("cto", "implementer", "reviewer")
+#: Names Windows treats as devices, so no path or dispatch id may use one.
+WINDOWS_RESERVED_NAMES = frozenset(
+    ["CON", "PRN", "AUX", "NUL"]
+    + [f"COM{i}" for i in range(1, 10)]
+    + [f"LPT{i}" for i in range(1, 10)]
+)
 
 SCHEMA_VERSION = 3
 
