@@ -483,6 +483,112 @@ def test_a_checkpoint_that_cannot_add_a_path_refuses_instead_of_reporting_succes
     assert adds and "--force" in adds[-1], adds
 
 
+def _git_timeout() -> dict[str, Any]:
+    return {
+        "exit": None,
+        "timed_out": True,
+        "duration_s": 120.0,
+        "stdout": "",
+        "stderr": "",
+        "omitted_bytes": 0,
+        "digest": "sha256:0000",
+    }
+
+
+def _dirty_store_doc(leaf: SimpleNamespace) -> Path:
+    target = leaf.store / "items" / "task" / "login-page.md"
+    target.write_text(
+        target.read_text(encoding="utf-8") + "\n", encoding="utf-8", newline="\n"
+    )
+    return target
+
+
+def test_a_failed_checkpoint_commit_raises_a_typed_refusal(leaf_item) -> None:
+    """A rejected commit is a process failure, not a successful checkpoint."""
+    from context_rail.gateway.handlers.dispatch import checkpoint as dispatch_module
+    from context_rail.store.write import WriteRefused
+
+    _dirty_store_doc(leaf_item)
+    real = dispatch_module._git
+    runner, _seen = _fake_git(real, {"commit": [_git_failure()]})
+    dispatch_module._git = runner
+    try:
+        with pytest.raises(WriteRefused) as caught:
+            dispatch_module._checkpoint(
+                SimpleNamespace(store=leaf_item.store),
+                leaf_item.root,
+                ("context-rail",),
+                "cto",
+            )
+    finally:
+        dispatch_module._git = real
+
+    assert caught.value.code == "PROCESS_ERROR"
+    assert caught.value.details == {"process": "git", "phase": "checkpoint"}
+
+
+def test_a_timed_out_checkpoint_commit_leaves_no_launch_state(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    """A commit timeout refuses before a worktree, binding or progress survives."""
+    from context_rail.gateway.handlers.dispatch import checkpoint as dispatch_module
+    from context_rail.runner import dispatch as local_dispatch
+
+    real = dispatch_module._git
+    runner, _seen = _fake_git(real, {"commit": [_git_timeout()]})
+    dispatch_module._git = runner
+    try:
+        refused = dispatch(leaf_item, "checkpoint-timeout")
+    finally:
+        dispatch_module._git = real
+
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "PROCESS_ERROR", refused
+    assert local_dispatch.read_binding(leaf_item.store, "checkpoint-timeout") is None
+    assert progress_files(leaf_item.store) == []
+    root = local_dispatch.worktree_root(leaf_item.store)
+    assert not root.exists() or not any(root.iterdir())
+
+
+def test_a_successful_checkpoint_commit_returns_the_new_head(leaf_item) -> None:
+    from context_rail.gateway.handlers.dispatch import checkpoint as dispatch_module
+
+    _dirty_store_doc(leaf_item)
+    before = head(leaf_item.root)
+
+    result = dispatch_module._checkpoint(
+        SimpleNamespace(store=leaf_item.store),
+        leaf_item.root,
+        ("context-rail",),
+        "cto",
+    )
+
+    assert result != before
+    assert result == head(leaf_item.root)
+
+
+def test_a_clean_checkpoint_returns_the_existing_head_without_committing(
+    leaf_item,
+) -> None:
+    from context_rail.gateway.handlers.dispatch import checkpoint as dispatch_module
+
+    before = head(leaf_item.root)
+    count_before = run_git(leaf_item.root, "rev-list", "--count", "HEAD").stdout.strip()
+
+    result = dispatch_module._checkpoint(
+        SimpleNamespace(store=leaf_item.store),
+        leaf_item.root,
+        ("context-rail",),
+        "cto",
+    )
+
+    assert result == before == head(leaf_item.root)
+    assert (
+        run_git(leaf_item.root, "rev-list", "--count", "HEAD").stdout.strip()
+        == count_before
+    )
+
+
 def test_a_store_edit_in_the_dropped_middle_is_still_refused(
     leaf_item, fake_droid, droid_env
 ) -> None:

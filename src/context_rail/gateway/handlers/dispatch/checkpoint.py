@@ -54,7 +54,14 @@ def _checkpoint(
         )
     adapters = [path for path in ADAPTER_PATHS if (root / path).exists()]
     _stage_store(Path(ctx.store), root, present, adapters)
-    _git(["commit", "-m", message], root)
+    committed = _git(["commit", "-m", message], root)
+    if committed["timed_out"] or committed["exit"] != 0:
+        detail = (committed["stderr"] or committed["stdout"] or "").strip()
+        raise WriteRefused(
+            "PROCESS_ERROR",
+            f"the checkpoint commit failed: {detail or 'git commit failed'}",
+            {"process": "git", "phase": "checkpoint"},
+        )
     return git_runner.rev_parse_head(root, root)
 
 
