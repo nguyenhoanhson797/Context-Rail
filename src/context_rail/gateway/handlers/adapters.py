@@ -378,7 +378,7 @@ def _sources(
     skills: list[_Skill] = []
     profiles: list[_Profile] = []
     sources: dict[str, str] = {}
-    names: dict[str, str] = {}
+    names: dict[str, tuple[str, str]] = {}
     rows = ctx.index.conn.execute(
         "SELECT path, primitive FROM docs WHERE primitive IN ('note', 'actor') ORDER BY path"
     ).fetchall()
@@ -388,12 +388,16 @@ def _sources(
                 continue
             skill = _skill(store, path)
             if skill.name in names:
-                raise WriteRefused(
-                    "CONFLICT",
-                    f"skill {skill.name!r} is exported from two sources",
-                    {"name": skill.name, "paths": sorted([names[skill.name], path])},
-                )
-            names[skill.name] = path
+                first_path, first_text = names[skill.name]
+                if skill.text != first_text:
+                    raise WriteRefused(
+                        "CONFLICT",
+                        f"skill {skill.name!r} is exported from two sources",
+                        {"name": skill.name, "paths": sorted([first_path, path])},
+                    )
+                sources[path] = skill.doc.etag
+                continue
+            names[skill.name] = (path, skill.text)
             skills.append(skill)
             sources[path] = skill.doc.etag
         elif primitive == "actor" and path.startswith("workspace/"):

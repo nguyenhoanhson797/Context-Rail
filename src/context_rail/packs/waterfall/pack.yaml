@@ -1,0 +1,33 @@
+name: waterfall
+version: 1
+statuses: {planned: not_started, designing: active, building: active, testing: active, blocked: blocked, done: done, dropped: dropped}
+initial: planned
+transitions:
+  planned: [designing, dropped]
+  designing: [building, planned, dropped]
+  building: [testing, blocked, dropped]
+  testing: [done, building, blocked, dropped]
+  blocked: [building, testing, dropped]
+  done: [building]
+  dropped: [planned]
+presets:
+  goal:        {primitive: item,   tags: [goal]}
+  scope:       {primitive: item,   tags: [scope], fields: {priority: [must, should, could, wont]}}
+  requirement: {primitive: item,   tags: [requirement]}
+  phase:       {primitive: item,   tags: [phase]}
+  task:        {primitive: item,   tags: [task]}
+  milestone:   {primitive: item,   tags: [milestone]}
+  risk:        {primitive: item,   tags: [risk], fields: {severity: [low, medium, high, critical]}}
+  note:        {primitive: note,   tags: []}
+  convention:  {primitive: note,   tags: [convention]}
+  decision:    {primitive: record, tags: [decision]}
+  event:       {primitive: record, tags: [event]}
+  check:       {primitive: check,  tags: []}
+  charter:     {primitive: policy, tags: []}
+  vision:      {primitive: note,   tags: []}
+  wont:        {primitive: note,   tags: []}
+  skill:       {primitive: note,   tags: []}
+  cto:         {primitive: actor,  tags: []}
+  profile:     {primitive: actor,  tags: []}
+  fix:         {primitive: item,   tags: []}
+policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}

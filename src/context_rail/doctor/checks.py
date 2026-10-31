@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import Any
 
@@ -359,6 +359,8 @@ def _placement(manifest: Manifest, row: _Row) -> list[dict[str, Any]]:
     """A path that its placement does not render, as the relocate would write it."""
     if row.preset is None or row.primitive is None:
         return []
+    if _scoped_skill(row.path):
+        return []
     try:
         expected = render_path(
             manifest, primitive=row.primitive, preset=row.preset, slug=row.slug
@@ -414,16 +416,31 @@ def _tampered(store: Path, path: str) -> bool:
 
 
 def _duplicate_issues(slugs: dict[str, list[str]]) -> list[dict[str, Any]]:
-    """One issue per shared slug, at its first path, naming every path."""
-    return [
-        _issue(
-            "duplicate_slug",
-            paths[0],
-            f"slug {slug!r} is used by {len(paths)} documents: " + ", ".join(paths),
+    """One issue per shared slug, at its first path, naming every path.
+
+    Scoped Actor skill copies (``workspace/cto/skills`` and
+    ``workspace/profiles/<role>/skills``) intentionally share the shipped
+    skill's slug; only the shared workspace source can collide.
+    """
+    issues: list[dict[str, Any]] = []
+    for slug, paths in sorted(slugs.items()):
+        sources = [path for path in paths if not _scoped_skill(path)]
+        if len(sources) <= 1:
+            continue
+        issues.append(
+            _issue(
+                "duplicate_slug",
+                sources[0],
+                f"slug {slug!r} is used by {len(sources)} documents: "
+                + ", ".join(sources),
+            )
         )
-        for slug, paths in sorted(slugs.items())
-        if len(paths) > 1
-    ]
+    return issues
+
+
+def _scoped_skill(path: str) -> bool:
+    parts = PurePosixPath(path).parts
+    return len(parts) > 3 and parts[0] == "workspace" and parts[-2] == "skills"
 
 
 def _intent_issues(store: Path) -> list[dict[str, Any]]:

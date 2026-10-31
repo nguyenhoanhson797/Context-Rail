@@ -14,7 +14,7 @@ import json
 import os
 import sys
 from importlib import resources
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Sequence
 
 import yaml
@@ -23,7 +23,10 @@ from context_rail.core.util import now_iso, slugify
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import compose_doc, record_data
 from context_rail.gateway.handlers.init import GITIGNORE, PINNED_FOLDERS, scaffold
-from context_rail.model.cto import load_builtin_profile, load_builtin_skills
+from context_rail.model.cto import (
+    load_pack_profile,
+    load_pack_skills,
+)
 from context_rail.model.manifest import (
     DEFAULT_MANIFEST,
     Manifest,
@@ -78,7 +81,6 @@ QUESTIONS = (
 )
 SCOPE_PRIORITIES = ("must", "should", "could")
 CHARTER_TARGET = "charter"
-SMALL_PACK = "small"
 _PROFILE_TITLES = {"cto": "CTO", "implementer": "Implementer", "reviewer": "Reviewer"}
 _YES = ("y", "yes", "true")
 _NO = ("n", "no", "false")
@@ -607,30 +609,31 @@ def _charter_frontmatter(
 
 
 def _agent_ops(store: Path, manifest: Manifest, pack_name: str) -> list[Op]:
-    """The shipped Actor profiles and skill Notes, absent-only and validated."""
-    if pack_name != SMALL_PACK:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            f"onboarding ships the {SMALL_PACK!r} profiles, not {pack_name!r}",
-            {"pack": pack_name},
-        )
+    """The active pack's Actor profiles and scoped skill Notes, absent-only."""
     ops: list[Op] = []
+    skills = load_pack_skills(pack_name)
     for name in ("cto", "implementer", "reviewer"):
-        load_builtin_profile(name)
+        profile = load_pack_profile(pack_name, name)
         preset = "cto" if name == "cto" else "profile"
         path = render_path(manifest, primitive="actor", preset=preset, slug=name)
         ops.append(
-            Op(path, _materialised_profile(name, preset).encode("utf-8"), ABSENT)
+            Op(
+                path,
+                _materialised_profile(pack_name, name, preset).encode("utf-8"),
+                ABSENT,
+            )
         )
-    for slug, text in load_builtin_skills().items():
-        path = render_path(manifest, primitive="note", preset="skill", slug=slug)
-        ops.append(Op(path, text.encode("utf-8"), ABSENT))
+        for declared in profile.skills:
+            slug = PurePosixPath(declared).stem
+            text = skills.get(slug)
+            if text is not None:
+                ops.append(Op(declared, text.encode("utf-8"), ABSENT))
     return ops
 
 
-def _materialised_profile(name: str, preset: str) -> str:
+def _materialised_profile(pack_name: str, name: str, preset: str) -> str:
     """A packaged profile with the document identity the store indexes."""
-    lines = _resource_text("profiles", f"{name}.md").split("\n")
+    lines = _resource_text(pack_name, "profiles", f"{name}.md").split("\n")
     if not lines or lines[0].strip() != "---":
         raise WriteRefused(
             "INTEGRATION_FAILURE", f"the packaged {name} profile has no frontmatter"
@@ -651,8 +654,8 @@ def _materialised_profile(name: str, preset: str) -> str:
     return f"---\n{identity}\n{front}\n---\n{body}"
 
 
-def _resource_text(*parts: str) -> str:
-    source = resources.files("context_rail").joinpath("packs", SMALL_PACK, *parts)
+def _resource_text(pack_name: str, *parts: str) -> str:
+    source = resources.files("context_rail").joinpath("packs", pack_name, *parts)
     return (
         source.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
     )
@@ -663,7 +666,7 @@ def _template_text(store: Path, pack_name: str, name: str, title: str) -> str:
     if local.is_file():
         text = local.read_text(encoding="utf-8", errors="replace")
     else:
-        text = _resource_text("templates", f"{name}.md")
+        text = _resource_text(pack_name, "templates", f"{name}.md")
     return text.replace("\r\n", "\n").replace("\r", "\n").replace("{title}", title)
 
 

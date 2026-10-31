@@ -565,17 +565,6 @@ def _skill_source(context: Context, declared: str) -> tuple[str, bytes]:
     found = _read_confined(context.store, declared)
     if found is not None:
         return declared, found
-    stem = PurePosixPath(declared).stem
-    try:
-        shared = render_path(
-            context.manifest, primitive="note", preset="skill", slug=stem
-        )
-    except ModelError:
-        shared = None
-    if shared is not None:
-        found = _read_confined(context.store, shared)
-        if found is not None:
-            return shared, found
     raise WriteRefused(
         "VALIDATION_FAILED",
         f"the profile names a missing skill {declared!r}",

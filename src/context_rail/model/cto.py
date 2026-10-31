@@ -68,6 +68,8 @@ __all__ = [
     "aggregate_usage",
     "load_builtin_profile",
     "load_builtin_skills",
+    "load_pack_profile",
+    "load_pack_skills",
     "parse_check",
     "parse_profile",
     "parse_report",
@@ -919,22 +921,33 @@ def _capture(raw: Any) -> dict[str, Any]:
 
 
 def load_builtin_profile(name: str) -> Profile:
-    """Load ``packs/small/profiles/<name>.md`` and validate it strictly."""
+    """Load the ``small`` pack's ``profiles/<name>.md`` and validate it strictly."""
+    return load_pack_profile("small", name)
+
+
+def load_pack_profile(pack: str, name: str) -> Profile:
+    """Load one profile from a built-in pack and validate it strictly."""
     if name not in PROFILE_RECIPES:
         refuse(f"unknown built-in profile {name!r}")
-    fields, body = _resource("packs", "small", "profiles", f"{name}.md")
+    fields, body = _resource("packs", pack, "profiles", f"{name}.md")
     return parse_profile(fields, body=body)
 
 
 def load_builtin_skills() -> dict[str, str]:
-    """Every shipped skill Note, keyed by its directory name."""
-    root = resources.files("context_rail").joinpath("packs", "small", "skills")
+    """Every skill Note the ``small`` pack ships, keyed by its directory name."""
+    return load_pack_skills("small")
+
+
+def load_pack_skills(pack: str) -> dict[str, str]:
+    """Every skill Note a built-in pack ships, keyed by its directory name."""
+    root = resources.files("context_rail").joinpath("packs", pack, "skills")
     skills: dict[str, str] = {}
     for entry in sorted(root.iterdir(), key=lambda item: item.name):
         if not entry.is_dir():
             continue
-        text = _read(entry.joinpath("SKILL.md"), f"packs/small/skills/{entry.name}/SKILL.md")
-        fields, body = _split(text, f"packs/small/skills/{entry.name}/SKILL.md")
+        label = f"packs/{pack}/skills/{entry.name}/SKILL.md"
+        text = _read(entry.joinpath("SKILL.md"), label)
+        fields, body = _split(text, label)
         _check_skill(entry.name, fields, body)
         skills[entry.name] = text
     return skills

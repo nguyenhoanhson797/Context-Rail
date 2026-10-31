@@ -1,0 +1,33 @@
+name: scrum
+version: 1
+statuses: {todo: not_started, ready: not_started, doing: active, review: active, blocked: blocked, done: done, dropped: dropped}
+initial: todo
+transitions:
+  todo: [ready, doing, dropped]
+  ready: [doing, todo, dropped]
+  doing: [review, blocked, done, todo, dropped]
+  review: [doing, blocked, done, dropped]
+  blocked: [doing, review, dropped]
+  done: [doing]
+  dropped: [todo]
+presets:
+  goal:       {primitive: item,   tags: [goal]}
+  scope:      {primitive: item,   tags: [scope], fields: {priority: [must, should, could, wont]}}
+  epic:       {primitive: item,   tags: [epic]}
+  sprint:     {primitive: item,   tags: [sprint]}
+  story:      {primitive: item,   tags: [story]}
+  task:       {primitive: item,   tags: [task]}
+  bug:        {primitive: item,   tags: [bug]}
+  note:       {primitive: note,   tags: []}
+  convention: {primitive: note,   tags: [convention]}
+  decision:   {primitive: record, tags: [decision]}
+  event:      {primitive: record, tags: [event]}
+  check:      {primitive: check,  tags: []}
+  charter:    {primitive: policy, tags: []}
+  vision:     {primitive: note,   tags: []}
+  wont:       {primitive: note,   tags: []}
+  skill:      {primitive: note,   tags: []}
+  cto:        {primitive: actor,  tags: []}
+  profile:    {primitive: actor,  tags: []}
+  fix:        {primitive: item,   tags: []}
+policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}

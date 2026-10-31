@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from context_rail.core.util import dump_frontmatter, load_yaml
 from context_rail.store.doc import record_digest
@@ -557,3 +558,24 @@ def _collect_results(results: Any, n: int) -> list[dict[str, Any]]:
             raise AssertionError(f"unexpected mover message: {message!r}")
         collected.append(message[2])
     return collected
+
+
+def init_store(tmp_path: Path, pack: str = "small") -> Path:
+    """Create a fresh store under ``tmp_path`` and return its directory."""
+    from context_rail.gateway.gateway import invoke
+
+    result = invoke(
+        "init", {"dir": str(tmp_path), "pack": pack}, actor="human"
+    )
+    assert result["ok"] is True, result
+    return Path(result["value"]["store"])
+
+
+def write_pack(store: Path, name: str, document: dict[str, Any]) -> Path:
+    """Write ``packs/<name>/pack.yaml`` from ``document`` and return its path."""
+    path = Path(store) / "packs" / name / "pack.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+    return path

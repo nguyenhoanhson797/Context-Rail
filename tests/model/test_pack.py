@@ -235,7 +235,7 @@ def test_pack_name_escapes_are_refused(tmp_path: Path, name: str) -> None:
 
 def test_unknown_pack_name_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ModelError) as err:
-        load_pack("indie", tmp_path)
+        load_pack("nosuch", tmp_path)
     assert err.value.code == "VALIDATION_FAILED"
 
 

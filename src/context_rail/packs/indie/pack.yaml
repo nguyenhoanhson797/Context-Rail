@@ -1,0 +1,29 @@
+name: indie
+version: 1
+statuses: {backlog: not_started, building: active, blocked: blocked, shipped: done, dropped: dropped}
+initial: backlog
+transitions:
+  backlog: [building, dropped]
+  building: [blocked, shipped, backlog, dropped]
+  blocked: [building, dropped]
+  shipped: [building]
+  dropped: [backlog]
+presets:
+  goal:       {primitive: item,   tags: [goal]}
+  scope:      {primitive: item,   tags: [scope], fields: {priority: [must, should, could, wont]}}
+  idea:       {primitive: item,   tags: [idea]}
+  task:       {primitive: item,   tags: [task]}
+  bug:        {primitive: item,   tags: [bug]}
+  note:       {primitive: note,   tags: []}
+  convention: {primitive: note,   tags: [convention]}
+  decision:   {primitive: record, tags: [decision]}
+  event:      {primitive: record, tags: [event]}
+  check:      {primitive: check,  tags: []}
+  charter:    {primitive: policy, tags: []}
+  vision:     {primitive: note,   tags: []}
+  wont:       {primitive: note,   tags: []}
+  skill:      {primitive: note,   tags: []}
+  cto:        {primitive: actor,  tags: []}
+  profile:    {primitive: actor,  tags: []}
+  fix:        {primitive: item,   tags: []}
+policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}

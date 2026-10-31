@@ -6,13 +6,15 @@ policy value is refused instead of being guessed at.
 
 from __future__ import annotations
 
+import json
 import math
+import re
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from typing import Any, NoReturn
 
-from context_rail.core.util import load_yaml
+from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
 from context_rail.model.primitives import (
@@ -28,7 +30,9 @@ __all__ = [
     "Pack",
     "Preset",
     "ModelError",
+    "effective_measurement_min_runs",
     "load_pack",
+    "pack_policy_digest",
 ]
 
 PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
@@ -36,6 +40,8 @@ PRESET_KEYS = ("primitive", "tags", "fields", "template")
 POLICY_KEYS = PACK_POLICY_KEYS
 PACK_VERSION = 1
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
+DEFAULT_MEASUREMENT_MIN_RUNS = 10
+_PACK_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 
 
 @dataclass(frozen=True)
@@ -72,6 +78,20 @@ def load_pack(name: str, store: Path) -> Pack:
     if builtin is None:
         _refuse(f"unknown pack {name!r}")
     return cached_model(builtin, lambda: _parse_pack(_read_text(builtin), name))
+
+
+def effective_measurement_min_runs(pack: Pack) -> int:
+    """The pack's minimum comparable runs, or the fixed default when it is absent."""
+    value = pack.policy.get("measurement_min_runs", DEFAULT_MEASUREMENT_MIN_RUNS)
+    return int(value)
+
+
+def pack_policy_digest(pack: Pack) -> str:
+    """The digest an approval of this pack's policy binds to."""
+    canonical = json.dumps(
+        pack.policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    return sha256_hex(canonical.encode("utf-8"))
 
 
 def _builtin_pack(name: str) -> Any | None:
@@ -148,7 +168,9 @@ def _transitions(raw: Any, statuses: dict[str, str]) -> dict[str, tuple[str, ...
         values: list[str] = []
         for target in targets:
             if not isinstance(target, str) or target not in statuses:
-                _refuse(f"transition from {source!r} targets unknown status {target!r}")
+                _refuse(
+                    f"transitions.{source} targets unknown status {target!r}"
+                )
             values.append(target)
         result[source] = tuple(values)
     return result
@@ -196,7 +218,7 @@ def _policy(raw: Any) -> dict[str, Any]:
     unknown = sorted(set(policy) - set(POLICY_KEYS))
     if unknown:
         _refuse("unknown policy key(s): " + ", ".join(unknown))
-    missing = [key for key in POLICY_KEYS if key not in policy]
+    missing = [key for key in ("stuck_hours", "retries") if key not in policy]
     if missing:
         _refuse("pack.yaml policy is missing " + ", ".join(missing))
 
@@ -212,7 +234,18 @@ def _policy(raw: Any) -> dict[str, Any]:
     if retries < 0:
         _refuse("policy retries must be a non-negative integer")
 
-    return {"stuck_hours": stuck_hours, "retries": retries}
+    result: dict[str, Any] = {"stuck_hours": stuck_hours, "retries": retries}
+    if "measurement_min_runs" in policy:
+        minimum = policy["measurement_min_runs"]
+        if isinstance(minimum, bool) or not isinstance(minimum, int):
+            _refuse("policy measurement_min_runs must be an integer")
+        if minimum < DEFAULT_MEASUREMENT_MIN_RUNS:
+            _refuse(
+                "policy measurement_min_runs must be at least "
+                f"{DEFAULT_MEASUREMENT_MIN_RUNS}"
+            )
+        result["measurement_min_runs"] = minimum
+    return result
 
 
 def _string_list(raw: Any, what: str) -> tuple[str, ...]:
@@ -229,7 +262,7 @@ def _string_list(raw: Any, what: str) -> tuple[str, ...]:
 def _check_name(name: Any) -> None:
     if not isinstance(name, str) or not name:
         _refuse("pack name must be a non-empty string")
-    if name in (".", "..") or any(char in name for char in ("/", "\\", ":", "\x00")):
+    if not _PACK_NAME.fullmatch(name):
         _refuse(f"invalid pack name {name!r}")
 
 
