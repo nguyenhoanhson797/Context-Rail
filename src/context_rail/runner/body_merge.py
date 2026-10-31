@@ -53,13 +53,13 @@ def merge_body(
             "git merge-file output was truncated",
             {"process": "git"},
         )
-    code = int(result["exit"])
-    if result["timed_out"]:
+    if result["timed_out"] or result["exit"] is None:
         raise WriteRefused(
             "INTEGRATION_FAILURE",
             "git merge-file timed out",
             {"process": "git"},
         )
+    code = int(result["exit"])
     if code == 0:
         return BodyMerge(text=work.read_text(encoding="utf-8"), conflicted=False, reason=None)
     if 0 < code < 128:
