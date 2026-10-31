@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from context_rail.core.util import canonical_iso
 from context_rail.kernel.measurement import (
     RunSample,
     compare_versions,
@@ -259,6 +260,7 @@ def _fix_boundary(
         at = _text_value(raw_at)
         if at is None:
             return None, "boundary_category_unknown"
+        at = canonical_iso(at) or at
         category = _category_at(ctx, at, status)
         if category is None:
             return None, "boundary_category_unknown"
@@ -288,7 +290,9 @@ def _pack_at(ctx: Context, at: str) -> str:
     for path, raw_at in rows:
         change_at = _text_value(raw_at)
         if change_at is not None:
-            changes.append((change_at, record_data(ctx.index, path)))
+            changes.append(
+                (canonical_iso(change_at) or change_at, record_data(ctx.index, path))
+            )
     if not changes:
         return ctx.pack.name
     before = [change for change in changes if change[0] <= at]

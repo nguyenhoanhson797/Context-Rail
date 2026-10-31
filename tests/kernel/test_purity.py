@@ -11,7 +11,7 @@ from pathlib import Path
 
 KERNEL_DIR = Path(__file__).resolve().parents[2] / "src" / "context_rail" / "kernel"
 SRC_DIR = KERNEL_DIR.parent
-FORBIDDEN = ("store", "runner", "gateway", "doctor", "sqlite3", "subprocess", "shutil")
+FORBIDDEN = ("store", "runner", "gateway", "doctor", "core", "sqlite3", "subprocess", "shutil")
 
 
 def _imported_roots(tree: ast.AST) -> set[str]:

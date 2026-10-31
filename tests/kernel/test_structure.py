@@ -128,3 +128,17 @@ def test_the_windows_reserved_set_has_one_definition() -> None:
 
     assert location.WINDOWS_RESERVED_NAMES is primitives.WINDOWS_RESERVED_NAMES
     assert adapters.WINDOWS_RESERVED_NAMES is primitives.WINDOWS_RESERVED_NAMES
+
+
+def test_a_dependency_cycle_is_reported_not_merely_blocked() -> None:
+    from context_rail.kernel.structure import ItemRow, blocked, cycles, executable
+
+    items = [
+        ItemRow("a", "not_started", (), ("b",), None),
+        ItemRow("b", "not_started", (), ("c",), None),
+        ItemRow("c", "not_started", (), ("a",), None),
+    ]
+
+    assert cycles(items) == frozenset({"a", "b", "c"})
+    assert blocked(items) == {"a": "cycle", "b": "cycle", "c": "cycle"}
+    assert executable(items) == []

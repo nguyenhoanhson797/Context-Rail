@@ -113,7 +113,8 @@ def _decide(
     thresholds: TriageThresholds,
     engine_cluster: bool,
 ) -> ClusterDecision:
-    distinct_runs = tuple(sorted({member.run_id or UNKNOWN_RUN for member in members}))
+    voting = [member for member in members if not member.nothing_to_report]
+    distinct_runs = tuple(sorted({member.run_id or UNKNOWN_RUN for member in voting}))
     weight = sum(2 if run_id in failed else 1 for run_id in distinct_runs)
     reports = tuple(sorted(member.record_id for member in members))
     action, reason = _action(fingerprint, members, distinct_runs, weight, thresholds, engine_cluster)

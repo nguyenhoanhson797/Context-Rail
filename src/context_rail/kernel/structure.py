@@ -16,6 +16,7 @@ __all__ = [
     "ItemRow",
     "Score",
     "blocked",
+    "cycles",
     "executable",
     "rollup",
     "stuck",
@@ -55,14 +56,19 @@ def executable(items: list[ItemRow]) -> list[str]:
 
 
 def blocked(items: list[ItemRow]) -> dict[str, str]:
-    """Slug to the reason it cannot proceed: its status, or its first open dependency.
+    """Slug to the reason it cannot proceed: its status, its first open dependency
+    or a dependency cycle.
 
     Every item with an open dependency gets an entry, finished items included, so
     a caller reporting what is blocked must drop ``FINISHED_CATEGORIES`` itself.
     """
     categories = {item.slug: item.category for item in items}
+    loops = cycles(items)
     reasons: dict[str, str] = {}
     for item in items:
+        if item.slug in loops:
+            reasons[item.slug] = "cycle"
+            continue
         if item.category == "blocked":
             reasons[item.slug] = "status"
             continue
@@ -72,6 +78,33 @@ def blocked(items: list[ItemRow]) -> dict[str, str]:
         if open_deps:
             reasons[item.slug] = f"depends_on:{open_deps[0]}"
     return reasons
+
+
+def cycles(items: list[ItemRow]) -> frozenset[str]:
+    """Every slug that lies on a ``depends_on`` cycle."""
+    edges = {item.slug: tuple(dep for dep in item.depends_on) for item in items}
+    state: dict[str, int] = {}
+    stack: list[str] = []
+    found: set[str] = set()
+
+    def visit(node: str) -> None:
+        marker = state.get(node, 0)
+        if marker == 2:
+            return
+        if marker == 1:
+            if node in stack:
+                found.update(stack[stack.index(node) :])
+            return
+        state[node] = 1
+        stack.append(node)
+        for neighbour in edges.get(node, ()):
+            visit(neighbour)
+        stack.pop()
+        state[node] = 2
+
+    for slug in edges:
+        visit(slug)
+    return frozenset(found)
 
 
 def stuck(items: list[ItemRow], now_ms: int, stuck_ms: int) -> list[str]:

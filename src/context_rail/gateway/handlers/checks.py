@@ -445,6 +445,7 @@ def _cmd_payload(
         runner_digest=ran["digest"],
         exit=exit_code,
         reason=reason,
+        candidate_commit=git_runner.rev_parse_head(root, root),
     )
 
 
@@ -479,6 +480,9 @@ def _exists_payload(row: Mapping[str, Any], worktree: Path | None) -> dict[str, 
         input_globs=globs,
         input_blobs=blobs,
         reason=reason,
+        candidate_commit=(
+            git_runner.rev_parse_head(root, root) if _git_worktree(worktree) else None
+        ),
     )
 
 

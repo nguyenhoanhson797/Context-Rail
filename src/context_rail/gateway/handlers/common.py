@@ -465,6 +465,7 @@ def check_gate_state(
         freshness=freshness_of(context, row, worktree=worktree),
         candidate=row["candidate_commit"],
         acceptance=bool(row["acceptance"]),
+        requires_candidate=row["mode"] in ("cmd", "exists"),
     )
 
 

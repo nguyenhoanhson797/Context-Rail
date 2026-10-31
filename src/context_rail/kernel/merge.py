@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from context_rail.core.util import canonical_iso
+from context_rail.kernel.timestamps import canonical_iso
 from context_rail.model.primitives import RELATIONS
 
 _TIMESTAMP_KEYS = ("created", "updated")

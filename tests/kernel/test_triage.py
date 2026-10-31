@@ -140,3 +140,16 @@ def test_decisions_are_frozen_and_complete():
 def test_non_positive_thresholds_are_refused(thresholds):
     with pytest.raises(ValueError):
         cluster_reports((report(),), (run(),), thresholds)
+
+
+def test_nothing_to_report_members_do_not_vote() -> None:
+    reports = (
+        report("r1", "run1", nothing_to_report=True),
+        report("r2", "run2"),
+    )
+
+    decision = cluster_reports(reports, (run("run1"), run("run2")), THRESHOLDS)[0]
+
+    assert decision.action == "deferred"
+    assert decision.runs == ("run2",)
+    assert decision.reports == ("r1", "r2")

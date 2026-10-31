@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Sequence
 from pathlib import PurePosixPath
 
@@ -152,13 +153,19 @@ def _sample(row: tuple, data: dict) -> tuple[RunSample, bool]:
         if (
             isinstance(raw_duration, bool)
             or not isinstance(raw_duration, (int, float))
+            or not math.isfinite(raw_duration)
             or raw_duration < 0
         ):
             duration = None
             malformed = True
         else:
             duration = float(raw_duration)
-    elif isinstance(row[8], (int, float)) and not isinstance(row[8], bool) and row[8] >= 0:
+    elif (
+        isinstance(row[8], (int, float))
+        and not isinstance(row[8], bool)
+        and math.isfinite(row[8])
+        and row[8] >= 0
+    ):
         duration = float(row[8])
     else:
         duration = None

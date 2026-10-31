@@ -168,3 +168,20 @@ def test_blocked_decisions_always_explain_themselves(policy):
     assert decision.allowed is False
     assert len(decision.reasons) >= 3
     assert all(isinstance(reason, str) and reason for reason in decision.reasons)
+
+
+def test_a_candidate_check_without_a_candidate_blocks(policy) -> None:
+    unbound = CheckState("unit", True, "fresh", None, False, requires_candidate=True)
+    decision = evaluate_gate(
+        policy, "item_done", "login", [unbound], approving(), False, "c1"
+    )
+    assert decision.allowed is False
+    assert any("not bound" in reason for reason in decision.reasons)
+
+
+def test_a_non_candidate_check_may_omit_a_candidate(policy) -> None:
+    evidence = CheckState("evidence", True, "fresh", None, False, requires_candidate=False)
+    decision = evaluate_gate(
+        policy, "item_done", "login", [evidence], approving(), False, "c1"
+    )
+    assert decision.allowed is True

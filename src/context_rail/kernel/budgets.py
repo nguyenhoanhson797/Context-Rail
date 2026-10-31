@@ -121,7 +121,11 @@ def usage_totals(attempts: Sequence[dict[str, Any]]) -> UsageTotals:
 def budget_state(
     runs: Sequence[RunFacts], budget: Budget, near_ratio: float
 ) -> BudgetState:
-    """The item's budget state: exceeded only strictly above a non-null cap."""
+    """The item's budget state: exceeded only strictly above a non-null cap.
+
+    Only worker roles count; a CTO tick run is not this Item's work.
+    """
+    runs = [run for run in runs if run.role in WORKER_ROLES]
     tokens, unknown_tokens = _token_usage(runs)
     credits, unknown_credits = _credit_usage(runs)
     unknown: dict[str, int] = {}

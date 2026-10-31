@@ -30,6 +30,7 @@ class CheckState:
     freshness: str
     candidate: str | None
     acceptance: bool
+    requires_candidate: bool = False
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,10 @@ def _check_reasons(checks: tuple[CheckState, ...], candidate: str | None) -> lis
             reasons.append(f"check {check.slug!r} did not pass")
         if check.candidate and candidate and check.candidate != candidate:
             reasons.append(f"check {check.slug!r} was proven against {check.candidate}, not {candidate}")
+        if check.requires_candidate and not check.candidate:
+            reasons.append(
+                f"check {check.slug!r} is not bound to the candidate commit"
+            )
     return reasons
 
 

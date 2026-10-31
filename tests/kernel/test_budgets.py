@@ -1,4 +1,4 @@
-"""Budgets: attempts, time and usage, where unknown usage is never zero."""
+﻿"""Budgets: attempts, time and usage, where unknown usage is never zero."""
 
 from __future__ import annotations
 
@@ -214,3 +214,31 @@ def test_usage_vocabulary_is_the_model_vocabulary() -> None:
     from context_rail.model.cto import USAGE_KEYS
 
     assert USAGE_COUNTERS is USAGE_KEYS
+
+
+def test_a_non_worker_role_does_not_spend_the_item_budget() -> None:
+    from context_rail.kernel.budgets import AttemptUsage, Budget, RunFacts, budget_state
+
+    worker = RunFacts(
+        item="login",
+        role="implementer",
+        attempts=1,
+        seconds=50.0,
+        usage=(AttemptUsage(1, 1, 1),),
+        failed=False,
+        run_id="run-1",
+    )
+    tick = RunFacts(
+        item="login",
+        role="cto",
+        attempts=99,
+        seconds=9999.0,
+        usage=(AttemptUsage(9999, 9999, 9999),),
+        failed=False,
+        run_id="tick-1",
+    )
+
+    state = budget_state([worker, tick], Budget(2, 60.0, 10, 10), 0.8)
+
+    assert state.state == "near"
+    assert not any("exceed" in reason for reason in state.reasons)
