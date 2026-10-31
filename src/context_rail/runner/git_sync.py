@@ -85,6 +85,12 @@ def dirty_outside(cwd: Path, root: Path, store_rel: str) -> str | None:
         timeout=LOCAL_TIMEOUT,
         max_output=GIT_MAX_OUTPUT,
     )
+    if result["omitted_bytes"]:
+        raise WriteRefused(
+            "INTEGRATION_FAILURE",
+            "git status output was truncated",
+            {"process": "git"},
+        )
     if result["exit"] != 0:
         raise WriteRefused(
             "INTEGRATION_FAILURE", "git status failed", {"process": "git"}

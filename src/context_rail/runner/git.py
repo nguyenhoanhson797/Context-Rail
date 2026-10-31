@@ -75,6 +75,7 @@ def ls_files(
     args = ["ls-tree", "-r", "-z", "HEAD"]
     if paths:
         args += ["--", *paths]
+    # A truncated listing is never proof: read it generously and refuse a cut.
     result = _checked(args, cwd=cwd, confine_to=confine_to)
     entries: dict[str, str] = {}
     for record in result["stdout"].split("\0"):
@@ -99,6 +100,7 @@ def ls_files_staged(
     args = ["ls-files", "-s", "-t", "-z"]
     if paths:
         args += ["--", *paths]
+    # A truncated listing is never proof: read it generously and refuse a cut.
     result = _checked(args, cwd=cwd, confine_to=confine_to)
     entries: dict[str, str] = {}
     for record in result["stdout"].split("\0"):
@@ -117,6 +119,7 @@ def ls_files_staged(
 
 def status_porcelain(cwd: Path, confine_to: Path) -> tuple[str, ...]:
     """The raw ``git status --porcelain`` entries, including untracked files."""
+    # A truncated listing is never proof: read it generously and refuse a cut.
     result = _checked(
         ["status", "--porcelain", "-z", "--untracked-files=all"],
         cwd=cwd,
@@ -187,6 +190,7 @@ def rebase_in_progress(cwd: Path, confine_to: Path) -> bool:
 
 def unmerged_paths(cwd: Path, confine_to: Path) -> tuple[str, ...]:
     """The paths git still holds as unresolved conflicts, sorted."""
+    # A truncated listing is never proof: read it generously and refuse a cut.
     result = _checked(
         ["diff", "--name-only", "--diff-filter=U", "-z"],
         cwd=cwd,
@@ -252,12 +256,14 @@ def capture_changes(
         cwd=worktree,
         confine_to=confine_to,
         max_output=CAPTURE_MAX_OUTPUT,
+        allow_truncated=True,
     )
     commits_result = _checked(
         ["rev-list", "--reverse", f"{base}..{candidate}"],
         cwd=worktree,
         confine_to=confine_to,
         max_output=CAPTURE_MAX_OUTPUT,
+        allow_truncated=True,
     )
     prefixes = tuple(
         text.replace("\\", "/").strip("/")
@@ -314,11 +320,22 @@ def _revision(value: str, what: str) -> str:
 
 
 def _checked(
-    args: Sequence[str], *, cwd: Path, confine_to: Path, max_output: int | None = None
+    args: Sequence[str],
+    *,
+    cwd: Path,
+    confine_to: Path,
+    max_output: int = CAPTURE_MAX_OUTPUT,
+    allow_truncated: bool = False,
 ) -> dict:
     result = git(args, cwd=cwd, confine_to=confine_to, max_output=max_output)
     if result["timed_out"]:
         raise WriteRefused("PROCESS_ERROR", f"git {args[0]} timed out")
+    if result["omitted_bytes"] and not allow_truncated:
+        raise WriteRefused(
+            "INTEGRATION_FAILURE",
+            f"git {args[0]} output was truncated",
+            {"process": "git"},
+        )
     if result["exit"] != 0:
         detail = (result["stderr"] or result["stdout"]).strip()
         raise WriteRefused(
