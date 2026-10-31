@@ -200,3 +200,37 @@ def test_brief_hashes_and_reads_only_store_files(
     assert read, "the approval hashes are computed from store files"
     outside = [path for path in read if store not in path.resolve().parents]
     assert outside == []
+
+
+def test_a_finished_item_is_not_reported_as_blocked(
+    approved_store: Path,
+) -> None:
+    from helpers import touch_doc
+
+    store = approved_store
+    for title in ("Dependency", "Finished", "Still blocked"):
+        added = invoke("add", {"preset": "task", "title": title}, store=store, actor="cto")
+        assert is_ok(added), added
+    for src in ("finished", "still-blocked"):
+        etag = invoke("show", {"slug": src}, store=store)["value"]["doc"]["etag"]
+        linked = invoke(
+            "link",
+            {
+                "src": src,
+                "rel": "depends_on",
+                "dst": "dependency",
+                "expect": etag,
+                "reason": "needs the dependency",
+            },
+            store=store,
+            actor="cto",
+        )
+        assert is_ok(linked), linked
+    touch_doc(store, "items/task/finished.md", status="done")
+
+    value = _brief(store, item_limit=50)
+    text = value["text"]
+
+    assert "wait finished" not in text
+    assert "wait still-blocked" in text
+    assert value["omitted"]["executable"] == 0

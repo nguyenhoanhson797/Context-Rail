@@ -381,6 +381,12 @@ def _brief_sections(
     executable_section = by_key["executable"]
     runnable = structure.executable(list(items))
     held = structure.blocked(list(items))
+    finished = {
+        item.slug
+        for item in items
+        if item.category in structure.FINISHED_CATEGORIES
+    }
+    held = {slug: reason for slug, reason in held.items() if slug not in finished}
     executable_section.fixed.append(f"executable: {len(runnable)} of {len(items)} item(s)")
     available = [f"run {slug} — {titles.get(slug, slug)}" for slug in runnable]
     available.extend(f"wait {slug} — blocked by {held[slug]}" for slug in sorted(held))
