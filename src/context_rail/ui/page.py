@@ -55,17 +55,23 @@ PAGE = """<!doctype html>
 const token = new URLSearchParams(location.search).get("token") || "";
 const url = (path) => path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token);
 const el = (id) => document.getElementById(id);
+async function call(path, options) {
+  try {
+    const response = await fetch(url(path), options);
+    return await response.json();
+  } catch (error) {
+    return {ok: false, error: {code: "NETWORK", message: String(error)}};
+  }
+}
 async function get(path) {
-  const response = await fetch(url(path), {credentials: "same-origin"});
-  return response.json();
+  return call(path, {credentials: "same-origin"});
 }
 async function post(path, body) {
-  const response = await fetch(url(path), {
+  return call(path, {
     method: "POST", credentials: "same-origin",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(body),
   });
-  return response.json();
 }
 function show(id, value) {
   const target = el(id);

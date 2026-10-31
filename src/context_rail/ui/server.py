@@ -13,12 +13,14 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from context_rail.store.write import WriteRefused
 from context_rail.ui import api
 from context_rail.ui.page import PAGE
 
 __all__ = ["MAX_BODY", "create_server", "serve"]
 
 MAX_BODY = 2 * 1024 * 1024
+REQUEST_TIMEOUT_S = 30.0
 _COOKIE = "rail_ui_token"
 _HEADER = "X-Rail-Token"
 _CSP = (
@@ -36,6 +38,7 @@ def create_server(
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ContextRailUI/1"
+        timeout = REQUEST_TIMEOUT_S
 
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
             return
@@ -82,6 +85,13 @@ def create_server(
             except ValueError:
                 self._error(HTTPStatus.BAD_REQUEST, "VALIDATION_FAILED", "bad length")
                 return
+            if size < 0:
+                self._error(
+                    HTTPStatus.BAD_REQUEST,
+                    "VALIDATION_FAILED",
+                    "the request length must not be negative",
+                )
+                return
             if size > MAX_BODY:
                 self._error(
                     HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
@@ -122,19 +132,21 @@ def create_server(
             self._json_result(result)
 
         def _host_allowed(self) -> bool:
+            """Accept the IPv4 loopback names this server actually binds.
+
+            The socket is IPv4-only, so ``[::1]`` is deliberately not accepted:
+            a Host or Origin that names an address the server never listens on
+            is a cross-origin request, not this page's own fetch.
+            """
             host = (self.headers.get("Host") or "").strip().lower()
             port = self.server.server_address[1]
-            allowed = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
+            allowed = {f"127.0.0.1:{port}", f"localhost:{port}"}
             if host not in allowed:
                 return False
             origin = self.headers.get("Origin")
             if origin:
                 parts = urlsplit(origin)
-                return f"{parts.hostname}:{parts.port}" in {
-                    f"127.0.0.1:{port}",
-                    f"localhost:{port}",
-                    f"::1:{port}",
-                }
+                return f"{parts.hostname}:{parts.port}" in allowed
             return True
 
         def _token_ok(self, query: str) -> bool:
@@ -148,7 +160,11 @@ def create_server(
                     if name == _COOKIE:
                         supplied = value
                         break
-            return bool(supplied) and hmac.compare_digest(supplied, token)
+            if not supplied:
+                return False
+            return hmac.compare_digest(
+                supplied.encode("utf-8"), token.encode("ascii")
+            )
 
         def _json_result(self, result: dict[str, Any]) -> None:
             status = HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST
@@ -181,7 +197,20 @@ def create_server(
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    class _LoopbackServer(ThreadingHTTPServer):
+        daemon_threads = True
+        # On Windows SO_REUSEADDR lets a second socket steal the port, so the UI
+        # binds exclusively there; POSIX keeps the usual fast restart.
+        allow_reuse_address = sys.platform != "win32"
+
+    try:
+        server = _LoopbackServer(("127.0.0.1", port), Handler)
+    except OSError as exc:
+        raise WriteRefused(
+            "CONFLICT",
+            f"the UI cannot bind 127.0.0.1:{port}: {exc}",
+            {"port": port},
+        ) from None
     server.daemon_threads = True
     base = f"http://127.0.0.1:{server.server_address[1]}"
     return SimpleNamespace(server=server, token=token, base=base, store=store)

@@ -96,3 +96,137 @@ def test_the_page_is_self_contained(ui_server) -> None:
     assert status == 200
     assert headers["content-type"].startswith("text/html")
     assert "Context Rail" in payload
+
+
+def _raw(
+    base: str,
+    method: str,
+    path: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None = None,
+) -> tuple[int, bytes]:
+    import http.client
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(base)
+    connection = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
+    try:
+        connection.putrequest(method, path)
+        for name, value in headers:
+            connection.putheader(name, value)
+        connection.endheaders(body)
+        response = connection.getresponse()
+        return response.status, response.read()
+    finally:
+        connection.close()
+
+
+def test_a_negative_content_length_is_rejected_without_reading(ui_server) -> None:
+    from urllib.parse import urlsplit
+
+    port = urlsplit(ui_server.base).port
+    status, _ = _raw(
+        ui_server.base,
+        "POST",
+        "/api/tool/find",
+        [
+            ("Host", f"127.0.0.1:{port}"),
+            ("X-Rail-Token", ui_server.token),
+            ("Content-Length", "-1"),
+            ("Content-Type", "application/json"),
+        ],
+    )
+
+    assert status == 400
+
+
+def test_the_body_cap_is_exact(ui_server, monkeypatch) -> None:
+    import context_rail.ui.server as server_module
+    from urllib.parse import urlsplit
+
+    monkeypatch.setattr(server_module, "MAX_BODY", 32)
+    port = urlsplit(ui_server.base).port
+
+    exact = b'{"x":"' + b"a" * 24 + b'"}'
+    assert len(exact) == 32
+    status, _ = _raw(
+        ui_server.base,
+        "POST",
+        "/api/tool/find",
+        [
+            ("Host", f"127.0.0.1:{port}"),
+            ("X-Rail-Token", ui_server.token),
+            ("Content-Length", str(len(exact))),
+            ("Content-Type", "application/json"),
+        ],
+        exact,
+    )
+    assert status != 413
+
+    over = exact + b" "
+    status, _ = _raw(
+        ui_server.base,
+        "POST",
+        "/api/tool/find",
+        [
+            ("Host", f"127.0.0.1:{port}"),
+            ("X-Rail-Token", ui_server.token),
+            ("Content-Length", str(len(over))),
+            ("Content-Type", "application/json"),
+        ],
+        over,
+    )
+    assert status == 413
+
+
+def test_a_second_fixed_port_bind_is_a_typed_refusal(ui_server) -> None:
+    import pytest
+
+    from context_rail.store.write import WriteRefused
+    from context_rail.ui.server import create_server
+
+    port = ui_server.server.server_address[1]
+
+    with pytest.raises(WriteRefused) as caught:
+        create_server(ui_server.store, port=port)
+
+    assert caught.value.code == "CONFLICT"
+    assert caught.value.details["port"] == port
+
+
+def test_a_non_ascii_token_is_rejected_safely(ui_server) -> None:
+    status, payload, _ = _call(
+        ui_server.base, "/api/context", token="t\u00f6k\u00e9n"
+    )
+    assert status == 401
+    assert payload["error"]["code"] == "PERMISSION_DENIED"
+
+
+def test_the_ipv6_loopback_host_and_origin_are_refused(ui_server) -> None:
+    from urllib.parse import urlsplit
+
+    port = urlsplit(ui_server.base).port
+    status, _, _ = _call(
+        ui_server.base, "/api/context", token=ui_server.token, host=f"[::1]:{port}"
+    )
+    assert status == 403
+
+    status, _ = _raw(
+        ui_server.base,
+        "GET",
+        "/api/context",
+        [
+            ("Host", f"127.0.0.1:{port}"),
+            ("Origin", f"http://[::1]:{port}"),
+            ("X-Rail-Token", ui_server.token),
+        ],
+    )
+    assert status == 403
+
+
+def test_the_page_catches_a_failed_fetch() -> None:
+    from context_rail.ui.page import PAGE
+
+    assert "async function call" in PAGE
+    assert "catch (error)" in PAGE
+    assert "NETWORK" in PAGE
