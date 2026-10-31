@@ -208,6 +208,7 @@ def tick(context: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 context,
                 tick_id=tick_id,
                 profile=profile,
+                profile_etag=profile_etag,
                 brief=brief_value,
                 checkout=checkout,
             )
@@ -457,6 +458,7 @@ def _write_prompts(
     *,
     tick_id: str,
     profile: Profile,
+    profile_etag: str,
     brief: dict[str, Any],
     checkout: Path,
 ) -> tuple[Path, Path]:
@@ -477,7 +479,7 @@ def _write_prompts(
         "actor": CTO_ROLE,
         "profile": CTO_ROLE,
         "profile_version": profile.version,
-        "profile_etag": snapshot.get("latest_record") or ident,
+        "profile_etag": profile_etag,
         "skills": skill_pins(context, profile),
         "base_commit": git_runner.rev_parse_head(checkout, checkout),
         "candidate_commit": None,

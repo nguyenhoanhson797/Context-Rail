@@ -408,3 +408,26 @@ def test_the_tick_run_shape_is_pinned(leaf_item, fake_droid, droid_env) -> None:
     assert data["status"] in ("completed", "failed")
     assert data["attempts"][0]["session_id"] == data["session_id"]
     assert data["runner_digest"]
+
+
+def test_the_work_order_binds_the_profile_etag(leaf_item, fake_droid, droid_env) -> None:
+    from context_rail.runner.droid import _work_order_metadata
+
+    started = tick(leaf_item.store, "t-etag")
+    assert is_ok(started), started
+    run_record = latest_record(leaf_item.store, "run.completed")
+    tick_id = run_record["data"]["dispatch_id"]
+    order = local_dir(leaf_item.store) / "prompts" / f"tick-{tick_id}" / "order.md"
+    metadata, _end = json.JSONDecoder().raw_decode(order.read_text(encoding="utf-8"))
+    shown = invoke("show", {"slug": "cto"}, store=leaf_item.store, actor="cto")
+    assert is_ok(shown), shown
+    profile_etag = shown["value"]["doc"]["etag"]
+    approval = latest_record(leaf_item.store, "approval.recorded")
+
+    assert metadata["profile_etag"] == profile_etag
+    assert metadata["profile_etag"] != approval["id"]
+    assert run_record["data"]["profile_etag"] == metadata["profile_etag"]
+    assert (
+        _work_order_metadata(metadata, metadata["dispatch_id"])["profile_etag"]
+        == profile_etag
+    )
