@@ -204,6 +204,7 @@ CTO_METHODS = WORKER_METHODS + (
     "sync",
     "sync driver",
     "mcp serve",
+    "ui serve",
 )
 PROFILE_METHODS = CTO_METHODS + ("init", "approve", "cto tick", "migrate")
 

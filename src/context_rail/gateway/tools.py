@@ -317,6 +317,13 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.mcp:serve",
     ),
     Tool(
+        name="ui serve",
+        summary="Serve the loopback UI over HTTP for this store.",
+        permission="read",
+        params=(Param("port", "int", default=0, help="port to bind (default: choose one)"),),
+        handler="context_rail.gateway.handlers.ui:serve",
+    ),
+    Tool(
         name="sync driver",
         summary="Merge one scratch file for Git without touching the live store.",
         permission="write",

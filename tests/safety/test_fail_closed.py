@@ -52,6 +52,7 @@ _REFUSED_TOOLS = (
     "sync",
     "sync driver",
     "mcp serve",
+    "ui serve",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -100,6 +101,7 @@ _ARGS: dict[str, dict[str, Any]] = {
     "sync": {},
     "sync driver": {"kind": "doc", "base": "b", "ours": "o", "theirs": "t", "path": "p"},
     "mcp serve": {},
+    "ui serve": {},
 }
 _ZONK = f"""---
 primitive: item

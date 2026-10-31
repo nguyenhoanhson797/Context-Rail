@@ -241,11 +241,11 @@ def _authorize(
             return fail("PERMISSION_DENIED", nested, {"tool": tool.name, "actor": actor})
     profile = context.profile
     # ``cto tick`` starts the CTO session rather than acting inside one, and
-    # ``mcp serve`` only opens a transport whose calls are gated one by one, so
-    # neither is narrowed by the caller's profile.
+    # ``mcp serve``/``ui serve`` only open transports whose calls are gated one
+    # by one, so none of them is narrowed by the caller's profile.
     if (
         profile is not None
-        and tool.name not in ("cto tick", "mcp serve")
+        and tool.name not in ("cto tick", "mcp serve", "ui serve")
         and tool.name not in profile.allowed_methods
     ):
         return fail(

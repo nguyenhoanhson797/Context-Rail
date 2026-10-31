@@ -208,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         store=namespace.store,
         actor=namespace.actor,
     )
-    if tool in {"mcp serve", "sync driver"}:
+    if tool in {"mcp serve", "sync driver", "ui serve"}:
         if result.get("ok") is True:
             return 0
         _emit(result, stderr=True)

@@ -7,7 +7,7 @@ from context_rail.gateway.execution import serving_connection
 from context_rail.gateway.tools import TOOLS
 from helpers import mcp_call, mcp_list, twin_stores
 
-LAUNCH_CASES = {"mcp serve": {}, "sync driver": {"kind": "doc", "base": "b", "ours": "o", "theirs": "t", "path": "p"}}
+LAUNCH_CASES = {"mcp serve": {}, "sync driver": {"kind": "doc", "base": "b", "ours": "o", "theirs": "t", "path": "p"}, "ui serve": {}}
 PARITY_CASES = {
     "status": ({}, "cto"),
     "find": ({"preset": "task"}, "cto"),

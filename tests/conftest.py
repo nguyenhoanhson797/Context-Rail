@@ -1693,3 +1693,21 @@ def legacy_v1_store(tmp_path: Path) -> Path:
         '{"core_types": ["task"], "known_types": ["task", "decision"]}\n',
     )
     return root
+
+
+@pytest.fixture
+def ui_server(tmp_path: Path) -> Iterator[SimpleNamespace]:
+    """A loopback UI bound to port 0, stopped at teardown."""
+    import threading
+
+    from context_rail.ui.server import create_server
+
+    created = create_server(init_store(tmp_path), port=0)
+    thread = threading.Thread(target=created.server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield created
+    finally:
+        created.server.shutdown()
+        created.server.server_close()
+        thread.join(5)
