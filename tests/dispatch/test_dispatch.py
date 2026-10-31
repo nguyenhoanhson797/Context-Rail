@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -128,7 +127,9 @@ def test_success_creates_a_verified_candidate(leaf_item, fake_droid, droid_env) 
     assert value["branch"] == f"rail/{leaf_item.slug}/{value['dispatch_id']}"
     worktree = Path(value["worktree"])
     assert worktree.is_dir()
-    root = Path(tempfile.gettempdir()) / "context-rail-worktrees"
+    from context_rail.runner import dispatch as local_dispatch
+
+    root = local_dispatch.worktree_root(leaf_item.store)
     assert worktree.is_relative_to(root)
     assert worktree.name == value["dispatch_id"]
     assert not worktree.is_relative_to(leaf_item.root)
@@ -1074,3 +1075,11 @@ def test_a_failed_worktree_creation_restores_the_item_status(
     assert refused["ok"] is False, refused
     shown = invoke("show", {"slug": leaf_item.slug}, store=leaf_item.store, actor="cto")
     assert shown["value"]["doc"]["status"] == "todo"
+
+
+def test_the_worktree_root_is_per_test(leaf_item, tmp_path) -> None:
+    from context_rail.runner.dispatch import worktree_root
+
+    root = worktree_root(leaf_item.store)
+
+    assert root.is_relative_to(tmp_path / "context-rail-worktrees")

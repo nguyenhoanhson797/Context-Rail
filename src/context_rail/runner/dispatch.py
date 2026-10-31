@@ -105,12 +105,16 @@ def worktree_root(store: Path) -> Path:
     """``<temp>/context-rail-worktrees/<project-location-hash>``.
 
     The hash is derived from the canonical project path, so the same project
-    keeps one root across processes while two projects never share one.
+    keeps one root across processes while two projects never share one. Tests
+    point ``RAIL_WORKTREE_ROOT`` at a per-test folder so concurrent sessions
+    can never share or delete each other's checkouts.
     """
     root = project_root(store).resolve()
     location = os.path.normcase(str(root))
     digest = sha256_hex(location.encode("utf-8"))[:12]
-    return Path(tempfile.gettempdir()) / WORKTREE_PARENT / digest
+    parent = os.environ.get("RAIL_WORKTREE_ROOT")
+    base = Path(parent) if parent else Path(tempfile.gettempdir()) / WORKTREE_PARENT
+    return base / digest
 
 
 def dispatch_paths(store: Path, item: str, dispatch_id: str) -> DispatchPaths:

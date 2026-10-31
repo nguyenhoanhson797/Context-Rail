@@ -5,3 +5,6 @@ __pycache__/
 .rail-local/
 build/
 dist/
+.venv/
+.coverage
+htmlcov/

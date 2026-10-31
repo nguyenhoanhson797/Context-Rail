@@ -8,6 +8,7 @@ jobs:
   test:
     name: Python ${{ matrix.python }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -24,4 +25,7 @@ jobs:
         run: python -m pytest -q -m "not slow and not perf"
       - name: Speed budgets
         # One process, so the readings are comparable.
-        run: python -m pytest -q -m "perf and not slow"
+        run: python -m pytest -q -m "perf and not slow" -p no:xdist
+      - name: Slow lane
+        if: matrix.os == 'windows-latest' && matrix.python == '3.13'
+        run: python -m pytest -q -m slow -p no:xdist

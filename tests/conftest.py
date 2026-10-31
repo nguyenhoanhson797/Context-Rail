@@ -8,6 +8,7 @@ import importlib
 import itertools
 import json
 import os
+import shutil
 import sys
 from collections.abc import Callable, Iterator
 from datetime import datetime, timedelta, timezone
@@ -71,6 +72,19 @@ updated: '{_STAMP}'
 
 Only this note body mentions dupxnote.
 """
+
+
+@pytest.fixture(autouse=True)
+def isolated_worktree_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Path]:
+    """Every test owns its dispatch worktrees, so sessions cannot collide."""
+    root = tmp_path / "context-rail-worktrees"
+    monkeypatch.setenv("RAIL_WORKTREE_ROOT", str(root))
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 @pytest.fixture
@@ -1427,7 +1441,7 @@ def inject_fault() -> Iterator[Callable[..., None]]:
         mode: str = "raise",
         value: object = None,
     ) -> None:
-        if mode not in {"raise", "return", "exit"}:
+        if mode not in {"raise", "return"}:
             raise ValueError(f"unknown inject_fault mode {mode!r}")
         target = importlib.import_module(module)
         had = hasattr(target, attr)
@@ -1440,8 +1454,6 @@ def inject_fault() -> Iterator[Callable[..., None]]:
             if calls["n"] == nth:
                 if mode == "raise":
                     raise InjectedFault(f"{module}.{attr} fault")
-                if mode == "exit":
-                    os._exit(9)
                 return value
             return original(*args, **kwargs)
 
@@ -1516,6 +1528,13 @@ def fixed_clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     try:
         yield clock
     finally:
+        for name, module in list(sys.modules.items()):
+            if not name.startswith("context_rail") or module is util:
+                continue
+            if getattr(module, "now_iso", None) is fixed_now:
+                setattr(module, "now_iso", original_now)
+            if getattr(module, "new_ulid", None) is fixed_ulid:
+                setattr(module, "new_ulid", original_ulid)
         for module, attr in reversed(patched):
             setattr(module, attr, original_now if attr == "now_iso" else original_ulid)
 
