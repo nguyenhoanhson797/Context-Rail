@@ -9,7 +9,9 @@ repository is a clean rebuild. The legacy v1/v2 code lives in the sibling
 ## Source of truth
 
 - Design: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
-- Current plan: `docs/superpowers/plans/2026-10-28-v3-stage-2.md`
+- Current plan: `docs/superpowers/plans/2026-10-28-v3-stage-3.md`
+- Stage 2 plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-2.md`
+- Stage 2 architecture: `library/arch-stage-2.md`
 - Stage 1b plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-1b-cto-slice.md`
 - Stage 1a plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-1a-engine-core.md`
 - Stage 1a amendments: `docs/superpowers/plans/2026-10-28-v3-stage-1a-amendments.md`, which
