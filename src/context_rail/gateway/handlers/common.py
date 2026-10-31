@@ -368,8 +368,11 @@ def compose_doc(front: dict[str, Any], body: str) -> bytes:
 
 
 def read_doc(store: Path, rel: str) -> tuple[bytes, Doc]:
-    """A document's bytes and parse; a vanished file raises FileNotFoundError."""
-    data = (store / rel).read_bytes()
+    """A document's bytes and parse; a vanished file is a document lookup miss."""
+    try:
+        data = (store / rel).read_bytes()
+    except FileNotFoundError:
+        raise LookupError("not_found") from None
     return data, parse_doc(rel, data)
 
 

@@ -1045,3 +1045,14 @@ def test_a_pending_dispatch_blocks_a_merge(verified_run) -> None:
     assert refused["ok"] is False, refused
     assert refused["error"]["code"] == "CONFLICT", refused
     assert refused["error"]["details"]["dispatch_id"] == "01MLOCKEDDISPATCH0000000001"
+
+
+def test_a_missing_droid_binary_is_a_process_error(
+    leaf_item, fake_droid, droid_env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RAIL_DROID_BIN", str(leaf_item.root / "missing-droid"))
+
+    refused = dispatch(leaf_item, "missing-droid")
+
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "PROCESS_ERROR", refused

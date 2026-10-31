@@ -24,6 +24,7 @@ import tempfile
 import time
 
 from context_rail.store.location import PathEscape
+from context_rail.store.write import WriteRefused
 
 DEFAULT_ENV_ALLOW = (
     "PATH",
@@ -45,6 +46,8 @@ SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", re.I)
 
 REDACTED = "[redacted]"
 _MARKER = "\n[omitted]\n"
+#: Values shorter than this are not treated as secrets: hiding a one- or
+#: two-character value would redact ordinary output without protecting anything.
 _MIN_SECRET = 6
 _READ_CHUNK = 65536
 
@@ -102,16 +105,29 @@ def run(
                 stdin_file.write(stdin_text.encode("utf-8"))
                 stdin_file.seek(0)
             with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
-                proc = subprocess.Popen(
-                    list(command),
-                    cwd=str(root),
-                    env=child_env,
-                    stdin=stdin_file if stdin_file is not None else subprocess.DEVNULL,
-                    stdout=out,
-                    stderr=err,
-                    shell=False,
-                    start_new_session=os.name != "nt",
+                creationflags = (
+                    subprocess.CREATE_NO_WINDOW
+                    if os.name == "nt" and hasattr(subprocess, "CREATE_NO_WINDOW")
+                    else 0
                 )
+                try:
+                    proc = subprocess.Popen(
+                        list(command),
+                        cwd=str(root),
+                        env=child_env,
+                        stdin=stdin_file if stdin_file is not None else subprocess.DEVNULL,
+                        stdout=out,
+                        stderr=err,
+                        shell=False,
+                        start_new_session=os.name != "nt",
+                        creationflags=creationflags,
+                    )
+                except OSError as exc:
+                    raise WriteRefused(
+                        "PROCESS_ERROR",
+                        f"{command[0]!r} could not start: {exc}",
+                        {"process": command[0]},
+                    ) from None
                 try:
                     exit_code = proc.wait(timeout=timeout)
                 except subprocess.TimeoutExpired:
@@ -198,7 +214,15 @@ def _stop_tree(proc: subprocess.Popen) -> None:
             pass
     if proc.poll() is None:
         proc.kill()
-    proc.wait()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        # A final kill is best-effort; a stuck child must not hang the parent.
+        proc.kill()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 class _Capture:

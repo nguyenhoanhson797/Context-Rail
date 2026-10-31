@@ -231,7 +231,11 @@ def show(ix: Index, slug: str, *, body_chars: int = DEFAULT_BODY_CHARS) -> dict:
         )
     )
 
-    body = parse_doc(path, (ix.store / path).read_bytes()).body
+    try:
+        body = parse_doc(path, (ix.store / path).read_bytes()).body
+    except FileNotFoundError:
+        # A document can vanish between the index sync and the body read.
+        raise LookupError("not_found") from None
     visible = body[:body_chars]
     return {
         "doc": {

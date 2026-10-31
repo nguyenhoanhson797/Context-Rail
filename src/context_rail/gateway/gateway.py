@@ -480,9 +480,6 @@ def _failure(exc: Exception) -> dict[str, Any]:
         return fail(exc.code, exc.message)
     if isinstance(exc, QueryError):
         return fail("VALIDATION_FAILED", exc.message)
-    if isinstance(exc, FileNotFoundError):
-        # A document can vanish between the index sync and the body read.
-        return fail("NOT_FOUND", str(exc) or "not found")
     if isinstance(exc, PathEscape):
         return fail("FORBIDDEN", str(exc))
     if type(exc) is LookupError:

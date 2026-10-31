@@ -42,7 +42,9 @@ def head_commit(cwd: Path, root: Path) -> str:
 
 
 def rev_parse(cwd: Path, root: Path, ref: str) -> str:
-    return _git(["rev-parse", "--verify", f"{ref}^{{commit}}"], cwd, root).strip()
+    return _git(
+        ["rev-parse", "--verify", f"{_revision(ref, 'ref')}^{{commit}}"], cwd, root
+    ).strip()
 
 
 def upstream(cwd: Path, root: Path) -> str | None:
@@ -159,7 +161,16 @@ def fetch(cwd: Path, root: Path, remote: str, branch: str) -> str:
 
 def changed_paths(cwd: Path, root: Path, base: str, incoming: str) -> list[tuple[str, str]]:
     text = _git(
-        ["diff", "--name-status", "-z", "--no-renames", base, incoming], cwd, root
+        [
+            "diff",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            _revision(base, "base"),
+            _revision(incoming, "incoming"),
+        ],
+        cwd,
+        root,
     )
     parts = [part for part in text.split("\0") if part]
     found: list[tuple[str, str]] = []
@@ -169,13 +180,27 @@ def changed_paths(cwd: Path, root: Path, base: str, incoming: str) -> list[tuple
 
 
 def commits_between(cwd: Path, root: Path, base: str, incoming: str) -> list[list[str]]:
-    text = _git(["rev-list", "--parents", f"{base}..{incoming}"], cwd, root)
+    text = _git(
+        [
+            "rev-list",
+            "--parents",
+            f"{_revision(base, 'base')}..{_revision(incoming, 'incoming')}",
+        ],
+        cwd,
+        root,
+    )
     return [line.split() for line in text.splitlines() if line.strip()]
 
 
 def is_ancestor(cwd: Path, root: Path, ancestor: str, descendant: str) -> bool:
     result = run(
-        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        [
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            _revision(ancestor, "ancestor"),
+            _revision(descendant, "descendant"),
+        ],
         cwd=cwd,
         confine_to=root,
         timeout=LOCAL_TIMEOUT,
@@ -185,7 +210,11 @@ def is_ancestor(cwd: Path, root: Path, ancestor: str, descendant: str) -> bool:
 
 
 def worktree_add(cwd: Path, root: Path, scratch: Path, base: str) -> None:
-    _git(["worktree", "add", "--detach", "--", str(scratch), base], cwd, root)
+    _git(
+        ["worktree", "add", "--detach", "--", str(scratch), _revision(base, "base")],
+        cwd,
+        root,
+    )
 
 
 def merge(
@@ -199,7 +228,7 @@ def merge(
     command = ["git"]
     if attributes_file is not None:
         command += ["-c", f"core.attributesFile={attributes_file}"]
-    command += ["merge", "--no-ff", "--no-commit", "--", incoming]
+    command += ["merge", "--no-ff", "--no-commit", "--", _revision(incoming, "incoming")]
     result = run(
         command,
         cwd=scratch,
@@ -229,23 +258,37 @@ def commit_scratch(cwd: Path, scratch: Path, message: str) -> str:
 
 
 def update_ref(cwd: Path, root: Path, branch_name: str, new: str, old: str, message: str) -> None:
+    validate_name(branch_name, "branch")
     _git(
-        ["update-ref", "-m", message, f"refs/heads/{branch_name}", new, old],
+        [
+            "update-ref",
+            "-m",
+            message,
+            f"refs/heads/{branch_name}",
+            _revision(new, "new"),
+            _revision(old, "old"),
+        ],
         cwd,
         root,
     )
 
 
 def retain_ref(cwd: Path, root: Path, key: str, candidate: str) -> None:
-    _git(["update-ref", f"refs/rail/sync/{key}", candidate], cwd, root)
+    validate_name(key, "retained ref key")
+    _git(
+        ["update-ref", f"refs/rail/sync/{key}", _revision(candidate, "candidate")],
+        cwd,
+        root,
+    )
 
 
 def push(cwd: Path, root: Path, remote: str, branch_name: str, new: str) -> None:
     validate_name(remote, "remote")
     validate_name(branch_name, "branch")
+    revision = _revision(new, "push commit")
     try:
         _git(
-            ["push", "--porcelain", "--", remote, f"{new}:refs/heads/{branch_name}"],
+            ["push", "--porcelain", "--", remote, f"{revision}:refs/heads/{branch_name}"],
             cwd,
             root,
             timeout=NETWORK_TIMEOUT,
@@ -316,6 +359,22 @@ def _git(
             {"process": "git", "detail": detail[:500]},
         )
     return str(result["stdout"])
+
+
+def _revision(value: object, what: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise WriteRefused(
+            "VALIDATION_FAILED", f"{what} must be a non-empty revision", {"revision": value}
+        )
+    if value.startswith("-") or any(character.isspace() for character in value):
+        raise WriteRefused(
+            "VALIDATION_FAILED", f"{what} is not a plain revision", {"revision": value}
+        )
+    if "\x00" in value:
+        raise WriteRefused(
+            "VALIDATION_FAILED", f"{what} contains a NUL byte", {"revision": value}
+        )
+    return value
 
 
 def _under(path: str, store_rel: str) -> bool:

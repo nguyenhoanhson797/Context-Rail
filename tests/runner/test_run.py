@@ -1,4 +1,4 @@
-"""Bounded runner: scrubbed environment, redaction, timeout and output caps."""
+﻿"""Bounded runner: scrubbed environment, redaction, timeout and output caps."""
 
 from __future__ import annotations
 
@@ -337,3 +337,97 @@ def test_runner_never_uses_a_shell() -> None:
     parameters = list(inspect.signature(run).parameters.values())
     assert parameters[0].name == "command"
     assert "list[str]" in str(parameters[0].annotation)
+
+
+def test_a_missing_binary_is_a_typed_process_error(tmp_path: Path) -> None:
+    from context_rail.store.write import WriteRefused
+
+    with pytest.raises(WriteRefused) as caught:
+        run(
+            ["definitely-not-a-real-binary-xyz"],
+            cwd=tmp_path,
+            confine_to=tmp_path,
+            timeout=TIMEOUT,
+        )
+
+    assert caught.value.code == "PROCESS_ERROR"
+    assert caught.value.details["process"] == "definitely-not-a-real-binary-xyz"
+
+
+def test_a_launch_permission_error_is_a_typed_process_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from context_rail.store.write import WriteRefused
+
+    def denied(*args: object, **kwargs: object) -> None:
+        raise PermissionError("not allowed")
+
+    monkeypatch.setattr(subprocess, "Popen", denied)
+
+    with pytest.raises(WriteRefused) as caught:
+        run(_python("print('x')"), cwd=tmp_path, confine_to=tmp_path, timeout=TIMEOUT)
+
+    assert caught.value.code == "PROCESS_ERROR"
+
+
+def test_windows_launches_without_a_console_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if os.name != "nt":
+        pytest.skip("CREATE_NO_WINDOW is a Windows launch flag")
+    seen: dict[str, object] = {}
+    real = subprocess.Popen
+
+    def capture(*args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", capture)
+
+    run(_python("print('x')"), cwd=tmp_path, confine_to=tmp_path, timeout=TIMEOUT)
+
+    assert seen["creationflags"] == subprocess.CREATE_NO_WINDOW
+
+
+def test_a_stubborn_child_cannot_hang_the_reaper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from context_rail.runner.run import _stop_tree
+
+    class Stubborn:
+        pid = 99999999
+
+        def poll(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            raise subprocess.TimeoutExpired("stubborn", timeout)
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: None)
+
+    _stop_tree(Stubborn())  # returns instead of waiting forever
+
+
+@pytest.mark.parametrize("ref", ["-x", "a b", "a\tb", "a\x00b", "", "   "])
+@pytest.mark.parametrize("kind", ["rev_parse", "is_ancestor", "update_ref", "retain_ref", "push"])
+def test_git_sync_refuses_an_unsafe_ref(tmp_path: Path, ref: str, kind: str) -> None:
+    from context_rail.runner import git_sync
+    from context_rail.store.write import WriteRefused
+
+    calls = {
+        "rev_parse": lambda: git_sync.rev_parse(tmp_path, tmp_path, ref),
+        "is_ancestor": lambda: git_sync.is_ancestor(tmp_path, tmp_path, ref, "HEAD"),
+        "update_ref": lambda: git_sync.update_ref(
+            tmp_path, tmp_path, "main", ref, "HEAD", "message"
+        ),
+        "retain_ref": lambda: git_sync.retain_ref(tmp_path, tmp_path, ref, "HEAD"),
+        "push": lambda: git_sync.push(tmp_path, tmp_path, "origin", "main", ref),
+    }
+
+    with pytest.raises(WriteRefused) as caught:
+        calls[kind]()
+
+    assert caught.value.code == "VALIDATION_FAILED"
