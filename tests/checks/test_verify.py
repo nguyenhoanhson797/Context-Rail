@@ -10,7 +10,7 @@ from typing import Any
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import latest_record, run_git, touch_doc
+from helpers import init_store, latest_record, run_git, touch_doc
 
 
 def spec_file(tmp_path: Path, name: str, payload: dict[str, Any]) -> Path:
@@ -731,3 +731,26 @@ def test_the_post_review_verdict_only_goes_stale_when_the_check_changes(
     assert is_ok(rechecked), rechecked
     assert rechecked["value"]["passed"] is True
     assert rechecked["value"]["verdicts"][0]["freshness"] == "fresh"
+
+
+def test_verify_is_locked_out_when_no_charter_exists(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    assert is_ok(invoke("add", {"preset": "task", "title": "Feature A"}, store=store, actor="cto"))
+    spec = spec_file(
+        tmp_path,
+        "smoke.json",
+        cmd_payload([sys.executable, "-c", "print('ok')"], ["src/**/*.py"]),
+    )
+    assert is_ok(
+        invoke(
+            "check",
+            {"slug": "smoke", "target": "feature-a", "spec_file": str(spec), "expect": "absent"},
+            store=store,
+            actor="cto",
+        )
+    )
+
+    refused = invoke("verify", {"target": "smoke"}, store=store, actor="cto")
+
+    assert refused["error"]["code"] == "INVALID_STATE"
+    assert refused["error"]["details"]["reason"] == "approval_missing"

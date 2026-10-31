@@ -281,6 +281,12 @@ def _authorize(
         return None
     policy = context.policy
     if policy is None:
+        if tool.name in EXECUTION_TOOLS:
+            return fail(
+                "INVALID_STATE",
+                "the charter is not approved; nothing executes yet",
+                {"reason": "approval_missing", "tool": tool.name},
+            )
         return None
     locked = _lockout(tool, params, context)
     if locked is not None:
