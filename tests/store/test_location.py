@@ -14,6 +14,7 @@ from context_rail.core.util import sha256_hex, slugify
 from context_rail.model.manifest import load_manifest
 from context_rail.store.location import (
     PathEscape,
+    StoreLocationError,
     confine,
     find_store,
     index_path,
@@ -144,6 +145,69 @@ def test_local_dir_follows_dot_git_appearing_and_disappearing(tmp_path: Path) ->
     assert local_dir(store) == root / ".git" / "context-rail" / _key("context-rail")
     shutil.rmtree(root / ".git")
     assert local_dir(store) == store / ".rail-local"
+
+
+def _store_in(root: Path) -> Path:
+    store = root / "context-rail"
+    store.mkdir(parents=True)
+    (store / "rail.yaml").write_text("schema: 3\n", encoding="utf-8")
+    return store
+
+
+def test_local_dir_uses_an_absolute_gitdir_marker(tmp_path: Path) -> None:
+    store = _store_in(tmp_path / "worktree")
+    git_dir = tmp_path / "R" / ".git" / "worktrees" / "wt"
+    git_dir.mkdir(parents=True)
+    (store.parent / ".git").write_text(f"gitdir: {git_dir}\n", encoding="utf-8")
+
+    found = local_dir(store)
+
+    assert found.parent.parent.resolve() == git_dir.resolve()
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "not a gitdir line\n", "gitdir:\n", "gitdir: ../missing-git-dir\n"],
+)
+def test_local_dir_refuses_an_unusable_git_marker(
+    tmp_path: Path, text: str
+) -> None:
+    store = _store_in(tmp_path)
+    (tmp_path / ".git").write_text(text, encoding="utf-8")
+
+    with pytest.raises(StoreLocationError):
+        local_dir(store)
+    assert not (store / ".rail-local").exists()
+
+
+def test_local_dir_refuses_an_unreadable_git_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store_in(tmp_path)
+    marker = tmp_path / ".git"
+    marker.write_text("gitdir: ../somewhere\n", encoding="utf-8")
+    real = Path.read_text
+
+    def denied(self: Path, *args: object, **kwargs: object) -> str:
+        if self == marker:
+            raise OSError("access denied")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", denied)
+
+    with pytest.raises(StoreLocationError):
+        local_dir(store)
+
+
+def test_a_malformed_nested_marker_never_falls_back_to_a_parent_git(
+    tmp_path: Path,
+) -> None:
+    run_git(tmp_path, "init")
+    store = _store_in(tmp_path / "nested")
+    (tmp_path / "nested" / ".git").write_text("broken\n", encoding="utf-8")
+
+    with pytest.raises(StoreLocationError):
+        local_dir(store)
 
 
 def test_local_dir_and_find_store_launch_no_process(

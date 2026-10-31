@@ -51,6 +51,10 @@ class PathEscape(Exception):
     """A store-relative path would land outside the store."""
 
 
+class StoreLocationError(PathEscape):
+    """A ``.git`` marker exists but does not name a usable git directory."""
+
+
 def find_store(start: Path) -> Path | None:
     """The store containing ``start``, or None when no ancestor holds one."""
     current = Path(start).resolve()
@@ -171,17 +175,17 @@ def _worktree_git_dir(store: Path) -> tuple[Path, Path] | None:
         if marker.is_dir():
             return marker, directory
         if marker.is_file():
-            git_dir = _gitdir_target(marker)
-            if git_dir is not None:
-                return git_dir, directory
+            return _gitdir_target(marker), directory
+        if marker.exists() or marker.is_symlink():
+            raise StoreLocationError(f"{marker} is not a git directory or gitdir file")
     return None
 
 
-def _gitdir_target(marker: Path) -> Path | None:
+def _gitdir_target(marker: Path) -> Path:
     try:
         text = marker.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
+    except OSError as exc:
+        raise StoreLocationError(f"{marker} cannot be read: {exc}") from None
     for line in text.splitlines():
         name, separator, value = line.partition(":")
         target = value.strip()
@@ -189,8 +193,13 @@ def _gitdir_target(marker: Path) -> Path | None:
             path = Path(target)
             if not path.is_absolute():
                 path = marker.parent / path
-            return Path(os.path.normpath(path))
-    return None
+            found = Path(os.path.normpath(path))
+            if not found.is_dir():
+                raise StoreLocationError(
+                    f"{marker} names a missing git directory: {target!r}"
+                )
+            return found
+    raise StoreLocationError(f"{marker} has no gitdir line")
 
 
 def _store_key(store: Path, root: Path) -> str:
