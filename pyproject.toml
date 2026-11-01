@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ctx-rail"
+name = "context-rail"
 version = "3.0.0"
 description = "An agentic project workspace: files are the truth, agents work through one write path"
 readme = "README.md"
