@@ -13,7 +13,7 @@ def test_one_scripted_stage2_flow_agrees_across_cli_mcp_and_clones(
     before = record_inventory(two_clones.store_a)
     created = invoke(
         "pack create",
-        {"name": "mine", "from": "indie"},
+        {"name": "mine", "from": "flow"},
         store=two_clones.store_a,
         actor="cto",
     )

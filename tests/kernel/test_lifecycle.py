@@ -7,10 +7,10 @@ import pytest
 from context_rail.kernel.lifecycle import category_of, check_transition
 
 
-def test_small_pack_transitions(small_pack):
-    assert check_transition(small_pack, "todo", "doing") is None
-    assert check_transition(small_pack, "todo", "done") is not None
-    assert check_transition(small_pack, "done", "nope") is not None
+def test_basic_pack_transitions(basic_pack):
+    assert check_transition(basic_pack, "todo", "doing") is None
+    assert check_transition(basic_pack, "todo", "done") is not None
+    assert check_transition(basic_pack, "done", "nope") is not None
 
 
 @pytest.mark.parametrize(
@@ -18,8 +18,8 @@ def test_small_pack_transitions(small_pack):
     [("todo", "doing"), ("todo", "dropped"), ("doing", "blocked"), ("doing", "done"),
      ("doing", "todo"), ("blocked", "doing"), ("done", "doing"), ("dropped", "todo")],
 )
-def test_declared_transitions_are_allowed(small_pack, current, target):
-    assert check_transition(small_pack, current, target) is None
+def test_declared_transitions_are_allowed(basic_pack, current, target):
+    assert check_transition(basic_pack, current, target) is None
 
 
 @pytest.mark.parametrize(
@@ -27,8 +27,8 @@ def test_declared_transitions_are_allowed(small_pack, current, target):
     [("todo", "blocked"), ("doing", "doing"), ("blocked", "done"), ("done", "todo"),
      ("dropped", "done")],
 )
-def test_undeclared_transitions_are_refused_with_a_reason(small_pack, current, target):
-    reason = check_transition(small_pack, current, target)
+def test_undeclared_transitions_are_refused_with_a_reason(basic_pack, current, target):
+    reason = check_transition(basic_pack, current, target)
     assert isinstance(reason, str) and reason
 
 
@@ -36,15 +36,15 @@ def test_undeclared_transitions_are_refused_with_a_reason(small_pack, current, t
     ("current", "target"),
     [("nope", "doing"), ("todo", "nope"), ("nope", "nope"), ("", "todo")],
 )
-def test_unknown_statuses_are_refused(small_pack, current, target):
-    reason = check_transition(small_pack, current, target)
+def test_unknown_statuses_are_refused(basic_pack, current, target):
+    reason = check_transition(basic_pack, current, target)
     assert isinstance(reason, str) and reason
 
 
-def test_category_of_maps_every_small_status(small_pack):
-    assert category_of(small_pack, "todo") == "not_started"
-    assert category_of(small_pack, "doing") == "active"
-    assert category_of(small_pack, "blocked") == "blocked"
-    assert category_of(small_pack, "done") == "done"
-    assert category_of(small_pack, "dropped") == "dropped"
-    assert category_of(small_pack, "nope") is None
+def test_category_of_maps_every_small_status(basic_pack):
+    assert category_of(basic_pack, "todo") == "not_started"
+    assert category_of(basic_pack, "doing") == "active"
+    assert category_of(basic_pack, "blocked") == "blocked"
+    assert category_of(basic_pack, "done") == "done"
+    assert category_of(basic_pack, "dropped") == "dropped"
+    assert category_of(basic_pack, "nope") is None

@@ -18,7 +18,7 @@ _GLOBAL_FLAGS = ("--store", "--actor")
 
 _ANSWERS: dict[str, Any] = {
     "schema": 1,
-    "pack": "small",
+    "pack": "basic",
     "goal": {"title": "Ship greetings", "body": "Greet every visitor by name."},
     "vision": {
         "title": "Greetings everywhere",

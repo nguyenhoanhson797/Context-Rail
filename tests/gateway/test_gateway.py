@@ -114,7 +114,7 @@ def test_init_writes_manifest_folders_and_gitignore(tmp_path):
     manifest = load_yaml((store / "rail.yaml").read_text(encoding="utf-8"))
     assert manifest == {
         "schema": 3,
-        "pack": "small",
+        "pack": "basic",
         "placement": {
             "item": "items/{preset}/{slug}.md",
             "note": "notes/{preset}/{slug}.md",

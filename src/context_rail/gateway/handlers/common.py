@@ -15,7 +15,7 @@ from context_rail.kernel import gates, rights
 from context_rail.model.cto import Profile, parse_profile, parse_report
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import render_path
-from context_rail.model.pack import Pack, Preset
+from context_rail.model.pack import Pack, Preset, canonical_pack_name
 from context_rail.model.primitives import RELATIONS
 from context_rail.store.doc import Doc, etag, parse_doc
 from context_rail.store.git_index import invalid_glob
@@ -315,12 +315,13 @@ def load_body(body_file: str | None) -> str | None:
 def template_body(store: Path, pack: Pack, preset: Preset, title: str) -> str:
     """The preset's body template with ``{title}`` filled in."""
     template = preset.template.replace("{primitive}", preset.primitive)
-    folder = Path(store) / "packs" / pack.name
-    local = confine(folder, template)
-    if local.is_file():
-        return _rendered(_read_template(local, template), title)
+    canonical = canonical_pack_name(pack.name)
+    for name in dict.fromkeys((pack.name, canonical)):
+        local = confine(Path(store) / "packs" / name, template)
+        if local.is_file():
+            return _rendered(_read_template(local, template), title)
     builtin = resources.files("context_rail").joinpath(
-        "packs", pack.name, *PurePosixPath(template).parts
+        "packs", canonical, *PurePosixPath(template).parts
     )
     if builtin.is_file():
         return _rendered(_read_template(builtin, template), title)

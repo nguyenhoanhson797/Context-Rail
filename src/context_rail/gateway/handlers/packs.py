@@ -31,6 +31,7 @@ from context_rail.store.location import local_dir
 from context_rail.store.lock import StoreLockTimeout, file_lock
 from context_rail.store.packs import (
     copy_plan,
+    installed_pack_name,
     pack_bytes,
     pack_origins,
     pack_resources,
@@ -59,8 +60,9 @@ _TEMPLATES = ("item", "note", "record", "check")
 def pack_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Every installed pack, bounded, with its origin and the active one."""
     origins = pack_origins(ctx.store)
+    active = installed_pack_name(ctx.store, ctx.pack.name)
     rows = [
-        {"name": name, "origin": origins[name], "active": name == ctx.pack.name}
+        {"name": name, "origin": origins[name], "active": name == active}
         for name in sorted(origins)
     ]
     return {"packs": rows[:LIST_CAP], "omitted_count": max(0, len(rows) - LIST_CAP)}
@@ -68,30 +70,39 @@ def pack_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
 def pack_show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """One pack's resources, origin, manifest etag and approval state."""
-    name = _known(ctx.store, args["name"])
+    requested = args["name"]
+    name = _known(ctx.store, requested)
     data = pack_bytes(ctx.store, name)
+    # A store keeps the pack name its approval was recorded for, so an alias it
+    # is still running must report the approval of that same target.
+    target = requested if requested == ctx.manifest.pack else name
     return {
         "pack": name,
         "resources": pack_resources(ctx.store, name),
         "origin": pack_origins(ctx.store)[name],
         "etag": etag(data),
-        "approval": approval_state(ctx, f"pack:{name}"),
+        "approval": approval_state(ctx, f"pack:{target}"),
     }
 
 
 def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """A read report, never a refusal: the pack is valid or the problems are."""
-    name = args["name"]
+    requested = args["name"]
     problems: list[dict[str, str]] = []
     try:
-        check_pack_name(name)
-        if name not in pack_origins(ctx.store):
-            problems.append({"path": "pack.yaml", "message": f"unknown pack {name!r}"})
+        check_pack_name(requested)
+        name = installed_pack_name(ctx.store, requested)
+        if name is None:
+            problems.append(
+                {"path": "pack.yaml", "message": f"unknown pack {requested!r}"}
+            )
             return {"valid": False, "problems": problems}
         load_pack(name, ctx.store)
         root = pack_root(ctx.store, name)
         if root is None:
-            problems.append({"path": "pack.yaml", "message": f"unknown pack {name!r}"})
+            problems.append(
+                {"path": "pack.yaml", "message": f"unknown pack {requested!r}"}
+            )
             return {"valid": False, "problems": problems}
         for template in _TEMPLATES:
             if not root.joinpath("templates", f"{template}.md").is_file():
@@ -121,21 +132,22 @@ def pack_create(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
     source = args["from"]
     check_pack_name(name)
     check_pack_name(source)
-    if source not in pack_origins(ctx.store):
+    resolved = installed_pack_name(ctx.store, source)
+    if resolved is None:
         raise WriteRefused("NOT_FOUND", f"unknown pack {source!r}", {"pack": source})
     destination = Path(ctx.store) / "packs" / name / "pack.yaml"
     if destination.exists():
         raise WriteRefused(
             "CONFLICT", f"pack {name!r} already exists", {"pack": name}
         )
-    ops = copy_plan(ctx.store, name, source)
+    ops = copy_plan(ctx.store, name, resolved)
     record = {
         "kind": "pack.created",
         "preset": "event",
         "data": {
             "schema": 1,
             "name": name,
-            "from": source,
+            "from": resolved,
             "paths": [op.path for op in ops],
         },
     }
@@ -303,15 +315,16 @@ def _refuse_pending_intents(store: Path) -> None:
 
 
 def _load_target(store: Path, name: str) -> Any:
-    if name not in pack_origins(store):
+    if installed_pack_name(store, name) is None:
         raise WriteRefused("NOT_FOUND", f"unknown pack {name!r}", {"pack": name})
     return load_pack(name, store)
 
 
 def _known(store: Path, name: str) -> str:
-    if name not in pack_origins(store):
+    resolved = installed_pack_name(store, name)
+    if resolved is None:
         raise WriteRefused("NOT_FOUND", f"unknown pack {name!r}", {"pack": name})
-    return name
+    return resolved
 
 
 def _unsupported_fields(items: list[dict[str, Any]], source: Any, target: Any) -> list[dict[str, Any]]:

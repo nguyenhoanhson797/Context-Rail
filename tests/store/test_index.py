@@ -48,7 +48,7 @@ from context_rail.store.index import Index
 
 store = Path(sys.argv[1])
 start = Path(sys.argv[2])
-pack = load_pack("small", store)
+pack = load_pack("basic", store)
 deadline = time.monotonic() + 60
 while not start.exists():
     if time.monotonic() > deadline:
@@ -64,7 +64,7 @@ index.close()
 def opened(
     store: Path, pack: Pack | None = None, **kwargs: object
 ) -> Iterator[Index]:
-    index = Index.open(store, pack or load_pack("small", store), **kwargs)
+    index = Index.open(store, pack or load_pack("basic", store), **kwargs)
     try:
         yield index
     finally:
@@ -94,7 +94,7 @@ from context_rail.model.pack import load_pack
 from context_rail.store.index import Index
 
 store = Path(sys.argv[1])
-index = Index.open(store, load_pack("small", store))
+index = Index.open(store, load_pack("basic", store))
 stats = index.sync()
 paths = sorted(row[0] for row in index.conn.execute("SELECT path FROM docs"))
 print(json.dumps({"added": stats.added, "skipped": stats.skipped, "paths": paths}))
@@ -133,7 +133,7 @@ def drop(link: Path) -> None:
 
 def test_open_creates_a_wal_database_without_parsing_documents(store_factory):
     store = store_factory(docs=50)
-    index = Index.open(store, load_pack("small", store))
+    index = Index.open(store, load_pack("basic", store))
     try:
         assert INDEX_SCHEMA == 3
         assert index_path(store).is_file()
@@ -211,7 +211,7 @@ def test_corrupt_db_is_rebuilt(store_factory):
     path = index_path(store)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"not a sqlite database")
-    index = Index.open(store, load_pack("small", store))
+    index = Index.open(store, load_pack("basic", store))
     try:
         assert index.sync().added == 20
         assert index.conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -232,10 +232,10 @@ def test_pack_change_rebuilds_the_index(store_factory):
     with opened(store) as index:
         assert index.sync() == SyncStats(0, 0, 0, 0)
 
-    source = resources.files("context_rail").joinpath("packs/small/pack.yaml")
+    source = resources.files("context_rail").joinpath("packs/basic/pack.yaml")
     changed = source.read_text(encoding="utf-8").replace("initial: todo", "initial: done")
     assert "initial: done" in changed
-    local = store / "packs" / "small" / "pack.yaml"
+    local = store / "packs" / "basic" / "pack.yaml"
     local.parent.mkdir(parents=True, exist_ok=True)
     local.write_text(changed, encoding="utf-8")
 
@@ -341,8 +341,8 @@ def test_only_md_and_json_are_parsed_and_other_files_counted(store_factory):
     (store / ".hidden" / "x.md").write_bytes(TASK_DOC)
     (store / "templates").mkdir()
     (store / "templates" / "item.md").write_bytes(TASK_DOC)
-    (store / "packs" / "small" / "templates").mkdir(parents=True)
-    (store / "packs" / "small" / "templates" / "item.md").write_bytes(TASK_DOC)
+    (store / "packs" / "basic" / "templates").mkdir(parents=True)
+    (store / "packs" / "basic" / "templates" / "item.md").write_bytes(TASK_DOC)
     with opened(store) as index:
         first = index.sync()
         assert (first.added, first.skipped) == (10, 2)
@@ -355,7 +355,7 @@ def test_only_md_and_json_are_parsed_and_other_files_counted(store_factory):
             "items/task/login.md.123.tmp",
             ".hidden/x.md",
             "templates/item.md",
-            "packs/small/templates/item.md",
+            "packs/basic/templates/item.md",
             "image.png",
             "notes/readme.txt",
         ):

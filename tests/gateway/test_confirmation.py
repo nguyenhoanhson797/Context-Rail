@@ -11,7 +11,7 @@ def test_phrases_are_exact() -> None:
     assert confirmation_phrase("approve", "charter") == "APPROVE charter"
     assert confirmation_phrase("pass", "unit") == "PASS unit"
     assert confirmation_phrase("fail", "unit") == "FAIL unit"
-    assert confirmation_phrase("pack_use", "small") == "USE PACK small"
+    assert confirmation_phrase("pack_use", "basic") == "USE PACK basic"
     assert confirmation_phrase("adapters_force", "adapters") == "FORCE ADAPTERS adapters"
 
 
@@ -19,7 +19,7 @@ def test_validation_accepts_only_the_exact_phrase() -> None:
     assert validate_confirmation("approve", "charter", "APPROVE charter") is None
     assert validate_confirmation("pass", "smoke", "PASS smoke") is None
     assert validate_confirmation("fail", "smoke", "FAIL smoke") is None
-    assert validate_confirmation("pack_use", "small", "USE PACK small") is None
+    assert validate_confirmation("pack_use", "basic", "USE PACK basic") is None
     assert validate_confirmation("adapters_force", "adapters", "FORCE ADAPTERS adapters") is None
 
 

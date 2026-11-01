@@ -643,7 +643,7 @@ def _collect_results(results: Any, n: int) -> list[dict[str, Any]]:
     return collected
 
 
-def init_store(tmp_path: Path, pack: str = "small") -> Path:
+def init_store(tmp_path: Path, pack: str = "basic") -> Path:
     """Create a fresh store under ``tmp_path`` and return its directory."""
     from context_rail.gateway.gateway import invoke
 

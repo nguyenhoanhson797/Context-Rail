@@ -1,4 +1,4 @@
-name: small
+name: basic
 version: 1
 statuses: {todo: not_started, doing: active, blocked: blocked, done: done, dropped: dropped}
 initial: todo
@@ -15,6 +15,8 @@ presets:
   milestone:  {primitive: item,   tags: [milestone]}
   risk:       {primitive: item,   tags: [risk], fields: {severity: [low, medium, high, critical]}}
   question:   {primitive: item,   tags: [question]}
+  bug:        {primitive: item,   tags: [bug]}
+  idea:       {primitive: item,   tags: [idea]}
   note:       {primitive: note,   tags: []}
   convention: {primitive: note,   tags: [convention]}
   decision:   {primitive: record, tags: [decision]}

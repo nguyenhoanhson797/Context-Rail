@@ -96,7 +96,7 @@ def test_generated_docs_parse_cleanly_and_index_without_skips(tmp_path):
         if rel == "rail.yaml":
             continue
         assert parse_doc(rel, (store / rel).read_bytes()).problems == ()
-    index = Index.open(store, load_pack("small", store))
+    index = Index.open(store, load_pack("basic", store))
     try:
         assert index.sync() == SyncStats(200, 0, 0, 0)
     finally:

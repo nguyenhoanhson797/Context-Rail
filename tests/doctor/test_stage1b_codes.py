@@ -403,7 +403,7 @@ def store_for_code(
     store = skill_store if request.param == "adapter_modified" else builder(
         tmp_path, answers, store_factory
     )
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     index = Index.open(store, pack)
     index.sync()
     try:

@@ -30,7 +30,7 @@ entry points, `rail` and `ctx-rail`; every example below also works as
 From the project you want to manage:
 
 ```powershell
-rail init --pack small            # writes ./context-rail/
+rail init --pack basic            # writes ./context-rail/
 rail add goal "Ship v3"
 rail add task "Write the first task" --rel part_of=ship-v3
 rail status
@@ -51,7 +51,7 @@ Notes that are easy to trip over:
 
 ### Onboarding a whole project
 
-`rail init --pack small` writes only the skeleton (`rail.yaml`, `.gitignore`,
+`rail init --pack basic` writes only the skeleton (`rail.yaml`, `.gitignore`,
 empty folders). For a picture, the profiles and the agent files:
 
 ```powershell
@@ -179,6 +179,8 @@ src/context_rail/
 
 - Visual guide (diagrams and from-zero-to-daily walkthrough):
   `docs/context-rail-v3-guide.html`
+- Interactive engine graph (primitives, relations, one write path and the agent loop):
+  `docs/context-rail-v3-engine-graph.html`
 - Spec: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
 - Architecture: `library/arch-stage-3.md`
 - Working rules and engine invariants: `AGENTS.md`

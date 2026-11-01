@@ -88,9 +88,9 @@ def isolated_worktree_root(
 
 
 @pytest.fixture
-def small_pack(tmp_path: Path) -> Pack:
-    """The built-in ``small`` pack, loaded for an empty store."""
-    return load_pack("small", tmp_path)
+def basic_pack(tmp_path: Path) -> Pack:
+    """The built-in ``basic`` pack, loaded for an empty store."""
+    return load_pack("basic", tmp_path)
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ def store_factory(tmp_path: Path) -> Callable[..., Path]:
 
 
 def _indexed(store: Path) -> SimpleNamespace:
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     index = Index.open(store, pack)
     index.sync()
     return SimpleNamespace(store=store, ix=index, pack=pack)
@@ -336,7 +336,7 @@ The login test suite passes.
         about=("charter",),
     )
 
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     index = Index.open(store, pack)
     index.sync()
     try:
@@ -758,7 +758,7 @@ def git_index_repo(tmp_path: Path, index_version: str) -> SimpleNamespace:
 
 PICTURE_ANSWERS: dict[str, Any] = {
     "schema": 1,
-    "pack": "small",
+    "pack": "basic",
     "goal": {
         "title": "Ship invoicing",
         "body": "Small teams send invoices without keeping a spreadsheet.",
@@ -1472,7 +1472,7 @@ def inject_fault() -> Iterator[Callable[..., None]]:
 def measure_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
     """A fresh small-pack store with an open, synced index for measurement."""
     store = init_store(tmp_path)
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     index = Index.open(store, pack)
     index.sync()
     try:

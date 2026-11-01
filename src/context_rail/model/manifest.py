@@ -49,7 +49,7 @@ class Manifest:
 
 DEFAULT_MANIFEST: dict[str, Any] = {
     "schema": SCHEMA_VERSION,
-    "pack": "small",
+    "pack": "basic",
     "placement": {
         "item": "items/{preset}/{slug}.md",
         "note": "notes/{preset}/{slug}.md",

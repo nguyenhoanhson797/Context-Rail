@@ -13,7 +13,7 @@ def test_pack_list_is_bounded_with_origins_and_one_active(tmp_path) -> None:
     store = init_store(tmp_path)
     value = invoke("pack list", {}, store=store, actor="human")["value"]
     names = {row["name"] for row in value["packs"]}
-    assert {"indie", "scrum", "waterfall", "small"} <= names
+    assert {"basic", "flow", "scrum", "waterfall"} <= names
     assert sum(1 for row in value["packs"] if row["active"]) == 1
     assert value["omitted_count"] == 0 and all(row["origin"] for row in value["packs"])
 
@@ -25,7 +25,7 @@ def test_pack_show_unknown_name_is_not_found(tmp_path) -> None:
 
 def test_pack_validate_reports_field_paths_without_mutation(tmp_path) -> None:
     store = init_store(tmp_path)
-    invoke("pack create", {"name": "mine", "from": "indie"}, store=store, actor="cto")
+    invoke("pack create", {"name": "mine", "from": "flow"}, store=store, actor="cto")
     result = invoke("pack validate", {"name": "mine"}, store=store, actor="cto")
     assert result["ok"] is True and result["value"]["valid"] is True
 
@@ -33,17 +33,17 @@ def test_pack_validate_reports_field_paths_without_mutation(tmp_path) -> None:
 def test_pack_create_writes_an_unselected_draft_once(tmp_path) -> None:
     store = init_store(tmp_path)
     before = (store / "rail.yaml").read_bytes()
-    first = invoke("pack create", {"name": "mine", "from": "indie"}, store=store, actor="cto")
+    first = invoke("pack create", {"name": "mine", "from": "flow"}, store=store, actor="cto")
     assert first["ok"] is True and first["value"]["approval"] == "pending"
     assert (store / "rail.yaml").read_bytes() == before
-    assert invoke("pack create", {"name": "mine", "from": "indie"}, store=store, actor="cto")["error"]["code"] == "CONFLICT"
+    assert invoke("pack create", {"name": "mine", "from": "flow"}, store=store, actor="cto")["error"]["code"] == "CONFLICT"
     assert invoke("pack create", {"name": "x", "from": "nosuch"}, store=store, actor="cto")["error"]["code"] == "NOT_FOUND"
 
 
-def test_pack_create_copies_the_builtin_small_pack(tmp_path) -> None:
+def test_pack_create_copies_the_builtin_basic_pack(tmp_path) -> None:
     store = init_store(tmp_path)
     result = invoke(
-        "pack create", {"name": "mine", "from": "small"}, store=store, actor="cto"
+        "pack create", {"name": "mine", "from": "basic"}, store=store, actor="cto"
     )
     assert result["ok"] is True, result
     assert (store / "packs" / "mine" / "pack.yaml").is_file()
@@ -55,7 +55,7 @@ def test_pack_create_copies_the_builtin_small_pack(tmp_path) -> None:
 def test_pack_create_copies_an_installed_local_pack(tmp_path) -> None:
     store = init_store(tmp_path)
     created = invoke(
-        "pack create", {"name": "local", "from": "small"}, store=store, actor="cto"
+        "pack create", {"name": "local", "from": "basic"}, store=store, actor="cto"
     )
     assert created["ok"] is True, created
 
@@ -127,13 +127,13 @@ def test_pack_use_is_human_only_and_needs_the_exact_phrase(tmp_path) -> None:
     store = init_store(tmp_path)
     before = (store / "rail.yaml").read_bytes()
     etag_value = etag(before)
-    manifest = invoke("pack show", {"name": "small"}, store=store, actor="human")
+    manifest = invoke("pack show", {"name": "basic"}, store=store, actor="human")
     assert manifest["ok"] is True
-    denied = invoke("pack use", {"name": "indie", "expect": "0" * 16}, store=store, actor="cto")
+    denied = invoke("pack use", {"name": "flow", "expect": "0" * 16}, store=store, actor="cto")
     assert denied["error"]["code"] == "PERMISSION_DENIED"
     wrong = invoke(
         "pack use",
-        {"name": "indie", "expect": etag_value, "confirm": "use pack indie"},
+        {"name": "flow", "expect": etag_value, "confirm": "use pack flow"},
         store=store,
         actor="human",
     )
@@ -144,7 +144,7 @@ def test_pack_use_is_human_only_and_needs_the_exact_phrase(tmp_path) -> None:
 def test_dry_run_changes_no_bytes_and_no_records(tmp_path) -> None:
     store = init_store(tmp_path)
     before = record_inventory(store)
-    result = invoke("pack use", {"name": "indie", "dry_run": True, "expect": "0" * 16}, store=store, actor="human")
+    result = invoke("pack use", {"name": "flow", "dry_run": True, "expect": "0" * 16}, store=store, actor="human")
     assert record_inventory(store) == before
     assert result["ok"] is True or result["error"]["code"] == "CONFLICT"
 
@@ -204,9 +204,9 @@ def test_quoted_and_indented_scalars_are_rewritten_without_duplicates() -> None:
 
     from context_rail.gateway.handlers.packs import _rewrite_manifest, _rewrite_status
 
-    manifest = _rewrite_manifest(b'pack: "small"\n', "indie").decode("utf-8")
-    assert manifest == 'pack: "indie"\n'
-    assert yaml.safe_load(manifest)["pack"] == "indie"
+    manifest = _rewrite_manifest(b'pack: "basic"\n', "flow").decode("utf-8")
+    assert manifest == 'pack: "flow"\n'
+    assert yaml.safe_load(manifest)["pack"] == "flow"
 
     status = _rewrite_status(
         b"---\n  status: 'todo'\n---\nbody\n", "doing"
@@ -220,9 +220,9 @@ def test_a_malformed_or_duplicate_scalar_refuses() -> None:
     from context_rail.gateway.handlers.packs import _rewrite_manifest, _rewrite_status
     from context_rail.store.write import WriteRefused
 
-    for data in (b"schema: 3\n", b"pack: small\npack: indie\n"):
+    for data in (b"schema: 3\n", b"pack: basic\npack: flow\n"):
         with pytest.raises(WriteRefused) as caught:
-            _rewrite_manifest(data, "indie")
+            _rewrite_manifest(data, "flow")
         assert caught.value.code == "VALIDATION_FAILED"
 
     with pytest.raises(WriteRefused) as caught:

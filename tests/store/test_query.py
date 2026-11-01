@@ -58,7 +58,7 @@ The needle zorbtoken appears only in this note.
 
 @contextlib.contextmanager
 def opened(store: Path) -> Iterator[Index]:
-    index = Index.open(store, load_pack("small", store))
+    index = Index.open(store, load_pack("basic", store))
     index.sync()
     try:
         yield index
@@ -470,7 +470,7 @@ def test_a_reversible_decision_is_found_whatever_the_json_spacing(tmp_path) -> N
         at="2026-10-28T12:00:00Z",
         about=("login",),
     )
-    index = Index.open(store, load_pack("small", store))
+    index = Index.open(store, load_pack("basic", store))
     try:
         index.sync()
         rows, total = query.reversible_decisions(index)

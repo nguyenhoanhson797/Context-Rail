@@ -20,7 +20,7 @@ from context_rail.model.manifest import (
 
 PINNED_MANIFEST = {
     "schema": 3,
-    "pack": "small",
+    "pack": "basic",
     "placement": {
         "item": "items/{preset}/{slug}.md",
         "note": "notes/{preset}/{slug}.md",
@@ -60,7 +60,7 @@ def _manifest(**overrides: object) -> dict:
 
 
 LOCAL_PACK: dict[str, Any] = {
-    "name": "small",
+    "name": "basic",
     "version": 1,
     "statuses": {"todo": "not_started", "done": "done"},
     "initial": "todo",
@@ -82,7 +82,7 @@ LOCAL_PACK: dict[str, Any] = {
 
 
 def _write_pack(store: Path, payload: dict[str, Any]) -> Path:
-    path = store / "packs" / "small" / "pack.yaml"
+    path = store / "packs" / "basic" / "pack.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     stale = path.stat()
@@ -124,7 +124,7 @@ def test_loaded_manifest_exposes_schema_pack_and_placement(tmp_path: Path) -> No
     _write_manifest(tmp_path, DEFAULT_MANIFEST)
     m = load_manifest(tmp_path)
     assert m.schema == 3
-    assert m.pack == "small"
+    assert m.pack == "basic"
     assert m.placement == PINNED_MANIFEST["placement"]
     assert m.preset_placement == PINNED_MANIFEST["presets"]
 

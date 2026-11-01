@@ -292,7 +292,7 @@ def test_approval_for_returns_the_latest_target(seeded_runs_store):
     )
     ix.sync()
     assert query.approval_for(ix, "charter")["approval"] == "01JAPPROVAL00000000000002"
-    assert query.approval_for(ix, "pack:small") is None
+    assert query.approval_for(ix, "pack:basic") is None
 
 
 def test_brief_rows_reports_complete_counts_with_bounded_feeds(seeded_runs_store):

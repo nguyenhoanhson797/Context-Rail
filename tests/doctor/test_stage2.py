@@ -60,7 +60,7 @@ def test_hand_edited_protected_policy_is_reported_and_blocks_execution(
 def test_missing_driver_is_a_warning_not_clean(tmp_path: Path) -> None:
     store = init_store(tmp_path)
     manifest = load_manifest(store)
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     with Index.open(store, pack) as ix:
         ix.sync()
         codes = [

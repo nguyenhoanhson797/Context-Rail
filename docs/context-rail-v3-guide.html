@@ -859,9 +859,13 @@ the work needs; the brief reads only what it must.</code></pre>
         <div class="tcard">
           <span class="phase">Step 1 · 1 minute</span>
           <h3>Create the store</h3>
-          <pre><code>rail init --pack small</code></pre>
+          <pre><code>rail init --pack basic</code></pre>
           <p class="small" style="margin-top: 8px;">
-            Packs: <code>small</code>, <code>indie</code>, <code>scrum</code>.
+            Packs by workflow: <code>basic</code> (one stream), <code>flow</code>
+            (continuous kanban), <code>scrum</code> (sprints) and
+            <code>waterfall</code> (phase gates). <code>small</code> and
+            <code>indie</code> still resolve to <code>basic</code> and
+            <code>flow</code> for existing stores.
             A guided start is <code>rail init --interview</code> or
             <code>--answers-file</code>; a CTO draft is <code>--draft-file</code>.
           </p>

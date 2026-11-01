@@ -1,19 +1,25 @@
-name: indie
+name: flow
 version: 1
-statuses: {backlog: not_started, building: active, blocked: blocked, shipped: done, dropped: dropped}
+statuses: {backlog: not_started, ready: not_started, building: active, review: active, blocked: blocked, shipped: done, dropped: dropped}
 initial: backlog
 transitions:
-  backlog: [building, dropped]
-  building: [blocked, shipped, backlog, dropped]
-  blocked: [building, dropped]
+  backlog: [ready, building, dropped]
+  ready: [building, backlog, dropped]
+  building: [review, blocked, shipped, backlog, dropped]
+  review: [building, blocked, shipped, dropped]
+  blocked: [building, review, dropped]
   shipped: [building]
   dropped: [backlog]
 presets:
   goal:       {primitive: item,   tags: [goal]}
   scope:      {primitive: item,   tags: [scope], fields: {priority: [must, should, could, wont]}}
   idea:       {primitive: item,   tags: [idea]}
+  story:      {primitive: item,   tags: [story]}
+  epic:       {primitive: item,   tags: [epic]}
   task:       {primitive: item,   tags: [task]}
   bug:        {primitive: item,   tags: [bug]}
+  risk:       {primitive: item,   tags: [risk], fields: {severity: [low, medium, high, critical]}}
+  question:   {primitive: item,   tags: [question]}
   note:       {primitive: note,   tags: []}
   convention: {primitive: note,   tags: [convention]}
   decision:   {primitive: record, tags: [decision]}

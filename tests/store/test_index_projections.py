@@ -37,7 +37,7 @@ TRIAGE_ID = "01JTRIAGE00000000000000001"
 
 @contextlib.contextmanager
 def opened(store: Path) -> Iterator[Index]:
-    index = Index.open(store, load_pack("small", store))
+    index = Index.open(store, load_pack("basic", store))
     try:
         yield index
     finally:
@@ -100,7 +100,7 @@ def test_open_creates_the_typed_tables(store_factory):
 def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
     store = make_store(tmp_path, 20)
     before = truth_files(store)
-    ix = Index.open(store, load_pack("small", store))
+    ix = Index.open(store, load_pack("basic", store))
     ix.sync()
     ix.close()
     conn = sqlite3.connect(index_path(store))
@@ -108,7 +108,7 @@ def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
     conn.commit()
     conn.close()
 
-    ix = Index.open(store, load_pack("small", store))
+    ix = Index.open(store, load_pack("basic", store))
     try:
         assert ix.sync().added == 20
         assert REQUIRED_TABLES <= table_names(ix.conn)
@@ -120,7 +120,7 @@ def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
 def test_a_cache_built_before_a_seek_index_gains_it_on_open(tmp_path):
     """The human-wait seek is additive, so an older cache keeps its rows."""
     store = make_store(tmp_path, 20)
-    ix = Index.open(store, load_pack("small", store))
+    ix = Index.open(store, load_pack("basic", store))
     ix.sync()
     ix.close()
     conn = sqlite3.connect(index_path(store))
@@ -128,7 +128,7 @@ def test_a_cache_built_before_a_seek_index_gains_it_on_open(tmp_path):
     conn.commit()
     conn.close()
 
-    ix = Index.open(store, load_pack("small", store))
+    ix = Index.open(store, load_pack("basic", store))
     try:
         assert scalar(ix, "SELECT count(*) FROM docs") == 20
         found = {

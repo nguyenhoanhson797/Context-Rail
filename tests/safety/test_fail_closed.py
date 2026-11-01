@@ -140,14 +140,14 @@ def _files(store: Path) -> dict[str, str]:
 def _builtin_pack() -> dict[str, Any]:
     text = (
         resources.files("context_rail")
-        .joinpath("packs", "small", "pack.yaml")
+        .joinpath("packs", "basic", "pack.yaml")
         .read_text(encoding="utf-8")
     )
     return yaml.safe_load(text)
 
 
 def _write_pack(store: Path, mapping: dict[str, Any]) -> None:
-    path = store / "packs" / "small" / "pack.yaml"
+    path = store / "packs" / "basic" / "pack.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(mapping, sort_keys=False), encoding="utf-8")
 

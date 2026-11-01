@@ -36,7 +36,7 @@ def test_a_legacy_store_survives_migration_ui_adapters_and_reindex(
         {
             "source": str(legacy_v2_store),
             "dir": str(target_dir),
-            "pack": "small",
+            "pack": "basic",
             "key": "STAGE3-ACCEPTANCE",
         },
         actor="human",

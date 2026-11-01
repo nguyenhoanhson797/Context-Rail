@@ -42,7 +42,7 @@ def branches(project: Path, pattern: str) -> list[str]:
 
 
 def ledger_rows(run: SimpleNamespace) -> list[dict[str, Any]]:
-    pack = load_pack("small", run.store)
+    pack = load_pack("basic", run.store)
     index = Index.open(run.store, pack)
     try:
         index.sync()

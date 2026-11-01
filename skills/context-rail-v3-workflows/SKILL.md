@@ -22,6 +22,28 @@ binary.
 | Primitives / relations / categories | **No** | 6 / 8 / 5, fixed by the engine |
 | New automatic rules | **Needs engine code** | E.g. a per-transition evidence precondition |
 
+## Built-in packs (named by workflow, not team size)
+
+| Pack | Shape | Statuses | Extra presets |
+|---|---|---|---|
+| `basic` | one stream | `todo → doing → done` | `milestone`, `bug`, `idea` |
+| `flow` | continuous kanban | `backlog → ready → building → review → shipped` | `idea`, `story`, `epic`, `bug` |
+| `scrum` | sprints | `todo → ready → doing → review → done` | `epic`, `sprint`, `story`, `bug` |
+| `waterfall` | phase gates | `planned → designing → building → testing → done` | `requirement`, `phase`, `milestone`, `risk` |
+
+All four also declare the shared base presets: `goal`, `scope`, `task`, `bug`,
+`risk`, `question`, `note`, `convention`, `decision`, `event`, `check`,
+`charter`, `vision`, `wont`, `skill`, `cto`, `profile` and `fix`.
+
+- `small` and `indie` are deprecated aliases for `basic` and `flow`. A store
+  that still says `pack: small` keeps working and keeps its approval;
+  `rail pack list` shows the canonical pack and marks it active.
+- There is no `agile` pack: agile is the umbrella, `flow` and `scrum` are its
+  two shapes.
+- Statuses alone do not gate execution. `ready` maps to `not_started` and
+  `review` maps to `active`, so both still count as executable. Hard gating
+  comes from `depends_on`, the `blocked` category and the charter's done gate.
+
 ## Pack anatomy (`packs/<name>/pack.yaml`)
 
 Exact keys: `name`, `version`, `statuses`, `initial`, `transitions`,

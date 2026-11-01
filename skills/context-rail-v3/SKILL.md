@@ -38,7 +38,7 @@ own words into these; the engine never reads a status name or a tag.
 ## 60-second start (verified)
 
 ```powershell
-rail init --pack small                 # creates ./context-rail/
+rail init --pack basic                 # creates ./context-rail/
 rail add goal "Ship v3"
 rail add task "Write the first task" --rel part_of=ship-v3
 rail status                            # executable: write-the-first-task
@@ -53,7 +53,7 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
 | Step | Command | Writes |
 |---|---|---|
-| Skeleton | `rail init --pack small` | `rail.yaml`, `.gitignore`, empty pinned folders |
+| Skeleton | `rail init --pack basic` | `rail.yaml`, `.gitignore`, empty pinned folders |
 | Picture | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter"` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the pack's worker skills |
 | Approve | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"` | an approval record with the protected-file hashes |
 | Agent files | `rail adapters sync [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block) and `.agents/skills/<name>/SKILL.md` per skill note |

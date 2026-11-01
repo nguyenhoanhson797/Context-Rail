@@ -22,7 +22,7 @@ from context_rail.store.approval import (
 )
 from helpers import touch_doc
 
-PACK_KEY = "@pack/small/policy"
+PACK_KEY = "@pack/basic/policy"
 MUST = "project/send-invoice.md"
 PROTECTED_PATHS = (
     "charter.md",
@@ -39,7 +39,7 @@ def _context(store: Path) -> Context:
     return Context(
         store=store,
         manifest=load_manifest(store),
-        pack=load_pack("small", store),
+        pack=load_pack("basic", store),
         actor="human",
     )
 
@@ -85,7 +85,7 @@ def test_approve_records_semantic_hashes_of_the_protected_set(
         )
         assert hashes[rel] == expected, rel
         assert len(hashes[rel]) == 64 and hashes[rel] == hashes[rel].lower()
-    policy = load_pack("small", approved_store).policy
+    policy = load_pack("basic", approved_store).policy
     policy_bytes = yaml.safe_dump(policy, sort_keys=True).encode("utf-8")
     assert hashes[PACK_KEY] == semantic_hash(policy_bytes, format="yaml")
 
@@ -336,17 +336,17 @@ def test_approving_a_pack_candidate_uses_the_planned_pack(
 ) -> None:
     result = invoke(
         "approve",
-        {"target": "pack:small", "confirm": "APPROVE pack:small", "confirmer": "Val"},
+        {"target": "pack:basic", "confirm": "APPROVE pack:basic", "confirmer": "Val"},
         store=approved_store,
         actor="human",
     )
 
     assert is_ok(result), result
-    assert "@pack/small/policy" in result["value"]["hashes"]
-    shown = _show(approved_store, "pack:small")
-    assert shown["target"] == "pack:small"
+    assert "@pack/basic/policy" in result["value"]["hashes"]
+    shown = _show(approved_store, "pack:basic")
+    assert shown["target"] == "pack:basic"
     assert shown["approval"]["state"] == "approved"
-    assert shown["phrase"] == "APPROVE pack:small"
+    assert shown["phrase"] == "APPROVE pack:basic"
     assert _state(approved_store)["state"] == "approved"
 
 
@@ -399,7 +399,7 @@ def test_semantic_hash_refuses_a_guess() -> None:
 
 
 def test_snapshot_digest_covers_the_whole_map() -> None:
-    hashes = {"b.md": "1" * 64, "a.md": "2" * 64, "@pack/small/policy": "3" * 64}
+    hashes = {"b.md": "1" * 64, "a.md": "2" * 64, "@pack/basic/policy": "3" * 64}
     expected = sha256_hex(
         json.dumps(hashes, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
             "utf-8"
@@ -449,7 +449,7 @@ def test_an_escaping_protected_path_reads_nothing_outside(
     "tool,args",
     [
         ("show", {"slug": "charter"}),
-        ("pack show", {"name": "small"}),
+        ("pack show", {"name": "basic"}),
         ("status", {}),
         ("digest", {}),
         ("cto brief", {}),

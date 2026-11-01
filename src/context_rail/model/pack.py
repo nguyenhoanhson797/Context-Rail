@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import resources
 from pathlib import Path
 from typing import Any, NoReturn
@@ -27,11 +27,13 @@ from context_rail.model.primitives import (
 )
 
 __all__ = [
+    "DEPRECATED_PACK_ALIASES",
     "PACK_KEYS",
     "PACK_VERSION",
     "Pack",
     "Preset",
     "ModelError",
+    "canonical_pack_name",
     "check_pack_name",
     "effective_measurement_min_runs",
     "load_pack",
@@ -44,6 +46,10 @@ PACK_VERSION = 1
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
 DEFAULT_MEASUREMENT_MIN_RUNS = 10
 _PACK_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+
+# Names shipped by an earlier release. They keep working, and the store's
+# manifest keeps the name it was approved with, so an approval still matches.
+DEPRECATED_PACK_ALIASES = {"small": "basic", "indie": "flow"}
 
 
 @dataclass(frozen=True)
@@ -71,15 +77,31 @@ class Pack:
 
 
 def load_pack(name: str, store: Path) -> Pack:
-    """Load ``<store>/packs/<name>/pack.yaml``, else the built-in pack of that name."""
+    """Load ``<store>/packs/<name>/pack.yaml``, else the built-in pack of that name.
+
+    A deprecated alias resolves to the pack that replaced it, but the returned
+    :class:`Pack` keeps the requested name: approvals bind to the manifest's
+    pack name, which an existing store still spells the old way.
+    """
     _check_name(name)
     local = Path(store) / "packs" / name / "pack.yaml"
     if local.is_file():
         return cached_model(local, lambda: _parse_pack(_read_text(local), name))
-    builtin = _builtin_pack(name)
+    canonical = canonical_pack_name(name)
+    local = Path(store) / "packs" / canonical / "pack.yaml"
+    if local.is_file():
+        pack = cached_model(local, lambda: _parse_pack(_read_text(local), canonical))
+        return replace(pack, name=name)
+    builtin = _builtin_pack(canonical)
     if builtin is None:
         _refuse(f"unknown pack {name!r}")
-    return cached_model(builtin, lambda: _parse_pack(_read_text(builtin), name))
+    pack = cached_model(builtin, lambda: _parse_pack(_read_text(builtin), canonical))
+    return replace(pack, name=name)
+
+
+def canonical_pack_name(name: str) -> str:
+    """The current name of ``name``: a deprecated alias resolves to its successor."""
+    return DEPRECATED_PACK_ALIASES.get(name, name)
 
 
 def check_pack_name(name: str) -> None:

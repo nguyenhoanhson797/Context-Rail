@@ -493,7 +493,7 @@ def test_profile_for_reads_the_materialised_store_profile(approved_store):
     context = SimpleNamespace(
         store=approved_store,
         manifest=load_manifest(approved_store),
-        pack=load_pack("small", approved_store),
+        pack=load_pack("basic", approved_store),
     )
     found = profile_for(context, "reviewer")
     assert found.name == "reviewer"

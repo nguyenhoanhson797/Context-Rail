@@ -458,7 +458,7 @@ def test_idempotency_files_older_than_seven_days_are_pruned(store_factory):
 def test_index_is_synced_inside_commit(store_factory):
     store = store_factory()
     manifest = load_manifest(store)
-    index = Index.open(store, load_pack("small", store))
+    index = Index.open(store, load_pack("basic", store))
     index.sync()
     try:
         commit(

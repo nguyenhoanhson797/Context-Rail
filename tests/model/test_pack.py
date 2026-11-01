@@ -1,4 +1,4 @@
-"""pack.yaml validation, presets and the built-in small pack (fail closed)."""
+"""pack.yaml validation, presets and the built-in basic pack (fail closed)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import yaml
 from context_rail.model.pack import ModelError, Pack, Preset, load_pack
 
 BASE_PACK: dict[str, Any] = {
-    "name": "small",
+    "name": "basic",
     "version": 1,
     "statuses": {
         "todo": "not_started",
@@ -45,7 +45,7 @@ _DELETE = object()
 
 
 def _write_pack(store: Path, payload: dict[str, Any]) -> Path:
-    path = store / "packs" / "small" / "pack.yaml"
+    path = store / "packs" / "basic" / "pack.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path
@@ -65,16 +65,16 @@ def _pack(*mutations: tuple[str, object]) -> dict[str, Any]:
     return payload
 
 
-def test_small_pack_loads_and_maps_categories(tmp_path: Path) -> None:
-    p = load_pack("small", tmp_path)
+def test_basic_pack_loads_and_maps_categories(tmp_path: Path) -> None:
+    p = load_pack("basic", tmp_path)
     assert isinstance(p, Pack)
     assert p.statuses["doing"] == "active" and p.initial == "todo"
     assert p.presets["risk"].fields["severity"] == ("low", "medium", "high", "critical")
 
 
-def test_builtin_small_pack_matches_pinned_values(tmp_path: Path) -> None:
-    p = load_pack("small", tmp_path)
-    assert p.name == "small"
+def test_builtin_basic_pack_matches_pinned_values(tmp_path: Path) -> None:
+    p = load_pack("basic", tmp_path)
+    assert p.name == "basic"
     assert p.version == 1
     assert p.statuses == {
         "todo": "not_started",
@@ -100,6 +100,8 @@ def test_builtin_small_pack_matches_pinned_values(tmp_path: Path) -> None:
             {"priority": ("must", "should", "could", "wont")},
         ),
         "task": ("item", ("task",), {}),
+        "bug": ("item", ("bug",), {}),
+        "idea": ("item", ("idea",), {}),
         "milestone": ("item", ("milestone",), {}),
         "risk": (
             "item",
@@ -131,7 +133,7 @@ def test_builtin_small_pack_matches_pinned_values(tmp_path: Path) -> None:
 
 
 def test_default_template_follows_the_primitive(tmp_path: Path) -> None:
-    p = load_pack("small", tmp_path)
+    p = load_pack("basic", tmp_path)
     assert p.presets["task"].template == "templates/item.md"
     assert p.presets["note"].template == "templates/note.md"
     assert p.presets["decision"].template == "templates/record.md"
@@ -140,7 +142,7 @@ def test_default_template_follows_the_primitive(tmp_path: Path) -> None:
 
 def test_builtin_pack_ships_body_templates() -> None:
     templates = importlib.resources.files("context_rail").joinpath(
-        "packs", "small", "templates"
+        "packs", "basic", "templates"
     )
     shipped = {entry.name for entry in templates.iterdir()}
     assert {
@@ -159,12 +161,12 @@ def test_builtin_pack_ships_body_templates() -> None:
 
 def test_local_pack_overrides_builtin(tmp_path: Path) -> None:
     _write_pack(tmp_path, _pack(("initial", "done")))
-    assert load_pack("small", tmp_path).initial == "done"
+    assert load_pack("basic", tmp_path).initial == "done"
 
 
 def test_local_pack_template_override_is_kept(tmp_path: Path) -> None:
     _write_pack(tmp_path, _pack(("presets.task.template", "templates/task.md")))
-    assert load_pack("small", tmp_path).presets["task"].template == "templates/task.md"
+    assert load_pack("basic", tmp_path).presets["task"].template == "templates/task.md"
 
 
 @pytest.mark.parametrize(
@@ -211,7 +213,7 @@ def test_invalid_local_pack_is_refused(
 ) -> None:
     _write_pack(tmp_path, _pack(*mutations))
     with pytest.raises(ModelError) as err:
-        load_pack("small", tmp_path)
+        load_pack("basic", tmp_path)
     if mutations == (("version", 2),):
         assert err.value.code in ("SCHEMA_UNSUPPORTED", "VALIDATION_FAILED")
     else:
@@ -223,7 +225,7 @@ def test_policy_values_are_accepted_and_kept(
     tmp_path: Path, key: str, value: float | int
 ) -> None:
     _write_pack(tmp_path, _pack((f"policy.{key}", value)))
-    assert load_pack("small", tmp_path).policy[key] == value
+    assert load_pack("basic", tmp_path).policy[key] == value
 
 
 @pytest.mark.parametrize("name", ["../small", "a/b", "C:small", "..", "a\\b", ""])
@@ -242,27 +244,27 @@ def test_unknown_pack_name_is_refused(tmp_path: Path) -> None:
 def test_broken_local_pack_does_not_fall_back_to_builtin(tmp_path: Path) -> None:
     _write_pack(tmp_path, _pack(("initial", "nope")))
     with pytest.raises(ModelError) as err:
-        load_pack("small", tmp_path)
+        load_pack("basic", tmp_path)
     assert err.value.code == "VALIDATION_FAILED"
 
 
 def test_pack_cache_tracks_path_mtime_size_and_override_presence(
     tmp_path: Path,
 ) -> None:
-    assert load_pack("small", tmp_path).initial == "todo"
+    assert load_pack("basic", tmp_path).initial == "todo"
 
     path = _write_pack(tmp_path, _pack(("initial", "done")))
-    assert load_pack("small", tmp_path).initial == "done"
+    assert load_pack("basic", tmp_path).initial == "done"
 
     size_with_done = path.stat().st_size
     _write_pack(tmp_path, _pack(("initial", "todo")))
     assert path.stat().st_size == size_with_done
     stale = path.stat()
     os.utime(path, ns=(stale.st_atime_ns, stale.st_mtime_ns + 2_000_000_000))
-    assert load_pack("small", tmp_path).initial == "todo"
+    assert load_pack("basic", tmp_path).initial == "todo"
 
     path.unlink()
-    assert load_pack("small", tmp_path).initial == "todo"
+    assert load_pack("basic", tmp_path).initial == "todo"
 
 
 @pytest.mark.parametrize(
@@ -282,19 +284,19 @@ def test_a_template_must_be_a_safe_relative_path(
     _write_pack(tmp_path, _pack(("presets.task.template", template)))
 
     with pytest.raises(ModelError) as caught:
-        load_pack("small", tmp_path)
+        load_pack("basic", tmp_path)
 
     assert caught.value.code == "VALIDATION_FAILED"
 
 
 def test_duplicate_policy_keys_refuse(tmp_path: Path) -> None:
-    path = tmp_path / "packs" / "small" / "pack.yaml"
+    path = tmp_path / "packs" / "basic" / "pack.yaml"
     path.parent.mkdir(parents=True)
     text = yaml.safe_dump(_pack(), sort_keys=False)
     text = text.replace("policy:\n", "policy:\n  retries: 1\n", 1)
     path.write_text(text, encoding="utf-8", newline="\n")
 
     with pytest.raises(ModelError) as caught:
-        load_pack("small", tmp_path)
+        load_pack("basic", tmp_path)
 
     assert caught.value.code == "VALIDATION_FAILED"

@@ -34,7 +34,7 @@ from context_rail.model.manifest import (
     manifest_from_mapping,
     render_path,
 )
-from context_rail.model.pack import Pack, load_pack
+from context_rail.model.pack import Pack, canonical_pack_name, load_pack
 from context_rail.model.policy import Charter, parse_answers
 from context_rail.store.approval import (
     APPROVAL_KIND,
@@ -685,7 +685,9 @@ def _materialised_profile(pack_name: str, name: str, preset: str) -> str:
 
 
 def _resource_text(pack_name: str, *parts: str) -> str:
-    source = resources.files("context_rail").joinpath("packs", pack_name, *parts)
+    source = resources.files("context_rail").joinpath(
+        "packs", canonical_pack_name(pack_name), *parts
+    )
     return (
         source.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
     )

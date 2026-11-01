@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from context_rail.model.pack import check_pack_name
+from context_rail.model.pack import canonical_pack_name, check_pack_name
 from context_rail.store.write import ABSENT, Op, WriteRefused
 
 
@@ -17,12 +17,30 @@ def _builtin_root(name: str) -> Any | None:
 
 
 def pack_root(store: Path, name: str) -> Any | None:
-    """The store-local pack directory, else the built-in one."""
+    """The store-local pack directory, else the built-in one.
+
+    A deprecated alias resolves to the installed pack that replaced it, so a
+    store on the old name keeps every read working.
+    """
     check_pack_name(name)
     local = Path(store) / "packs" / name
     if (local / "pack.yaml").is_file():
         return local
-    return _builtin_root(name)
+    canonical = canonical_pack_name(name)
+    local = Path(store) / "packs" / canonical
+    if (local / "pack.yaml").is_file():
+        return local
+    return _builtin_root(canonical)
+
+
+def installed_pack_name(store: Path, name: str) -> str | None:
+    """The installed name ``name`` resolves to, or None when nothing is installed."""
+    check_pack_name(name)
+    origins = pack_origins(store)
+    for candidate in (name, canonical_pack_name(name)):
+        if candidate in origins:
+            return candidate
+    return None
 
 
 def pack_origins(store: Path) -> dict[str, str]:

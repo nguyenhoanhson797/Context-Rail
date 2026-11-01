@@ -22,7 +22,7 @@ TOOLS = ("cto brief", "status", "digest")
 )
 def test_brief_status_digest_warm_reads(tmp_path, n: int, warm_ms: int) -> None:
     store = make_store(tmp_path, n)
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     ix = Index.open(store, pack)
     try:
         start = time.perf_counter()

@@ -26,7 +26,7 @@ _REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 )
 def test_read_and_rebuild_budgets(tmp_path, n, warm_ms, cold_s):
     store = make_store(tmp_path, n)
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     start = time.perf_counter()
     ix = Index.open(store, pack)
     try:
@@ -49,7 +49,7 @@ def test_read_and_rebuild_budgets(tmp_path, n, warm_ms, cold_s):
 @pytest.mark.perf
 def test_single_write_budget(tmp_path):
     store = make_store(tmp_path, 1000)
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     warm = Index.open(store, pack)
     try:
         warm.sync()

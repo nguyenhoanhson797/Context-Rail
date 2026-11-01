@@ -18,6 +18,8 @@ presets:
   story:      {primitive: item,   tags: [story]}
   task:       {primitive: item,   tags: [task]}
   bug:        {primitive: item,   tags: [bug]}
+  risk:       {primitive: item,   tags: [risk], fields: {severity: [low, medium, high, critical]}}
+  question:   {primitive: item,   tags: [question]}
   note:       {primitive: note,   tags: []}
   convention: {primitive: note,   tags: [convention]}
   decision:   {primitive: record, tags: [decision]}

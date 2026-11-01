@@ -238,7 +238,7 @@ def test_decision_records_appear_through_records_about(approved_store: Path) -> 
     store = approved_store
     _two_items(store)
     assert is_ok(_link(store, "sign-in", "depends_on", "login-page", reason="needs the parser"))
-    pack = load_pack("small", store)
+    pack = load_pack("basic", store)
     index = Index.open(store, pack)
     index.sync()
     try:

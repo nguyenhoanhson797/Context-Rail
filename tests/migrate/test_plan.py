@@ -13,7 +13,7 @@ from context_rail.store.migration import plan_migration
 
 def _plan(legacy_root: Path, tmp_path: Path):
     legacy = read_legacy(legacy_root)
-    pack = load_pack("small", tmp_path / "none")
+    pack = load_pack("basic", tmp_path / "none")
     manifest = manifest_from_mapping({**DEFAULT_MANIFEST, "pack": "small"}, tmp_path / "t")
     return plan_migration(
         legacy, pack=pack, manifest=manifest, at="2026-02-01T00:00:00Z"
