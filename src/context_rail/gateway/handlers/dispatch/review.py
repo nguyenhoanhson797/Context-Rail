@@ -1,4 +1,4 @@
-﻿"""One separated reviewer on a verified candidate: its own worktree at the exact
+"""One separated reviewer on a verified candidate: its own worktree at the exact
 commit, and the replay a retried review key is answered with."""
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"profile": profile_name, "recipe": profile.recipe},
         )
     droid = droid_profile(profile, name=profile_name)
-    budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets)
+    budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     _facts, used_seconds, _used_attempts = _run_facts(index, slug)
     remaining = effective_seconds(budget) - used_seconds
     if remaining <= 0:

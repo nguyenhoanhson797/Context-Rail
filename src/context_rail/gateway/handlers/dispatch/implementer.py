@@ -1,4 +1,4 @@
-﻿"""Isolated implementer dispatches: one worktree, one branch, two attempts.
+"""Isolated implementer dispatches: one worktree, one branch, two attempts.
 
 The canonical store is the caller's project checkout. A dispatch moves the Item
 to its active category, checkpoints only store-owned work so the new worktree
@@ -107,7 +107,7 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"profile": profile_name, "recipe": profile.recipe},
         )
     droid = droid_profile(profile, name=profile_name)
-    budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets)
+    budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     facts, used_seconds, used_attempts = _run_facts(index, slug)
     refusal = launch_refusal(facts, budget)
     if refusal is not None:

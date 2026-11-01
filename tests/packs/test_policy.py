@@ -53,6 +53,22 @@ def test_accepted_values_and_default_resolution(tmp_path: Path) -> None:
     assert effective_measurement_min_runs(load_pack("custom", store)) == 10
 
 
+def test_the_retry_policy_caps_implementation_attempts() -> None:
+    from context_rail.gateway.handlers.dispatch.budget import _effective_budget
+
+    assert _effective_budget({"attempts": 5}, {"attempts": 4}, 1).attempts == 2
+    assert _effective_budget({}, {}, 1).attempts == 2
+    assert _effective_budget({}, {"attempts": 2}, 0).attempts == 1
+
+
+def test_the_shipped_retry_policy_keeps_the_implementer_budget(tmp_path: Path) -> None:
+    from context_rail.gateway.handlers.dispatch.budget import _effective_budget
+
+    pack = load_pack("basic", tmp_path)
+    assert pack.policy["retries"] == 1
+    assert _effective_budget({}, {"attempts": 2}, pack.policy["retries"]).attempts == 2
+
+
 def test_version_two_is_schema_unsupported(tmp_path: Path) -> None:
     store = init_store(tmp_path)
     write_pack(store, "custom", dict(_BASE, version=2))

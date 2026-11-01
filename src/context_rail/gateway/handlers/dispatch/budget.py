@@ -14,16 +14,28 @@ from context_rail.store import query
 from context_rail.store.doc import etag
 from context_rail.store.write import WriteRefused, resolve_unique
 
-from .common import BUILTIN_ATTEMPTS, BUILTIN_SECONDS, IMPL_ROLE
+from .common import BUILTIN_SECONDS, IMPL_ROLE
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
 
-def _effective_budget(charter: dict[str, Any], profile: dict[str, Any]) -> Budget:
-    """The stricter non-null bound of the charter and the profile."""
+def _effective_budget(
+    charter: dict[str, Any], profile: dict[str, Any], retries: int
+) -> Budget:
+    """The stricter non-null bound of the charter, the profile and the pack.
+
+    ``retries`` is the pack's ceiling on implementation attempts: the first
+    attempt plus that many retries, whatever the charter or profile allow.
+    """
+    cap = int(retries) + 1
+    declared = [
+        int(value)
+        for value in (charter.get("attempts"), profile.get("attempts"))
+        if value is not None
+    ]
     return Budget(
-        attempts=int(_stricter(charter.get("attempts"), profile.get("attempts"), BUILTIN_ATTEMPTS)),
+        attempts=min(declared + [cap]),
         seconds=float(_stricter(charter.get("seconds"), profile.get("seconds"), BUILTIN_SECONDS)),
         tokens=_stricter(charter.get("tokens"), profile.get("tokens"), None),
         credits=_stricter(charter.get("credits"), profile.get("credits"), None),

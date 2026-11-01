@@ -1,4 +1,4 @@
-﻿"""Rebase one approved candidate onto the default branch and fast-forward it, with
+"""Rebase one approved candidate onto the default branch and fast-forward it, with
 one conflict continuation, the closeout and the optional push."""
 
 from __future__ import annotations
@@ -609,7 +609,7 @@ def _review_for_merge(
     if separation is not None:
         raise separation
     droid = droid_profile(profile, name=REVIEW_ROLE)
-    budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets)
+    budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     _facts, used_seconds, _attempts = _run_facts(ctx.index, slug)
     remaining = effective_seconds(budget) - used_seconds
     if remaining <= 0:

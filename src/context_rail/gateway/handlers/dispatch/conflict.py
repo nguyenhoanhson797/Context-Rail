@@ -48,7 +48,9 @@ def _continue_conflict(
     _profile_rel, profile_etag, profile = profile_document(ctx, profile_name)
     droid = droid_profile(profile, name=profile_name)
     budget = _effective_budget(
-        ctx.policy.budgets.get("item") or {} if ctx.policy else {}, profile.budgets
+        ctx.policy.budgets.get("item") or {} if ctx.policy else {},
+        profile.budgets,
+        ctx.pack.policy["retries"],
     )
     _facts, used_seconds, _attempts = _run_facts(ctx.index, slug)
     remaining = effective_seconds(budget) - used_seconds
