@@ -61,6 +61,26 @@ rail doctor            # store integrity issues
 rail ci                # doctor issues plus the approval and done gates
 ```
 
+## Skills
+
+Four operator skills under `skills/` teach an agent the rail itself, so it does
+not have to read the engine to answer "what can this do?" or "how do we change
+the workflow?":
+
+- `context-rail-v3` — mental model, quick start, command map
+- `context-rail-v3-workflows` — packs, statuses, transitions, BA/PO steps
+- `context-rail-v3-loop` — dispatch → verify → review → merge, refusals
+- `context-rail-v3-ops` — doctor, reindex, recovery, budgets, test lanes
+
+Install them into your agent's skill directory:
+
+```powershell
+Copy-Item -Recurse skills\context-rail-v3* "$HOME\.agents\skills\"
+```
+
+See `skills/README.md` for the difference from the pack skills that are
+installed into a store's workspace.
+
 ## Human gates and the agent loop
 
 Work that launches an agent, or changes the picture's meaning, is gated. The

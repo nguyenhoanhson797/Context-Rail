@@ -1,0 +1,52 @@
+# Tested BA/PO pack example.
+# Copy it to <store>/packs/scrum-ba/pack.yaml, then:
+#   rail pack validate --name scrum-ba
+#   rail pack use --name scrum-ba --expect <rail.yaml etag> --confirm "USE PACK scrum-ba"
+#
+# The manifest places these presets by default, so a store-local pack must
+# declare them or the next write fails with "undeclared preset(s)":
+#   decision, charter, goal, vision, scope, wont, skill, cto, profile
+
+name: scrum-ba
+version: 1
+statuses:
+  intake: not_started
+  ba_review: not_started
+  po_review: not_started
+  ready: not_started
+  doing: active
+  review: active
+  blocked: blocked
+  done: done
+  dropped: dropped
+initial: intake
+transitions:
+  intake: [ba_review, dropped]
+  ba_review: [po_review, intake, dropped]
+  po_review: [ready, ba_review, dropped]
+  ready: [doing, po_review, dropped]
+  doing: [review, blocked, done, ready, dropped]
+  review: [doing, blocked, done, dropped]
+  blocked: [doing, review, dropped]
+  done: [doing]
+  dropped: [intake]
+presets:
+  goal:       {primitive: item,   tags: [goal]}
+  scope:      {primitive: item,   tags: [scope], fields: {priority: [must, should, could, wont]}}
+  epic:       {primitive: item,   tags: [epic]}
+  story:      {primitive: item,   tags: [story], fields: {priority: [must, should, could]}}
+  ba_pack:    {primitive: item,   tags: [ba], fields: {depth: [light, full]}}
+  po_signoff: {primitive: item,   tags: [po]}
+  task:       {primitive: item,   tags: [task]}
+  bug:        {primitive: item,   tags: [bug]}
+  note:       {primitive: note,   tags: []}
+  convention: {primitive: note,   tags: [convention]}
+  decision:   {primitive: record, tags: [decision]}
+  check:      {primitive: check,  tags: []}
+  charter:    {primitive: policy, tags: []}
+  vision:     {primitive: note,   tags: []}
+  wont:       {primitive: note,   tags: []}
+  skill:      {primitive: note,   tags: []}
+  cto:        {primitive: actor,  tags: []}
+  profile:    {primitive: actor,  tags: []}
+policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
