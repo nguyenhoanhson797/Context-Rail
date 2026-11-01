@@ -42,9 +42,14 @@ class Score:
     total: int
 
 
-def executable(items: list[ItemRow]) -> list[str]:
-    """Leaf items that are open and unblocked, sorted."""
-    held = blocked(items)
+def executable(items: list[ItemRow], held: dict[str, str] | None = None) -> list[str]:
+    """Leaf items that are open and unblocked, sorted.
+
+    ``held`` lets a caller that already asked :func:`blocked` reuse the answer
+    instead of walking every dependency again.
+    """
+    if held is None:
+        held = blocked(items)
     parents = {parent for item in items for parent in item.part_of}
     return sorted(
         item.slug
@@ -72,11 +77,11 @@ def blocked(items: list[ItemRow]) -> dict[str, str]:
         if item.category == "blocked":
             reasons[item.slug] = "status"
             continue
-        open_deps = sorted(
+        open_deps = [
             dep for dep in item.depends_on if categories.get(dep) not in FINISHED_CATEGORIES
-        )
+        ]
         if open_deps:
-            reasons[item.slug] = f"depends_on:{open_deps[0]}"
+            reasons[item.slug] = f"depends_on:{min(open_deps)}"
     return reasons
 
 
@@ -86,7 +91,8 @@ def cycles(items: list[ItemRow]) -> frozenset[str]:
     color: dict[str, int] = {}
     found: set[str] = set()
     for root in edges:
-        if color.get(root) == 2:
+        if color.get(root) == 2 or not edges[root]:
+            # A node with no outgoing dependency cannot lie on a cycle.
             continue
         color[root] = 1
         stack: list[tuple[str, int]] = [(root, 0)]

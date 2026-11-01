@@ -80,6 +80,7 @@ _BROKEN_PROBLEMS = frozenset({PARSE_ERROR, BAD_ENCODING})
 #: Seek paths the CTO views need; also added to a cache built without them.
 _SEEK_INDEXES = (
     "CREATE INDEX IF NOT EXISTS reports_class_at ON reports(target_class, at DESC)",
+    "CREATE INDEX IF NOT EXISTS docs_primitive ON docs(primitive, broken, slug, category)",
 )
 
 _SCHEMA = (

@@ -74,22 +74,19 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if item.category in counts:
             counts[item.category] += 1
 
-    runnable = structure.executable(items)
+    held_now = structure.blocked(items)
+    runnable = structure.executable(items, held_now)
     finished = {
         item.slug for item in items if item.category in structure.FINISHED_CATEGORIES
     }
-    held = {
-        slug: reason
-        for slug, reason in structure.blocked(items).items()
-        if slug not in finished
-    }
+    held = {slug: reason for slug, reason in held_now.items() if slug not in finished}
     stalled = [
         row["slug"]
         for row in recipes.stuck_rows(
             items, _now_ms(), recipes.stuck_window_ms(ctx), titles
         )
     ]
-    long_items = [row["slug"] for row in recipes.too_long_rows(ctx, items)]
+    long_items = [row["slug"] for row in recipes.too_long_rows(ctx, items, titles)]
 
     executable_page, executable_omitted = _page(runnable)
     blocked_page, blocked_omitted = _page(sorted(held))

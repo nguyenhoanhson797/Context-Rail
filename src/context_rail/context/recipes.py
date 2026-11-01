@@ -96,12 +96,17 @@ def item_rows(ix: Any) -> list[structure.ItemRow]:
         structure.ItemRow(
             slug=slug,
             category=category,
-            part_of=tuple(sorted(edges.get(slug, {}).get("part_of", ()))),
-            depends_on=tuple(sorted(edges.get(slug, {}).get("depends_on", ()))),
+            part_of=_ordered(edges.get(slug, {}).get("part_of", ())),
+            depends_on=_ordered(edges.get(slug, {}).get("depends_on", ())),
             last_activity_ms=activity.get(slug),
         )
         for slug, category in rows
     ]
+
+
+def _ordered(values: Sequence[str]) -> tuple[str, ...]:
+    """One edge list as a tuple; a list that short is already in order."""
+    return tuple(values) if len(values) < 2 else tuple(sorted(values))
 
 
 def item_titles(ix: Any) -> dict[str, str]:
@@ -155,12 +160,18 @@ def stuck_rows(
 
 
 def too_long_rows(
-    context: Context, items: Sequence[structure.ItemRow]
+    context: Context,
+    items: Sequence[structure.ItemRow],
+    titles: dict[str, str],
 ) -> list[dict[str, Any]]:
     """Every open Item whose worker attempts or runtime exceed the item budget."""
     policy = context.policy
     caps: dict[str, Any] = {} if policy is None else policy.budgets
     totals = query.worker_totals(context.index)
+    if not totals:
+        # No worker run means no attempts and no seconds, and a cap is only
+        # exceeded above it, so nothing can be too long.
+        return []
     facts = [
         budgets.ItemFacts(
             slug=item.slug,
@@ -190,7 +201,6 @@ def too_long_rows(
         tokens=item_caps.get("tokens"),
         credits=item_caps.get("credits"),
     )
-    titles = item_titles(context.index)
     rows: list[dict[str, Any]] = []
     for slug in budgets.too_long(facts, runs, caps):
         measured = totals.get(slug, {"attempts": 0, "seconds": 0.0})
@@ -280,7 +290,7 @@ def brief(
     titles = item_titles(index)
     now_ms = int(time.time() * 1000)
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
-    long_items = too_long_rows(context, items)
+    long_items = too_long_rows(context, items, titles)
     waits, waits_omitted = human_waits(context, limit)
     decisions, decisions_total = query.reversible_decisions(index, limit=limit)
     checks, checks_omitted = check_rows(context, limit)
@@ -379,8 +389,8 @@ def _brief_sections(
     omitted["reports"] = max(report_counts["untriaged"] - min(len(reports), limit), 0)
 
     executable_section = by_key["executable"]
-    runnable = structure.executable(list(items))
     held = structure.blocked(list(items))
+    runnable = structure.executable(list(items), held)
     finished = {
         item.slug
         for item in items
@@ -467,7 +477,7 @@ def digest(
     titles = item_titles(index)
     now_ms = int(time.time() * 1000)
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
-    long_items = too_long_rows(context, items)
+    long_items = too_long_rows(context, items, titles)
     waits, waits_omitted = human_waits(context, page)
     decisions, decisions_total = query.reversible_decisions(index, since, page)
     rejected, rejected_total = query.rejected_reviews(index, since, page)
