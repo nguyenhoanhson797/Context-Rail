@@ -40,14 +40,16 @@ All four also declare the shared base presets: `goal`, `scope`, `task`, `bug`,
   `rail pack list` shows the canonical pack and marks it active.
 - There is no `agile` pack: agile is the umbrella, `flow` and `scrum` are its
   two shapes.
-- Statuses alone do not gate execution. `ready` maps to `not_started` and
-  `review` maps to `active`, so both still count as executable. Hard gating
-  comes from `depends_on`, the `blocked` category and the charter's done gate.
+- Statuses alone do not gate execution: `ready` maps to `not_started` and
+  `review` maps to `active`. A pack can still close a status with
+  `execution: {review: {dispatch: false}}`, which `flow` and `scrum` do. Other
+  hard gating comes from `depends_on`, the `blocked` category and the charter's
+  done gate.
 
 ## Pack anatomy (`packs/<name>/pack.yaml`)
 
 Exact keys: `name`, `version`, `statuses`, `initial`, `transitions`,
-`presets`, `policy`. Unknown keys are refused.
+`presets`, `policy`, and optional `execution`. Unknown keys are refused.
 
 ```yaml
 name: my-team
@@ -63,6 +65,8 @@ transitions:
   blocked: [doing, dropped]
   done: [doing]
   dropped: [intake]
+execution:
+  review: {dispatch: false}
 presets:
   story: {primitive: item, tags: [story], fields: {priority: [must, should, could]}}
   note:  {primitive: note, tags: []}
@@ -70,13 +74,31 @@ presets:
 policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
 ```
 
-- Pack `policy` allows only `stuck_hours`, `retries`, `measurement_min_runs`.
-  Gates, budgets and decision rights live in the **charter** document.
-- A preset's `fields` are enums (closed value lists). Tags are free text and
-  never drive engine behaviour.
+- Every pack must declare these presets, because the engine reads them by
+  name: `charter`, `goal`, `vision`, `scope`, `wont`, `skill`, `cto`,
+  `profile`, `decision` and `note`. `pack validate` reports a missing one.
+- Every preset's `template` must exist in the pack. `pack validate` reports a
+  missing file, and `add` refuses rather than inventing an empty body.
+- A preset's `fields` are closed value lists, enforced on `add` and `update`.
+  Undeclared keys stay free text: `acceptance` and `inputs` belong to no
+  preset, and teams add their own.
+- `execution` lets a status steer work, not just moves. `dispatch: false`
+  removes an Item from `status.executable` and makes dispatch refuse;
+  `merge: false` makes merge refuse. Omitted flags fall back to the category
+  (workable → dispatchable, unfinished → mergeable). `flow` and `scrum` mark
+  `review` as `dispatch: false`.
+- `policy.retries` caps implementation attempts at one initial try plus that
+  many retries, on top of the charter and profile bounds. `stuck_hours` and
+  `measurement_min_runs` are the other live policy keys. Gates, budgets and
+  decision rights live in the charter, not the pack.
+- Tags are free text and never drive engine behaviour.
 - New presets need no manifest entry: they render under the primitive's
   placement, e.g. `items/story/<slug>.md`.
-- The pack also ships `profiles/`, `skills/` and `templates/`.
+- The pack also ships `profiles/`, `skills/` and `templates/`. Those are a
+  seed: `init` copies them into the store, so editing the pack later changes
+  only new stores. `pack.yaml` is read live on every command.
+- `pack use` refuses a target that cannot serve the store's manifest, so a
+  switch can never leave every later command unable to read `rail.yaml`.
 
 ## Profiles and skills
 

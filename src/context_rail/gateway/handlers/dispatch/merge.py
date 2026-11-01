@@ -223,11 +223,18 @@ def _run_merge(
         return reconciled
 
     _data, doc = read_doc(store, rel)
-    if category_of(ctx.pack, doc.status or "") in ("done", "dropped"):
+    status = doc.status or ""
+    if category_of(ctx.pack, status) in ("done", "dropped"):
         raise WriteRefused(
             "INVALID_STATE",
             f"{slug!r} is already {doc.status!r}",
             {"item": slug, "status": doc.status},
+        )
+    if not ctx.pack.mergeable(status):
+        raise WriteRefused(
+            "INVALID_STATE",
+            f"the {ctx.pack.name} pack does not allow merging from {status!r}",
+            {"item": slug, "status": status},
         )
 
     store_paths = _store_paths(ctx, root)

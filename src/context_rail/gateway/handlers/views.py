@@ -66,7 +66,7 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Counts, executable items, blockers, stuck and too-long items, each capped."""
     index = ctx.index
-    items = recipes.item_rows(index)
+    items = recipes.item_rows(index, ctx.pack)
     titles = recipes.item_titles(index)
 
     counts = {category: 0 for category in CATEGORIES}

@@ -10,6 +10,8 @@ transitions:
   blocked: [building, review, dropped]
   shipped: [building]
   dropped: [backlog]
+execution:
+  review: {dispatch: false}
 presets:
   goal:       {primitive: item,   tags: [goal]}
   scope:      {primitive: item,   tags: [scope], fields: {priority: [must, should, could, wont]}}

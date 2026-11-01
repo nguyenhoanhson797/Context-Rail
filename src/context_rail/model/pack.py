@@ -23,8 +23,10 @@ from context_rail.model.errors import ModelError
 from context_rail.model.fields import relative_path
 from context_rail.model.primitives import (
     CATEGORIES,
+    FINISHED_CATEGORIES,
     PACK_POLICY_KEYS,
     PRIMITIVES,
+    WORKABLE_CATEGORIES,
 )
 
 __all__ = [
@@ -43,8 +45,10 @@ __all__ = [
     "pack_policy_digest",
 ]
 
-PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
+PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy", "execution")
+REQUIRED_PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
 PRESET_KEYS = ("primitive", "tags", "fields", "template")
+EXECUTION_KEYS = ("dispatch", "merge")
 PACK_VERSION = 1
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
 DEFAULT_MEASUREMENT_MIN_RUNS = 10
@@ -93,6 +97,21 @@ class Pack:
     transitions: dict[str, tuple[str, ...]]
     presets: dict[str, Preset]
     policy: dict[str, Any]
+    execution: dict[str, dict[str, bool]]
+
+    def dispatchable(self, status: str) -> bool:
+        """Whether an Item in ``status`` may be dispatched."""
+        declared = self.execution.get(status, {})
+        if "dispatch" in declared:
+            return declared["dispatch"]
+        return self.statuses.get(status) in WORKABLE_CATEGORIES
+
+    def mergeable(self, status: str) -> bool:
+        """Whether an Item in ``status`` may be merged."""
+        declared = self.execution.get(status, {})
+        if "merge" in declared:
+            return declared["merge"]
+        return self.statuses.get(status) not in FINISHED_CATEGORIES
 
 
 def load_pack(name: str, store: Path) -> Pack:
@@ -164,7 +183,7 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
     unknown = sorted(set(data) - set(PACK_KEYS))
     if unknown:
         _refuse("unknown pack key(s): " + ", ".join(unknown))
-    missing = [key for key in PACK_KEYS if key not in data]
+    missing = [key for key in REQUIRED_PACK_KEYS if key not in data]
     if missing:
         _refuse("pack.yaml is missing " + ", ".join(missing))
 
@@ -181,6 +200,7 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
     transitions = _transitions(data["transitions"], statuses)
     presets = _presets(data["presets"])
     policy = _policy(data["policy"])
+    execution = _execution(data.get("execution", {}), statuses)
 
     return Pack(
         name=name,
@@ -190,6 +210,7 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
         transitions=transitions,
         presets=presets,
         policy=policy,
+        execution=execution,
     )
 
 
@@ -227,6 +248,25 @@ def _transitions(raw: Any, statuses: dict[str, str]) -> dict[str, tuple[str, ...
 def _presets(raw: Any) -> dict[str, Preset]:
     presets = _mapping(raw, "presets")
     return {name: _preset(name, entry) for name, entry in presets.items()}
+
+
+def _execution(raw: Any, statuses: dict[str, str]) -> dict[str, dict[str, bool]]:
+    execution = _mapping(raw, "execution")
+    result: dict[str, dict[str, bool]] = {}
+    for status, raw_flags in execution.items():
+        if status not in statuses:
+            _refuse(f"execution names undeclared status {status!r}")
+        flags = _mapping(raw_flags, f"execution.{status}")
+        unknown = sorted(set(flags) - set(EXECUTION_KEYS))
+        if unknown:
+            _refuse(f"execution.{status} has unknown key(s): " + ", ".join(unknown))
+        values: dict[str, bool] = {}
+        for key, value in flags.items():
+            if not isinstance(value, bool):
+                _refuse(f"execution.{status}.{key} must be true or false")
+            values[key] = value
+        result[status] = values
+    return result
 
 
 def _preset(name: str, raw: Any) -> Preset:

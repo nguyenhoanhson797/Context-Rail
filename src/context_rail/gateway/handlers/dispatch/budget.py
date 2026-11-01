@@ -102,7 +102,7 @@ def _item_rows(ctx: Context) -> list[structure.ItemRow]:
     ):
         edges.setdefault(src, {}).setdefault(rel, []).append(dst)
     rows = index.conn.execute(
-        "SELECT slug, category FROM docs WHERE primitive = 'item' AND broken = 0"
+        "SELECT slug, category, status FROM docs WHERE primitive = 'item' AND broken = 0"
     ).fetchall()
     return [
         structure.ItemRow(
@@ -111,8 +111,9 @@ def _item_rows(ctx: Context) -> list[structure.ItemRow]:
             part_of=tuple(sorted(edges.get(name, {}).get("part_of", ()))),
             depends_on=tuple(sorted(edges.get(name, {}).get("depends_on", ()))),
             last_activity_ms=None,
+            dispatchable=ctx.pack.dispatchable(status or ""),
         )
-        for name, category in rows
+        for name, category, status in rows
     ]
 
 

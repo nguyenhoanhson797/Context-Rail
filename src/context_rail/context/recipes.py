@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from context_rail.gateway.gateway import Context
+    from context_rail.model.pack import Pack
 
 BRIEF_CHARS = 12000
 BRIEF_MAX_CHARS = 32000
@@ -79,7 +80,7 @@ class Section:
 # ── shared selections ─────────────────────────────────────────────────────
 
 
-def item_rows(ix: Any) -> list[structure.ItemRow]:
+def item_rows(ix: Any, pack: Pack) -> list[structure.ItemRow]:
     """Every Item with its part_of/depends_on edges and newest activity."""
     edges: dict[str, dict[str, list[str]]] = {}
     for src, rel, dst in ix.conn.execute(
@@ -90,7 +91,7 @@ def item_rows(ix: Any) -> list[structure.ItemRow]:
         edges.setdefault(src, {}).setdefault(rel, []).append(dst)
     activity = query.last_activity_ms(ix)
     rows = ix.conn.execute(
-        "SELECT slug, category FROM docs WHERE primitive = 'item' AND broken = 0"
+        "SELECT slug, category, status FROM docs WHERE primitive = 'item' AND broken = 0"
     ).fetchall()
     return [
         structure.ItemRow(
@@ -99,8 +100,9 @@ def item_rows(ix: Any) -> list[structure.ItemRow]:
             part_of=_ordered(edges.get(slug, {}).get("part_of", ())),
             depends_on=_ordered(edges.get(slug, {}).get("depends_on", ())),
             last_activity_ms=activity.get(slug),
+            dispatchable=pack.dispatchable(status or ""),
         )
-        for slug, category in rows
+        for slug, category, status in rows
     ]
 
 
@@ -286,7 +288,7 @@ def brief(
     approval = approval_state(context)
     rows = query.brief_rows(index, limit)
     activity = query.digest_rows(index, None, limit)
-    items = item_rows(index)
+    items = item_rows(index, context.pack)
     titles = item_titles(index)
     now_ms = int(time.time() * 1000)
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
@@ -473,7 +475,7 @@ def digest(
     index = context.index
     activity = query.digest_rows(index, since, page)
     approval = approval_state(context)
-    items = item_rows(index)
+    items = item_rows(index, context.pack)
     titles = item_titles(index)
     now_ms = int(time.time() * 1000)
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
