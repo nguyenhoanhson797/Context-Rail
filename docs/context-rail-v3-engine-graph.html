@@ -1,0 +1,1812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="data:,">
+<title>Context Rail v3 — engine graph</title>
+<meta name="description" content="A visual map of the Context Rail v3 engine: six primitives, eight relations, the one write path, the lifecycle categories and the full agent loop.">
+<style>
+  :root {
+    --paper: #f6f4ee;
+    --paper-2: #efebe1;
+    --card: #fffdf9;
+    --ink: #141b24;
+    --muted: #5d6673;
+    --faint: #8a929d;
+    --line: #dcd7ca;
+    --line-strong: #c8c2b3;
+    --indigo: #4f46e5;
+    --indigo-2: #6366f1;
+    --indigo-soft: #eef0ff;
+    --teal: #0f766e;
+    --teal-soft: #e6f7f3;
+    --amber: #b45309;
+    --amber-soft: #fff3da;
+    --red: #b42318;
+    --red-soft: #feeceb;
+    --blue: #1d4ed8;
+    --blue-soft: #eaf1ff;
+    --violet: #7c3aed;
+    --violet-soft: #f3ecff;
+    --green: #15803d;
+    --green-soft: #eaf7ed;
+    --slate: #334155;
+    --mono: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --shadow: 0 1px 2px rgba(20, 27, 36, .05), 0 20px 50px -30px rgba(20, 27, 36, .35);
+    --radius: 20px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--paper);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: var(--indigo); }
+  code, pre, .mono { font-family: var(--mono); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+  .skip {
+    position: absolute; left: -999px; top: 0; z-index: 100;
+    background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 0 0 10px 0;
+  }
+  .skip:focus { left: 0; }
+
+  /* ── hero ───────────────────────────────────────────────── */
+  .hero {
+    position: relative; overflow: hidden; color: #e5eaf2;
+    background:
+      radial-gradient(850px 360px at 12% -10%, #4f46e559, transparent 68%),
+      radial-gradient(700px 320px at 88% 0%, #0f766e42, transparent 65%),
+      linear-gradient(155deg, #0b1220 8%, #111a2c 58%, #1a1f3a 100%);
+    padding: 70px 0 40px;
+  }
+  .hero::before {
+    content: ""; position: absolute; inset: 0; opacity: .55;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, .07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, .07) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: linear-gradient(to bottom, #000 5%, transparent 92%);
+  }
+  .hero .wrap { position: relative; z-index: 1; }
+  .eyebrow {
+    margin: 0; font: 700 11px/1 var(--mono); letter-spacing: .17em;
+    text-transform: uppercase; color: #a5b4fc;
+  }
+  .hero h1 {
+    margin: 20px 0 18px; max-width: 17ch;
+    font-size: clamp(42px, 6.4vw, 76px); line-height: .98; letter-spacing: -.055em;
+    font-weight: 750; color: #f8fafc;
+  }
+  .hero h1 em { font-style: normal; color: #c7d2fe; }
+  .hero .lede {
+    margin: 0; max-width: 74ch; color: #cbd5e1; font-size: 17.5px; line-height: 1.6;
+  }
+  .stats {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+    margin-top: 38px; border-top: 1px solid #ffffff1f; padding-top: 18px;
+  }
+  .stat b {
+    display: block; font-size: 31px; line-height: 1; letter-spacing: -.04em;
+    color: #fff; font-weight: 700;
+  }
+  .stat span {
+    display: block; margin-top: 7px; font: 600 10.5px/1.35 var(--mono);
+    letter-spacing: .06em; text-transform: uppercase; color: #94a3b8;
+  }
+  .hero-note {
+    display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 26px;
+    color: #94a3b8; font-size: 12px;
+  }
+  .hero-note b { color: #e2e8f0; font-weight: 600; }
+
+  /* ── nav ────────────────────────────────────────────────── */
+  .toc {
+    position: sticky; top: 0; z-index: 40;
+    background: rgba(246, 244, 238, .9);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .toc .wrap { display: flex; gap: 2px; overflow-x: auto; padding: 10px 28px; scrollbar-width: none; }
+  .toc .wrap::-webkit-scrollbar { display: none; }
+  .toc a {
+    white-space: nowrap; text-decoration: none; color: var(--muted);
+    font-size: 12.5px; font-weight: 650; padding: 7px 11px; border-radius: 999px;
+    transition: background .18s, color .18s;
+  }
+  .toc a:hover { background: var(--indigo-soft); color: var(--indigo); }
+  .toc a.active { background: var(--ink); color: #fff; }
+
+  /* ── sections ───────────────────────────────────────────── */
+  .section { padding: 84px 0 4px; scroll-margin-top: 72px; }
+  .section-head {
+    display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+    gap: 20px 54px; align-items: end; margin-bottom: 28px;
+  }
+  .kicker {
+    margin: 0 0 10px; font: 700 10.5px/1 var(--mono); letter-spacing: .15em;
+    text-transform: uppercase; color: var(--indigo);
+  }
+  .section h2 {
+    margin: 0; font-size: clamp(30px, 3.5vw, 44px); line-height: 1.06;
+    letter-spacing: -.045em; font-weight: 750; max-width: 20ch;
+  }
+  .section-lede {
+    margin: 0; color: var(--muted); font-size: 15.5px; line-height: 1.65; max-width: 66ch;
+  }
+  .note {
+    margin: 16px 0 0; font-size: 12.5px; color: var(--faint);
+  }
+  .note b { color: var(--muted); }
+  .scroll-hint {
+    display: none; margin: -4px 0 0; padding: 0 10px; text-align: center;
+    font: 600 10.5px/1.4 var(--mono); letter-spacing: .04em; color: var(--faint);
+  }
+
+  /* ── shared cards ───────────────────────────────────────── */
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+    margin: 0 0 14px; color: var(--muted); font-size: 12px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 22px; height: 2px; background: var(--muted); border-radius: 1px; }
+  .swatch.dash {
+    height: 0; border-top: 2px dashed var(--muted); background: none;
+  }
+  .swatch.dot {
+    width: 10px; height: 10px; border-radius: 3px; background: var(--indigo);
+  }
+
+  /* ── engine graph ───────────────────────────────────────── */
+  .graph-shell {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px;
+    align-items: start;
+  }
+  .graph-card { padding: 12px; overflow: hidden; }
+  .graph-scroll { overflow-x: auto; border-radius: 14px; }
+  .graph-scroll svg { display: block; width: 100%; min-width: 900px; height: auto; }
+  .engine-graph.hovering .node { opacity: .28; }
+  .engine-graph.hovering .node.related { opacity: 1; }
+  .engine-graph.hovering .edge { opacity: .1; }
+  .engine-graph.hovering .edge.lit { opacity: 1; stroke: var(--indigo); stroke-width: 2.4; marker-end: url(#arrowLit); }
+  .engine-graph.hovering .edge-label { opacity: .12; }
+  .engine-graph .node { cursor: pointer; transition: opacity .18s; }
+  .engine-graph .node:focus { outline: none; }
+  .engine-graph .node:focus rect, .engine-graph .node.selected rect {
+    stroke: var(--indigo); stroke-width: 2.8;
+  }
+  .edge {
+    fill: none; stroke: #94a3b8; stroke-width: 1.55; marker-end: url(#arrow);
+    transition: opacity .18s, stroke .18s;
+  }
+  .edge.dashed { stroke-dasharray: 6 5; }
+  .edge-label {
+    font: 600 9.5px var(--mono); fill: #64748b;
+    paint-order: stroke; stroke: var(--card); stroke-width: 5px; stroke-linejoin: round;
+  }
+  .node rect { stroke-width: 1.35; }
+  .node:hover rect { filter: drop-shadow(0 8px 14px rgba(20, 27, 36, .14)); }
+  .node--surface rect { fill: #f8fafc; stroke: #cbd5e1; }
+  .node--gateway rect { fill: #eef2ff; stroke: #a5b4fc; }
+  .node--handlers rect { fill: #e0e7ff; stroke: #818cf8; }
+  .node--kernel rect { fill: #f5f3ff; stroke: #c4b5fd; }
+  .node--write rect { fill: #fff7ed; stroke: #fdba74; }
+  .node--runner rect { fill: #fef2f2; stroke: #fca5a5; }
+  .node--files rect { fill: #ecfdf5; stroke: #6ee7b7; }
+  .node--index rect { fill: #eff6ff; stroke: #93c5fd; }
+  .node--views rect { fill: #f0fdf4; stroke: #86efac; }
+  .n-title { font: 700 14.5px var(--sans); fill: #0f172a; }
+  .n-sub { font: 11.5px var(--sans); fill: #475569; }
+  .n-small { font: 9.5px var(--mono); fill: #64748b; }
+  .detail {
+    position: static; min-height: auto; padding: 22px 24px;
+    color: #e2e8f0; background: #0f172a; border-radius: var(--radius);
+    box-shadow: 0 18px 48px -30px rgba(15, 23, 42, .8);
+  }
+  .detail ul { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  .detail-kind {
+    margin: 0 0 7px; font: 700 9.5px/1 var(--mono); letter-spacing: .15em;
+    text-transform: uppercase; color: #a5b4fc;
+  }
+  .detail h3 { margin: 0 0 10px; color: #fff; font-size: 20px; letter-spacing: -.025em; line-height: 1.2; }
+  .detail p { margin: 0; color: #cbd5e1; font-size: 13px; line-height: 1.55; }
+  .detail ul { margin: 13px 0 0; padding: 0; list-style: none; }
+  .detail li { position: relative; margin: 7px 0; padding-left: 16px; color: #cbd5e1; font-size: 12.5px; line-height: 1.45; }
+  .detail li::before {
+    content: ""; position: absolute; left: 0; top: .52em; width: 6px; height: 6px;
+    border-radius: 2px; background: #818cf8;
+  }
+  .detail .meta {
+    margin: 16px 0 0; padding-top: 12px; border-top: 1px solid #ffffff1a;
+    font: 10.5px/1.5 var(--mono); color: #94a3b8;
+  }
+  .detail-reset {
+    margin-top: 14px; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid #ffffff26; background: #ffffff0f; color: #cbd5e1;
+    font: 600 10.5px var(--mono); letter-spacing: .04em;
+  }
+  .detail-reset:hover { background: #ffffff1c; color: #fff; }
+  .invariants { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+  .invariant { padding: 20px; border-top: 3px solid var(--indigo); }
+  .invariant:nth-child(2) { border-top-color: var(--teal); }
+  .invariant:nth-child(3) { border-top-color: var(--amber); }
+  .invariant h3 { margin: 0 0 7px; font-size: 16px; letter-spacing: -.02em; }
+  .invariant p { margin: 0; color: var(--muted); font-size: 13px; }
+
+  /* ── primitives ─────────────────────────────────────────── */
+  .primitives { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+  .primitive {
+    position: relative; padding: 22px; overflow: hidden;
+    border-top: 4px solid var(--accent); background: var(--card);
+    border-radius: var(--radius); border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow);
+  }
+  .primitive::after {
+    content: ""; position: absolute; width: 120px; height: 120px; right: -50px; top: -50px;
+    border-radius: 50%; background: var(--accent-soft); opacity: .8; pointer-events: none;
+  }
+  .primitive .num {
+    position: relative; z-index: 1; font: 700 10.5px var(--mono);
+    letter-spacing: .13em; color: var(--accent); text-transform: uppercase;
+  }
+  .primitive h3 { position: relative; z-index: 1; margin: 8px 0 5px; font-size: 23px; letter-spacing: -.035em; }
+  .primitive .what { position: relative; z-index: 1; margin: 0; color: var(--muted); font-size: 13px; min-height: 59px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 14px 0 13px; }
+  .chips span {
+    font: 600 10.5px/1 var(--mono); color: var(--accent); background: var(--accent-soft);
+    padding: 5px 7px; border-radius: 6px;
+  }
+  .primitive .effect {
+    margin: 0; padding-top: 12px; border-top: 1px dashed var(--line);
+    color: var(--slate); font-size: 12.5px; line-height: 1.5;
+  }
+  .primitive .effect b { color: var(--accent); font-weight: 700; }
+  .influence {
+    display: flex; align-items: stretch; gap: 7px; margin-top: 16px;
+    padding: 17px 18px; overflow-x: auto;
+  }
+  .infl {
+    flex: 1 0 140px; min-width: 140px; padding: 13px 14px;
+    border: 1px solid var(--line); border-radius: 13px; background: #fbfaf6;
+  }
+  .infl b { display: block; font-size: 12.5px; }
+  .infl span { display: block; margin-top: 3px; color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+  .infl-arrow { align-self: center; color: var(--line-strong); font-size: 18px; flex: 0 0 auto; }
+
+  /* ── relations ──────────────────────────────────────────── */
+  .rel-graph { padding: 10px; overflow-x: auto; overflow-y: hidden; }
+  .rel-graph svg { display: block; width: 100%; min-width: 880px; height: auto; }
+  .rel-graph.focus .rel-edge { opacity: .14; }
+  .rel-graph.focus .rel-edge.lit { opacity: 1; stroke: var(--indigo); stroke-width: 2.5; marker-end: url(#arrowRelLit); }
+  .rel-graph.focus .rel-label { opacity: .18; }
+  .rel-graph.focus .rel-label.lit { opacity: 1; fill: var(--indigo); }
+  .rel-edge { fill: none; stroke: #94a3b8; stroke-width: 1.6; marker-end: url(#arrowRel); transition: opacity .18s; }
+  .rel-edge.dashed { stroke-dasharray: 7 5; }
+  .rel-label {
+    font: 600 10px var(--mono); fill: #5d6673;
+    paint-order: stroke; stroke: var(--card); stroke-width: 5px; stroke-linejoin: round;
+  }
+  .node--policy2 rect { fill: #fff1f2; stroke: #fda4af; }
+  .node--actor2 rect { fill: #f3ecff; stroke: #c4b5fd; }
+  .node--item2 rect { fill: #eef2ff; stroke: #a5b4fc; }
+  .node--check2 rect { fill: #eff6ff; stroke: #93c5fd; }
+  .node--record2 rect { fill: #fff7ed; stroke: #fdba74; }
+  .node--note2 rect { fill: #e6f7f3; stroke: #6ee7b7; }
+  .table-wrap { overflow-x: auto; margin-top: 16px; border-radius: 16px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); font-size: 13.5px; }
+  th {
+    text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line);
+    font: 700 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+    background: #fbfaf6; white-space: nowrap;
+  }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--slate); }
+  tr:last-child td { border-bottom: 0; }
+  .rel-table tbody tr { transition: background .16s; }
+  .rel-table tbody tr:hover td, .rel-table tbody tr.active td { background: var(--indigo-soft); }
+  .rel-name { font: 700 12px var(--mono); color: var(--ink); white-space: nowrap; }
+  .dir { display: inline-flex; align-items: center; gap: 6px; font: 600 11px var(--mono); white-space: nowrap; }
+  .pdot { width: 8px; height: 8px; border-radius: 3px; display: inline-block; }
+  .p-item { background: var(--indigo); }
+  .p-check { background: var(--blue); }
+  .p-record { background: var(--amber); }
+  .p-actor { background: var(--violet); }
+  .p-note { background: var(--teal); }
+  .p-policy { background: var(--red); }
+  .p-any { background: var(--faint); }
+
+  /* ── lifecycle ──────────────────────────────────────────── */
+  .matrix-wrap { overflow-x: auto; border-radius: 16px; }
+  .matrix {
+    display: grid; grid-template-columns: 112px repeat(5, minmax(150px, 1fr));
+    min-width: 910px; overflow: hidden; background: var(--card);
+    border: 1px solid var(--line); border-radius: 16px;
+  }
+  .mcell { padding: 13px 14px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .mcell:nth-child(6n) { border-right: 0; }
+  .matrix > .mcell:nth-last-child(-n+6) { border-bottom: 0; }
+  .mhead { background: #fbfaf6; }
+  .mhead b { display: block; font-size: 12.5px; letter-spacing: -.01em; }
+  .mhead span { display: block; margin-top: 2px; font-size: 10.5px; color: var(--muted); line-height: 1.35; }
+  .mrow { display: flex; align-items: center; font: 700 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; background: #fbfaf6; }
+  .mhead.cat-not_started { border-top: 3px solid #64748b; }
+  .mhead.cat-active { border-top: 3px solid var(--indigo); }
+  .mhead.cat-blocked { border-top: 3px solid var(--red); }
+  .mhead.cat-done { border-top: 3px solid var(--green); }
+  .mhead.cat-dropped { border-top: 3px solid #a16207; }
+  .status-chip {
+    display: inline-block; margin: 2px 4px 2px 0; padding: 5px 8px;
+    border-radius: 7px; font: 600 10.5px/1 var(--mono);
+    background: #f4f2ec; color: var(--slate); border: 1px solid #e7e2d6;
+  }
+  .cat-not_started .status-chip { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+  .cat-active .status-chip { background: var(--indigo-soft); border-color: #d9ddff; color: var(--indigo); }
+  .cat-blocked .status-chip { background: var(--red-soft); border-color: #fecaca; color: var(--red); }
+  .cat-done .status-chip { background: var(--green-soft); border-color: #bbf7d0; color: var(--green); }
+  .cat-dropped .status-chip { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+  .derived { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
+  .derived .card { padding: 16px; }
+  .derived h3 { margin: 0 0 6px; font-size: 13.5px; letter-spacing: -.01em; }
+  .derived p { margin: 0; color: var(--muted); font-size: 11.8px; line-height: 1.45; }
+  .derived .tag { font: 700 9.5px var(--mono); letter-spacing: .11em; text-transform: uppercase; color: var(--indigo); }
+  .derived .card:nth-child(2) .tag { color: var(--red); }
+  .derived .card:nth-child(3) .tag { color: var(--amber); }
+  .derived .card:nth-child(4) .tag { color: var(--violet); }
+  .derived .card:nth-child(5) .tag { color: var(--teal); }
+
+  /* ── write path ─────────────────────────────────────────── */
+  .pipeline {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .wstep {
+    position: relative; min-height: 194px; padding: 17px;
+    border: 1px solid var(--line); border-radius: 15px; background: var(--card);
+  }
+  .wstep b {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 8px; background: var(--indigo-soft);
+    color: var(--indigo); font: 700 10.5px var(--mono); letter-spacing: .02em;
+  }
+  .wstep h3 { margin: 12px 0 6px; font-size: 13.5px; letter-spacing: -.015em; }
+  .wstep p { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+  .wstep .mono { display: block; margin-top: 8px; color: var(--faint); font-size: 9.5px; line-height: 1.4; overflow-wrap: anywhere; }
+  .wstep:nth-child(4) { border-color: #fbbf24; background: #fffcf2; }
+  .wstep:nth-child(6) { border-color: #a5b4fc; background: #f8f8ff; }
+  .branch { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .branch .card { padding: 18px; }
+  .branch h3 { margin: 0 0 6px; font-size: 14px; }
+  .branch p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .guarantees { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+  .guarantee { padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px; background: #fbfaf6; }
+  .guarantee b { display: block; font-size: 12px; }
+  .guarantee span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+
+  /* ── loop ───────────────────────────────────────────────── */
+  .loop-graph { padding: 10px; overflow-x: auto; overflow-y: hidden; }
+  .loop-graph svg { display: block; width: 100%; min-width: 900px; height: auto; }
+  .loop-track { fill: none; stroke: #d6d1c4; stroke-width: 1.5; stroke-dasharray: 4 6; }
+  .loop-edge { fill: none; stroke: #94a3b8; stroke-width: 1.7; marker-end: url(#arrowLoop); }
+  .step--read rect { fill: var(--green-soft); stroke: #86efac; }
+  .step--work rect { fill: var(--indigo-soft); stroke: #a5b4fc; }
+  .step--gate rect { fill: var(--amber-soft); stroke: #fcd34d; }
+  .step--report rect { fill: var(--teal-soft); stroke: #6ee7b7; }
+  .step-title { font: 700 13px var(--sans); fill: var(--ink); }
+  .step-sub { font: 9.5px var(--mono); fill: #64748b; }
+  .step-no { fill: #64748b; font-weight: 700; }
+  .loop-center-title { font: 750 22px var(--sans); fill: var(--ink); letter-spacing: -.03em; }
+  .loop-center-sub { font: 600 10.5px var(--mono); fill: #64748b; }
+  .loop-center-small { font: 10px var(--sans); fill: var(--faint); }
+  .loop-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; color: var(--muted); font-size: 11.5px; }
+  .loop-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .lg { width: 9px; height: 9px; border-radius: 3px; }
+  .lg.human { background: var(--amber); }
+  .lg.read { background: var(--green); }
+  .lg.work { background: var(--indigo); }
+  .lg.report { background: var(--teal); }
+  .loop-table td:first-child { white-space: nowrap; }
+
+  /* ── timeline ───────────────────────────────────────────── */
+  .timeline { position: relative; display: grid; gap: 14px; }
+  .timeline::before {
+    content: ""; position: absolute; left: 28px; top: 18px; bottom: 18px; width: 2px;
+    background: linear-gradient(var(--indigo), var(--teal)); opacity: .22;
+  }
+  .step { position: relative; display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 14px; }
+  .step .dot {
+    position: relative; z-index: 1; width: 58px; height: 58px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--card); border: 2px solid var(--line-strong);
+    font: 700 12px var(--mono); color: var(--muted);
+  }
+  .step.human .dot { border-color: #fbbf24; color: var(--amber); background: #fff8e8; }
+  .step.cto .dot { border-color: #a5b4fc; color: var(--indigo); background: var(--indigo-soft); }
+  .step .body { padding: 18px 20px; }
+  .step .body-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
+  .step h3 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px;
+    font: 700 9px var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  }
+  .badge--human { background: var(--amber-soft); color: var(--amber); }
+  .badge--cto { background: var(--indigo-soft); color: var(--indigo); }
+  .badge--any { background: var(--teal-soft); color: var(--teal); }
+  .step p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+  .step p + p { margin-top: 7px; }
+  pre.cmd {
+    margin: 10px 0 9px; padding: 11px 13px; overflow-x: auto; border-radius: 9px;
+    background: #0f172a; color: #e2e8f0; font-size: 11.5px; line-height: 1.6;
+  }
+  pre.cmd code { font-family: var(--mono); }
+  .refusals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+  .refusal { padding: 14px 16px; border-left: 3px solid var(--red); background: var(--card); border-radius: 0 12px 12px 0; border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .refusal b { display: block; font: 700 10px var(--mono); color: var(--red); }
+  .refusal span { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+
+  /* ── rights ─────────────────────────────────────────────── */
+  .rights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .right-card { padding: 22px; border-top: 4px solid var(--green); }
+  .right-card.reversible { border-top-color: var(--amber); }
+  .right-card.human { border-top-color: var(--red); }
+  .right-card h3 { margin: 0 0 4px; font-size: 17px; letter-spacing: -.02em; }
+  .right-card .who { margin: 0 0 14px; font: 700 9.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+  .right-card ul { margin: 0; padding: 0; list-style: none; }
+  .right-card li { position: relative; margin: 8px 0; padding-left: 17px; color: var(--slate); font-size: 12.5px; line-height: 1.45; }
+  .right-card li::before { content: ""; position: absolute; left: 0; top: .55em; width: 7px; height: 7px; border-radius: 2px; background: var(--green); }
+  .right-card.reversible li::before { background: var(--amber); }
+  .right-card.human li::before { background: var(--red); }
+  .rights-note { margin-top: 14px; padding: 16px 18px; border-left: 3px solid var(--red); background: #fff8f7; border-radius: 0 12px 12px 0; color: var(--muted); font-size: 12.8px; }
+  .rights-note b { color: var(--ink); }
+
+  /* ── reference ──────────────────────────────────────────── */
+  .reference-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 16px; align-items: start; }
+  .reference-grid > * { min-width: 0; }
+  .tree-card { padding: 18px; min-width: 0; }
+  .tree {
+    margin: 0; max-width: 100%; padding: 18px; overflow-x: auto; border-radius: 12px;
+    background: #0f172a; color: #dbe3ee; font-size: 11.5px; line-height: 1.75;
+  }
+  .tree .c { color: #7c8aa0; }
+  .tree .k { color: #c7d2fe; }
+  .tree .t { color: #6ee7b7; }
+  .side-notes { display: grid; gap: 10px; min-width: 0; }
+  .side-note { padding: 16px 18px; }
+  .side-note h3 { margin: 0 0 5px; font-size: 13.5px; }
+  .side-note p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .side-note .mono { color: var(--indigo); font-size: 10.5px; }
+  .command-grid { display: grid; grid-template-columns: 135px minmax(0, 1fr); gap: 0; margin-top: 16px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--card); }
+  .command-grid > div { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .command-grid > div:nth-last-child(-n+2) { border-bottom: 0; }
+  .command-grid .family { font: 700 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--indigo); background: #fbfaf6; }
+  .command-grid .tools { color: var(--slate); font-size: 12.5px; line-height: 1.6; }
+  .command-grid .tools code { font-size: 11px; background: #f3f1ea; padding: 2px 5px; border-radius: 4px; }
+
+  /* ── footer ─────────────────────────────────────────────── */
+  .footer {
+    margin-top: 84px; padding: 38px 0 46px; color: #94a3b8;
+    background: #0b1220; border-top: 1px solid #ffffff12;
+  }
+  .footer .wrap { display: flex; flex-wrap: wrap; gap: 22px; justify-content: space-between; align-items: start; }
+  .footer h3 { margin: 0 0 6px; color: #f8fafc; font-size: 15px; }
+  .footer p { margin: 0; max-width: 72ch; font-size: 12px; line-height: 1.6; }
+  .footer a { color: #c7d2fe; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  .footer .sources { font: 10.5px/1.7 var(--mono); color: #64748b; overflow-wrap: anywhere; }
+  .footer .sources b { color: #cbd5e1; font-weight: 600; }
+
+  @media (max-width: 1040px) {
+    .graph-shell { grid-template-columns: 1fr; }
+    .detail { position: static; min-height: auto; }
+    .primitives { grid-template-columns: repeat(2, 1fr); }
+    .derived { grid-template-columns: repeat(3, 1fr); }
+    .reference-grid { grid-template-columns: 1fr; }
+    .guarantees { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 860px) {
+    .scroll-hint { display: block; }
+    .table-wrap {
+      overflow-x: visible; border: 1px solid var(--line);
+      border-radius: 16px; background: var(--card);
+    }
+    .rel-table, .loop-table { background: transparent; }
+    .rel-table thead, .loop-table thead { display: none; }
+    .rel-table tbody, .loop-table tbody { display: block; }
+    .rel-table tr, .loop-table tr {
+      display: block; padding: 12px 16px; border-bottom: 1px solid var(--line);
+    }
+    .rel-table tr:last-child, .loop-table tr:last-child { border-bottom: 0; }
+    .rel-table td, .loop-table td {
+      display: block; padding: 4px 0; border: 0; white-space: normal;
+    }
+    .rel-table td::before, .loop-table td::before {
+      display: block; margin-bottom: 2px; color: var(--faint);
+      font: 700 9px var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    }
+    .rel-table td:nth-of-type(1)::before { content: "Relation"; }
+    .rel-table td:nth-of-type(2)::before { content: "Direction"; }
+    .rel-table td:nth-of-type(3)::before { content: "What it changes"; }
+    .loop-table td:nth-of-type(1)::before { content: "Step"; }
+    .loop-table td:nth-of-type(2)::before { content: "Command"; }
+    .loop-table td:nth-of-type(3)::before { content: "What it gives you"; }
+    .rel-table tbody tr:hover td, .rel-table tbody tr.active td { background: transparent; }
+  }
+  @media (max-width: 780px) {
+    .wrap { padding: 0 20px; }
+    .toc .wrap { padding: 9px 20px; }
+    .hero { padding: 52px 0 34px; }
+    .stats { grid-template-columns: repeat(3, 1fr); gap: 14px 10px; }
+    .section { padding: 64px 0 4px; }
+    .section-head { grid-template-columns: 1fr; gap: 14px; }
+    .section h2 { max-width: 24ch; }
+    .detail ul { grid-template-columns: 1fr; }
+    .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .primitives { grid-template-columns: 1fr; }
+    .invariants { grid-template-columns: 1fr; }
+    .derived { grid-template-columns: repeat(2, 1fr); }
+    .branch { grid-template-columns: 1fr; }
+    .rights { grid-template-columns: 1fr; }
+    .refusals { grid-template-columns: 1fr; }
+    .guarantees { grid-template-columns: 1fr; }
+    .timeline::before { left: 22px; }
+    .step { grid-template-columns: 46px minmax(0, 1fr); gap: 11px; }
+    .step .dot { width: 46px; height: 46px; font-size: 10px; }
+    .command-grid { grid-template-columns: 1fr; }
+    .command-grid .family { border-bottom: 0; padding-bottom: 2px; }
+  }
+  @media (max-width: 520px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .derived { grid-template-columns: 1fr; }
+    .pipeline { grid-template-columns: 1fr; }
+    .influence { flex-wrap: wrap; }
+    .infl { flex: 1 0 100%; }
+    .infl-arrow { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; }
+  }
+  @media print {
+    body { background: #fff; }
+    .toc, .skip { display: none; }
+    .hero { background: #fff; color: #000; padding: 20px 0; }
+    .hero h1, .hero .lede, .stat b, .stat span, .hero-note, .hero-note b { color: #000; }
+    .hero::before { display: none; }
+    .stats { border-top-color: #ddd; }
+    .detail { display: none; }
+    .graph-shell { grid-template-columns: 1fr; }
+    .card, .primitive, .step .body { box-shadow: none; }
+    .section { padding: 34px 0 4px; page-break-inside: avoid; }
+    .footer { background: #fff; color: #000; border-top: 1px solid #ddd; }
+    .footer h3, .footer .sources b { color: #000; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Context Rail v3 · engine map</p>
+    <h1>The engine,<br><em>end to end.</em></h1>
+    <p class="lede">
+      Six fixed primitives, eight named relations, one atomic write path — and the loop that turns
+      a goal into merged, verified work. Hover the graphs, follow the arrows, and see the rules the
+      code actually enforces.
+    </p>
+    <div class="stats" aria-label="Engine counts">
+      <div class="stat"><b>6</b><span>fixed primitives</span></div>
+      <div class="stat"><b>8</b><span>named relations</span></div>
+      <div class="stat"><b>5</b><span>status categories</span></div>
+      <div class="stat"><b>5</b><span>check modes</span></div>
+      <div class="stat"><b>39</b><span>tools · one table</span></div>
+      <div class="stat"><b>1</b><span>write path</span></div>
+    </div>
+    <div class="hero-note">
+      <span><b>Files</b> are the truth.</span>
+      <span><b>SQLite</b> is only a cache.</span>
+      <span><b>Kernel</b> is pure.</span>
+      <span><b>Unknown</b> input is refused, never guessed.</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Page sections">
+  <div class="wrap">
+    <a href="#engine">Engine</a>
+    <a href="#primitives">Primitives</a>
+    <a href="#relations">Relations</a>
+    <a href="#lifecycle">Lifecycle</a>
+    <a href="#write">Write path</a>
+    <a href="#loop">Agent loop</a>
+    <a href="#start">Zero to daily</a>
+    <a href="#rights">Rights</a>
+    <a href="#reference">Reference</a>
+  </div>
+</nav>
+
+<main id="main">
+
+  <!-- 01 · architecture -->
+  <section class="section" id="engine">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">01 · architecture</p>
+          <h2>Every surface, one engine.</h2>
+        </div>
+        <p class="section-lede">
+          The CLI, the MCP server and the loopback UI are generated from one tool table. The gateway
+          validates and authorizes before a handler runs. The kernel is pure. The write pipeline is
+          the only thing that mutates files, and the index is a disposable cache.
+        </p>
+      </div>
+
+      <div class="legend" aria-label="Graph legend">
+        <span><i class="swatch"></i> call or data</span>
+        <span><i class="swatch dash"></i> pure rules, results or reads</span>
+        <span><i class="swatch dot"></i> click a node for details</span>
+      </div>
+
+      <div class="graph-shell">
+        <div class="card graph-card">
+          <div class="graph-scroll">
+            <svg id="engine-graph" class="engine-graph" viewBox="0 0 1120 770" role="img" aria-labelledby="engine-graph-title engine-graph-desc">
+              <title id="engine-graph-title">Context Rail engine architecture</title>
+              <desc id="engine-graph-desc">Surfaces feed one gateway, which authorizes calls into read, write and execution paths. The write pipeline is the only mutator of files, files feed the SQLite index, and the index serves reads and computed views.</desc>
+              <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0 0 L10 4 L0 8 z" fill="#64748b"/>
+                </marker>
+                <marker id="arrowLit" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0 0 L10 4 L0 8 z" fill="#4f46e5"/>
+                </marker>
+              </defs>
+
+              <!-- edges -->
+              <path class="edge" data-a="cli" data-b="gateway" d="M149 88 V134"/>
+              <path class="edge" data-a="mcp" data-b="gateway" d="M415 88 V134"/>
+              <path class="edge" data-a="ui" data-b="gateway" d="M681 88 V134"/>
+              <path class="edge" data-a="agent" data-b="gateway" d="M959 88 V134"/>
+
+              <path class="edge" data-a="gateway" data-b="handlers" d="M560 212 V252"/>
+              <text class="edge-label" x="572" y="238">authorized call</text>
+
+              <path class="edge" data-a="handlers" data-b="kernel" d="M250 326 C250 351 180 348 180 372"/>
+              <text class="edge-label" x="228" y="354">rules</text>
+
+              <path class="edge" data-a="handlers" data-b="write" d="M545 326 V372"/>
+              <text class="edge-label" x="557" y="354">mutate</text>
+
+              <path class="edge" data-a="handlers" data-b="runner" d="M870 326 C870 351 930 348 930 372"/>
+              <text class="edge-label" x="895" y="354">execute</text>
+
+              <path class="edge dashed" data-a="kernel" data-b="write" d="M330 422 H380"/>
+              <text class="edge-label" x="348" y="408">rules</text>
+
+              <path class="edge dashed" data-a="runner" data-b="write" d="M770 422 H710"/>
+              <text class="edge-label" x="740" y="404" text-anchor="middle">facts</text>
+
+              <path class="edge" data-a="write" data-b="files" d="M545 472 C545 506 315 503 315 535"/>
+              <text class="edge-label" x="430" y="512">only writer</text>
+
+              <path class="edge" data-a="files" data-b="index" d="M500 581 H620"/>
+              <text class="edge-label" x="560" y="571">sync</text>
+
+              <path class="edge" data-a="index" data-b="views" d="M805 627 C805 655 560 653 560 680"/>
+              <text class="edge-label" x="682" y="660">SQL only</text>
+
+              <path class="edge dashed" data-a="index" data-b="handlers" d="M990 610 C1090 610 1090 300 990 300"/>
+              <text class="edge-label" x="1100" y="455" text-anchor="middle" transform="rotate(90 1100 455)">reads</text>
+
+              <!-- surfaces -->
+              <g class="node node--surface" data-node="cli" tabindex="0" role="button" aria-label="CLI surface">
+                <rect x="30" y="30" width="238" height="58" rx="14"/>
+                <text class="n-title" x="149" y="54" text-anchor="middle">CLI</text>
+                <text class="n-sub" x="149" y="72" text-anchor="middle">rail / ctx-rail</text>
+              </g>
+              <g class="node node--surface" data-node="mcp" tabindex="0" role="button" aria-label="MCP surface">
+                <rect x="296" y="30" width="238" height="58" rx="14"/>
+                <text class="n-title" x="415" y="54" text-anchor="middle">MCP</text>
+                <text class="n-sub" x="415" y="72" text-anchor="middle">one stdio connection</text>
+              </g>
+              <g class="node node--surface" data-node="ui" tabindex="0" role="button" aria-label="Loopback UI surface">
+                <rect x="562" y="30" width="238" height="58" rx="14"/>
+                <text class="n-title" x="681" y="54" text-anchor="middle">Loopback UI</text>
+                <text class="n-sub" x="681" y="72" text-anchor="middle">token · 127.0.0.1 only</text>
+              </g>
+              <g class="node node--surface" data-node="agent" tabindex="0" role="button" aria-label="Agent harness">
+                <rect x="828" y="30" width="262" height="58" rx="14"/>
+                <text class="n-title" x="959" y="54" text-anchor="middle">Agent harness</text>
+                <text class="n-sub" x="959" y="72" text-anchor="middle">reads AGENTS.md → CLI / MCP</text>
+              </g>
+
+              <!-- gateway -->
+              <g class="node node--gateway" data-node="gateway" tabindex="0" role="button" aria-label="Gateway">
+                <rect x="130" y="134" width="860" height="78" rx="16"/>
+                <text class="n-title" x="560" y="159" text-anchor="middle">Gateway · invoke()</text>
+                <text class="n-sub" x="560" y="179" text-anchor="middle">validate parameters → resolve actor &amp; store → authorize → dispatch handler</text>
+                <text class="n-small" x="560" y="198" text-anchor="middle">rights · charter approval · one typed JSON envelope · never raises</text>
+              </g>
+
+              <!-- handlers -->
+              <g class="node node--handlers" data-node="handlers" tabindex="0" role="button" aria-label="Tool table and handlers">
+                <rect x="130" y="252" width="860" height="74" rx="16"/>
+                <text class="n-title" x="560" y="279" text-anchor="middle">One tool table · 39 tools</text>
+                <text class="n-sub" x="560" y="299" text-anchor="middle">read · change · gate · loop · operate</text>
+                <text class="n-small" x="560" y="317" text-anchor="middle">CLI, MCP and UI are all generated from the same tuple</text>
+              </g>
+
+              <!-- kernel / write / runner -->
+              <g class="node node--kernel" data-node="kernel" tabindex="0" role="button" aria-label="Pure kernel">
+                <rect x="30" y="372" width="300" height="100" rx="16"/>
+                <text class="n-title" x="180" y="400" text-anchor="middle">Kernel · pure</text>
+                <text class="n-sub" x="180" y="420" text-anchor="middle">no file · no git · no process · no index</text>
+                <text class="n-small" x="180" y="441" text-anchor="middle">lifecycle · structure · gates · rights</text>
+                <text class="n-small" x="180" y="457" text-anchor="middle">budgets · measurement · triage</text>
+              </g>
+              <g class="node node--write" data-node="write" tabindex="0" role="button" aria-label="Write pipeline">
+                <rect x="380" y="372" width="330" height="100" rx="16"/>
+                <text class="n-title" x="545" y="400" text-anchor="middle">Write pipeline</text>
+                <text class="n-sub" x="545" y="420" text-anchor="middle">the only mutator of store files</text>
+                <text class="n-small" x="545" y="441" text-anchor="middle">lock → etag → intent → temp + fsync</text>
+                <text class="n-small" x="545" y="457" text-anchor="middle">→ atomic replace → record → index</text>
+              </g>
+              <g class="node node--runner" data-node="runner" tabindex="0" role="button" aria-label="Runner">
+                <rect x="770" y="372" width="300" height="100" rx="16"/>
+                <text class="n-title" x="920" y="400" text-anchor="middle">Runner · only executor</text>
+                <text class="n-sub" x="920" y="420" text-anchor="middle">droid exec · cmd checks · git</text>
+                <text class="n-small" x="920" y="441" text-anchor="middle">isolated worktree · hard timeout</text>
+                <text class="n-small" x="920" y="457" text-anchor="middle">scrubbed environment · capped output</text>
+              </g>
+
+              <!-- files / index -->
+              <g class="node node--files" data-node="files" tabindex="0" role="button" aria-label="Files are the truth">
+                <rect x="130" y="535" width="370" height="92" rx="16"/>
+                <text class="n-title" x="315" y="562" text-anchor="middle">Files = truth</text>
+                <text class="n-sub" x="315" y="584" text-anchor="middle">Markdown + JSON + rail.yaml</text>
+                <text class="n-small" x="315" y="604" text-anchor="middle">committed to git · hand-editable</text>
+                <text class="n-small" x="315" y="620" text-anchor="middle">the product's only source of truth</text>
+              </g>
+              <g class="node node--index" data-node="index" tabindex="0" role="button" aria-label="SQLite index cache">
+                <rect x="620" y="535" width="370" height="92" rx="16"/>
+                <text class="n-title" x="805" y="562" text-anchor="middle">SQLite index = cache</text>
+                <text class="n-sub" x="805" y="584" text-anchor="middle">under the git dir, or .rail-local/</text>
+                <text class="n-small" x="805" y="604" text-anchor="middle">docs · relations · checks · verdicts</text>
+                <text class="n-small" x="805" y="620" text-anchor="middle">records · FTS5 · WAL · rebuildable</text>
+              </g>
+
+              <!-- views -->
+              <g class="node node--views" data-node="views" tabindex="0" role="button" aria-label="Computed views">
+                <rect x="370" y="680" width="380" height="62" rx="15"/>
+                <text class="n-title" x="560" y="706" text-anchor="middle">Computed views</text>
+                <text class="n-sub" x="560" y="725" text-anchor="middle">status · cto brief · digest · ledger · find · show</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <p class="scroll-hint">↔ drag the graph sideways to see all of it</p>
+        <aside class="detail" aria-live="polite">
+          <div id="engine-detail">
+            <p class="detail-kind">Explore the graph</p>
+            <h3>Click any node</h3>
+            <p>Hover to trace a node's connections; click to keep its explanation here.</p>
+            <ul>
+              <li>Solid arrows are calls and data.</li>
+              <li>Dashed arrows are pure rules, run facts or reads.</li>
+              <li>The write pipeline is the only path that changes files.</li>
+            </ul>
+            <p class="meta">39 tools · 1 gateway · 1 write path</p>
+          </div>
+          <button id="engine-reset" class="detail-reset" type="button">Show all nodes</button>
+        </aside>
+      </div>
+
+      <div class="invariants">
+        <article class="card invariant">
+          <h3>Files are the truth</h3>
+          <p>A project is a <code>context-rail/</code> folder of Markdown and JSON plus <code>rail.yaml</code>, committed to git and editable by hand. The index is not the product.</p>
+        </article>
+        <article class="card invariant">
+          <h3>The kernel is pure</h3>
+          <p>Lifecycle, structure, gates, rights, budgets and measurement are functions over primitives. No file, git, process or index access, so the rules can be tested exhaustively.</p>
+        </article>
+        <article class="card invariant">
+          <h3>Reads never run code</h3>
+          <p>Reads are SQL against the index. They never execute a command or hash a source tree. A stale or corrupt index is rebuilt, not trusted.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 · primitives -->
+  <section class="section" id="primitives">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">02 · vocabulary</p>
+          <h2>Six primitives. Nothing else.</h2>
+        </div>
+        <p class="section-lede">
+          A primitive is a shape the engine understands. Presets such as <code>goal</code>,
+          <code>task</code> or <code>sprint</code> are only tags plus a template and defaults. Tags are
+          free text. Engine logic never branches on either one.
+        </p>
+      </div>
+
+      <div class="primitives">
+        <article class="primitive" style="--accent:#4f46e5;--accent-soft:#eef0ff">
+          <span class="num">01 · primitive</span>
+          <h3>Item</h3>
+          <p class="what">Anything with a lifecycle that can be done. One primitive covers goals, scopes, tasks, milestones, sprints, risks, questions and fixes.</p>
+          <div class="chips"><span>goal</span><span>scope</span><span>task</span><span>milestone</span><span>sprint</span><span>risk</span><span>question</span><span>fix</span></div>
+          <p class="effect"><b>Affects the project by:</b> driving executable work, dependencies, blockers, stuck and too-long detection, and score rollup through <code>part_of</code>.</p>
+        </article>
+
+        <article class="primitive" style="--accent:#0f766e;--accent-soft:#e6f7f3">
+          <span class="num">02 · primitive</span>
+          <h3>Note</h3>
+          <p class="what">Knowledge with no lifecycle: conventions, architecture, plans, skills and memory. It informs work without becoming work.</p>
+          <div class="chips"><span>note</span><span>convention</span><span>vision</span><span>wont</span><span>skill</span></div>
+          <p class="effect"><b>Affects the project by:</b> feeding context recipes and generated agent skills. It never appears as executable work.</p>
+        </article>
+
+        <article class="primitive" style="--accent:#b45309;--accent-soft:#fff3da">
+          <span class="num">03 · primitive</span>
+          <h3>Record</h3>
+          <p class="what">An immutable, append-only fact: a decision, run, verdict, report, approval or status change. History is appended, never rewritten.</p>
+          <div class="chips"><span>decision</span><span>event</span><span>run</span><span>verdict</span><span>report</span><span>approval</span></div>
+          <p class="effect"><b>Affects the project by:</b> providing the ledger, the audit trail, replay, triage and measurement. Every change leaves one.</p>
+        </article>
+
+        <article class="primitive" style="--accent:#1d4ed8;--accent-soft:#eaf1ff">
+          <span class="num">04 · primitive</span>
+          <h3>Check</h3>
+          <p class="what">A verifiable condition with a verdict and a freshness state. A Check can target one Item; only a linked, fresh pass gates work.</p>
+          <div class="chips"><span>cmd</span><span>exists</span><span>evidence</span><span>review</span><span>human</span></div>
+          <p class="effect"><b>Affects the project by:</b> gating <code>item_done</code>, <code>scope_done</code>, merge and release. A stale pass is not a pass.</p>
+        </article>
+
+        <article class="primitive" style="--accent:#7c3aed;--accent-soft:#f3ecff">
+          <span class="num">05 · primitive</span>
+          <h3>Actor</h3>
+          <p class="what">Who acts: the human, the CTO, the implementer and the reviewer. A profile narrows methods, context and budget.</p>
+          <div class="chips"><span>human</span><span>cto</span><span>implementer</span><span>reviewer</span></div>
+          <p class="effect"><b>Affects the project by:</b> enforcing permissions, method narrowing, review separation and the actor stamped on every Record.</p>
+        </article>
+
+        <article class="primitive" style="--accent:#b42318;--accent-soft:#feeceb">
+          <span class="num">06 · primitive</span>
+          <h3>Policy</h3>
+          <p class="what">The rules of the project: <code>charter.md</code> with gates, decision rights, budgets, thresholds and the change rule.</p>
+          <div class="chips"><span>charter</span><span>gates</span><span>rights</span><span>budgets</span></div>
+          <p class="effect"><b>Affects the project by:</b> bounding every decision. Protected files are approved by hash; nothing executes before approval.</p>
+        </article>
+      </div>
+
+      <div class="influence card" aria-label="Primitive work cycle">
+        <div class="infl"><b>Policy</b><span>sets the bounds</span></div>
+        <div class="infl-arrow" aria-hidden="true">→</div>
+        <div class="infl"><b>Actor</b><span>plans and acts</span></div>
+        <div class="infl-arrow" aria-hidden="true">→</div>
+        <div class="infl"><b>Item</b><span>defines the work</span></div>
+        <div class="infl-arrow" aria-hidden="true">→</div>
+        <div class="infl"><b>Check</b><span>proves the work</span></div>
+        <div class="infl-arrow" aria-hidden="true">→</div>
+        <div class="infl"><b>Record</b><span>remembers the fact</span></div>
+        <div class="infl-arrow" aria-hidden="true">→</div>
+        <div class="infl"><b>Note</b><span>informs the next decision</span></div>
+      </div>
+      <p class="note"><b>Read this as a working cycle, not a hierarchy.</b> A skeleton store has only <code>rail.yaml</code>; a full project uses all six primitives.</p>
+    </div>
+  </section>
+
+  <!-- 03 · relations -->
+  <section class="section" id="relations">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">03 · wiring</p>
+          <h2>Eight relations connect everything.</h2>
+        </div>
+        <p class="section-lede">
+          Direction matters: a Check verifies an Item; an Item does not verify a Check. These eight
+          names are the whole relation vocabulary. Hover a row to trace the matching edge.
+        </p>
+      </div>
+
+      <div class="card rel-graph">
+        <svg id="relation-graph" viewBox="0 0 1120 620" role="img" aria-labelledby="rel-graph-title rel-graph-desc">
+          <title id="rel-graph-title">The six primitives and their relations</title>
+          <desc id="rel-graph-desc">Checks verify Items; Records and Notes point at Items with about; Items resolve and are because_of Records; Items are owned_by Actors; Items form part_of and depends_on graphs; Records supersede Records; the charter Policy constrains Actors and Items.</desc>
+          <defs>
+            <marker id="arrowRel" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+              <path d="M0 0 L10 4 L0 8 z" fill="#64748b"/>
+            </marker>
+            <marker id="arrowRelLit" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+              <path d="M0 0 L10 4 L0 8 z" fill="#4f46e5"/>
+            </marker>
+          </defs>
+
+          <path class="rel-edge" data-rel-edge="owned_by" d="M390 270 C340 270 320 230 280 215"/>
+          <text class="rel-label" data-rel-edge="owned_by" x="332" y="235" text-anchor="middle">owned_by</text>
+
+          <path class="rel-edge" data-rel-edge="verifies" d="M850 200 C800 200 780 235 730 265"/>
+          <text class="rel-label" data-rel-edge="verifies" x="793" y="222" text-anchor="middle">verifies</text>
+
+          <path class="rel-edge dashed" data-rel-edge="charter" d="M450 60 C350 60 260 100 200 150"/>
+          <text class="rel-label" data-rel-edge="charter" x="300" y="86" text-anchor="middle">charter constrains</text>
+
+          <path class="rel-edge dashed" data-rel-edge="charter" d="M560 94 V230"/>
+          <text class="rel-label" data-rel-edge="charter" x="548" y="165" text-anchor="end">scope · gates · rights</text>
+
+          <path class="rel-edge" data-rel-edge="about" d="M280 500 C330 500 350 390 390 330"/>
+          <text class="rel-label" data-rel-edge="about" x="325" y="418" text-anchor="middle">about</text>
+
+          <path class="rel-edge" data-rel-edge="about" d="M800 480 C760 470 740 395 710 350"/>
+          <text class="rel-label" data-rel-edge="about" x="742" y="420" text-anchor="middle">about</text>
+
+          <path class="rel-edge" data-rel-edge="resolves" d="M620 356 C620 420 760 415 860 460"/>
+          <text class="rel-label" data-rel-edge="resolves" x="735" y="445" text-anchor="middle">resolves · because_of</text>
+
+          <path class="rel-edge" data-rel-edge="part_of" d="M620 230 C620 160 700 160 700 230"/>
+          <text class="rel-label" data-rel-edge="part_of" x="660" y="166" text-anchor="middle">part_of · depends_on</text>
+
+          <path class="rel-edge" data-rel-edge="supersedes" d="M1030 460 C1100 435 1100 495 1070 510"/>
+          <text class="rel-label" data-rel-edge="supersedes" x="1076" y="438" text-anchor="middle">supersedes</text>
+
+          <g class="node node--policy2" data-rel-node="policy" aria-label="Policy primitive">
+            <rect x="450" y="24" width="220" height="70" rx="15"/>
+            <text class="n-title" x="560" y="52" text-anchor="middle">Policy</text>
+            <text class="n-sub" x="560" y="72" text-anchor="middle">charter.md</text>
+            <text class="n-small" x="560" y="88" text-anchor="middle">gates · rights · budgets</text>
+          </g>
+          <g class="node node--actor2" data-rel-node="actor" aria-label="Actor primitive">
+            <rect x="40" y="150" width="240" height="80" rx="15"/>
+            <text class="n-title" x="160" y="182" text-anchor="middle">Actor</text>
+            <text class="n-sub" x="160" y="202" text-anchor="middle">human · cto · implementer</text>
+            <text class="n-small" x="160" y="220" text-anchor="middle">reviewer · profile-narrowed</text>
+          </g>
+          <g class="node node--note2" data-rel-node="note" aria-label="Note primitive">
+            <rect x="40" y="470" width="240" height="76" rx="15"/>
+            <text class="n-title" x="160" y="500" text-anchor="middle">Note</text>
+            <text class="n-sub" x="160" y="520" text-anchor="middle">knowledge, no lifecycle</text>
+            <text class="n-small" x="160" y="538" text-anchor="middle">convention · skill · memory</text>
+          </g>
+          <g class="node node--item2" data-rel-node="item" aria-label="Item primitive">
+            <rect x="390" y="230" width="340" height="126" rx="18"/>
+            <text class="n-title" x="560" y="270" text-anchor="middle">Item</text>
+            <text class="n-sub" x="560" y="292" text-anchor="middle">work with a lifecycle</text>
+            <text class="n-small" x="560" y="312" text-anchor="middle">goal · scope · task · sprint · fix</text>
+            <text class="n-small" x="560" y="330" text-anchor="middle">the only executable primitive</text>
+          </g>
+          <g class="node node--check2" data-rel-node="check" aria-label="Check primitive">
+            <rect x="850" y="150" width="230" height="80" rx="15"/>
+            <text class="n-title" x="965" y="182" text-anchor="middle">Check</text>
+            <text class="n-sub" x="965" y="202" text-anchor="middle">cmd · exists · evidence</text>
+            <text class="n-small" x="965" y="220" text-anchor="middle">review · human</text>
+          </g>
+          <g class="node node--record2" data-rel-node="record" aria-label="Record primitive">
+            <rect x="800" y="460" width="270" height="86" rx="15"/>
+            <text class="n-title" x="935" y="494" text-anchor="middle">Record</text>
+            <text class="n-sub" x="935" y="514" text-anchor="middle">immutable, append-only fact</text>
+            <text class="n-small" x="935" y="532" text-anchor="middle">run · verdict · decision · report</text>
+          </g>
+
+          <text class="rel-label" x="42" y="592" text-anchor="start">solid = fixed relation · dashed = charter / context</text>
+        </svg>
+      </div>
+      <p class="scroll-hint">↔ drag the graph sideways to see all of it</p>
+
+      <div class="table-wrap">
+        <table class="rel-table">
+          <thead>
+            <tr><th>Relation</th><th>Direction</th><th>What it changes</th></tr>
+          </thead>
+          <tbody>
+            <tr data-rel-row="part_of">
+              <td class="rel-name">part_of</td>
+              <td><span class="dir"><i class="pdot p-item"></i>Item → <i class="pdot p-item"></i>Item</span></td>
+              <td>The work hierarchy. A parent's score is the proven-over-total Checks of all its descendants; a parent is never an executable leaf.</td>
+            </tr>
+            <tr data-rel-row="depends_on">
+              <td class="rel-name">depends_on</td>
+              <td><span class="dir"><i class="pdot p-item"></i>Item → <i class="pdot p-item"></i>Item</span></td>
+              <td>Ordering. An open dependency blocks execution; a dependency cycle is detected and reported.</td>
+            </tr>
+            <tr data-rel-row="verifies">
+              <td class="rel-name">verifies</td>
+              <td><span class="dir"><i class="pdot p-check"></i>Check → <i class="pdot p-item"></i>Item</span></td>
+              <td>Proof. A Check can verify one Item; only a fresh pass counts toward a gate.</td>
+            </tr>
+            <tr data-rel-row="about">
+              <td class="rel-name">about</td>
+              <td><span class="dir"><i class="pdot p-any"></i>any → <i class="pdot p-any"></i>any</span></td>
+              <td>Context. A Record, Note or report points at its subject without making a lifecycle claim.</td>
+            </tr>
+            <tr data-rel-row="because_of">
+              <td class="rel-name">because_of</td>
+              <td><span class="dir"><i class="pdot p-item"></i>Item / <i class="pdot p-record"></i>Record → <i class="pdot p-record"></i>Record</span></td>
+              <td>Causality. Triage links a fix to the reports that caused it; the digest can show why work exists.</td>
+            </tr>
+            <tr data-rel-row="supersedes">
+              <td class="rel-name">supersedes</td>
+              <td><span class="dir"><i class="pdot p-record"></i>Record → <i class="pdot p-record"></i>Record</span></td>
+              <td>History. A newer decision replaces an older one without deleting it.</td>
+            </tr>
+            <tr data-rel-row="resolves">
+              <td class="rel-name">resolves</td>
+              <td><span class="dir"><i class="pdot p-item"></i>Item → <i class="pdot p-record"></i>Record / <i class="pdot p-item"></i>Item</span></td>
+              <td>Closure. A fix closes the reports or Items it resolves; <code>measure fix</code> follows these edges.</td>
+            </tr>
+            <tr data-rel-row="owned_by">
+              <td class="rel-name">owned_by</td>
+              <td><span class="dir"><i class="pdot p-any"></i>any → <i class="pdot p-actor"></i>Actor</span></td>
+              <td>Ownership. The Actor's profile decides allowed methods, context recipe and budget.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note"><b>Only these eight names exist.</b> <code>part_of</code> and <code>depends_on</code> make the work graph; <code>verifies</code> makes the proof graph; <code>about</code>, <code>because_of</code>, <code>supersedes</code> and <code>resolves</code> make the memory graph; <code>owned_by</code> attaches documents to an Actor.</p>
+    </div>
+  </section>
+
+  <!-- 04 · lifecycle -->
+  <section class="section" id="lifecycle">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">04 · lifecycle</p>
+          <h2>Packs choose the words. The kernel reads categories.</h2>
+        </div>
+        <p class="section-lede">
+          Every status maps to one of five fixed categories. That is why a pack can rename
+          <code>doing</code> to <code>building</code> without touching an engine rule. Status names are
+          data; categories are the contract.
+        </p>
+      </div>
+
+      <div class="matrix-wrap">
+        <div class="matrix" role="table" aria-label="Pack statuses mapped to fixed categories">
+          <div class="mcell mhead"><b>Pack</b><span>shipped vocabulary</span></div>
+          <div class="mcell mhead cat-not_started"><b>not_started</b><span>work has not begun</span></div>
+          <div class="mcell mhead cat-active"><b>active</b><span>work is underway</span></div>
+          <div class="mcell mhead cat-blocked"><b>blocked</b><span>cannot proceed</span></div>
+          <div class="mcell mhead cat-done"><b>done</b><span>finished</span></div>
+          <div class="mcell mhead cat-dropped"><b>dropped</b><span>abandoned</span></div>
+
+          <div class="mcell mrow">basic</div>
+          <div class="mcell cat-not_started"><span class="status-chip">todo</span></div>
+          <div class="mcell cat-active"><span class="status-chip">doing</span></div>
+          <div class="mcell cat-blocked"><span class="status-chip">blocked</span></div>
+          <div class="mcell cat-done"><span class="status-chip">done</span></div>
+          <div class="mcell cat-dropped"><span class="status-chip">dropped</span></div>
+
+          <div class="mcell mrow">flow</div>
+          <div class="mcell cat-not_started"><span class="status-chip">backlog</span><span class="status-chip">ready</span></div>
+          <div class="mcell cat-active"><span class="status-chip">building</span><span class="status-chip">review</span></div>
+          <div class="mcell cat-blocked"><span class="status-chip">blocked</span></div>
+          <div class="mcell cat-done"><span class="status-chip">shipped</span></div>
+          <div class="mcell cat-dropped"><span class="status-chip">dropped</span></div>
+
+          <div class="mcell mrow">scrum</div>
+          <div class="mcell cat-not_started"><span class="status-chip">todo</span><span class="status-chip">ready</span></div>
+          <div class="mcell cat-active"><span class="status-chip">doing</span><span class="status-chip">review</span></div>
+          <div class="mcell cat-blocked"><span class="status-chip">blocked</span></div>
+          <div class="mcell cat-done"><span class="status-chip">done</span></div>
+          <div class="mcell cat-dropped"><span class="status-chip">dropped</span></div>
+
+          <div class="mcell mrow">waterfall</div>
+          <div class="mcell cat-not_started"><span class="status-chip">planned</span></div>
+          <div class="mcell cat-active"><span class="status-chip">designing</span><span class="status-chip">building</span><span class="status-chip">testing</span></div>
+          <div class="mcell cat-blocked"><span class="status-chip">blocked</span></div>
+          <div class="mcell cat-done"><span class="status-chip">done</span></div>
+          <div class="mcell cat-dropped"><span class="status-chip">dropped</span></div>
+        </div>
+      </div>
+
+      <div class="derived">
+        <article class="card"><span class="tag">structure</span><h3>Executable</h3><p>A leaf Item in <code>not_started</code> or <code>active</code>, with no open <code>depends_on</code> edge.</p></article>
+        <article class="card"><span class="tag">structure</span><h3>Blocked</h3><p>The category is <code>blocked</code>, or a dependency is unfinished, or a cycle exists.</p></article>
+        <article class="card"><span class="tag">structure</span><h3>Stuck</h3><p>An <code>active</code> Item with no new Record inside <code>stuck_hours</code> (default 24).</p></article>
+        <article class="card"><span class="tag">structure</span><h3>Too long</h3><p>The Item's run Records exceed its budget. Attempts and time always count.</p></article>
+        <article class="card"><span class="tag">structure</span><h3>Score</h3><p>Proven Checks over total Checks, summed over all descendants through <code>part_of</code>.</p></article>
+      </div>
+
+      <p class="note"><b>Legacy names still resolve.</b> <code>small</code> is an alias for <code>basic</code> and <code>indie</code> for <code>flow</code>; an approved store keeps the pack name its approval recorded while reading the successor's resources.</p>
+      <p class="note"><b>Transitions are declared, not guessed.</b> In <code>basic</code>: <code>todo → doing | dropped</code>, <code>doing → blocked | done | dropped | todo</code>, <code>blocked → doing | dropped</code>, <code>done → doing</code>, <code>dropped → todo</code>. Any other move is refused with the allowed list.</p>
+    </div>
+  </section>
+
+  <!-- 05 · write path -->
+  <section class="section" id="write">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">05 · mutation</p>
+          <h2>One write. Eight guarantees.</h2>
+        </div>
+        <p class="section-lede">
+          Every change — CLI, MCP, UI, dispatch, merge, migration — enters <code>store.write.commit</code>.
+          The order is fixed. A crash leaves a witness, not a half-written store.
+        </p>
+      </div>
+
+      <div class="pipeline" aria-label="The write pipeline">
+        <article class="wstep"><b>01</b><h3>Validate &amp; authorize</h3><p>Parameters, actor, permission, decision class and charter approval are checked before a handler runs.</p><span class="mono">gateway.invoke()</span></article>
+        <article class="wstep"><b>02</b><h3>Lock</h3><p>One store lock for one writer. Concurrent writers queue; a CTO tick also holds a single-instance lock.</p><span class="mono">store_lock()</span></article>
+        <article class="wstep"><b>03</b><h3>Expect</h3><p>Compare the etag the caller read with the current one. A stale revision is refused, never silently overwritten.</p><span class="mono">expect = etag</span></article>
+        <article class="wstep"><b>04</b><h3>Intent</h3><p>A durable marker is published before a multi-file write, so recovery can prove what was in flight.</p><span class="mono">intents/</span></article>
+        <article class="wstep"><b>05</b><h3>Stage &amp; fsync</h3><p>Bytes go to temp files, are flushed, then atomically replace their targets in order.</p><span class="mono">temp + fsync + replace</span></article>
+        <article class="wstep"><b>06</b><h3>Record</h3><p>An immutable, digest-stamped Record is appended. The idempotency key makes a retry return the same record.</p><span class="mono">records/&lt;yyyy&gt;-&lt;mm&gt;/&lt;id&gt;.json</span></article>
+        <article class="wstep"><b>07</b><h3>Index</h3><p>The SQLite cache catches up while the write is still inside the lock. Reads never hash the source tree.</p><span class="mono">index.sync()</span></article>
+        <article class="wstep"><b>08</b><h3>Return</h3><p>Unlock and return one typed Result envelope. A failure is a code and message, not an exception at the boundary.</p><span class="mono">{ ok, value } | { ok, error }</span></article>
+      </div>
+      <p class="note"><b>Read left to right, then the next row.</b> Every step happens inside one lock and one write path.</p>
+
+      <div class="branch">
+        <article class="card">
+          <h3>If it crashes after step 04</h3>
+          <p>The intent is the witness. The next write or <code>rail doctor --repair</code> rolls the operation forward when it can prove the targets are safe; anything unprovable is kept and reported. <b>Nothing is guessed.</b></p>
+        </article>
+        <article class="card">
+          <h3>If the write is refused</h3>
+          <p>A stale etag, a path escape, an unknown schema, an unapproved charter or a human-only decision stops before any handler runs. Refusals write nothing.</p>
+        </article>
+      </div>
+
+      <div class="guarantees">
+        <div class="guarantee"><b>Optimistic concurrency</b><span>Every update carries the revision it read.</span></div>
+        <div class="guarantee"><b>Idempotency</b><span>Every write has a key; a retry returns the same record.</span></div>
+        <div class="guarantee"><b>Atomic replace</b><span>Temp file + fsync + replace, never an in-place edit.</span></div>
+        <div class="guarantee"><b>Path confinement</b><span>Store paths only; adapter files are the one declared exception.</span></div>
+        <div class="guarantee"><b>Repairable</b><span>Intent marker + <code>doctor --repair</code>, with a report when unsure.</span></div>
+        <div class="guarantee"><b>Fast</b><span>One write under 200 ms at 1k and 10k documents.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 · loop -->
+  <section class="section" id="loop">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">06 · the agent loop</p>
+          <h2>One tick, eight steps.</h2>
+        </div>
+        <p class="section-lede">
+          <b>Brief → plan → dispatch → verify → review → merge → report → digest.</b> The CTO keeps
+          no state between ticks beyond the store and its memory Notes. Humans look at the brief and
+          the digest; everything between runs inside the charter's rights, gates and budgets.
+        </p>
+      </div>
+
+      <div class="card loop-graph">
+        <svg viewBox="0 0 1120 560" role="img" aria-labelledby="loop-title loop-desc">
+          <title id="loop-title">The eight-step CTO loop</title>
+          <desc id="loop-desc">Brief, plan, dispatch, verify, review, merge, report and digest form a continuous loop. Brief and digest are read surfaces; dispatch, verify, review and merge are gates; report feeds triage.</desc>
+          <defs>
+            <marker id="arrowLoop" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+              <path d="M0 0 L10 4 L0 8 z" fill="#64748b"/>
+            </marker>
+          </defs>
+
+          <circle class="loop-track" cx="560" cy="280" r="200"/>
+
+          <path class="loop-edge" d="M605 95 C650 100 655 105 668 124"/>
+          <path class="loop-edge" d="M738 155 C760 180 755 220 752 248"/>
+          <path class="loop-edge" d="M752 312 C755 340 760 380 738 405"/>
+          <path class="loop-edge" d="M668 436 C655 455 650 460 605 465"/>
+          <path class="loop-edge" d="M515 465 C470 460 465 455 452 436"/>
+          <path class="loop-edge" d="M382 405 C360 380 365 340 368 312"/>
+          <path class="loop-edge" d="M368 248 C365 220 360 180 382 155"/>
+          <path class="loop-edge" d="M452 124 C465 105 470 100 515 95"/>
+
+          <text class="loop-center-title" x="560" y="242" text-anchor="middle">one tick</text>
+          <text class="loop-center-sub" x="560" y="268" text-anchor="middle">read → choose → launch</text>
+          <text class="loop-center-sub" x="560" y="286" text-anchor="middle">prove → merge → learn</text>
+          <text class="loop-center-small" x="560" y="310" text-anchor="middle">no state between ticks</text>
+          <text class="loop-center-small" x="560" y="326" text-anchor="middle">beyond the store + memory notes</text>
+
+          <g class="node step--read" aria-label="Brief">
+            <rect x="480" y="51" width="160" height="58" rx="14"/>
+            <text class="step-title" x="560" y="75" text-anchor="middle"><tspan class="step-no">01 </tspan>Brief</text>
+            <text class="step-sub" x="560" y="94" text-anchor="middle">bounded state</text>
+          </g>
+          <g class="node step--work" aria-label="Plan">
+            <rect x="621" y="110" width="160" height="58" rx="14"/>
+            <text class="step-title" x="701" y="134" text-anchor="middle"><tspan class="step-no">02 </tspan>Plan</text>
+            <text class="step-sub" x="701" y="153" text-anchor="middle">items + relations</text>
+          </g>
+          <g class="node step--gate" aria-label="Dispatch">
+            <rect x="680" y="251" width="160" height="58" rx="14"/>
+            <text class="step-title" x="760" y="275" text-anchor="middle"><tspan class="step-no">03 </tspan>Dispatch</text>
+            <text class="step-sub" x="760" y="294" text-anchor="middle">worktree + run</text>
+          </g>
+          <g class="node step--work" aria-label="Verify">
+            <rect x="621" y="392" width="160" height="58" rx="14"/>
+            <text class="step-title" x="701" y="416" text-anchor="middle"><tspan class="step-no">04 </tspan>Verify</text>
+            <text class="step-sub" x="701" y="435" text-anchor="middle">checks + freshness</text>
+          </g>
+          <g class="node step--gate" aria-label="Review">
+            <rect x="480" y="451" width="160" height="58" rx="14"/>
+            <text class="step-title" x="560" y="475" text-anchor="middle"><tspan class="step-no">05 </tspan>Review</text>
+            <text class="step-sub" x="560" y="494" text-anchor="middle">different actor</text>
+          </g>
+          <g class="node step--gate" aria-label="Merge">
+            <rect x="339" y="392" width="160" height="58" rx="14"/>
+            <text class="step-title" x="419" y="416" text-anchor="middle"><tspan class="step-no">06 </tspan>Merge</text>
+            <text class="step-sub" x="419" y="435" text-anchor="middle">rebase + fast-forward</text>
+          </g>
+          <g class="node step--report" aria-label="Report">
+            <rect x="280" y="251" width="160" height="58" rx="14"/>
+            <text class="step-title" x="360" y="275" text-anchor="middle"><tspan class="step-no">07 </tspan>Report</text>
+            <text class="step-sub" x="360" y="294" text-anchor="middle">one structured fact</text>
+          </g>
+          <g class="node step--read" aria-label="Digest">
+            <rect x="339" y="110" width="160" height="58" rx="14"/>
+            <text class="step-title" x="419" y="134" text-anchor="middle"><tspan class="step-no">08 </tspan>Digest</text>
+            <text class="step-sub" x="419" y="153" text-anchor="middle">human view</text>
+          </g>
+        </svg>
+      </div>
+      <p class="scroll-hint">↔ drag the graph sideways to see all of it</p>
+      <div class="loop-legend">
+        <span><i class="lg read"></i> read / human-facing</span>
+        <span><i class="lg work"></i> CTO work</span>
+        <span><i class="lg report"></i> learning</span>
+        <span><i class="lg human"></i> enforced gate: dispatch approval, review separation, merge policy</span>
+      </div>
+
+      <div class="table-wrap">
+        <table class="loop-table">
+          <thead><tr><th>Step</th><th>Command</th><th>What it gives you</th></tr></thead>
+          <tbody>
+            <tr><td class="rel-name">01 Brief</td><td><code>rail cto brief</code></td><td>Approval state, goal and scope, gate rules, executable work, human waits, quality and reversible decisions, inside a character budget.</td></tr>
+            <tr><td class="rel-name">02 Plan</td><td><code>rail add</code> · <code>rail link</code></td><td>Items with <code>part_of</code> and <code>depends_on</code> edges. Writing or loosening acceptance Checks is human-only.</td></tr>
+            <tr><td class="rel-name">03 Dispatch</td><td><code>rail dispatch &lt;item&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>A fresh worktree and branch, a bounded <code>droid exec</code>, a run Record, then verification. Refused before charter approval.</td></tr>
+            <tr><td class="rel-name">04 Verify</td><td><code>rail verify &lt;item&gt;</code></td><td>The Item's declared Checks run in the worktree. A <code>cmd</code> pass is fresh only while its input blobs match.</td></tr>
+            <tr><td class="rel-name">05 Review</td><td><code>rail review &lt;item&gt; --run &lt;id&gt; --key &lt;k&gt;</code></td><td>A different actor in its own worktree. The implementer cannot approve its own work; the verdict binds to the candidate commit.</td></tr>
+            <tr><td class="rel-name">06 Merge</td><td><code>rail merge &lt;item&gt; --run &lt;id&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>Rebase, then fast-forward. One conflict retry, then escalate. <code>--push</code> only when the charter allows it.</td></tr>
+            <tr><td class="rel-name">07 Report</td><td><code>rail report ... --report-file &lt;json&gt;</code></td><td>One structured report per completed run: target class, expectation, observation, impact, evidence. “Nothing to report” is valid.</td></tr>
+            <tr><td class="rel-name">08 Digest</td><td><code>rail digest</code> · <code>rail triage</code></td><td>Activity, waits, reversible decisions, stuck and too-long Items, quality and usage. Triage clusters reports into fixes, proposals or engine issues.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="branch">
+        <article class="card"><h3>One retry, then escalate</h3><p>A failed implementer run gets one retry that continues the same <code>droid</code> session with the failure output. Still failing means a human sees the evidence, not an infinite loop.</p></article>
+        <article class="card"><h3>One rebase, then escalate</h3><p>A merge conflict gets one rebase retry. If it still conflicts, the candidate and diagnostics are kept for the human; nothing is force-pushed.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 · zero to daily -->
+  <section class="section" id="start">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">07 · from zero</p>
+          <h2>From an empty folder to a daily loop.</h2>
+        </div>
+        <p class="section-lede">
+          This is the order the commands are designed to be used in. Steps marked HUMAN are decision
+          points, not suggestions. Every <code>--key</code> is idempotent; every <code>--expect</code>
+          is the etag you just read.
+        </p>
+      </div>
+
+      <div class="timeline">
+        <article class="step">
+          <div class="dot">01</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--any">any actor</span><h3>Install</h3></div>
+            <pre class="cmd"><code>py -m pip install -e .[test]</code></pre>
+            <p>Python 3.11+. Installs <code>rail</code> and <code>ctx-rail</code>; <code>py -m context_rail</code> is equivalent. Reading and editing a store needs no <code>droid</code>.</p>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="dot">02</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--any">any actor</span><h3>Create the skeleton</h3></div>
+            <pre class="cmd"><code>rail init --pack basic</code></pre>
+            <p>Writes <code>context-rail/rail.yaml</code>, <code>.gitignore</code> and the pinned empty folders. There is no charter, no profiles, no skills and no <code>AGENTS.md</code> yet.</p>
+          </div>
+        </article>
+
+        <article class="step human">
+          <div class="dot">03</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--human">human</span><h3>Onboard the picture</h3></div>
+            <pre class="cmd"><code>rail init --interview
+rail init --answers-file answers.json --confirm "APPROVE charter"</code></pre>
+            <p>Produces the goal, vision, Won't list and must/should/could scope, plus <code>charter.md</code>, the three profiles and the pack's skills. A CTO may only propose with <code>--draft-file</code>, and a draft records no approval.</p>
+          </div>
+        </article>
+
+        <article class="step human">
+          <div class="dot">04</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--human">human</span><h3>Approve the boundary</h3></div>
+            <pre class="cmd"><code>rail approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
+            <p>Records the approval with hashes of the protected files. Until this exists, the CTO may plan and read, but nothing executes.</p>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="dot">05</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--any">any actor</span><h3>Make the checkout agent-ready</h3></div>
+            <pre class="cmd"><code>rail adapters sync</code></pre>
+            <p>Writes the managed <code>AGENTS.md</code> block and one <code>.agents/skills/&lt;name&gt;/SKILL.md</code> per skill Note. Optional harnesses: Claude, Cursor and Gemini. Re-run when a skill changes.</p>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="dot">06</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--any">any actor</span><h3>Shape the work</h3></div>
+            <pre class="cmd"><code>rail add goal "Ship v3"
+rail add scope "Core engine" --set priority=must
+rail add task "Write the write path" --rel part_of=core-engine</code></pre>
+            <p>Items are placed by <code>rail.yaml</code>. <code>part_of</code> builds the hierarchy; <code>depends_on</code> sets the order.</p>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="dot">07</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--any">any actor</span><h3>Declare the proof</h3></div>
+            <pre class="cmd"><code>rail check write-path --target write-the-write-path --spec-file check.json --expect absent
+rail verify write-the-write-path</code></pre>
+            <p>Pick a mode: <code>cmd</code>, <code>exists</code>, <code>evidence</code>, <code>review</code> or <code>human</code>. A stale pass is not a pass; writing or loosening acceptance Checks is human-only.</p>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="dot">08</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--any">any actor</span><h3>Read the state</h3></div>
+            <pre class="cmd"><code>rail status
+rail cto brief</code></pre>
+            <p>Counts, executable leaves, blockers with reasons and stuck Items; then the bounded CTO page with approval, gates, executable work, human waits and quality.</p>
+          </div>
+        </article>
+
+        <article class="step cto">
+          <div class="dot">09</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Dispatch one leaf</h3></div>
+            <pre class="cmd"><code>rail dispatch write-the-write-path --expect &lt;etag&gt; --key day-1-a</code></pre>
+            <p>A fresh worktree and branch, a bounded <code>droid exec</code>, a run Record, then the Item's Checks verify the candidate. Not executable if it is a parent, blocked or still depends on open work.</p>
+          </div>
+        </article>
+
+        <article class="step cto">
+          <div class="dot">10</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Review the candidate</h3></div>
+            <pre class="cmd"><code>rail review write-the-write-path --run &lt;run-id&gt; --key day-1-b</code></pre>
+            <p>Must be a different actor and worktree. The implementer cannot approve its own work; the charter may also require a different model.</p>
+          </div>
+        </article>
+
+        <article class="step cto">
+          <div class="dot">11</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Merge the proof</h3></div>
+            <pre class="cmd"><code>rail merge write-the-write-path --run &lt;run-id&gt; --expect &lt;etag&gt; --key day-1-c</code></pre>
+            <p>Rebase, then fast-forward. One conflict retry, then escalate. <code>--push</code> only when the charter allows it.</p>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="dot">12</div>
+          <div class="body card">
+            <div class="body-head"><span class="badge badge--any">human + CTO</span><h3>Learn, close, repeat</h3></div>
+            <pre class="cmd"><code>rail report --run &lt;run-id&gt; --report-file report.json
+rail triage
+rail digest
+rail ci</code></pre>
+            <p>One report per run. Triage turns clusters into fixes, proposals or engine issues. Digest shows what is stuck or too long. CI gates approval and done gates, never a Check run.</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="refusals">
+        <div class="refusal"><b>NOT_FOUND: no store found</b><span>Run <code>rail init</code>, or put <code>--store path</code> before the command.</span></div>
+        <div class="refusal"><b>charter is not approved</b><span>Run <code>rail approve charter ...</code>; planning and reads stay open.</span></div>
+        <div class="refusal"><b>stale etag</b><span>Re-read the document, then retry with the new etag. Never reuse an old one.</span></div>
+        <div class="refusal"><b>check is stale</b><span>Re-run <code>rail verify</code>. A stale pass is not a pass.</span></div>
+        <div class="refusal"><b>cannot be dispatched: depends_on:x</b><span>Finish or drop the dependency; only an executable leaf may be dispatched.</span></div>
+        <div class="refusal"><b>cto tick cannot be nested</b><span>Start it from the outer session with <code>RAIL_ACTOR</code> unset.</span></div>
+        <div class="refusal"><b>merge conflict</b><span>One rebase retry is automatic; after that the candidate and diagnostics go to a human.</span></div>
+        <div class="refusal"><b>interrupted write</b><span>Run <code>rail doctor --repair</code>; it rolls forward or reports what it cannot prove.</span></div>
+        <div class="refusal"><b>index looks wrong</b><span>Run <code>rail reindex --full</code>. The index is a cache; rebuilding it is always safe.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 · rights -->
+  <section class="section" id="rights">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">08 · authority</p>
+          <h2>Who may decide what.</h2>
+        </div>
+        <p class="section-lede">
+          The gateway checks this before a handler runs. A profile can narrow a role's methods; it
+          can never widen the human-only floor or the change rule.
+        </p>
+      </div>
+
+      <div class="rights">
+        <article class="card right-card">
+          <span class="who">green · CTO alone</span>
+          <h3>Runs the work</h3>
+          <ul>
+            <li>Break down, order and assign work.</li>
+            <li>Technical design inside the conventions.</li>
+            <li>Refactors and tests.</li>
+            <li>Retries.</li>
+            <li>Close Items when their gates pass.</li>
+          </ul>
+        </article>
+        <article class="card right-card reversible">
+          <span class="who">yellow · CTO decides, reversible from digest</span>
+          <h3>Moves the boundary carefully</h3>
+          <ul>
+            <li>New dependencies.</li>
+            <li>Data-model or API changes.</li>
+            <li>Convention changes that come from reports.</li>
+            <li>Dropping Could-have Items.</li>
+            <li>Spending near the budget.</li>
+          </ul>
+        </article>
+        <article class="card right-card human">
+          <span class="who">red · human only</span>
+          <h3>Owns the irreversible</h3>
+          <ul>
+            <li>The goal, must/should scope and the Won't list.</li>
+            <li>Writing or loosening acceptance Checks.</li>
+            <li>Product taste.</li>
+            <li>Publishing, deploying or deleting data.</li>
+            <li>History rewrites, force-pushes, tags and releases.</li>
+            <li>Licensing, secrets and payments.</li>
+            <li>Budget increases.</li>
+            <li>Stuck Items after their retries.</li>
+            <li>Charter changes. The change rule can never be delegated.</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="rights-note">
+        <b>Approval is detection, not prevention.</b> Hand edits are allowed. Doctor and CI compare protected files with the approval hashes, so an unapproved edit fails the gate. This catches drift, not a deliberately forged approval.
+      </div>
+    </div>
+  </section>
+
+  <!-- 09 · reference -->
+  <section class="section" id="reference">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="kicker">09 · reference</p>
+          <h2>Store map and tools.</h2>
+        </div>
+        <p class="section-lede">
+          The store is a normal folder in git. The index and control files live outside the repository
+          tree. Every command in the table below is generated from the same 39-tool tuple.
+        </p>
+      </div>
+
+      <div class="reference-grid">
+        <div class="card tree-card">
+          <pre class="tree"><code><span class="k">context-rail/</span>              <span class="c"># default root, committed</span>
+├─ <span class="t">rail.yaml</span>               <span class="c"># schema 3 · pack · placement</span>
+├─ <span class="t">charter.md</span>              <span class="c"># policy: gates · rights · budgets</span>
+├─ <span class="t">project/</span>                <span class="c"># goal · vision · scope · wont</span>
+├─ <span class="t">items/&lt;preset&gt;/</span>         <span class="c"># Item Markdown</span>
+├─ <span class="t">notes/&lt;preset&gt;/</span>         <span class="c"># Note Markdown</span>
+├─ <span class="t">checks/</span>                 <span class="c"># Check specs</span>
+├─ <span class="t">records/&lt;yyyy&gt;-&lt;mm&gt;/</span>   <span class="c"># immutable JSON + decision .md</span>
+├─ <span class="t">workspace/</span>
+│  ├─ <span class="t">cto/profile.md</span>
+│  ├─ <span class="t">profiles/&lt;name&gt;/profile.md</span>
+│  └─ <span class="t">skills/&lt;name&gt;.md</span>
+├─ <span class="t">packs/&lt;name&gt;/</span>           <span class="c"># local packs</span>
+└─ <span class="t">.gitignore</span></code></pre>
+        </div>
+        <div class="side-notes">
+          <article class="card side-note"><h3>Where the index lives</h3><p><span class="mono">&lt;git-dir&gt;/context-rail/&lt;key&gt;/index.sqlite3</span> inside a worktree; <span class="mono">&lt;store&gt;/.rail-local/</span> outside git. Never in the repository tree. Delete it and the next command rebuilds it.</p></article>
+          <article class="card side-note"><h3>Where control files live</h3><p>Write intents, idempotency results, locks and dispatch/tick progress sit in the same local dir. They are written atomically, so a crash leaves the old file or the new one, never a partial document.</p></article>
+          <article class="card side-note"><h3>What is generated outside the store</h3><p><span class="mono">AGENTS.md</span>, <span class="mono">.agents/skills/</span>, and optionally <span class="mono">CLAUDE.md</span>, <span class="mono">.cursor/rules/</span> and <span class="mono">GEMINI.md</span>. They embed the store's profiles and skills; they are not a second source of truth.</p></article>
+        </div>
+      </div>
+
+      <div class="command-grid">
+        <div class="family">Change</div><div class="tools"><code>add</code> · <code>update</code> · <code>link</code> · <code>move</code> · <code>rename</code> · <code>relocate</code> · <code>check</code> · <code>verify</code> · <code>report</code></div>
+        <div class="family">Read</div><div class="tools"><code>find</code> · <code>show</code> · <code>status</code> · <code>cto brief</code> · <code>digest</code> · <code>ledger</code> · <code>measure versions</code> · <code>measure fix</code> · <code>pack list</code> · <code>pack show</code> · <code>pack validate</code></div>
+        <div class="family">Gate</div><div class="tools"><code>approve</code> · <code>pack use</code> · <code>migrate</code> <span class="mono">(human only)</span></div>
+        <div class="family">Loop</div><div class="tools"><code>dispatch</code> · <code>review</code> · <code>merge</code> · <code>cto tick</code> · <code>triage</code> · <code>rollback</code></div>
+        <div class="family">Operate</div><div class="tools"><code>init</code> · <code>doctor</code> · <code>reindex</code> · <code>ci</code> · <code>sync</code> · <code>sync driver</code> · <code>adapters sync</code> · <code>pack create</code> · <code>mcp serve</code> · <code>ui serve</code></div>
+      </div>
+      <p class="note"><b>39 tools, one table.</b> The CLI, MCP server and UI cannot drift from each other because they are generated from <code>src/context_rail/gateway/tools.py</code>.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <h3>Context Rail v3 · engine graph</h3>
+      <p>
+        Built from the shipped code and the design documents. The engine counts, names, statuses and
+        flows on this page come from the source; if this page and the code disagree, the code is right.
+      </p>
+      <p class="sources">
+        <b>Sources:</b> src/context_rail/model/primitives.py · gateway/tools.py · kernel/ · store/write.py ·
+        packs/*/pack.yaml · skills/context-rail-v3*/SKILL.md · docs/superpowers/specs/2026-10-28-context-rail-v3-design.md
+      </p>
+    </div>
+    <div class="sources">
+      <b>Elsewhere</b><br>
+      <a href="context-rail-v3-guide.html">Visual guide</a><br>
+      <a href="../README.md">README</a><br>
+      <a href="../library/arch-stage-3.md">Architecture</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* Engine graph: hover to trace, click to pin an explanation. */
+  var graph = document.getElementById("engine-graph");
+  var panel = document.getElementById("engine-detail");
+  if (graph && panel) {
+    var nodes = Array.prototype.slice.call(graph.querySelectorAll("[data-node]"));
+    var edges = Array.prototype.slice.call(graph.querySelectorAll(".edge"));
+    var resetButton = document.getElementById("engine-reset");
+    var defaultPanel = panel.innerHTML;
+    var pinned = null;
+
+    var info = {
+      cli: {
+        kind: "surface",
+        title: "CLI",
+        blurb: "The thin argparse surface. It imports only the standard library and the tool table at startup; heavier modules load lazily.",
+        points: ["Global options go before the command: rail --store path status.", "Every command prints one JSON envelope and exits 0, 1 or 2.", "Same tools, permissions and envelopes as MCP and the UI."],
+        meta: "src/context_rail/cli.py"
+      },
+      mcp: {
+        kind: "surface",
+        title: "MCP",
+        blurb: "One stdio connection generated from the same tool table. Unknown tools and bad arguments are refused by the gateway.",
+        points: ["Calls run through invoke(), so results match the CLI exactly.", "A per-process actor is resolved from explicit choice, then RAIL_ACTOR, then cto.", "nested calls are gated individually."],
+        meta: "gateway/mcp_server.py"
+      },
+      ui: {
+        kind: "surface",
+        title: "Loopback UI",
+        blurb: "A read surface plus a tool runner. No database, no build step, no external asset and no stored state.",
+        points: ["Binds 127.0.0.1 and requires a per-run token.", "Host and Origin are checked; responses carry a strict CSP.", "Every tool call goes through gateway.invoke."],
+        meta: "ui/server.py · ui/api.py · ui/page.py"
+      },
+      agent: {
+        kind: "generated output",
+        title: "Agent harness",
+        blurb: "The managed AGENTS.md block and one skill file per skill Note are read by an agent, which then calls the CLI or MCP. Claude, Cursor and Gemini files are optional adapters over the same payload.",
+        points: ["A hand-edited managed block is CONFLICT; force is human-only.", "Dropping a harness never deletes its earlier files.", "Doctor detects adapter_modified through payload digests."],
+        meta: "store/adapters.py · gateway/handlers/adapters.py"
+      },
+      gateway: {
+        kind: "boundary",
+        title: "Gateway",
+        blurb: "The single entry point for every surface. It validates parameters, resolves the actor and store, checks rights and approval, then calls a handler.",
+        points: ["Rights come from technical facts, never from tags or preset names.", "A profile's method list may narrow its actor; the human-only floor cannot be widened.", "Nothing executable runs before the charter is approved.", "No exception escapes: every fault becomes a typed Result."],
+        meta: "gateway/gateway.py"
+      },
+      handlers: {
+        kind: "tool table",
+        title: "39 tools, one table",
+        blurb: "Every command is a Tool entry: name, summary, permission, decision class, parameters and a lazily imported handler.",
+        points: ["Families: read, change, gate, loop and operate.", "Human-only: migrate, approve, pack use.", "Execution: verify, dispatch, review, merge, cto tick.", "The CLI, MCP server and UI all read this tuple."],
+        meta: "gateway/tools.py"
+      },
+      kernel: {
+        kind: "pure rules",
+        title: "Kernel",
+        blurb: "Pure functions over primitives. No file, git, process or index access, and no imports from store, runner or gateway.",
+        points: ["Lifecycle: statuses map to five categories; transitions are pack data.", "Structure: executable, blocked, cycles, stuck and score rollup.", "Gates: fresh proofs, acceptance, review and human verdicts.", "Rights, budgets, measurement and triage are also pure."],
+        meta: "kernel/*.py"
+      },
+      write: {
+        kind: "only mutator",
+        title: "Write pipeline",
+        blurb: "Every store change goes through store.write.commit. It is the only code allowed to write store files.",
+        points: ["Lock → expected etag → durable intent → temp + fsync → atomic replace.", "Then an immutable Record, the idempotency result and an index sync.", "Path confinement refuses escapes; adapter files are the one exception.", "Crash recovery rolls forward from the intent or reports what it cannot prove."],
+        meta: "store/write.py"
+      },
+      runner: {
+        kind: "executor",
+        title: "Runner",
+        blurb: "The only executor: droid sessions in isolated worktrees, cmd checks and git operations.",
+        points: ["Hard timeouts and capped output.", "Scrubbed environment with secret redaction.", "Worktree-locked working directory.", "Run facts come back through the write pipeline as Records."],
+        meta: "runner/ · gateway/handlers/dispatch/"
+      },
+      files: {
+        kind: "truth",
+        title: "Files",
+        blurb: "A project is a context-rail/ folder of Markdown and JSON plus rail.yaml, committed to git and editable by hand.",
+        points: ["rail.yaml holds schema 3, the pack and placement patterns.", "Documents are parsed into primitives, relations, tags and Checks.", "Hand edits are allowed; doctor and CI detect drift.", "Deleting the index costs a rebuild, not data."],
+        meta: "store/doc.py · model/manifest.py"
+      },
+      index: {
+        kind: "cache",
+        title: "SQLite index",
+        blurb: "A rebuildable cache under the worktree's git dir, or <store>/.rail-local/ outside git. WAL mode and FTS5 search.",
+        points: ["Tables cover docs, fields, relations, tags, checks, verdicts and records.", "Incremental sync uses file stats and git blob IDs, not source hashing on reads.", "A corrupt index is rebuilt, never trusted.", "Never committed to the repository tree."],
+        meta: "store/index.py · store/query.py"
+      },
+      views: {
+        kind: "computed output",
+        title: "Computed views",
+        blurb: "Status, brief, digest, ledger, find and show are computed from the index, never stored as dashboards.",
+        points: ["Every list is bounded and reports what it omitted.", "Reads execute no command and hash no source tree.", "The brief and digest are the human-facing surfaces of the loop."],
+        meta: "context/recipes.py · gateway/handlers/views.py"
+      }
+    };
+
+    function relatedTo(key) {
+      var set = new Set([key]);
+      edges.forEach(function (edge) {
+        if (edge.dataset.a === key || edge.dataset.b === key) {
+          set.add(edge.dataset.a);
+          set.add(edge.dataset.b);
+        }
+      });
+      return set;
+    }
+
+    function paint(key) {
+      if (!key) {
+        graph.classList.remove("hovering");
+        nodes.forEach(function (node) { node.classList.remove("related"); });
+        edges.forEach(function (edge) { edge.classList.remove("lit"); });
+        return;
+      }
+      graph.classList.add("hovering");
+      var related = relatedTo(key);
+      nodes.forEach(function (node) {
+        node.classList.toggle("related", related.has(node.dataset.node));
+      });
+      edges.forEach(function (edge) {
+        edge.classList.toggle("lit", edge.dataset.a === key || edge.dataset.b === key);
+      });
+    }
+
+    function show(key) {
+      var item = info[key];
+      if (!item) { return; }
+      panel.innerHTML =
+        '<p class="detail-kind">' + item.kind + "</p>" +
+        "<h3>" + item.title + "</h3>" +
+        "<p>" + item.blurb + "</p>" +
+        "<ul>" + item.points.map(function (point) { return "<li>" + point + "</li>"; }).join("") + "</ul>" +
+        '<p class="meta">' + item.meta + "</p>";
+    }
+
+    nodes.forEach(function (node) {
+      var key = node.dataset.node;
+      node.addEventListener("mouseenter", function () { paint(key); });
+      node.addEventListener("mouseleave", function () { paint(pinned); });
+      node.addEventListener("focus", function () { paint(key); });
+      node.addEventListener("blur", function () { paint(pinned); });
+      node.addEventListener("click", function () {
+        if (pinned === key) {
+          pinned = null;
+          nodes.forEach(function (other) { other.classList.remove("selected"); });
+          panel.innerHTML = defaultPanel;
+          paint(null);
+          return;
+        }
+        pinned = key;
+        nodes.forEach(function (other) { other.classList.toggle("selected", other === node); });
+        show(key);
+        paint(key);
+      });
+      node.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          node.click();
+        }
+      });
+    });
+
+    if (resetButton) {
+      resetButton.addEventListener("click", function () {
+        pinned = null;
+        nodes.forEach(function (node) { node.classList.remove("selected"); });
+        panel.innerHTML = defaultPanel;
+        paint(null);
+      });
+    }
+  }
+
+  /* Relation table: hovering a row highlights the matching edge. */
+  var relGraph = document.getElementById("relation-graph");
+  if (relGraph) {
+    var relEdges = Array.prototype.slice.call(relGraph.querySelectorAll("[data-rel-edge]"));
+    var relRows = Array.prototype.slice.call(document.querySelectorAll("[data-rel-row]"));
+
+    function focusRelation(name) {
+      relGraph.classList.toggle("focus", Boolean(name));
+      relEdges.forEach(function (edge) {
+        edge.classList.toggle("lit", edge.dataset.relEdge === name);
+      });
+      relRows.forEach(function (row) {
+        row.classList.toggle("active", row.dataset.relRow === name);
+      });
+    }
+
+    relRows.forEach(function (row) {
+      row.addEventListener("mouseenter", function () { focusRelation(row.dataset.relRow); });
+      row.addEventListener("mouseleave", function () { focusRelation(null); });
+    });
+    relEdges.forEach(function (edge) {
+      edge.addEventListener("mouseenter", function () { focusRelation(edge.dataset.relEdge); });
+      edge.addEventListener("mouseleave", function () { focusRelation(null); });
+    });
+  }
+
+  /* Active section in the sticky nav. */
+  var links = Array.prototype.slice.call(document.querySelectorAll(".toc a"));
+  var byId = {};
+  links.forEach(function (link) {
+    var id = link.getAttribute("href").slice(1);
+    var section = document.getElementById(id);
+    if (section) { byId[id] = link; }
+  });
+  if ("IntersectionObserver" in window) {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          links.forEach(function (link) { link.classList.remove("active"); });
+          if (byId[entry.target.id]) { byId[entry.target.id].classList.add("active"); }
+        }
+      });
+    }, { rootMargin: "-25% 0px -65% 0px" });
+    Object.keys(byId).forEach(function (id) {
+      observer.observe(document.getElementById(id));
+    });
+  }
+
+  /* Keep the ring and relation maps centered when they overflow on narrow screens. */
+  function centerScrollers() {
+    Array.prototype.slice.call(document.querySelectorAll(".rel-graph, .loop-graph")).forEach(function (element) {
+      if (element.scrollWidth > element.clientWidth + 2) {
+        element.scrollLeft = Math.max(0, Math.round((element.scrollWidth - element.clientWidth) / 2));
+      }
+    });
+  }
+  if (document.readyState === "complete") { centerScrollers(); } else { window.addEventListener("load", centerScrollers); }
+  window.addEventListener("resize", centerScrollers);
+})();
+</script>
+</body>
+</html>
