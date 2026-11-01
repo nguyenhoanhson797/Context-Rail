@@ -137,6 +137,8 @@ src/context_rail/
 
 ## Design
 
+- Visual guide (diagrams and from-zero-to-daily walkthrough):
+  `docs/context-rail-v3-guide.html`
 - Spec: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
 - Architecture: `library/arch-stage-3.md`
 - Working rules and engine invariants: `AGENTS.md`

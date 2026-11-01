@@ -1,0 +1,1250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Rail v3 — visual guide</title>
+<meta name="description" content="A visual explanation of Context Rail v3: the store, the index, the gates and the agent loop, from init to daily use.">
+<style>
+  :root {
+    --ink: #111827;
+    --muted: #4b5563;
+    --line: #d1d5db;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --accent: #4338ca;
+    --accent-soft: #eef2ff;
+    --teal: #0f766e;
+    --teal-soft: #ecfdf5;
+    --amber: #b45309;
+    --amber-soft: #fffbeb;
+    --red: #b91c1c;
+    --red-soft: #fef2f2;
+    --blue: #1d4ed8;
+    --blue-soft: #eff6ff;
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── hero ─────────────────────────────────────────────── */
+  .hero {
+    background:
+      radial-gradient(900px 380px at 15% -10%, #6366f155, transparent 70%),
+      linear-gradient(155deg, #0f172a, #1e293b 55%, #312e81);
+    color: #f8fafc;
+    padding: 64px 0 56px;
+  }
+  .hero .eyebrow { color: #c7d2fe; }
+  .hero h1 {
+    font-size: clamp(32px, 5vw, 52px);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    margin: 12px 0 16px;
+    max-width: 18ch;
+  }
+  .hero p.lede { color: #cbd5e1; font-size: 18px; max-width: 72ch; margin: 0 0 24px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+  .chips span {
+    font-size: 12px; font-weight: 600; letter-spacing: .02em;
+    padding: 6px 12px; border-radius: 999px;
+    background: #ffffff14; border: 1px solid #ffffff2e; color: #e2e8f0;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; color: #94a3b8; font-size: 12px; }
+  .legend b { color: #e2e8f0; font-weight: 600; }
+
+  /* ── navigation ───────────────────────────────────────── */
+  .toc {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(248, 250, 252, .93);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .toc .wrap { display: flex; gap: 4px; overflow-x: auto; padding: 10px 24px; }
+  .toc a {
+    white-space: nowrap; font-size: 13px; color: var(--muted);
+    text-decoration: none; padding: 6px 10px; border-radius: 999px;
+  }
+  .toc a:hover { background: var(--accent-soft); color: var(--accent); }
+
+  /* ── sections ─────────────────────────────────────────── */
+  section { margin: 72px 0; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+  }
+  .eyebrow::before {
+    content: ""; width: 22px; height: 2px; background: currentColor; display: inline-block;
+  }
+  h2 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; margin: 8px 0 12px; }
+  h3 { font-size: 18px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h4 { font-size: 14px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; }
+  .lede { font-size: 17px; color: var(--muted); max-width: 80ch; margin-bottom: 24px; }
+  .small { font-size: 13px; color: var(--muted); }
+
+  /* ── building blocks ──────────────────────────────────── */
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 20px;
+    box-shadow: 0 1px 2px #0f172a0d;
+  }
+  .card h3 { display: flex; align-items: center; gap: 8px; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .g3, .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 620px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0 0 24px; }
+  @media (max-width: 800px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .stat b { display: block; font-size: 26px; line-height: 1.1; letter-spacing: -0.02em; }
+  .stat span { font-size: 12px; color: var(--muted); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; padding: 4px 10px;
+    border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  }
+  .pill.green { background: var(--teal-soft); color: var(--teal); }
+  .pill.blue { background: var(--blue-soft); color: var(--blue); }
+  .pill.amber { background: var(--amber-soft); color: var(--amber); }
+  .pill.red { background: var(--red-soft); color: var(--red); }
+
+  /* ── stack diagram ────────────────────────────────────── */
+  .panel {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 18px; padding: 20px;
+  }
+  .stack { display: flex; flex-direction: column; }
+  .layer {
+    border-radius: 14px; padding: 14px 18px; text-align: center;
+    border: 1px solid var(--line); background: #f8fafc;
+  }
+  .layer b { display: block; font-size: 15px; }
+  .layer span { font-size: 12px; color: var(--muted); }
+  .layer.surfaces { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; background: #fff; }
+  .layer.surfaces .box { min-width: 120px; }
+  .layer.gateway { background: var(--accent-soft); border-color: #c7d2fe; }
+  .layer.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0; border: 0; background: none; }
+  .layer.trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 0; border: 0; background: none; }
+  .layer .box {
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+    background: #fff; text-align: center;
+  }
+  .layer .box.truth { background: var(--teal-soft); border-color: #99f6e4; }
+  .layer .box.cache { background: var(--blue-soft); border-color: #bfdbfe; }
+  .layer .box.runner { background: var(--amber-soft); border-color: #fde68a; }
+  .down {
+    text-align: center; font-size: 11px; color: var(--muted);
+    padding: 6px 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .down::before { content: "↓"; color: var(--accent); font-size: 14px; }
+  @media (max-width: 700px) { .layer.pair, .layer.trio { grid-template-columns: 1fr; } }
+
+  /* ── truth / cache split ──────────────────────────────── */
+  .split { display: grid; grid-template-columns: 1fr 90px 1fr; gap: 0; align-items: stretch; }
+  @media (max-width: 800px) { .split { grid-template-columns: 1fr; } .split .middle { transform: rotate(90deg); padding: 8px 0; } }
+  .pane { border-radius: 16px; padding: 18px; border: 1px solid var(--line); background: #fff; }
+  .pane.truth { background: var(--teal-soft); border-color: #99f6e4; }
+  .pane.cache { background: var(--blue-soft); border-color: #bfdbfe; }
+  .pane h3 { margin-bottom: 8px; }
+  .pane ul { margin: 0 0 10px; padding-left: 18px; font-size: 14px; }
+  .pane li { margin: 2px 0; }
+  .middle { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--muted); font-size: 11px; }
+  .middle .big { font-size: 22px; color: var(--accent); }
+
+  /* ── svg diagrams ─────────────────────────────────────── */
+  .diagram {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 18px; padding: 16px; overflow-x: auto;
+  }
+  .diagram svg { display: block; width: 100%; min-width: 700px; height: auto; }
+  svg text { font-family: var(--sans); }
+  .node { fill: #fff; stroke: #cbd5e1; stroke-width: 1.5; }
+  .node.accent { fill: #eef2ff; stroke: #818cf8; }
+  .node.check { fill: #ecfdf5; stroke: #34d399; }
+  .node.note { fill: #fffbeb; stroke: #fbbf24; }
+  .n-title { font-size: 14px; font-weight: 700; fill: #111827; }
+  .n-sub { font-size: 11px; fill: #475569; }
+  .edge { stroke: #64748b; stroke-width: 1.6; fill: none; }
+  .edge-dash { stroke: #64748b; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+  .e-label { font-size: 11px; fill: #334155; }
+  .e-bg { fill: #ffffff; opacity: .92; }
+
+  /* ── stepper ──────────────────────────────────────────── */
+  .steps { display: flex; gap: 8px; align-items: stretch; overflow-x: auto; padding-bottom: 6px; }
+  .step {
+    flex: 1 0 150px; background: #fff; border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px;
+  }
+  .step .n {
+    display: inline-flex; width: 24px; height: 24px; border-radius: 50%;
+    align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+    background: var(--accent-soft); color: var(--accent); margin-bottom: 8px;
+  }
+  .step b { display: block; font-size: 14px; }
+  .step small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .sep { align-self: center; color: #94a3b8; font-size: 18px; flex: 0 0 auto; }
+
+  /* ── decision ladder ──────────────────────────────────── */
+  .ladder { display: flex; flex-direction: column; gap: 10px; }
+  .rung {
+    display: grid; grid-template-columns: 220px 1fr; gap: 16px;
+    border-radius: 14px; padding: 16px 18px; border: 1px solid var(--line);
+    background: #fff; border-left-width: 6px;
+  }
+  .rung.green { border-left-color: #10b981; background: var(--teal-soft); }
+  .rung.amber { border-left-color: #f59e0b; background: var(--amber-soft); }
+  .rung.red { border-left-color: #ef4444; background: var(--red-soft); }
+  .rung .who { font-weight: 700; font-size: 15px; }
+  .rung p { margin: 0; font-size: 14px; }
+  @media (max-width: 700px) { .rung { grid-template-columns: 1fr; gap: 4px; } }
+
+  /* ── callouts ─────────────────────────────────────────── */
+  .note, .warn, .danger {
+    border-left: 4px solid var(--accent); background: var(--accent-soft);
+    padding: 14px 16px; border-radius: 0 12px 12px 0; font-size: 14px;
+  }
+  .warn { border-color: #f59e0b; background: var(--amber-soft); }
+  .danger { border-color: #ef4444; background: var(--red-soft); }
+  .note b, .warn b, .danger b { display: block; margin-bottom: 2px; }
+
+  /* ── code ─────────────────────────────────────────────── */
+  code {
+    font-family: var(--mono); font-size: .92em;
+    background: var(--accent-soft); color: #312e81;
+    padding: 2px 6px; border-radius: 6px;
+  }
+  pre {
+    background: #0f172a; color: #e2e8f0; padding: 14px 16px;
+    border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.6;
+    margin: 8px 0 0;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  pre .c { color: #94a3b8; }
+  pre .g { color: #86efac; }
+
+  /* ── timeline ─────────────────────────────────────────── */
+  .timeline { list-style: none; margin: 8px 0 0; padding: 0; position: relative; }
+  .timeline::before {
+    content: ""; position: absolute; left: 11px; top: 10px; bottom: 10px;
+    width: 2px; background: var(--line);
+  }
+  .timeline > li { position: relative; padding: 0 0 22px 46px; }
+  .timeline .dot {
+    position: absolute; left: 3px; top: 6px; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; border: 3px solid var(--accent);
+  }
+  .timeline .phase {
+    font-size: 11px; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  .timeline .tcard {
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px; margin-top: 4px;
+  }
+  .timeline .tcard h3 { margin: 2px 0 6px; }
+
+  /* ── tree ─────────────────────────────────────────────── */
+  .tree {
+    background: #0f172a; color: #e2e8f0; border-radius: 14px;
+    padding: 18px; font-family: var(--mono); font-size: 13px; line-height: 1.75;
+    overflow-x: auto; margin: 0;
+  }
+  .tree .c { color: #64748b; }
+  .tree .truth { color: #86efac; }
+  .tree .cache { color: #93c5fd; }
+  .tree .local { color: #fcd34d; }
+
+  /* ── tables ───────────────────────────────────────────── */
+  .tablewrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; }
+  th {
+    text-align: left; background: #f1f5f9; font-size: 11px;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  /* ── footer ───────────────────────────────────────────── */
+  footer { margin: 80px 0 40px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  footer a { color: var(--accent); }
+
+  @media print {
+    .toc { display: none; }
+    .hero { padding: 24px 0; }
+    section { page-break-inside: avoid; margin: 36px 0; }
+    body { background: #fff; }
+    .card, .panel, .diagram { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Context Rail v3 · visual guide</span>
+    <h1>One store. Five rules. An agent that ships.</h1>
+    <p class="lede">
+      Context Rail is a project workspace where Markdown files are the truth,
+      an SQLite index is only a cache, and a CTO agent runs the day-to-day work
+      inside gates a human sets.
+    </p>
+    <div class="chips">
+      <span>files are truth</span>
+      <span>one write path</span>
+      <span>pure kernel</span>
+      <span>human gates</span>
+      <span>fixed speed budgets</span>
+    </div>
+    <div class="legend">
+      <span><b>▭ box</b> = something that exists</span>
+      <span><b>→ arrow</b> = flow or “points at”</span>
+      <span><b>┄ dashed</b> = dependency</span>
+      <span><b>▮ color bar</b> = a gate</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <div class="wrap">
+    <a href="#overview">Overview</a>
+    <a href="#system">System map</a>
+    <a href="#model">Data model</a>
+    <a href="#command">One command</a>
+    <a href="#gates">Who decides</a>
+    <a href="#loop">Agent loop</a>
+    <a href="#start">From zero</a>
+    <a href="#daily">A day</a>
+    <a href="#state">Where it lives</a>
+    <a href="#rules">Rules</a>
+    <a href="#cheat">Cheat sheet</a>
+    <a href="#errors">Errors</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="overview">
+    <span class="eyebrow">01 · Overview</span>
+    <h2>What it is, in one picture</h2>
+    <p class="lede">
+      The project lives in files. A cache makes reading them instant. One
+      pipeline makes changing them safe. Agents and humans use the same
+      commands — the difference is what each one is allowed to do.
+    </p>
+
+    <div class="stats">
+      <div class="stat"><b>1</b><span>source of truth: the store</span></div>
+      <div class="stat"><b>3</b><span>surfaces: CLI, MCP, web UI</span></div>
+      <div class="stat"><b>6</b><span>primitives, never renamed</span></div>
+      <div class="stat"><b>4</b><span>speed budgets in CI</span></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>📁 Files are the truth</h3>
+        <p>
+          Every document is a Markdown file with a small frontmatter block.
+          Commit it, diff it, edit it by hand. Nothing important lives only in
+          a database, and no agent has a private memory that other agents
+          cannot see.
+        </p>
+      </div>
+      <div class="card">
+        <h3>⚡ The index is a cache</h3>
+        <p>
+          SQLite mirrors the files so the CTO views are fast at ten thousand
+          documents. Delete the index and the next command rebuilds it. Reads
+          never hash a source tree and never execute a command.
+        </p>
+      </div>
+      <div class="card">
+        <h3>🚪 One write path</h3>
+        <p>
+          Every change — from the CLI, an MCP client or the web UI — goes
+          through the same pipeline: validate, authorize, lock, write, record,
+          index. There is no second way to mutate the store.
+        </p>
+      </div>
+      <div class="card">
+        <h3>✂️ Agents get slices</h3>
+        <p>
+          The CTO gets a bounded brief. An implementer gets a work order and a
+          worktree. A reviewer gets a candidate. Nobody loads the whole project
+          into a context window.
+        </p>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 28px;">Truth on the left, speed on the right</h3>
+    <div class="split">
+      <div class="pane truth">
+        <h3>context-rail/ <span class="pill green">truth</span></h3>
+        <ul>
+          <li><code>rail.yaml</code> — placement and pack</li>
+          <li><code>charter.md</code> — gates, rights, budgets</li>
+          <li><code>items/</code>, <code>notes/</code>, <code>checks/</code></li>
+          <li><code>records/</code> — runs, reports, verdicts, approvals</li>
+          <li><code>workspace/</code> — agent prompts, skills, memory</li>
+        </ul>
+        <p class="small">Committed to git. Editable by hand. Survives every tool.</p>
+      </div>
+      <div class="middle">
+        <span class="big">⟲</span>
+        <span>rebuild<br>any time</span>
+      </div>
+      <div class="pane cache">
+        <h3>SQLite index <span class="pill blue">cache</span></h3>
+        <ul>
+          <li>documents and fields</li>
+          <li>relations and tags</li>
+          <li>checks, verdicts, runs</li>
+          <li>reports, reviews, approvals</li>
+          <li>full-text search (FTS5)</li>
+        </ul>
+        <p class="small">One-way: files → index. Never the other way.</p>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top: 18px;">
+      <b>Why this matters</b>
+      You can stop using the tool at any time and still have a readable,
+      reviewable project. The database is disposable; the project is not.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="system">
+    <span class="eyebrow">02 · System map</span>
+    <h2>Every command takes the same path</h2>
+    <p class="lede">
+      One entry point, one decision layer, one write door and one read door.
+      Handlers describe what should happen; they never touch a file directly.
+    </p>
+
+    <div class="panel">
+      <div class="stack">
+        <div class="layer surfaces">
+          <div class="box"><b>CLI</b><span>rail …</span></div>
+          <div class="box"><b>MCP</b><span>rail mcp serve</span></div>
+          <div class="box"><b>Web UI</b><span>rail ui serve</span></div>
+        </div>
+        <div class="down">one call</div>
+
+        <div class="layer gateway">
+          <b>Gateway</b>
+          <span>validates arguments · identifies the actor · checks rights · returns one JSON Result · never raises</span>
+        </div>
+        <div class="down">decide, then hand over</div>
+
+        <div class="layer pair">
+          <div class="box"><b>Kernel</b><span>structure, gates, budgets, rights — pure functions, no I/O</span></div>
+          <div class="box"><b>Recipes</b><span>brief, status, digest — the computed views</span></div>
+        </div>
+        <div class="down">one door in · one door out</div>
+
+        <div class="layer pair">
+          <div class="box"><b>Write pipeline</b><span>lock → validate → temp file → fsync → atomic replace → record → index</span></div>
+          <div class="box"><b>Query layer</b><span>SQL against the index only</span></div>
+        </div>
+        <div class="down">state</div>
+
+        <div class="layer trio">
+          <div class="box truth"><b>Files</b><span>the truth</span></div>
+          <div class="box cache"><b>SQLite index</b><span>a rebuildable cache</span></div>
+          <div class="box runner"><b>Runner</b><span>droid exec and cmd checks, bounded</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid g4" style="margin-top: 16px;">
+      <div class="card"><h4>Gateway</h4><p class="small">The only front door. Refuses unknown tools, bad parameters and forbidden actors before any work starts.</p></div>
+      <div class="card"><h4>Kernel</h4><p class="small">The rulebook: what is executable, blocked, stuck, too long, or allowed. Pure, so it can be tested exhaustively.</p></div>
+      <div class="card"><h4>Write pipeline</h4><p class="small">Serializes changes with a store lock, checks the expected revision, writes atomically and appends a record.</p></div>
+      <div class="card"><h4>Runner</h4><p class="small">The only process executor. Hard timeouts, capped output, scrubbed environment, secret redaction in records.</p></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="model">
+    <span class="eyebrow">03 · Data model</span>
+    <h2>Behavior comes from structure, not from names</h2>
+    <p class="lede">
+      Six primitives, eight relation names and five lifecycle categories. The
+      engine never reads a status name or a tag; packs map their own words onto
+      these fixed categories.
+    </p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 960 420" role="img" aria-label="A goal with two tasks. Task A belongs to the goal. Task B belongs to the goal and depends on Task A. A check verifies Task B and a note describes Task A.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#64748b"></path>
+          </marker>
+        </defs>
+
+        <!-- edges -->
+        <path class="edge" d="M255,186 C255,150 380,142 447,94" marker-end="url(#arrow)"></path>
+        <path class="edge" d="M705,186 C705,150 580,142 513,94" marker-end="url(#arrow)"></path>
+        <path class="edge-dash" d="M616,221 L346,221" marker-end="url(#arrow)"></path>
+        <path class="edge" d="M705,326 L705,258" marker-end="url(#arrow)"></path>
+        <path class="edge" d="M255,326 L255,258" marker-end="url(#arrow)"></path>
+
+        <!-- edge labels -->
+        <rect class="e-bg" x="286" y="118" width="68" height="18" rx="9"></rect>
+        <text class="e-label" x="320" y="131" text-anchor="middle">part_of</text>
+        <rect class="e-bg" x="606" y="118" width="68" height="18" rx="9"></rect>
+        <text class="e-label" x="640" y="131" text-anchor="middle">part_of</text>
+        <rect class="e-bg" x="432" y="192" width="96" height="18" rx="9"></rect>
+        <text class="e-label" x="480" y="205" text-anchor="middle">depends_on</text>
+        <rect class="e-bg" x="713" y="278" width="62" height="18" rx="9"></rect>
+        <text class="e-label" x="744" y="291" text-anchor="middle">verifies</text>
+        <rect class="e-bg" x="263" y="278" width="50" height="18" rx="9"></rect>
+        <text class="e-label" x="288" y="291" text-anchor="middle">about</text>
+
+        <!-- nodes -->
+        <rect class="node accent" x="400" y="24" width="160" height="62" rx="14"></rect>
+        <text class="n-title" x="480" y="50" text-anchor="middle">Goal</text>
+        <text class="n-sub" x="480" y="68" text-anchor="middle">item · goal · active</text>
+
+        <rect class="node" x="170" y="190" width="170" height="62" rx="14"></rect>
+        <text class="n-title" x="255" y="216" text-anchor="middle">Task A</text>
+        <text class="n-sub" x="255" y="234" text-anchor="middle">item · task · done</text>
+
+        <rect class="node" x="620" y="190" width="170" height="62" rx="14"></rect>
+        <text class="n-title" x="705" y="216" text-anchor="middle">Task B</text>
+        <text class="n-sub" x="705" y="234" text-anchor="middle">item · task · active</text>
+
+        <rect class="node check" x="615" y="330" width="180" height="62" rx="14"></rect>
+        <text class="n-title" x="705" y="356" text-anchor="middle">Check: tests pass</text>
+        <text class="n-sub" x="705" y="374" text-anchor="middle">check · cmd · last verdict: pass</text>
+
+        <rect class="node note" x="165" y="330" width="180" height="62" rx="14"></rect>
+        <text class="n-title" x="255" y="356" text-anchor="middle">Convention note</text>
+        <text class="n-sub" x="255" y="374" text-anchor="middle">note · knowledge, no lifecycle</text>
+      </svg>
+    </div>
+    <p class="small" style="margin-top: 10px;">
+      Solid arrows mean “this document points at that one”. The dashed arrow is the one that can block work:
+      an unfinished <code>depends_on</code> target makes an item non-executable.
+    </p>
+
+    <div class="grid g3" style="margin-top: 20px;">
+      <div class="card">
+        <h3>Primitives</h3>
+        <p class="small">
+          <span class="pill">item</span>
+          <span class="pill">note</span>
+          <span class="pill">record</span>
+          <span class="pill">check</span>
+          <span class="pill">actor</span>
+          <span class="pill">policy</span>
+        </p>
+        <p class="small" style="margin-top: 10px;">
+          Item = something that can be done. Note = knowledge. Record = an immutable fact.
+          Check = a provable condition. Actor = who acts. Policy = what is allowed.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Relations</h3>
+        <p class="small">
+          <code>part_of</code> <code>depends_on</code> <code>verifies</code>
+          <code>about</code> <code>because_of</code> <code>supersedes</code>
+          <code>resolves</code> <code>owned_by</code>
+        </p>
+        <p class="small" style="margin-top: 10px;">
+          Fixed names. A pack can add presets and tags, never new engine relations.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Categories</h3>
+        <p class="small">
+          <span class="pill green">not_started</span>
+          <span class="pill blue">active</span>
+          <span class="pill amber">blocked</span>
+          <span class="pill">done</span>
+          <span class="pill">dropped</span>
+        </p>
+        <p class="small" style="margin-top: 10px;">
+          Packs name their own statuses; each maps to one of these. The engine
+          only ever reads the category.
+        </p>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 28px;">What one document looks like</h3>
+    <div class="grid g2">
+      <div>
+        <pre><code>---
+primitive: item
+preset: task
+title: Write the first task
+status: todo
+part_of: ["[[ship-v3]]"]
+depends_on: ["[[design-the-api]]"]
+tags: ["small"]
+created: 2026-11-01T09:00:00Z
+updated: 2026-11-01T09:00:00Z
+---
+
+# Write the first task
+
+The body is ordinary Markdown. It can be as long as
+the work needs; the brief reads only what it must.</code></pre>
+      </div>
+      <div class="grid" style="align-content: start;">
+        <div class="note"><b>primitive</b>What kind of thing this is. Fixed by the engine.</div>
+        <div class="note"><b>preset</b>The template that produced it. Packs define presets.</div>
+        <div class="note"><b>status</b>A pack word that maps to a category, so the engine can reason about it.</div>
+        <div class="note"><b>relations</b>Links by slug. <code>part_of</code> builds the tree; <code>depends_on</code> builds the order.</div>
+      </div>
+    </div>
+
+    <div class="grid g4" style="margin-top: 20px;">
+      <div class="card"><h4>Executable</h4><p class="small">A leaf item in a workable category with no unfinished dependency.</p></div>
+      <div class="card"><h4>Blocked</h4><p class="small">Category <code>blocked</code>, or a dependency that is not finished.</p></div>
+      <div class="card"><h4>Stuck</h4><p class="small">An active item with no new record inside the stuck window.</p></div>
+      <div class="card"><h4>Too long</h4><p class="small">Worker runs exceed the item's attempt or time budget.</p></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="command">
+    <span class="eyebrow">04 · One command, start to finish</span>
+    <h2>Six steps, then one envelope</h2>
+    <p class="lede">
+      A command is not a script with side effects. It is a request that either
+      produces a validated change or a typed refusal — never a half-written
+      file and never a traceback.
+    </p>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><b>Input</b><small>The surface passes typed arguments from the tool table.</small></div>
+      <div class="sep" aria-hidden="true">→</div>
+      <div class="step"><span class="n">2</span><b>Validate</b><small>Required fields, types and bounds. Unknown keys are refused.</small></div>
+      <div class="sep" aria-hidden="true">→</div>
+      <div class="step"><span class="n">3</span><b>Authorize</b><small>The actor and the charter decide if this call is allowed.</small></div>
+      <div class="sep" aria-hidden="true">→</div>
+      <div class="step"><span class="n">4</span><b>Handle</b><small>The handler asks the pure kernel what the new state should be.</small></div>
+      <div class="sep" aria-hidden="true">→</div>
+      <div class="step"><span class="n">5</span><b>Commit</b><small>Lock, expected revision, temp file, fsync, atomic replace, record.</small></div>
+      <div class="sep" aria-hidden="true">→</div>
+      <div class="step"><span class="n">6</span><b>Answer</b><small>The index catches up; the caller gets one JSON envelope.</small></div>
+    </div>
+
+    <h3 style="margin-top: 28px;">A real call</h3>
+    <pre><code><span class="c">$</span> rail add task "Write the first task" --rel part_of=ship-v3
+
+{
+  <span class="g">"ok": true</span>,
+  "value": {
+    "slug": "write-the-first-task",
+    "path": "items/task/write-the-first-task.md",
+    "etag": "22686e95ed738d95",
+    "record": "01M6AV2B03HBQ076BRZJXCNFCC"
+  }
+}</code></pre>
+
+    <div class="grid g3" style="margin-top: 16px;">
+      <div class="card"><h4>Exit codes</h4><p class="small"><code>0</code> success · <code>1</code> refusal · <code>2</code> infrastructure failure. Scripts can branch on these.</p></div>
+      <div class="card"><h4>Idempotency keys</h4><p class="small">Every write takes <code>--key</code>. Retrying a dispatch or a hook returns the same record instead of duplicating it.</p></div>
+      <div class="card"><h4>Expected revision</h4><p class="small">Updates carry the etag they read. A stale write is refused, never silently overwritten.</p></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="gates">
+    <span class="eyebrow">05 · Who decides</span>
+    <h2>Three rings of permission</h2>
+    <p class="lede">
+      The charter is the human's contract with the agent. It turns “the agent
+      can do anything” into three concrete rings, enforced at the gateway for
+      every command.
+    </p>
+
+    <div class="ladder">
+      <div class="rung green">
+        <div class="who">🟢 CTO alone</div>
+        <p>
+          Break work down, order it, assign it, refactor, write tests, retry a
+          failed run, close an item when its gates pass. This is the daily
+          autonomy.
+        </p>
+      </div>
+      <div class="rung amber">
+        <div class="who">🟡 CTO decides, reversible</div>
+        <p>
+          New dependencies, data-model or API changes, convention changes,
+          dropping a could-have, spending near a budget. The <code>digest</code>
+          lists these so the human can see them and reverse them.
+        </p>
+      </div>
+      <div class="rung red">
+        <div class="who">🔴 Human only</div>
+        <p>
+          The goal, must/should scope and the Won't list; writing or loosening
+          acceptance checks; publishing, deploying, deleting data, force-push,
+          tags and releases; licensing, secrets and payments; budget increases;
+          stuck items after their retries; changing the charter.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top: 20px;">
+      <div class="card">
+        <h3>Approval is a typed phrase</h3>
+        <p class="small">The tool never asks “are you sure?”. It asks for a phrase that names the exact target:</p>
+        <pre><code>rail approve charter \
+  --confirm "APPROVE charter" \
+  --confirmer "Ada"</code></pre>
+        <p class="small" style="margin-top: 10px;">
+          The approval is a record with the hash of every protected file. If a
+          protected file drifts, <code>doctor</code> and <code>ci</code> fail.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Until approval, nothing executes</h3>
+        <p class="small">
+          The CTO can plan, read and draft. Dispatches, ticks and merges refuse
+          with “the charter is not approved; nothing executes yet”.
+        </p>
+        <div class="note" style="margin-top: 12px;">
+          <b>Why so strict?</b>
+          The charter is where a human sets the quality bar and the boundary.
+          An agent that can rewrite its own boundary has no boundary.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="loop">
+    <span class="eyebrow">06 · The agent loop</span>
+    <h2>One tick, eight moves</h2>
+    <p class="lede">
+      The CTO keeps no state between ticks beyond the store and its memory
+      notes. Every tick is: read the state, choose work, launch it, verify it,
+      review it, merge it, report it, summarize it.
+    </p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 960 380" role="img" aria-label="The CTO loop in two rows: brief, plan, dispatch, verify, then review, merge, report, digest, and back to brief for the next tick.">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#64748b"></path>
+          </marker>
+        </defs>
+
+        <!-- row 1 -->
+        <path class="edge" d="M215,86 L267,86" marker-end="url(#arrow2)"></path>
+        <path class="edge" d="M445,86 L497,86" marker-end="url(#arrow2)"></path>
+        <path class="edge" d="M675,86 L727,86" marker-end="url(#arrow2)"></path>
+        <!-- verify down to review -->
+        <path class="edge" d="M820,116 L820,230" marker-end="url(#arrow2)"></path>
+        <!-- row 2, right to left -->
+        <path class="edge" d="M735,266 L681,266" marker-end="url(#arrow2)"></path>
+        <path class="edge" d="M505,266 L451,266" marker-end="url(#arrow2)"></path>
+        <path class="edge" d="M275,266 L221,266" marker-end="url(#arrow2)"></path>
+        <!-- digest up to brief -->
+        <path class="edge" d="M130,236 L130,120" marker-end="url(#arrow2)"></path>
+        <rect class="e-bg" x="140" y="166" width="62" height="18" rx="9"></rect>
+        <text class="e-label" x="171" y="179" text-anchor="middle">next tick</text>
+
+        <!-- nodes row 1 -->
+        <rect class="node accent" x="45" y="56" width="170" height="60" rx="14"></rect>
+        <text class="n-title" x="130" y="82" text-anchor="middle">1 · Brief</text>
+        <text class="n-sub" x="130" y="100" text-anchor="middle">state, waits, quality</text>
+
+        <rect class="node" x="275" y="56" width="170" height="60" rx="14"></rect>
+        <text class="n-title" x="360" y="82" text-anchor="middle">2 · Plan</text>
+        <text class="n-sub" x="360" y="100" text-anchor="middle">triage reports, order work</text>
+
+        <rect class="node" x="505" y="56" width="170" height="60" rx="14"></rect>
+        <text class="n-title" x="590" y="82" text-anchor="middle">3 · Dispatch</text>
+        <text class="n-sub" x="590" y="100" text-anchor="middle">worktree + droid exec</text>
+
+        <rect class="node" x="735" y="56" width="170" height="60" rx="14"></rect>
+        <text class="n-title" x="820" y="82" text-anchor="middle">4 · Verify</text>
+        <text class="n-sub" x="820" y="100" text-anchor="middle">run the item's checks</text>
+
+        <!-- nodes row 2 -->
+        <rect class="node" x="735" y="236" width="170" height="60" rx="14"></rect>
+        <text class="n-title" x="820" y="262" text-anchor="middle">5 · Review</text>
+        <text class="n-sub" x="820" y="280" text-anchor="middle">separate worktree</text>
+
+        <rect class="node" x="505" y="236" width="170" height="60" rx="14"></rect>
+        <text class="n-title" x="590" y="262" text-anchor="middle">6 · Merge</text>
+        <text class="n-sub" x="590" y="280" text-anchor="middle">rebase, fast-forward</text>
+
+        <rect class="node" x="275" y="236" width="170" height="60" rx="14"></rect>
+        <text class="n-title" x="360" y="262" text-anchor="middle">7 · Report</text>
+        <text class="n-sub" x="360" y="280" text-anchor="middle">structured record</text>
+
+        <rect class="node accent" x="45" y="236" width="170" height="60" rx="14"></rect>
+        <text class="n-title" x="130" y="262" text-anchor="middle">8 · Digest</text>
+        <text class="n-sub" x="130" y="280" text-anchor="middle">the human view</text>
+      </svg>
+    </div>
+    <p class="small" style="margin-top: 10px;">
+      Blue nodes are where the human usually looks. Everything between them can
+      happen unattended inside the charter's green and yellow rings.
+    </p>
+
+    <div class="grid g4" style="margin-top: 20px;">
+      <div class="card">
+        <h4>Dispatch</h4>
+        <p class="small">A fresh git worktree and branch, a bounded <code>droid exec</code>, a work order, and a run record.</p>
+      </div>
+      <div class="card">
+        <h4>Verify</h4>
+        <p class="small">The item's declared checks run in that worktree. A check is fresh only while its inputs still match.</p>
+      </div>
+      <div class="card">
+        <h4>Review</h4>
+        <p class="small">A different actor, in its own worktree, judges the verified candidate. The implementer cannot approve its own work.</p>
+      </div>
+      <div class="card">
+        <h4>Merge</h4>
+        <p class="small">Rebase onto the default branch, then fast-forward. Conflicts get one retry, then escalate.</p>
+      </div>
+    </div>
+
+    <div class="warn" style="margin-top: 18px;">
+      <b>When a run fails</b>
+      One retry continues the same session with the failure output attached.
+      Still failing → the item escalates to the human with the evidence. The
+      loop never silently retries forever.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="start">
+    <span class="eyebrow">07 · From zero to daily</span>
+    <h2>The first hour, then the routine</h2>
+    <p class="lede">
+      You can start with a goal and a task; you do not need the whole agent
+      loop on day one. The store and its views are useful immediately.
+    </p>
+
+    <ol class="timeline">
+      <li>
+        <span class="dot"></span>
+        <div class="tcard">
+          <span class="phase">Step 0 · 2 minutes</span>
+          <h3>Install</h3>
+          <pre><code>py -m pip install -e .[test]</code></pre>
+          <p class="small" style="margin-top: 8px;">You now have <code>rail</code>, <code>ctx-rail</code> and <code>py -m context_rail</code>.</p>
+        </div>
+      </li>
+      <li>
+        <span class="dot"></span>
+        <div class="tcard">
+          <span class="phase">Step 1 · 1 minute</span>
+          <h3>Create the store</h3>
+          <pre><code>rail init --pack small</code></pre>
+          <p class="small" style="margin-top: 8px;">
+            Packs: <code>small</code>, <code>indie</code>, <code>scrum</code>.
+            A guided start is <code>rail init --interview</code> or
+            <code>--answers-file</code>; a CTO draft is <code>--draft-file</code>.
+          </p>
+        </div>
+      </li>
+      <li>
+        <span class="dot"></span>
+        <div class="tcard">
+          <span class="phase">Step 2 · 10 minutes</span>
+          <h3>Draw the picture</h3>
+          <pre><code>rail add goal "Ship v3"
+rail add task "Write the first task" --rel part_of=ship-v3
+rail status</code></pre>
+          <p class="small" style="margin-top: 8px;">
+            Goal → scope → tasks → checks. Relations do the structure; tags are
+            only for humans.
+          </p>
+        </div>
+      </li>
+      <li>
+        <span class="dot"></span>
+        <div class="tcard">
+          <span class="phase">Step 3 · the boundary</span>
+          <h3>Approve the charter</h3>
+          <pre><code>rail approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
+          <p class="small" style="margin-top: 8px;">
+            This is the moment the human hands over autonomy. Until then the CTO
+            plans but nothing executes.
+          </p>
+        </div>
+      </li>
+      <li>
+        <span class="dot"></span>
+        <div class="tcard">
+          <span class="phase">Step 4 · first work</span>
+          <h3>Dispatch one item</h3>
+          <pre><code>rail dispatch write-the-first-task --expect &lt;etag&gt; --key first-run</code></pre>
+          <p class="small" style="margin-top: 8px;">
+            Then <code>rail review &lt;item&gt; --run &lt;run-id&gt; --key …</code> and
+            <code>rail merge &lt;item&gt; --run &lt;run-id&gt; --expect &lt;etag&gt; --key …</code>.
+          </p>
+        </div>
+      </li>
+      <li>
+        <span class="dot"></span>
+        <div class="tcard">
+          <span class="phase">Step 5 · daily</span>
+          <h3>Read, then let the tick run</h3>
+          <pre><code>rail cto brief
+rail cto tick --key day-2026-11-02</code></pre>
+          <p class="small" style="margin-top: 8px;">
+            The tick takes a single-instance lock, so two CTOS cannot run at
+            once, and it must be the outer session.
+          </p>
+        </div>
+      </li>
+      <li>
+        <span class="dot"></span>
+        <div class="tcard">
+          <span class="phase">Step 6 · weekly</span>
+          <h3>Hygiene and the ledger</h3>
+          <pre><code>rail digest
+rail ledger
+rail triage
+rail ci
+rail doctor</code></pre>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="daily">
+    <span class="eyebrow">08 · A day with the rail</span>
+    <h2>What the agent does, what you do</h2>
+    <p class="lede">
+      The rail is built so the human's attention is spent on boundaries and
+      taste, not on relaying context between agents.
+    </p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>🤖 The agent</h3>
+        <ul style="margin: 8px 0 0; padding-left: 20px;">
+          <li>Reads the brief and the untriaged reports.</li>
+          <li>Orders the executable items and picks a leaf.</li>
+          <li>Dispatches an implementer with a narrow work order.</li>
+          <li>Runs the item's checks in the worktree.</li>
+          <li>Sends the verified candidate to a separate reviewer.</li>
+          <li>Merges once approved; escalates on failure.</li>
+          <li>Writes a structured report and updates the digest.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>🧑 You</h3>
+        <ul style="margin: 8px 0 0; padding-left: 20px;">
+          <li>Read <code>rail cto brief</code> — two minutes, not two hours.</li>
+          <li>Answer <code>needs_human</code>: approvals, escalations, waits.</li>
+          <li>Read <code>rail digest</code> for reversible decisions and quality.</li>
+          <li>Approve the irreversible few: scope, secrets, releases, budgets.</li>
+          <li>Spot-check one merged item when something feels off.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top: 16px;">
+      <div class="card">
+        <h4>Morning</h4>
+        <p class="small"><code>rail cto brief</code> → what is executable, what waits, what is stuck, what drifted.</p>
+      </div>
+      <div class="card">
+        <h4>During the day</h4>
+        <p class="small"><code>rail cto tick --key …</code> → the loop runs. You answer only the waits the brief names.</p>
+      </div>
+      <div class="card">
+        <h4>Evening</h4>
+        <p class="small"><code>rail digest</code> → counts, quality, usage, and the reversible decisions you may want to undo.</p>
+      </div>
+    </div>
+
+    <div class="danger" style="margin-top: 18px;">
+      <b>What “human in the loop” actually means</b>
+      You are not asked to review every diff. You are asked to own the goal,
+      the acceptance bar, the secrets, the money and anything irreversible.
+      Everything else is delegated on purpose.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="state">
+    <span class="eyebrow">09 · Where everything lives</span>
+    <h2>Three places, three jobs</h2>
+    <p class="lede">
+      The store is portable. The index is disposable. The control files are
+      machine-local and survive a crash.
+    </p>
+
+    <pre class="tree">my-project/
+├── <span class="truth">context-rail/</span>              <span class="c">← the store: the truth, commit this</span>
+│   ├── rail.yaml                  <span class="c">placement, pack, schema</span>
+│   ├── charter.md                 <span class="c">gates, rights, budgets</span>
+│   ├── project/  items/  notes/  checks/
+│   ├── records/2026-11/           <span class="c">runs, reports, verdicts, approvals</span>
+│   └── workspace/                 <span class="c">cto + profile prompts, skills, memory</span>
+└── .git/
+    └── <span class="cache">context-rail/</span>            <span class="c">← index cache: disposable, never commit</span>
+
+<span class="c">Outside a git worktree, the index and control files live in:</span>
+<span class="local">context-rail/.rail-local/</span>      <span class="c">← index, locks, dispatch/tick/merge progress</span></pre>
+
+    <div class="grid g3" style="margin-top: 18px;">
+      <div class="card">
+        <h3>📁 Store <span class="pill green">truth</span></h3>
+        <p class="small">Markdown plus YAML. Diffable, mergeable, hand-editable. The only thing worth backing up.</p>
+      </div>
+      <div class="card">
+        <h3>⚡ Index <span class="pill blue">cache</span></h3>
+        <p class="small">Rebuilt from files when missing or corrupt. Deleting it costs one rebuild, never data.</p>
+      </div>
+      <div class="card">
+        <h3>🔒 Control files <span class="pill amber">machine-local</span></h3>
+        <p class="small">Proof that a dispatch, tick or merge happened: phase, worktree, binding. Written atomically.</p>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top: 18px;">
+      <b>Editing by hand is allowed</b>
+      Change a Markdown file in your editor; the next command stat-scans the
+      store and updates the index. Use the CLI when you want validation,
+      records, idempotency and the one write path.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="rules">
+    <span class="eyebrow">10 · Rules that never bend</span>
+    <h2>The invariants behind the safety story</h2>
+    <p class="lede">
+      These are not conventions. They are the reasons the system can be trusted
+      with an agent that runs unattended.
+    </p>
+
+    <div class="grid g3">
+      <div class="card">
+        <h3>🚪 One write path</h3>
+        <p class="small">Every mutation goes through <code>store.write.commit</code>. No handler, runner or UI writes store files on its own.</p>
+      </div>
+      <div class="card">
+        <h3>👀 Reads are side-effect free</h3>
+        <p class="small">No read executes a command or hashes a source tree. A read can be slow, never dangerous.</p>
+      </div>
+      <div class="card">
+        <h3>🧠 Pure kernel</h3>
+        <p class="small"><code>kernel/</code> has no file, git, process or index access. Rules are exhaustively testable.</p>
+      </div>
+      <div class="card">
+        <h3>🔒 Fail closed</h3>
+        <p class="small">An unknown manifest schema, pack version, key or policy field is refused, never guessed.</p>
+      </div>
+      <div class="card">
+        <h3>⏮️ Stale is refused</h3>
+        <p class="small">Every change carries the revision it read. Optimistic concurrency, never a silent overwrite.</p>
+      </div>
+      <div class="card">
+        <h3>🛟 Crash safety</h3>
+        <p class="small">Temp file, fsync, atomic replace. An intent marker covers multi-file writes; <code>doctor --repair</code> finishes or rolls back.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 28px;">Speed budgets are tests, not hopes</h3>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Operation</th><th>1,000 documents</th><th>10,000 documents</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>CLI startup</td><td>under 150 ms</td><td>under 150 ms</td></tr>
+          <tr><td>Warm read (<code>cto brief</code>, <code>status</code>)</td><td>under 300 ms</td><td>under 1 s</td></tr>
+          <tr><td>Cold rebuild</td><td>under 10 s</td><td>under 60 s</td></tr>
+          <tr><td>Single write</td><td>under 200 ms</td><td>under 200 ms</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small" style="margin-top: 8px;">If a change needs more time, the change is the bug. The budgets are never raised.</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="cheat">
+    <span class="eyebrow">11 · Cheat sheet</span>
+    <h2>The commands you will actually type</h2>
+    <p class="lede">
+      Global options (<code>--store</code>, <code>--actor</code>) go before the
+      command. <code>add</code> takes positional arguments.
+    </p>
+
+    <h3>Read</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Command</th><th>What you get</th></tr></thead>
+        <tbody>
+          <tr><td><code>rail status</code></td><td>Counts, executable items, blockers, stuck items.</td></tr>
+          <tr><td><code>rail digest</code></td><td>Activity, human waits, reversible decisions, quality, usage.</td></tr>
+          <tr><td><code>rail cto brief</code></td><td>The bounded page a CTO session starts from.</td></tr>
+          <tr><td><code>rail find --tag x --text y</code></td><td>Documents matching every filter.</td></tr>
+          <tr><td><code>rail show &lt;slug&gt;</code></td><td>One document with its relations and body.</td></tr>
+          <tr><td><code>rail ledger --since …</code></td><td>Runs with attempt-counted usage and unknown counters kept apart.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top: 22px;">Change</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>rail add &lt;preset&gt; "&lt;title&gt;"</code></td><td>Create a document from a preset, optionally with relations.</td></tr>
+          <tr><td><code>rail update &lt;slug&gt; --expect &lt;etag&gt;</code></td><td>Change fields, tags or body.</td></tr>
+          <tr><td><code>rail link &lt;src&gt; &lt;rel&gt; &lt;dst&gt; --expect &lt;etag&gt;</code></td><td>Add or remove one relation.</td></tr>
+          <tr><td><code>rail move &lt;slug&gt; &lt;status&gt; --expect &lt;etag&gt;</code></td><td>Move an item through its lifecycle.</td></tr>
+          <tr><td><code>rail check</code> / <code>rail verify</code></td><td>Declare what proves an item, then run it and record verdicts.</td></tr>
+          <tr><td><code>rail report</code></td><td>File the structured report a completed run owes.</td></tr>
+          <tr><td><code>rail approve &lt;target&gt;</code></td><td>The human gate: a typed phrase and a protected-file hash.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top: 22px;">Run the loop</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Command</th><th>What it launches</th></tr></thead>
+        <tbody>
+          <tr><td><code>rail dispatch &lt;item&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>An implementer in an isolated worktree, then verification.</td></tr>
+          <tr><td><code>rail review &lt;item&gt; --run &lt;run&gt; --key &lt;k&gt;</code></td><td>A reviewer in its own worktree; records the verdict.</td></tr>
+          <tr><td><code>rail merge &lt;item&gt; --run &lt;run&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>Rebase and fast-forward onto the default branch.</td></tr>
+          <tr><td><code>rail cto tick --key &lt;k&gt;</code></td><td>One bounded CTO session behind the single-instance lock.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top: 22px;">Maintain</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Command</th><th>When</th></tr></thead>
+        <tbody>
+          <tr><td><code>rail doctor</code> / <code>rail doctor --repair</code></td><td>Integrity check; finish or roll back interrupted writes.</td></tr>
+          <tr><td><code>rail reindex</code></td><td>Sync or rebuild the index explicitly.</td></tr>
+          <tr><td><code>rail ci</code></td><td>Before pushing: doctor issues plus approval and done gates.</td></tr>
+          <tr><td><code>rail pack list | show | validate | use | create</code></td><td>Inspect or switch the workflow pack.</td></tr>
+          <tr><td><code>rail sync --install</code></td><td>Install the git drivers for store-only clones.</td></tr>
+          <tr><td><code>rail migrate</code></td><td>Import a v1/v2 store into a fresh v3 store.</td></tr>
+          <tr><td><code>rail mcp serve</code> · <code>rail ui serve</code></td><td>Same tool table over MCP or a loopback web UI.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="errors">
+    <span class="eyebrow">12 · When something goes wrong</span>
+    <h2>Typed refusals, not tracebacks</h2>
+    <p class="lede">
+      Every failure is one JSON envelope with a code. The most common
+      first-run bumps:
+    </p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Message</th><th>What it means</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>NOT_FOUND: no store found</code></td>
+            <td>You are not inside a project, or the folder has no <code>rail.yaml</code>.</td>
+            <td><code>rail init</code>, or pass <code>--store</code> before the command.</td>
+          </tr>
+          <tr>
+            <td><code>VALIDATION_FAILED: unrecognized arguments</code></td>
+            <td>Options are in the wrong place, or <code>add</code> got flags instead of positionals.</td>
+            <td><code>rail --store X add task "Title"</code>, not <code>rail add --preset …</code>.</td>
+          </tr>
+          <tr>
+            <td><code>'cto tick' cannot be nested inside a running session</code></td>
+            <td>A child session already set <code>RAIL_ACTOR</code>.</td>
+            <td>Start the tick from the outer session, with the actor variable unset.</td>
+          </tr>
+          <tr>
+            <td>“the charter is not approved; nothing executes yet”</td>
+            <td>The human gate has not been passed.</td>
+            <td><code>rail approve charter --confirm "APPROVE charter" --confirmer "…"</code></td>
+          </tr>
+          <tr>
+            <td>A check reports <code>stale</code></td>
+            <td>The files the check declares have changed since its verdict.</td>
+            <td>Re-run <code>rail verify</code>; a stale pass is not a pass.</td>
+          </tr>
+          <tr>
+            <td>The index looks wrong</td>
+            <td>The cache drifted or was interrupted.</td>
+            <td><code>rail reindex</code>, or delete the index and let it rebuild. Never touch the store.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid g2" style="margin-top: 18px;">
+      <div class="card">
+        <h3>Safe recovery order</h3>
+        <ol class="small" style="margin: 6px 0 0; padding-left: 20px;">
+          <li>Read the code in the envelope.</li>
+          <li><code>rail doctor</code> for integrity.</li>
+          <li><code>rail reindex</code> if reads disagree with files.</li>
+          <li><code>rail doctor --repair</code> for an interrupted write.</li>
+          <li>Only then touch files by hand.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>What you never need to do</h3>
+        <ul class="small" style="margin: 6px 0 0; padding-left: 20px;">
+          <li>Hand-edit the SQLite index.</li>
+          <li>Re-run a write to “make it stick” — use the same <code>--key</code>.</li>
+          <li>Delete the store to fix a view.</li>
+          <li>Raise a speed budget.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <strong>Context Rail v3</strong> · visual guide · November 2026 ·
+      version 3.0.0.dev0
+    </p>
+    <p>
+      Source of truth:
+      <a href="../docs/superpowers/specs/2026-10-28-context-rail-v3-design.md">design spec</a> ·
+      <a href="../library/arch-stage-3.md">stage 3 architecture</a> ·
+      <a href="../AGENTS.md">working rules</a> ·
+      <a href="../README.md">README</a>
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
