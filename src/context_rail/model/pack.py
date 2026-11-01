@@ -33,6 +33,7 @@ __all__ = [
     "Pack",
     "Preset",
     "ModelError",
+    "REQUIRED_PRESETS",
     "canonical_pack_name",
     "check_pack_name",
     "effective_measurement_min_runs",
@@ -46,6 +47,22 @@ PACK_VERSION = 1
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
 DEFAULT_MEASUREMENT_MIN_RUNS = 10
 _PACK_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+
+# The engine reads these presets by name (the charter and skill documents, the
+# manifest's placed presets and the legacy migration fallback), so every pack
+# must declare them rather than letting a store fail later.
+REQUIRED_PRESETS = (
+    "charter",
+    "cto",
+    "decision",
+    "goal",
+    "note",
+    "profile",
+    "scope",
+    "skill",
+    "vision",
+    "wont",
+)
 
 # Names shipped by an earlier release. They keep working, and the store's
 # manifest keeps the name it was approved with, so an approval still matches.

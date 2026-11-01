@@ -325,7 +325,11 @@ def template_body(store: Path, pack: Pack, preset: Preset, title: str) -> str:
     )
     if builtin.is_file():
         return _rendered(_read_template(builtin, template), title)
-    return f"# {title}\n"
+    raise WriteRefused(
+        "VALIDATION_FAILED",
+        f"pack {pack.name!r} ships no {template!r} template",
+        {"pack": pack.name, "template": template},
+    )
 
 
 def _read_template(source: Any, template: str) -> str:

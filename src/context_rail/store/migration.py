@@ -12,6 +12,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from context_rail.core.util import dump_frontmatter, slugify
+from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, render_path
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import RELATIONS
@@ -136,7 +137,13 @@ def _preset_for(legacy_type: str, pack: Pack) -> Preset:
     preset = pack.presets.get(candidate)
     if preset is not None and preset.primitive in _DOCUMENT_PRIMITIVES:
         return preset
-    return pack.presets["note"]
+    fallback = pack.presets.get("note")
+    if fallback is None:
+        raise ModelError(
+            "VALIDATION_FAILED",
+            f"the {pack.name} pack declares no note preset for legacy documents",
+        )
+    return fallback
 
 
 def _frontmatter(

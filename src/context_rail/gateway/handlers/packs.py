@@ -5,16 +5,21 @@ from __future__ import annotations
 import contextlib
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Iterator
 
+import yaml
+
+from context_rail.core.util import load_yaml
 from context_rail.gateway.confirmation import (
     confirmation_phrase,
     validate_confirmation,
 )
 from context_rail.kernel.packs import parse_map_entries, plan_status_map
 from context_rail.model.errors import ModelError
+from context_rail.model.manifest import manifest_from_mapping
 from context_rail.model.pack import (
+    REQUIRED_PRESETS,
     check_pack_name,
     effective_measurement_min_runs,
     load_pack,
@@ -97,19 +102,32 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
                 {"path": "pack.yaml", "message": f"unknown pack {requested!r}"}
             )
             return {"valid": False, "problems": problems}
-        load_pack(name, ctx.store)
+        pack = load_pack(name, ctx.store)
         root = pack_root(ctx.store, name)
         if root is None:
             problems.append(
                 {"path": "pack.yaml", "message": f"unknown pack {requested!r}"}
             )
             return {"valid": False, "problems": problems}
-        for template in _TEMPLATES:
-            if not root.joinpath("templates", f"{template}.md").is_file():
+        for preset in REQUIRED_PRESETS:
+            if preset not in pack.presets:
                 problems.append(
                     {
-                        "path": f"templates/{template}.md",
-                        "message": f"pack {name!r} ships no {template} template",
+                        "path": "pack.yaml",
+                        "message": f"pack {name!r} declares no required preset {preset!r}",
+                    }
+                )
+        templates = {f"templates/{template}.md" for template in _TEMPLATES}
+        templates.update(
+            preset.template.replace("{primitive}", preset.primitive)
+            for preset in pack.presets.values()
+        )
+        for template in sorted(templates):
+            if not root.joinpath(*PurePosixPath(template).parts).is_file():
+                problems.append(
+                    {
+                        "path": template,
+                        "message": f"pack {name!r} ships no {template}",
                     }
                 )
     except ModelError as error:
@@ -230,6 +248,7 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             ops.append(Op(row["path"], data, current_etag))
         changes.sort(key=lambda row: row["slug"])
         manifest_bytes = _rewrite_manifest(current_manifest, target.name)
+        _require_manifest_served(store, manifest_bytes, target.name)
         ops.append(Op("rail.yaml", manifest_bytes, etag(current_manifest)))
         candidate = protected_snapshot(ctx, pack_name=target.name)
         value = {
@@ -360,6 +379,26 @@ def _rewrite_status(data: bytes, status: str) -> bytes:
 def _rewrite_manifest(data: bytes, pack_name: str) -> bytes:
     text = data.decode("utf-8")
     return _set_scalar(text, "pack", pack_name).encode("utf-8")
+
+
+def _require_manifest_served(store: Path, data: bytes, pack_name: str) -> None:
+    """Refuse a switch whose manifest the target pack could never serve."""
+    try:
+        mapping = load_yaml(data.decode("utf-8-sig"))
+    except (UnicodeDecodeError, yaml.YAMLError) as error:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"cannot read the manifest for pack {pack_name!r}: {error}",
+            {"pack": pack_name, "path": "rail.yaml"},
+        ) from None
+    try:
+        manifest_from_mapping(mapping, store)
+    except ModelError as error:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"pack {pack_name!r} cannot serve this store's manifest: {error.message}",
+            {"pack": pack_name, "path": "rail.yaml"},
+        ) from None
 
 
 _KEY_LINE = re.compile(r"^([ \t]*)([A-Za-z0-9_.-]+):(.*)$")
