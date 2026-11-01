@@ -58,6 +58,23 @@ def validate_field_values(fields: dict[str, Any]) -> None:
             )
 
 
+def validate_preset_field_values(preset: Preset, fields: dict[str, Any]) -> None:
+    """Refuse a declared field whose value is outside the preset's enum.
+
+    Undeclared keys stay free text: a Check's ``acceptance`` and ``inputs`` are
+    engine fields no pack declares, and teams add their own.
+    """
+    for key, allowed in preset.fields.items():
+        if key not in fields:
+            continue
+        if fields[key] not in allowed:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"{key!r} must be one of: " + ", ".join(allowed),
+                {"key": key, "value": fields[key], "allowed": list(allowed)},
+            )
+
+
 def protected_change(
     context: Context, params: dict[str, Any], op: str, *, relation: str | None = None
 ) -> rights.ChangeFacts:

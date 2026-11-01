@@ -27,6 +27,7 @@ from context_rail.gateway.handlers.common import (
     template_body,
     unique_slug,
     validate_field_values,
+    validate_preset_field_values,
     versioned_change_record,
     versioned_kind,
 )
@@ -55,6 +56,7 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     relations = parse_relations(args["rel"])
     fields = parse_set_values(args["set"])
     validate_field_values(fields)
+    validate_preset_field_values(preset, fields)
     for generated in ("title", "tags"):
         if generated in fields:
             raise WriteRefused(
@@ -221,6 +223,9 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         body = load_body(args["body_file"])
         rel = resolve_unique(index, args["slug"])
         data, doc = read_doc(store, rel)
+        preset = ctx.pack.presets.get(doc.preset or "")
+        if preset is not None:
+            validate_preset_field_values(preset, values)
         if doc.primitive == "record":
             raise WriteRefused("INVALID_STATE", "records are immutable", {"path": rel})
         if doc.primitive is None:

@@ -115,6 +115,65 @@ def test_add_refuses_a_template_the_active_pack_does_not_ship(tmp_path: Path) ->
     assert "templates/missing.md" in result["error"]["message"]
 
 
+def test_add_refuses_a_value_outside_a_preset_enum(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    result = invoke(
+        "add",
+        {"preset": "scope", "title": "Scope", "set": ["priority=maybe"]},
+        store=store,
+        actor="cto",
+    )
+    assert result["ok"] is False
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+    assert result["error"]["details"]["key"] == "priority"
+    assert list((store / "project").glob("scope.md")) == []
+
+
+def test_add_accepts_a_declared_value_and_an_undeclared_field(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    result = invoke(
+        "add",
+        {
+            "preset": "scope",
+            "title": "Scope",
+            "set": ["priority=must", "estimate=3"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert result["ok"] is True, result
+
+
+def test_update_refuses_a_value_outside_a_preset_enum(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    created = invoke(
+        "add", {"preset": "scope", "title": "Scope"}, store=store, actor="cto"
+    )["value"]
+    refused = invoke(
+        "update",
+        {
+            "slug": created["slug"],
+            "set": ["priority=maybe"],
+            "expect": created["etag"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert refused["ok"] is False
+    assert refused["error"]["code"] == "VALIDATION_FAILED"
+    accepted = invoke(
+        "update",
+        {
+            "slug": created["slug"],
+            "set": ["priority=could"],
+            "expect": created["etag"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert accepted["ok"] is True, accepted
+
+
 def _manifest_etag(store: Path) -> str:
     import hashlib
 
