@@ -49,6 +49,26 @@ Notes that are easy to trip over:
 - Without `--store`, the nearest `context-rail` folder above the current
   directory is used.
 
+### Onboarding a whole project
+
+`rail init --pack small` writes only the skeleton (`rail.yaml`, `.gitignore`,
+empty folders). For a picture, the profiles and the agent files:
+
+```powershell
+rail init --interview                                   # or --answers-file FILE --confirm "APPROVE charter"
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail adapters sync                                      # AGENTS.md + .agents/skills/
+rail sync --install                                     # optional: git merge drivers
+```
+
+- `--interview` and `--answers-file` need the `human` actor; a CTO may only
+  propose with `--draft-file`, and a draft records no approval.
+- `init --answers-file` writes the picture but leaves approval `missing`; the
+  `approve` step is what records it.
+- `adapters sync` mirrors the workspace profiles and skills into `AGENTS.md`
+  and `.agents/skills/` (or `CLAUDE.md`, `.cursor/`, `GEMINI.md`). It is a
+  separate step today; re-run it when a skill changes.
+
 Useful read commands:
 
 ```powershell
