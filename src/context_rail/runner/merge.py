@@ -9,14 +9,18 @@ dir or the store.
 from __future__ import annotations
 
 import contextlib
-import json
-import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from context_rail.core.util import sha256_hex
+from context_rail.runner.control import (
+    binding_payload,
+    merge_control,
+    read_control,
+    write_control,
+)
 from context_rail.store.location import local_dir
 from context_rail.store.lock import StoreLockTimeout, file_lock
 from context_rail.store.write import WriteRefused
@@ -77,13 +81,8 @@ def pending_merges(store: Path, item: str) -> list[dict[str, Any]]:
         return []
     found: list[dict[str, Any]] = []
     for path in sorted(folder.glob("*.json")):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            found.append({"merge_id": path.stem, "corrupt": True})
-            continue
-        if not isinstance(payload, dict):
-            found.append({"merge_id": path.stem, "corrupt": True})
+        payload = read_control(path, identity=path.stem, key="merge_id")
+        if payload is None:
             continue
         if payload.get("corrupt"):
             found.append(payload)
@@ -98,62 +97,38 @@ def pending_merges(store: Path, item: str) -> list[dict[str, Any]]:
 
 def read_merge_progress(store: Path, merge_id: str) -> dict[str, Any] | None:
     """The stored progress of one merge attempt, or None when there is none."""
-    path = merge_progress_path(store, merge_id)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError):
-        return {"merge_id": _merge_id(merge_id), "corrupt": True}
-    if not isinstance(payload, dict):
-        return {"merge_id": merge_id, "corrupt": True}
-    return payload
+    ident = _merge_id(merge_id)
+    return read_control(
+        merge_progress_path(store, ident), identity=ident, key="merge_id"
+    )
 
 
 def write_merge_progress(store: Path, merge_id: str, **values: Any) -> dict[str, Any]:
     """Merge one write into the attempt's progress file and return it."""
     ident = _merge_id(merge_id)
-    path = merge_progress_path(store, ident)
-    current = read_merge_progress(store, ident) or {}
-    if current.get("corrupt"):
-        current = {"merge_id": ident}
-    current.update(values)
-    current["merge_id"] = ident
-    _write_json(path, current)
-    return current
+    return merge_control(
+        merge_progress_path(store, ident),
+        identity=ident,
+        key="merge_id",
+        values=values,
+    )
 
 
 def read_merge_binding(store: Path, key: str) -> dict[str, Any] | None:
     """The binding one merge key already holds, or None."""
-    path = merge_key_binding_path(store, key)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError):
-        return {"corrupt": True}
-    return payload if isinstance(payload, dict) else {"corrupt": True}
+    return read_control(merge_key_binding_path(store, key), identity=key, key="key")
 
 
 def write_merge_binding(store: Path, key: str, **values: Any) -> dict[str, Any]:
     """Bind one merge key to its payload and attempt id."""
-    path = merge_key_binding_path(store, key)
-    payload = dict(values)
-    _write_json(path, payload)
-    return payload
+    return write_control(
+        merge_key_binding_path(store, key), binding_payload(key, values)
+    )
 
 
 def remove_merge_binding(store: Path, key: str) -> None:
     """Forget a binding whose merge never changed a ref."""
     merge_key_binding_path(store, key).unlink(missing_ok=True)
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(text, encoding="utf-8", newline="\n")
-    os.replace(temporary, path)
 
 
 def _slug(value: Any) -> str:

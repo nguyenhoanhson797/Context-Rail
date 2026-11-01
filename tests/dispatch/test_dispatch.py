@@ -1083,3 +1083,30 @@ def test_the_worktree_root_is_per_test(leaf_item, tmp_path) -> None:
     root = worktree_root(leaf_item.store)
 
     assert root.is_relative_to(tmp_path / "context-rail-worktrees")
+
+
+def test_control_files_share_one_reader_and_binding_schema(tmp_path) -> None:
+    from context_rail.runner import control, dispatch as local_dispatch, merge
+    from helpers import init_store
+
+    store = init_store(tmp_path)
+    assert not hasattr(local_dispatch, "_write_json")
+    assert not hasattr(merge, "_write_json")
+
+    local_dispatch.write_binding(store, "k", item="a", dispatch_id="d1")
+    binding = local_dispatch.read_binding(store, "k")
+    assert binding["schema"] == control.CONTROL_SCHEMA
+    assert binding["key"] == "k" and binding["item"] == "a"
+
+    merge.write_merge_binding(store, "m", item="a", merge_id="01M")
+    merge_binding = merge.read_merge_binding(store, "m")
+    assert merge_binding["schema"] == control.CONTROL_SCHEMA
+    assert merge_binding["key"] == "m"
+
+    corrupt = local_dispatch.progress_path(store, "d2")
+    corrupt.parent.mkdir(parents=True, exist_ok=True)
+    corrupt.write_text("{", encoding="utf-8")
+    assert local_dispatch.read_progress(store, "d2") == {
+        "dispatch_id": "d2",
+        "corrupt": True,
+    }

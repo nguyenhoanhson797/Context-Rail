@@ -14,7 +14,6 @@ progress file a replay reads after a crash.
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import re
 import tempfile
@@ -24,6 +23,12 @@ from pathlib import Path
 from typing import Any
 
 from context_rail.core.util import sha256_hex
+from context_rail.runner.control import (
+    binding_payload,
+    merge_control,
+    read_control,
+    write_control,
+)
 from context_rail.store.location import local_dir, worktree_git_dir
 from context_rail.model.primitives import WINDOWS_RESERVED_NAMES
 from context_rail.store.lock import StoreLockTimeout, file_lock, take_exclusive
@@ -184,14 +189,10 @@ def acquire_dispatch_lock(store: Path, item: str, dispatch_id: str) -> Iterator[
 
 def read_progress(store: Path, dispatch_id: str) -> dict[str, Any] | None:
     """The stored progress of one dispatch, or None when there is none."""
-    path = progress_path(store, dispatch_id)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError):
-        return {"dispatch_id": _dispatch_id(dispatch_id), "corrupt": True}
-    return payload if isinstance(payload, dict) else {"dispatch_id": dispatch_id, "corrupt": True}
+    ident = _dispatch_id(dispatch_id)
+    return read_control(
+        progress_path(store, ident), identity=ident, key="dispatch_id"
+    )
 
 
 def tick_lock_path(store: Path) -> Path:
@@ -233,13 +234,8 @@ def _tick_holder(store: Path) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     if folder.is_dir():
         for path in sorted(folder.glob("*.json")):
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                candidates.append({"tick_id": path.stem, "corrupt": True})
-                continue
-            if not isinstance(payload, dict):
-                candidates.append({"tick_id": path.stem, "corrupt": True})
+            payload = read_control(path, identity=path.stem, key="tick_id")
+            if payload is None:
                 continue
             if payload.get("state") in ("completed", "failed"):
                 continue
@@ -263,25 +259,21 @@ def tick_progress_path(store: Path, tick_id: str) -> Path:
 
 def read_tick_progress(store: Path, tick_id: str) -> dict[str, Any] | None:
     """The stored progress of one tick, or None when there is none."""
-    path = tick_progress_path(store, tick_id)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError):
-        return {"tick_id": _dispatch_id(tick_id), "corrupt": True}
-    return payload if isinstance(payload, dict) else {"tick_id": tick_id, "corrupt": True}
+    ident = _dispatch_id(tick_id)
+    return read_control(
+        tick_progress_path(store, ident), identity=ident, key="tick_id"
+    )
 
 
 def write_tick_progress(store: Path, tick_id: str, **values: Any) -> dict[str, Any]:
     """Merge ``values`` into one tick's progress file and return it."""
     ident = _dispatch_id(tick_id)
-    current = read_tick_progress(store, ident) or {}
-    if current.get("corrupt"):
-        current = {"tick_id": ident, "corrupt": True}
-    merged = {**current, **values, "schema": 1, "tick_id": ident}
-    _write_json(tick_progress_path(store, ident), merged)
-    return merged
+    return merge_control(
+        tick_progress_path(store, ident),
+        identity=ident,
+        key="tick_id",
+        values=values,
+    )
 
 
 def tick_binding_path(store: Path, key: str) -> Path:
@@ -294,22 +286,12 @@ def tick_binding_path(store: Path, key: str) -> Path:
 
 def read_tick_binding(store: Path, key: str) -> dict[str, Any] | None:
     """The tick one key already names, or None."""
-    path = tick_binding_path(store, key)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError):
-        return {"key": key, "corrupt": True}
-    return payload if isinstance(payload, dict) else {"key": key, "corrupt": True}
+    return read_control(tick_binding_path(store, key), identity=key, key="key")
 
 
 def write_tick_binding(store: Path, key: str, **values: Any) -> dict[str, Any]:
     """Persist the key-to-tick binding before the child is launched."""
-    path = tick_binding_path(store, key)
-    payload = {**values, "schema": 1, "key": key}
-    _write_json(path, payload)
-    return payload
+    return write_control(tick_binding_path(store, key), binding_payload(key, values))
 
 
 def remove_tick_binding(store: Path, key: str) -> None:
@@ -320,69 +302,46 @@ def remove_tick_binding(store: Path, key: str) -> None:
 def write_progress(store: Path, dispatch_id: str, **values: Any) -> dict[str, Any]:
     """Merge ``values`` into one dispatch's progress file and return it."""
     ident = _dispatch_id(dispatch_id)
-    path = progress_path(store, ident)
-    current = read_progress(store, ident) or {}
-    if current.get("corrupt"):
-        current = {"dispatch_id": ident, "corrupt": True}
-    merged = {**current, **values, "schema": 1, "dispatch_id": ident}
-    _write_json(path, merged)
-    return merged
+    return merge_control(
+        progress_path(store, ident),
+        identity=ident,
+        key="dispatch_id",
+        values=values,
+    )
 
 
 def read_binding(store: Path, key: str) -> dict[str, Any] | None:
     """The dispatch id one key already names, or None."""
-    path = key_binding_path(store, key)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError):
-        return {"key": key, "corrupt": True}
-    return payload if isinstance(payload, dict) else {"key": key, "corrupt": True}
+    return read_control(key_binding_path(store, key), identity=key, key="key")
 
 
 def read_review_progress(store: Path, review_id: str) -> dict[str, Any] | None:
     """The stored progress of one review, or None when there is none."""
-    path = review_progress_path(store, review_id)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError):
-        return {"dispatch_id": _dispatch_id(review_id), "corrupt": True}
-    return payload if isinstance(payload, dict) else {"dispatch_id": review_id, "corrupt": True}
+    ident = _dispatch_id(review_id)
+    return read_control(
+        review_progress_path(store, ident), identity=ident, key="dispatch_id"
+    )
 
 
 def write_review_progress(store: Path, review_id: str, **values: Any) -> dict[str, Any]:
     """Merge ``values`` into one review's progress file and return it."""
     ident = _dispatch_id(review_id)
-    path = review_progress_path(store, ident)
-    current = read_review_progress(store, ident) or {}
-    if current.get("corrupt"):
-        current = {"dispatch_id": ident, "corrupt": True}
-    merged = {**current, **values, "schema": 1, "dispatch_id": ident}
-    _write_json(path, merged)
-    return merged
+    return merge_control(
+        review_progress_path(store, ident),
+        identity=ident,
+        key="dispatch_id",
+        values=values,
+    )
 
 
 def read_review_binding(store: Path, key: str) -> dict[str, Any] | None:
     """The review id one key already names, or None."""
-    path = review_binding_path(store, key)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError):
-        return {"key": key, "corrupt": True}
-    return payload if isinstance(payload, dict) else {"key": key, "corrupt": True}
+    return read_control(review_binding_path(store, key), identity=key, key="key")
 
 
 def write_review_binding(store: Path, key: str, **values: Any) -> dict[str, Any]:
     """Persist the key-to-review binding before any branch is created."""
-    path = review_binding_path(store, key)
-    payload = {**values, "schema": 1, "key": key}
-    _write_json(path, payload)
-    return payload
+    return write_control(review_binding_path(store, key), binding_payload(key, values))
 
 
 def remove_review_binding(store: Path, key: str) -> None:
@@ -392,10 +351,7 @@ def remove_review_binding(store: Path, key: str) -> None:
 
 def write_binding(store: Path, key: str, **values: Any) -> dict[str, Any]:
     """Persist the key-to-dispatch binding before any branch is created."""
-    path = key_binding_path(store, key)
-    payload = {**values, "schema": 1, "key": key}
-    _write_json(path, payload)
-    return payload
+    return write_control(key_binding_path(store, key), binding_payload(key, values))
 
 
 def remove_binding(store: Path, key: str) -> None:
@@ -414,13 +370,12 @@ def pending_dispatches(store: Path, item: str) -> list[dict[str, Any]]:
         return []
     found: list[dict[str, Any]] = []
     for path in sorted(folder.glob("*.json")):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            found.append({"dispatch_id": path.stem, "corrupt": True, "phase": "unknown"})
+        payload = read_control(path, identity=path.stem, key="dispatch_id")
+        if payload is None:
             continue
-        if not isinstance(payload, dict):
-            found.append({"dispatch_id": path.stem, "corrupt": True, "phase": "unknown"})
+        if payload.get("corrupt"):
+            payload.setdefault("phase", "unknown")
+            found.append(payload)
             continue
         if payload.get("state") == "completed":
             continue
@@ -490,14 +445,6 @@ def _same_path(left: Path, right: Path) -> bool:
     return os.path.normcase(str(Path(left).absolute())) == os.path.normcase(
         str(Path(right).absolute())
     )
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(text, encoding="utf-8", newline="\n")
-    os.replace(temporary, path)
 
 
 def _slug(value: Any) -> str:
