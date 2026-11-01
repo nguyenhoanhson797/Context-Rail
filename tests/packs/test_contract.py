@@ -174,6 +174,27 @@ def test_update_refuses_a_value_outside_a_preset_enum(tmp_path: Path) -> None:
     assert accepted["ok"] is True, accepted
 
 
+def test_the_engine_names_one_default_pack() -> None:
+    from context_rail.core.defaults import DEFAULT_PACK
+    from context_rail.gateway.tools import TOOLS
+    from context_rail.model.manifest import DEFAULT_MANIFEST
+
+    assert DEFAULT_MANIFEST["pack"] == DEFAULT_PACK
+    init = next(tool for tool in TOOLS if tool.name == "init")
+    pack_param = next(param for param in init.params if param.name == "pack")
+    assert pack_param.default == DEFAULT_PACK
+    create = next(tool for tool in TOOLS if tool.name == "pack create")
+    from_param = next(param for param in create.params if param.name == "from")
+    assert from_param.default == DEFAULT_PACK
+
+
+def test_the_builtin_profile_fallback_uses_the_default_pack() -> None:
+    from context_rail.core.defaults import DEFAULT_PACK
+    from context_rail.model.cto import load_builtin_profile, load_pack_profile
+
+    assert load_builtin_profile("cto") == load_pack_profile(DEFAULT_PACK, "cto")
+
+
 def _manifest_etag(store: Path) -> str:
     import hashlib
 

@@ -27,6 +27,7 @@ from context_rail.model.fields import (
     string,
     string_list,
 )
+from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.model.pack import canonical_pack_name
 
 __all__ = [
@@ -933,8 +934,8 @@ def _capture(raw: Any) -> dict[str, Any]:
 
 
 def load_builtin_profile(name: str) -> Profile:
-    """Load the ``basic`` pack's ``profiles/<name>.md`` and validate it strictly."""
-    return load_pack_profile("basic", name)
+    """Load the default pack's ``profiles/<name>.md`` and validate it strictly."""
+    return load_pack_profile(DEFAULT_PACK, name)
 
 
 def load_pack_profile(pack: str, name: str) -> Profile:
@@ -948,8 +949,8 @@ def load_pack_profile(pack: str, name: str) -> Profile:
 
 
 def load_builtin_skills() -> dict[str, str]:
-    """Every skill Note the ``basic`` pack ships, keyed by its directory name."""
-    return load_pack_skills("basic")
+    """Every skill Note the default pack ships, keyed by its directory name."""
+    return load_pack_skills(DEFAULT_PACK)
 
 
 def load_pack_skills(pack: str) -> dict[str, str]:

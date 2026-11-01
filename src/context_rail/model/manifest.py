@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from context_rail.core.util import canonical_iso, load_yaml
+from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
 from context_rail.model.pack import load_pack
@@ -49,7 +50,7 @@ class Manifest:
 
 DEFAULT_MANIFEST: dict[str, Any] = {
     "schema": SCHEMA_VERSION,
-    "pack": "basic",
+    "pack": DEFAULT_PACK,
     "placement": {
         "item": "items/{preset}/{slug}.md",
         "note": "notes/{preset}/{slug}.md",

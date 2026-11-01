@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
+from context_rail.core.defaults import DEFAULT_PACK
+
 __all__ = ["TOOLS", "Param", "Tool"]
 
 
@@ -42,7 +44,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("dir", "str", help="project directory (default: the current one)"),
-            Param("pack", "str", default="basic", help="pack name"),
+            Param("pack", "str", default=DEFAULT_PACK, help="pack name"),
             Param("root", "str", default="context-rail", help="store folder inside the project"),
             Param("interview", "bool", help="ask the picture questions in a terminal"),
             Param("answers_file", "str", help="JSON answers written by the human"),
@@ -60,7 +62,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("source", "str", required=True, help="v1 or v2 legacy store folder"),
             Param("dir", "str", required=True, help="project directory for the new store"),
             Param("root", "str", default="context-rail", help="store folder inside the project"),
-            Param("pack", "str", default="basic", help="pack name"),
+            Param("pack", "str", default=DEFAULT_PACK, help="pack name"),
             Param("dry_run", "bool", default=False, help="plan without writing"),
             Param("key", "str", help="idempotency key"),
         ),
@@ -251,7 +253,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("name", "str", required=True, help="new pack name"),
-            Param("from", "str", default="basic", help="pack to copy"),
+            Param("from", "str", default=DEFAULT_PACK, help="pack to copy"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.packs:pack_create",

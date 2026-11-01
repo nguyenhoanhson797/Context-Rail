@@ -16,6 +16,7 @@ from typing import Any, NoReturn
 
 import yaml
 
+from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
@@ -28,6 +29,7 @@ from context_rail.model.primitives import (
 
 __all__ = [
     "DEPRECATED_PACK_ALIASES",
+    "DEFAULT_PACK",
     "PACK_KEYS",
     "PACK_VERSION",
     "Pack",
