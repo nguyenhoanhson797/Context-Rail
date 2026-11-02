@@ -14,12 +14,19 @@ from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, load_manifest, render_path
 from context_rail.store.approval import APPROVAL_KIND
 from context_rail.store.doc import parse_doc
-from context_rail.store.write import commit
+from context_rail.store.write import WriteRefused, commit
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["approval_stage", "picture_stage", "probe", "workspace_seed"]
+__all__ = [
+    "agents_stage",
+    "approval_stage",
+    "git_drivers_stage",
+    "picture_stage",
+    "probe",
+    "workspace_seed",
+]
 
 _PICTURE_YES = ("y", "yes", "true")
 _INTERVIEW_COMMAND = "rail init --interview"
@@ -233,6 +240,74 @@ def approval_stage(
         "approval": result.get("approval"),
         "target": result.get("target"),
     }
+
+
+def agents_stage(context: Context, args: dict[str, Any]) -> dict[str, Any]:
+    """Render the managed agent files, passing the adapter refusal through."""
+    from context_rail.gateway.handlers.adapters import sync as adapters_sync
+
+    try:
+        result = adapters_sync(
+            context,
+            {
+                "dry_run": False,
+                "force": False,
+                "confirm": None,
+                "harness": args.get("harness") or [],
+                "key": None,
+            },
+            context.actor,
+        )
+    except WriteRefused as exc:
+        return {
+            "state": "refused",
+            "reason": exc.code,
+            "message": exc.message,
+            "details": exc.details,
+        }
+    if result.get("written"):
+        return {"state": "written", "written": result["written"]}
+    return {"state": "unchanged", "written": []}
+
+
+def git_drivers_stage(
+    context: Context, project_root: Path, args: dict[str, Any]
+) -> dict[str, Any]:
+    """Install the clone-local git drivers when the checkout asks for them."""
+    from context_rail.gateway.handlers.onboarding import _is_tty
+    from context_rail.gateway.handlers.sync import sync as sync_handler
+
+    if not _git_checkout(project_root):
+        return {"state": "skipped", "reason": "not_git"}
+    if args.get("no_git_drivers"):
+        return {"state": "skipped", "reason": "disabled"}
+    if not _is_tty():
+        return {
+            "state": "skipped",
+            "reason": "no_terminal",
+            "command": "rail sync --install",
+        }
+    answer = builtins.input("Install git merge drivers? [y/N]: ").strip().lower()
+    if answer not in _PICTURE_YES:
+        return {
+            "state": "skipped",
+            "reason": "deferred",
+            "command": "rail sync --install",
+        }
+    try:
+        result = sync_handler(
+            context,
+            {"install": True, "remote": None, "branch": None, "key": None},
+            context.actor,
+        )
+    except WriteRefused as exc:
+        return {
+            "state": "refused",
+            "reason": exc.code,
+            "message": exc.message,
+            "details": exc.details,
+        }
+    return {"state": "installed", "paths": result.get("paths", [])}
 
 
 def workspace_seed(context: Context) -> dict[str, Any]:
