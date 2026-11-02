@@ -9,7 +9,8 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 ## Store and documents
 
 ```text
-rail init [--dir DIR] [--pack NAME] [--root DIR]
+rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run]
+          [--no-approve] [--no-git-drivers] [--harness ID]...
           [--interview | --answers-file FILE | --draft-file FILE]
 rail add <preset> "<title>" [--rel REL=SLUG]... [--tag TAG]...
          [--set KEY=VALUE]... [--body-file FILE] [--confirm PHRASE]

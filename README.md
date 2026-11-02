@@ -39,12 +39,15 @@ works too.
 From the project you want to manage:
 
 ```bash
-rail init --pack basic            # writes ./context-rail/
-rail add goal "Ship v3"
-rail add task "Write the first task" --rel part_of=ship-v3
+rail init --pack basic            # writes ./context-rail/ and offers the picture
+rail add task "Write the first task"
 rail status
 rail cto brief
 ```
+
+`rail init` is resumable: re-running it keeps what already exists and continues
+from the next missing stage. On a terminal it offers the onboarding interview;
+without one it scaffolds the store and prints the command to resume.
 
 Every command prints one JSON envelope (`{"ok": true, "value": ...}` or
 `{"ok": false, "error": {...}}`) and exits 0 on success, 1 on a refusal, 2 on an
@@ -60,24 +63,40 @@ Notes that are easy to trip over:
 
 ### Onboarding a whole project
 
-`rail init --pack basic` writes only the skeleton (`rail.yaml`, `.gitignore`,
-empty folders). For a picture, the profiles and the agent files:
+Bare `rail init` is the onboarding pipeline. It probes the project, writes the
+absent skeleton, seeds the pack profiles and skills, offers the picture
+interview, asks for a fresh charter approval, writes the managed agent files,
+and offers the git drivers. Each stage reports `written`, `unchanged`,
+`skipped` or `refused`; re-running the same command resumes.
 
 ```bash
-rail init --interview                                   # or --answers-file FILE --confirm "APPROVE charter"
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
-rail adapters sync                                      # AGENTS.md + .agents/skills/
-rail sync --install                                     # optional: git merge drivers
+rail init --pack basic
 ```
 
-- `--interview` and `--answers-file` need the `human` actor; a CTO may only
+If approval was skipped, the receipt prints the exact command:
+
+```bash
+rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
+```
+
+Useful flags:
+
+- `--scaffold` writes only `rail.yaml`, `.gitignore` and the pinned folders,
+  preserving the old scripting behavior.
+- `--dry-run` prints the stage plan and writes nothing.
+- `--no-approve` leaves approval for a later run; `--no-git-drivers` skips the
+  merge-driver prompt.
+- `--harness agents|claude|cursor|gemini` limits the generated agent files.
+- `--interview`, `--answers-file FILE --confirm "APPROVE charter"` and
+  `--draft-file FILE` remain picture-source modes. They write the picture and
+  leave approval `missing`; run `rail init` again to resume the rest.
+  `--interview` and `--answers-file` need the `human` actor; a CTO may only
   propose with `--draft-file`, and a draft records no approval.
-- `init --answers-file` writes the picture but leaves approval `missing`; the
-  `approve` step is what records it, and it needs an explicit `--actor human`
-  or `RAIL_ACTOR=human`.
-- `adapters sync` mirrors the workspace profiles and skills into `AGENTS.md`
-  and `.agents/skills/` (or `CLAUDE.md`, `.cursor/`, `GEMINI.md`). It is a
-  separate step today; re-run it when a skill changes.
+
+`adapters sync` and `sync --install` remain available on their own. `adapters
+sync` mirrors the workspace profiles and skills into `AGENTS.md` and
+`.agents/skills/` (or `CLAUDE.md`, `.cursor/`, `GEMINI.md`); re-run it when a
+skill changes.
 
 Useful read commands:
 

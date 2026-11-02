@@ -38,12 +38,15 @@ own words into these; the engine never reads a status name or a tag.
 ## 60-second start (verified)
 
 ```powershell
-rail init --pack basic                 # creates ./context-rail/
+rail init --pack basic --scaffold      # skeleton only for this quick tour
 rail add goal "Ship v3"
 rail add task "Write the first task" --rel part_of=ship-v3
 rail status                            # executable: write-the-first-task
 rail cto brief                         # the CTO's bounded starting page
 ```
+
+Drop `--scaffold` to run the resumable onboarding pipeline instead: it offers
+the picture, approval, agent files and optional git drivers.
 
 Global options go **before** the command (`rail --store path status`).
 `add` takes positional arguments: `rail add <preset> "<title>"`.
@@ -53,15 +56,18 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
 | Step | Command | Writes |
 |---|---|---|
-| Skeleton | `rail init --pack basic` | `rail.yaml`, `.gitignore`, empty pinned folders |
-| Picture | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter"` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the pack's worker skills |
+| Onboarding pipeline | `rail init --pack basic` | skeleton, pack profiles and skills, the offered picture, the fresh approval, agent files and optional git drivers |
+| Skeleton only | `rail init --pack basic --scaffold` | `rail.yaml`, `.gitignore`, empty pinned folders |
+| Picture source | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter"` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the pack's worker skills |
 | Approve | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` | an approval record with the protected-file hashes |
 | Agent files | `rail adapters sync [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block) and `.agents/skills/<name>/SKILL.md` per skill note |
 | Git drivers | `rail sync --install` | `.gitattributes` and clone-local merge drivers |
 
-- Bare `init` is a skeleton: **no charter, no profiles, no skills, no
-  `AGENTS.md`**. The picture modes add them; approval stays `missing` until the
-  human approves.
+- Bare `init` is resumable: it keeps what exists and continues from the next
+  missing stage. `--dry-run` prints the plan and writes nothing.
+- `--scaffold` preserves the old skeleton-only behavior. The picture modes
+  write the picture and leave approval `missing`; run bare `rail init` again to
+  resume approval, agent files and git drivers.
 - The picture modes need the `human` actor. A CTO may only propose with
   `--draft-file`, and a draft records no approval.
 - `adapters sync` is what makes the checkout agent-ready. Re-run it when a
