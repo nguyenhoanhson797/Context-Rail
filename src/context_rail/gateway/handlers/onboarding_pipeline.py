@@ -105,7 +105,12 @@ def picture_stage(
                 "reason": "no_picture_source",
                 "command": _INTERVIEW_COMMAND,
             }
-        answer = builtins.input("No picture yet - enter it now? [Y/n]: ").strip().lower()
+        try:
+            answer = (
+                builtins.input("No picture yet - enter it now? [Y/n]: ").strip().lower()
+            )
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
         if answer not in _PICTURE_YES:
             return {
                 "state": "skipped",
@@ -203,16 +208,23 @@ def approval_stage(
             "reason": "no_terminal",
             "command": _APPROVE_COMMAND,
         }
-    confirmer = builtins.input("Confirmer: ").strip()
-    if not confirmer:
+    try:
+        confirmer = builtins.input("Confirmer: ").strip()
+        if not confirmer:
+            return {
+                "state": "skipped",
+                "reason": "no_confirmer",
+                "command": _APPROVE_COMMAND,
+            }
+        phrase = builtins.input(
+            "Type APPROVE charter to approve now (blank to skip): "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
         return {
             "state": "skipped",
-            "reason": "no_confirmer",
+            "reason": "deferred",
             "command": _APPROVE_COMMAND,
         }
-    phrase = builtins.input(
-        "Type APPROVE charter to approve now (blank to skip): "
-    ).strip()
     if not phrase:
         return {
             "state": "skipped",
@@ -290,7 +302,12 @@ def git_drivers_stage(
             "reason": "no_terminal",
             "command": "rail sync --install",
         }
-    answer = builtins.input("Install git merge drivers? [y/N]: ").strip().lower()
+    try:
+        answer = (
+            builtins.input("Install git merge drivers? [y/N]: ").strip().lower()
+        )
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
     if answer not in _PICTURE_YES:
         return {
             "state": "skipped",
@@ -422,9 +439,13 @@ def _receipt(
     stages: dict[str, Any],
     status: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    try:
+        state = context.approval["state"]
+    except (ModelError, WriteRefused):
+        state = "missing"
     approved = (
         stages.get("approval", {}).get("state") == "approved"
-        or context.approval["state"] == "approved"
+        or state == "approved"
     )
     return {
         "store": str(store),

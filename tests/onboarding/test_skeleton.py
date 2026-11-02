@@ -61,6 +61,21 @@ def test_skeleton_refuses_a_different_pack(tmp_path: Path) -> None:
     assert (tmp_path / "context-rail" / "rail.yaml").read_bytes() == before
 
 
+def test_skeleton_accepts_a_deprecated_pack_alias(tmp_path: Path) -> None:
+    skeleton(None, _args(tmp_path), "human", allow_existing=True)
+    manifest = tmp_path / "context-rail" / "rail.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace("pack: basic", "pack: small"),
+        encoding="utf-8",
+    )
+    before = manifest.read_bytes()
+
+    result = skeleton(None, _args(tmp_path), "human", allow_existing=True)
+
+    assert result["state"] == "unchanged"
+    assert manifest.read_bytes() == before
+
+
 def test_skeleton_refuses_a_malformed_existing_manifest(tmp_path: Path) -> None:
     store = tmp_path / "context-rail"
     store.mkdir()

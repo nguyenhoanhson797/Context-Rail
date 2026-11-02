@@ -100,6 +100,30 @@ def test_picture_stage_defers_when_the_human_does_not_enter_one(
     assert not (store / "charter.md").exists()
 
 
+def test_picture_stage_defers_on_eof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skeleton(None, _args(tmp_path), "human", allow_existing=True)
+    store = tmp_path / "context-rail"
+    context = _context(store)
+    try:
+        workspace_seed(context)
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+
+        def eof(prompt: str = "") -> str:
+            raise EOFError
+
+        monkeypatch.setattr("builtins.input", eof)
+        result = picture_stage(
+            context, tmp_path, actor="human", args=_args(tmp_path)
+        )
+    finally:
+        context.close()
+
+    assert result["state"] == "skipped"
+    assert result["reason"] == "deferred"
+
+
 def test_picture_stage_interviews_a_fresh_store(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

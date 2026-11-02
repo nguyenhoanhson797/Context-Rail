@@ -10,7 +10,7 @@ import yaml
 from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml
 from context_rail.model.manifest import Manifest, initial_manifest
-from context_rail.model.pack import load_pack
+from context_rail.model.pack import canonical_pack_name, load_pack
 from context_rail.store.location import confine
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
 
@@ -83,7 +83,7 @@ def skeleton(
                 "the existing rail.yaml cannot be read",
                 {"path": str(store / "rail.yaml")},
             )
-        if stored != pack.name:
+        if canonical_pack_name(stored) != pack.name:
             raise WriteRefused(
                 "CONFLICT",
                 f"the store uses pack {stored!r}, not {pack.name!r}",
