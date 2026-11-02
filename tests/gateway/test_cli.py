@@ -21,7 +21,7 @@ SRC_DIR = Path(cli.__file__).resolve().parent.parent
 
 
 def _init(tmp_path: Path) -> Path:
-    result = invoke("init", {"dir": str(tmp_path)}, actor="human")
+    result = invoke("init", {"dir": str(tmp_path), "scaffold": True}, actor="human")
     assert is_ok(result), result
     return tmp_path / "context-rail"
 
@@ -71,6 +71,36 @@ def test_cli_exit_codes(tmp_path):
     ok = run_cli(tmp_path, "status")
     assert ok.returncode == 0
     assert _json(ok)["ok"] is True
+
+
+def test_cli_init_dry_run_writes_nothing(tmp_path):
+    proc = run_cli(tmp_path, "init", "--dir", str(tmp_path), "--dry-run")
+
+    assert proc.returncode == 0, proc.stdout
+    assert _json(proc)["value"]["dry_run"] is True
+    assert not (tmp_path / "context-rail").exists()
+
+
+def test_cli_init_scaffold_keeps_the_old_shape(tmp_path):
+    first = run_cli(tmp_path, "init", "--dir", str(tmp_path), "--scaffold")
+    assert first.returncode == 0, first.stdout
+    assert set(_json(first)["value"]) == {"store", "pack"}
+    assert not (
+        tmp_path / "context-rail" / "workspace" / "cto" / "profile.md"
+    ).exists()
+
+    again = run_cli(tmp_path, "init", "--dir", str(tmp_path), "--scaffold")
+    assert again.returncode == 1
+    assert _json(again)["error"]["code"] == "CONFLICT"
+
+
+def test_cli_init_scaffold_rejects_a_picture_mode(tmp_path):
+    proc = run_cli(
+        tmp_path, "init", "--dir", str(tmp_path), "--scaffold", "--interview"
+    )
+
+    assert proc.returncode == 1
+    assert _json(proc)["error"]["code"] == "VALIDATION_FAILED"
 
 
 def test_cli_help_does_not_import_yaml_or_sqlite():

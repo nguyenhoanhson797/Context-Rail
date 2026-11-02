@@ -51,6 +51,7 @@ def run_cli(
         text=True,
         encoding="utf-8",
         env=env,
+        input="",
         timeout=600,
     )
 
@@ -654,7 +655,9 @@ def init_store(tmp_path: Path, pack: str = "basic") -> Path:
     from context_rail.gateway.gateway import invoke
 
     result = invoke(
-        "init", {"dir": str(tmp_path), "pack": pack}, actor="human"
+        "init",
+        {"dir": str(tmp_path), "pack": pack, "scaffold": True},
+        actor="human",
     )
     assert result["ok"] is True, result
     return Path(result["value"]["store"])

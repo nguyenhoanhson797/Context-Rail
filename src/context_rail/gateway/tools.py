@@ -40,7 +40,7 @@ class Tool(NamedTuple):
 TOOLS: tuple[Tool, ...] = (
     Tool(
         name="init",
-        summary="Create a store, or turn an interview or answers file into the project picture.",
+        summary="Reconcile a project to an onboarded store, or enter one picture source.",
         permission="write",
         params=(
             Param("dir", "str", help="project directory (default: the current one)"),
@@ -50,6 +50,11 @@ TOOLS: tuple[Tool, ...] = (
             Param("answers_file", "str", help="JSON answers written by the human"),
             Param("draft_file", "str", help="JSON picture proposed by the CTO"),
             Param("confirm", "str", help="the typed phrase APPROVE charter"),
+            Param("scaffold", "bool", help="write only the skeleton, as before"),
+            Param("no_approve", "bool", help="leave approval for a later run"),
+            Param("no_git_drivers", "bool", help="skip installing git merge drivers"),
+            Param("dry_run", "bool", help="print the stage plan without writing"),
+            Param("harness", "str", repeat=True, help="agents, claude, cursor or gemini"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.onboarding:init",

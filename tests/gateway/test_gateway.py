@@ -24,7 +24,9 @@ RECORD_KEYS = {"id", "primitive", "preset", "kind", "at", "actor", "about", "dat
 
 
 def _init(tmp_path: Path, **args: Any) -> Path:
-    result = invoke("init", {"dir": str(tmp_path), **args}, actor="human")
+    result = invoke(
+        "init", {"dir": str(tmp_path), "scaffold": True, **args}, actor="human"
+    )
     assert is_ok(result), result
     return Path(result["value"]["store"])
 
@@ -166,7 +168,7 @@ def test_init_refuses_an_existing_store_even_when_malformed(tmp_path):
     store = _init(tmp_path)
     before = (store / "rail.yaml").read_bytes()
 
-    again = invoke("init", {"dir": str(tmp_path)}, actor="human")
+    again = invoke("init", {"dir": str(tmp_path), "scaffold": True}, actor="human")
 
     assert again["error"]["code"] == "CONFLICT"
     assert (store / "rail.yaml").read_bytes() == before
@@ -174,7 +176,7 @@ def test_init_refuses_an_existing_store_even_when_malformed(tmp_path):
     broken = tmp_path / "broken"
     (broken / "context-rail").mkdir(parents=True)
     (broken / "context-rail" / "rail.yaml").write_bytes(b"schema: [")
-    refused = invoke("init", {"dir": str(broken)}, actor="human")
+    refused = invoke("init", {"dir": str(broken), "scaffold": True}, actor="human")
     assert refused["error"]["code"] == "CONFLICT"
     assert (broken / "context-rail" / "rail.yaml").read_bytes() == b"schema: ["
 
@@ -192,8 +194,12 @@ def test_init_confines_root_and_validates_the_pack(tmp_path):
 
 
 def test_keyed_init_replays_instead_of_refusing(tmp_path):
-    first = invoke("init", {"dir": str(tmp_path), "key": "k-init"}, actor="human")
-    second = invoke("init", {"dir": str(tmp_path), "key": "k-init"}, actor="human")
+    first = invoke(
+        "init", {"dir": str(tmp_path), "key": "k-init", "scaffold": True}, actor="human"
+    )
+    second = invoke(
+        "init", {"dir": str(tmp_path), "key": "k-init", "scaffold": True}, actor="human"
+    )
 
     assert is_ok(first), first
     assert is_ok(second), second

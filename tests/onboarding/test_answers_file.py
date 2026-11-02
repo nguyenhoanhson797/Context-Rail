@@ -57,7 +57,7 @@ def _store_files(store: Path) -> dict[str, bytes]:
 
 
 def _init_scaffold(tmp_path: Path) -> Path:
-    created = invoke("init", {"dir": str(tmp_path)}, actor="human")
+    created = invoke("init", {"dir": str(tmp_path), "scaffold": True}, actor="human")
     assert is_ok(created), created
     return tmp_path / STORE
 

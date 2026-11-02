@@ -67,7 +67,9 @@ def test_init_uses_the_pack_layout_and_pins_its_folders(tmp_path: Path) -> None:
         store, "custom", layout={"placement": {"item": "work/{preset}/{slug}.md"}}
     )
 
-    result = invoke("init", {"dir": str(tmp_path), "pack": "custom"}, actor="human")
+    result = invoke(
+        "init", {"dir": str(tmp_path), "pack": "custom", "scaffold": True}, actor="human"
+    )
 
     assert result["ok"] is True, result
     manifest = load_manifest(store)

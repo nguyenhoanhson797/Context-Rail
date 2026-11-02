@@ -86,10 +86,34 @@ _NO = ("n", "no", "false")
 
 
 def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Route ``init`` to the 1a scaffold or to one picture mode."""
-    mode = _mode(args)
-    if mode == "scaffold":
+    """Route ``init`` to the scaffold, the onboarding pipeline or a picture mode."""
+    if args.get("scaffold"):
+        if any(args.get(name) for name in ("interview", "answers_file", "draft_file")):
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "--scaffold cannot be combined with a picture mode",
+            )
+        if args.get("dry_run"):
+            return _scaffold_plan(args)
         return scaffold(None, args, actor)
+    if args.get("dry_run") or _mode(args) == "scaffold":
+        from context_rail.gateway.execution import ACTOR_NAMED
+        from context_rail.gateway.handlers.onboarding_pipeline import render_card, run
+
+        project_root = Path(args["dir"] or Path.cwd())
+        store = confine(project_root, args["root"])
+        receipt = run(
+            project_root,
+            store,
+            pack_name=args.get("pack") or "basic",
+            actor=actor,
+            actor_named=ACTOR_NAMED.get(),
+            args=args,
+        )
+        if _is_tty():
+            print(render_card(receipt), file=sys.stderr)
+        return receipt
+    mode = _mode(args)
     if mode == "draft":
         if actor != "cto":
             raise WriteRefused(
@@ -411,7 +435,11 @@ def picture_ops(
             )
         )
     if include_workspace:
-        ops.extend(agent_ops(context.store, manifest, pack_name))
+        ops.extend(
+            op
+            for op in agent_ops(context.store, manifest, pack_name)
+            if not (context.store / op.path).is_file()
+        )
     picture = [
         slugs["goal"],
         slugs["vision"],
@@ -488,6 +516,28 @@ def _materialise(
         "picture": info["picture"],
         "charter": info["charter"],
         "approval": "missing",
+    }
+
+
+def _scaffold_plan(args: dict[str, Any]) -> dict[str, Any]:
+    """The no-write plan for ``init --scaffold --dry-run``."""
+    from context_rail.gateway.handlers.onboarding_pipeline import probe
+
+    project_root = Path(args["dir"] or Path.cwd())
+    store = confine(project_root, args["root"])
+    found = probe(project_root, store, args.get("pack") or "basic")
+    return {
+        "store": str(store),
+        "pack": found["store"]["pack"] or args.get("pack") or "basic",
+        "stages": {
+            "skeleton": {
+                "state": "unchanged" if found["store"]["exists"] else "planned"
+            }
+        },
+        "status": None,
+        "approval": "missing",
+        "next": ["rail init"],
+        "dry_run": True,
     }
 
 

@@ -12,6 +12,7 @@ import yaml
 from context_rail.core.util import load_yaml
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, load_manifest, render_path
+from context_rail.model.pack import load_pack
 from context_rail.store.approval import APPROVAL_KIND
 from context_rail.store.doc import parse_doc
 from context_rail.store.write import WriteRefused, commit
@@ -25,6 +26,8 @@ __all__ = [
     "git_drivers_stage",
     "picture_stage",
     "probe",
+    "render_card",
+    "run",
     "workspace_seed",
 ]
 
@@ -330,6 +333,188 @@ def workspace_seed(context: Context) -> dict[str, Any]:
         index=context.index,
     )
     return {"state": "written", "written": result["written"]}
+
+
+def run(
+    project_root: Path,
+    store: Path,
+    *,
+    pack_name: str,
+    actor: str,
+    actor_named: bool,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Reconcile the project to the furthest onboarding state it can reach."""
+    project_root = Path(project_root)
+    store = Path(store)
+    plan = probe(project_root, store, pack_name)
+    if args.get("dry_run"):
+        return _dry_receipt(project_root, store, plan)
+    skeleton_args = {
+        "dir": str(project_root),
+        "root": args.get("root") or store.name,
+        "pack": pack_name,
+        "key": args.get("key"),
+    }
+    from context_rail.gateway.handlers.init import skeleton
+
+    stages: dict[str, Any] = {
+        "skeleton": skeleton(None, skeleton_args, actor, allow_existing=True)
+    }
+    manifest = load_manifest(store)
+    from context_rail.gateway.gateway import Context
+
+    context = Context(store=store, manifest=manifest, pack=load_pack(manifest.pack, store), actor=actor)
+    try:
+        try:
+            stages["workspace"] = workspace_seed(context)
+        except WriteRefused as exc:
+            stages["workspace"] = _refused(exc)
+        try:
+            picture = picture_stage(context, project_root, actor=actor, args=args)
+        except WriteRefused as exc:
+            stages["picture"] = _refused(exc)
+            stages["approval"] = {"state": "skipped", "reason": "picture_refused"}
+            stages["agents"] = {"state": "skipped", "reason": "picture_refused"}
+            stages["git_drivers"] = {"state": "skipped", "reason": "picture_refused"}
+            return _receipt(project_root, store, context, stages, None)
+        stages["picture"] = picture
+        if picture.get("state") == "skipped" and picture.get("reason") in {
+            "deferred",
+            "no_picture_source",
+        }:
+            stages["approval"] = {"state": "skipped", "reason": "picture_deferred"}
+            stages["agents"] = {"state": "skipped", "reason": "picture_deferred"}
+            stages["git_drivers"] = {"state": "skipped", "reason": "picture_deferred"}
+            return _receipt(project_root, store, context, stages, None)
+        stages["approval"] = approval_stage(
+            context, actor=actor, actor_named=actor_named, args=args
+        )
+        stages["agents"] = agents_stage(context, args)
+        stages["git_drivers"] = git_drivers_stage(context, project_root, args)
+        return _receipt(project_root, store, context, stages, _status(context, actor))
+    finally:
+        context.close()
+
+
+def _status(context: Context, actor: str) -> dict[str, Any] | None:
+    from context_rail.gateway.handlers.views import status
+
+    try:
+        return status(context, {}, actor)
+    except (ModelError, OSError, ValueError, WriteRefused):
+        return None
+
+
+def _refused(exc: WriteRefused) -> dict[str, Any]:
+    return {
+        "state": "refused",
+        "reason": exc.code,
+        "message": exc.message,
+        "details": exc.details,
+    }
+
+
+def _receipt(
+    project_root: Path,
+    store: Path,
+    context: Context,
+    stages: dict[str, Any],
+    status: dict[str, Any] | None,
+) -> dict[str, Any]:
+    approved = (
+        stages.get("approval", {}).get("state") == "approved"
+        or context.approval["state"] == "approved"
+    )
+    return {
+        "store": str(store),
+        "pack": context.pack.name,
+        "stages": stages,
+        "status": status,
+        "approval": "approved" if approved else "missing",
+        "next": _next_steps(approved),
+        "dry_run": False,
+    }
+
+
+def _next_steps(approved: bool) -> list[str]:
+    steps = []
+    if not approved:
+        steps.append(_APPROVE_COMMAND)
+    steps.extend(
+        [
+            'rail add task "..."',
+            "rail cto brief",
+            "rail ui serve",
+        ]
+    )
+    return steps
+
+
+def _dry_receipt(
+    project_root: Path, store: Path, plan: dict[str, Any]
+) -> dict[str, Any]:
+    picture = plan["picture"]
+    stages = {
+        "skeleton": {
+            "state": "unchanged" if plan["store"]["exists"] else "planned"
+        },
+        "workspace": {
+            "state": "unchanged" if plan["workspace"]["exists"] else "planned"
+        },
+        "picture": (
+            {
+                "state": "skipped",
+                "reason": "picture_present",
+                "slugs": picture["slugs"],
+            }
+            if picture["exists"]
+            else {"state": "planned"}
+        ),
+        "approval": (
+            {"state": "unchanged", "approval": "approved"}
+            if plan["approval"]["state"] == "recorded"
+            else {"state": "planned"}
+        ),
+        "agents": {
+            "state": "unchanged" if plan["agents"]["exists"] else "planned"
+        },
+        "git_drivers": (
+            {"state": "planned"} if plan["git"]["exists"] else {"state": "skipped", "reason": "not_git"}
+        ),
+    }
+    return {
+        "store": str(store),
+        "pack": plan["store"]["pack"] or "basic",
+        "stages": stages,
+        "status": None,
+        "approval": (
+            "approved" if plan["approval"]["state"] == "recorded" else "missing"
+        ),
+        "next": _next_steps(plan["approval"]["state"] == "recorded"),
+        "dry_run": True,
+    }
+
+
+def render_card(receipt: dict[str, Any]) -> str:
+    """A short human-readable view of one onboarding receipt."""
+    lines = [
+        f"context rail - onboarding (store: {receipt['store']}, pack: {receipt['pack']})"
+    ]
+    for name, stage in receipt["stages"].items():
+        state = stage.get("state", "unknown")
+        detail = ""
+        if stage.get("written"):
+            detail = ": " + ", ".join(stage["written"])
+        elif stage.get("reason"):
+            detail = f" ({stage['reason']})"
+        lines.append(f"  {name:<11} {state}{detail}")
+    if receipt.get("status") is not None:
+        counts = receipt["status"].get("counts", {})
+        summary = ", ".join(f"{key} {value}" for key, value in counts.items())
+        lines.append(f"status: {summary or '0 items'} - store approval: {receipt['approval']}")
+    lines.append("next: " + " | ".join(receipt["next"]))
+    return "\n".join(lines)
 
 
 def _raw_pack(store: Path) -> str | None:
