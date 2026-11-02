@@ -85,6 +85,24 @@ def test_bare_init_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert not (tmp_path / "context-rail").exists()
 
 
+def test_dry_run_respects_no_approve_and_no_git_drivers(tmp_path: Path) -> None:
+    result = invoke(
+        "init",
+        {
+            "dir": str(tmp_path),
+            "dry_run": True,
+            "no_approve": True,
+            "no_git_drivers": True,
+        },
+        actor="human",
+    )
+
+    assert is_ok(result), result
+    stages = result["value"]["stages"]
+    assert stages["approval"] == {"state": "skipped", "reason": "no_approve"}
+    assert stages["git_drivers"] == {"state": "skipped", "reason": "disabled"}
+
+
 def test_bare_init_can_approve_on_a_terminal(
     unapproved_store: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

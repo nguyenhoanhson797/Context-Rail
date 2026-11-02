@@ -366,7 +366,7 @@ def run(
     store = Path(store)
     plan = probe(project_root, store, pack_name)
     if args.get("dry_run"):
-        return _dry_receipt(project_root, store, plan)
+        return _dry_receipt(project_root, store, plan, args)
     skeleton_args = {
         "dir": str(project_root),
         "root": args.get("root") or store.name,
@@ -482,9 +482,21 @@ def _next_steps(approved: bool, stages: dict[str, Any]) -> list[str]:
 
 
 def _dry_receipt(
-    project_root: Path, store: Path, plan: dict[str, Any]
+    project_root: Path, store: Path, plan: dict[str, Any], args: dict[str, Any]
 ) -> dict[str, Any]:
     picture = plan["picture"]
+    if args.get("no_approve"):
+        approval = {"state": "skipped", "reason": "no_approve"}
+    elif plan["approval"]["state"] == "recorded":
+        approval = {"state": "unchanged", "approval": "approved"}
+    else:
+        approval = {"state": "planned"}
+    if args.get("no_git_drivers"):
+        git_drivers = {"state": "skipped", "reason": "disabled"}
+    elif plan["git"]["exists"]:
+        git_drivers = {"state": "planned"}
+    else:
+        git_drivers = {"state": "skipped", "reason": "not_git"}
     stages = {
         "skeleton": {
             "state": "unchanged" if plan["store"]["exists"] else "planned"
@@ -501,17 +513,11 @@ def _dry_receipt(
             if picture["exists"]
             else {"state": "planned"}
         ),
-        "approval": (
-            {"state": "unchanged", "approval": "approved"}
-            if plan["approval"]["state"] == "recorded"
-            else {"state": "planned"}
-        ),
+        "approval": approval,
         "agents": {
             "state": "unchanged" if plan["agents"]["exists"] else "planned"
         },
-        "git_drivers": (
-            {"state": "planned"} if plan["git"]["exists"] else {"state": "skipped", "reason": "not_git"}
-        ),
+        "git_drivers": git_drivers,
     }
     if not picture["exists"]:
         next_steps = [
