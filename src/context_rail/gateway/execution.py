@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from context_rail.store.write import WriteRefused
 
 EXPLICIT_ACTOR: ContextVar[str | None] = ContextVar("explicit_actor", default=None)
+ACTOR_NAMED: ContextVar[bool] = ContextVar("actor_named", default=True)
 SERVING: ContextVar[bool] = ContextVar("serving", default=False)
 
 

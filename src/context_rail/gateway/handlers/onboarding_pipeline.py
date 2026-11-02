@@ -19,10 +19,14 @@ from context_rail.store.write import commit
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["picture_stage", "probe", "workspace_seed"]
+__all__ = ["approval_stage", "picture_stage", "probe", "workspace_seed"]
 
 _PICTURE_YES = ("y", "yes", "true")
 _INTERVIEW_COMMAND = "rail init --interview"
+_APPROVE_COMMAND = (
+    'rail --actor human approve charter --confirm "APPROVE charter" '
+    "--confirmer NAME"
+)
 
 _CHARTER = "charter"
 
@@ -140,6 +144,94 @@ def picture_stage(
         "picture": result["picture"],
         "written": result["written"],
         "charter": result["charter"],
+    }
+
+
+def approval_stage(
+    context: Context,
+    *,
+    actor: str,
+    actor_named: bool,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Offer the fresh approval phrase when the picture is waiting for one."""
+    from context_rail.gateway.handlers.onboarding import _is_tty, approve
+    from context_rail.store.write import WriteRefused
+
+    try:
+        state = context.approval["state"]
+    except (ModelError, WriteRefused) as exc:
+        return {
+            "state": "refused",
+            "reason": getattr(exc, "code", "VALIDATION_FAILED"),
+            "message": str(exc),
+            "command": _APPROVE_COMMAND,
+        }
+    if state == "approved":
+        return {"state": "unchanged", "approval": "approved"}
+    if state != "missing":
+        return {
+            "state": "skipped",
+            "reason": f"approval_{state}",
+            "command": _APPROVE_COMMAND,
+        }
+    if args.get("no_approve"):
+        return {
+            "state": "skipped",
+            "reason": "no_approve",
+            "command": _APPROVE_COMMAND,
+        }
+    if not actor_named or actor != "human":
+        return {
+            "state": "skipped",
+            "reason": "actor_not_named",
+            "command": _APPROVE_COMMAND,
+        }
+    if not _is_tty():
+        return {
+            "state": "skipped",
+            "reason": "no_terminal",
+            "command": _APPROVE_COMMAND,
+        }
+    confirmer = builtins.input("Confirmer: ").strip()
+    if not confirmer:
+        return {
+            "state": "skipped",
+            "reason": "no_confirmer",
+            "command": _APPROVE_COMMAND,
+        }
+    phrase = builtins.input(
+        "Type APPROVE charter to approve now (blank to skip): "
+    ).strip()
+    if not phrase:
+        return {
+            "state": "skipped",
+            "reason": "deferred",
+            "command": _APPROVE_COMMAND,
+        }
+    try:
+        result = approve(
+            context,
+            {
+                "target": "charter",
+                "confirm": phrase,
+                "confirmer": confirmer,
+                "expect": None,
+                "key": None,
+            },
+            actor,
+        )
+    except (ModelError, WriteRefused) as exc:
+        return {
+            "state": "refused",
+            "reason": getattr(exc, "code", "VALIDATION_FAILED"),
+            "message": str(exc),
+            "command": _APPROVE_COMMAND,
+        }
+    return {
+        "state": "approved",
+        "approval": result.get("approval"),
+        "target": result.get("target"),
     }
 
 

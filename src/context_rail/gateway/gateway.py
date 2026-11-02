@@ -24,6 +24,7 @@ from typing import Any, Callable
 
 from context_rail.core.result import fail, ok
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
+from context_rail.gateway.execution import ACTOR_NAMED
 from context_rail.gateway.tools import TOOLS, Param, Tool
 from context_rail.kernel import rights
 from context_rail.kernel.lifecycle import category_of
@@ -155,6 +156,7 @@ def invoke(
     """Run one tool and return a Result envelope; no exception escapes."""
     resolved_actor, actor_named = _resolve_actor(actor)
     actor_env = _actor_env()
+    named_token = ACTOR_NAMED.set(actor_named)
     context: Context | None = None
     try:
         tool = _tool(name)
@@ -173,6 +175,7 @@ def invoke(
     finally:
         if context is not None:
             context.close()
+        ACTOR_NAMED.reset(named_token)
 
 
 def _actor_env() -> str | None:
