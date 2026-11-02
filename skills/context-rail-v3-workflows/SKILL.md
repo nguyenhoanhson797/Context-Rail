@@ -33,9 +33,14 @@ binary.
 
 Every pack also declares `blocked` and `dropped`; the table lists the flow the
 team sees. All four also declare the shared base presets: `goal`, `scope`, `task`, `bug`,
-`risk`, `question`, `note`, `convention`, `decision`, `event`, `check`,
+`risk`, `question`, `note`, `convention`, `code`, `decision`, `event`, `check`,
 `charter`, `vision`, `wont`, `skill`, `cto`, `profile` and `fix`.
 
+- All four ship a `code` note preset and a `code-map` skill. The implementer writes
+  the notes in its candidate; the reviewer checks them against the diff. A code note
+  names a source file, class, function or method; `depends_on` points at what it
+  needs, so the notes pointing at a code note are its editing impact. The source
+  path lives in `source_path` because the engine reserves `path`.
 - `small` and `indie` are deprecated aliases for `basic` and `flow`. A store
   that still says `pack: small` keeps working and keeps its approval;
   `rail pack list` shows the canonical pack and marks it active.
@@ -95,6 +100,9 @@ policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
 - Tags are free text and never drive engine behaviour.
 - New presets need no manifest entry: they render under the primitive's
   placement, e.g. `items/story/<slug>.md`.
+- A pack may also ship `layout.yaml` with initial `placement` and `presets`.
+  `init`, onboarding and `migrate` seed `rail.yaml` from it; `rail.yaml` is
+  authoritative afterwards, and `pack use` never moves files.
 - The pack also ships `profiles/`, `skills/` and `templates/`. Those are a
   seed: `init` copies them into the store, so editing the pack later changes
   only new stores. `pack.yaml` is read live on every command.

@@ -19,6 +19,7 @@ presets:
   idea:       {primitive: item,   tags: [idea]}
   note:       {primitive: note,   tags: []}
   convention: {primitive: note,   tags: [convention]}
+  code:       {primitive: note,   tags: [code], fields: {kind: [file, module, class, function, method]}, template: templates/code.md}
   decision:   {primitive: record, tags: [decision]}
   event:      {primitive: record, tags: [event]}
   check:      {primitive: check,  tags: []}

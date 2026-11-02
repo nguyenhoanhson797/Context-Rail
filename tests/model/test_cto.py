@@ -467,6 +467,9 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
         "cto brief",
         "ledger",
         "report",
+        "add",
+        "update",
+        "link",
     )
     assert implementer.budgets == {
         "attempts": 2,
@@ -480,7 +483,13 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
     assert reviewer.effort is None
     assert reviewer.auto is None
     assert reviewer.tools == READ_ONLY_TOOL_IDS
-    assert reviewer.allowed_methods == implementer.allowed_methods
+    assert reviewer.allowed_methods == (
+        "find",
+        "show",
+        "cto brief",
+        "ledger",
+        "report",
+    )
     assert reviewer.budgets == implementer.budgets
 
     for profile in (cto, implementer, reviewer):
@@ -636,7 +645,7 @@ def test_profile_body_must_be_a_nonempty_role_prompt() -> None:
 
 def test_builtin_skills_load_with_pinned_names() -> None:
     skills = load_builtin_skills()
-    assert sorted(skills) == ["review-checklist", "test-first"]
+    assert sorted(skills) == ["code-map", "review-checklist", "test-first"]
     for slug, text in skills.items():
         assert text.strip()
         assert f"name: {slug}" in text

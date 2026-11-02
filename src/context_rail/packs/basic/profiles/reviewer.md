@@ -8,7 +8,7 @@ model: 'custom:gemini-3.8-flash-LTN-0'
 effort: null
 auto: null
 tools: [read-cli, ls-cli, grep_tool_cli, glob-search-cli]
-skills: [workspace/profiles/reviewer/skills/review-checklist.md]
+skills: [workspace/profiles/reviewer/skills/review-checklist.md, workspace/profiles/reviewer/skills/code-map.md]
 budgets: {attempts: 2, seconds: 3600, tokens: null, credits: null}
 ---
 # Reviewer
@@ -20,6 +20,8 @@ Rules:
 
 - Judge the candidate commit against the Item's acceptance and the charter's rules, not
   against the implementer's description of the work.
+- Refuse a candidate that changes code without a matching `code` note; check the
+  code map's `source_path` and `kind` against the diff.
 - Refuse on a failing or stale Check, an unbound candidate, a self-review, or a model
   that is the same as the implementer's when the charter requires otherwise.
 - Name each finding concretely enough that the implementer can act on it, and keep the

@@ -28,6 +28,7 @@ from context_rail.gateway.handlers.common import (
 from context_rail.kernel.budgets import launch_refusal
 from context_rail.model.cto import aggregate_usage, parse_report, parse_run
 from context_rail.model.errors import ModelError
+from context_rail.model.manifest import Manifest, render_path
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner import git as git_runner
 from context_rail.runner.droid import (
@@ -38,7 +39,7 @@ from context_rail.runner.droid import (
     write_role_file,
 )
 from context_rail.store import query
-from context_rail.store.doc import Doc, etag
+from context_rail.store.doc import Doc, etag, parse_doc
 from context_rail.store.write import WriteRefused, commit, resolve_unique
 
 from .budget import (
@@ -56,6 +57,7 @@ from .checkpoint import (
     _store_paths,
 )
 from .common import (
+    ADAPTER_PATHS,
     IMPL_ROLE,
     SUMMARY_MAX,
     _Plan,
@@ -267,10 +269,11 @@ def _sections(plan: _Plan, doc: Doc) -> dict[str, str]:
         "checks": check_lines,
         "allowed rail methods": methods,
         "no-store-edit rule": (
-            f"Never write {plan.store.absolute()} (the canonical store). Read it with "
-            f"`rail --store {plan.store.absolute()}`; never adopt a store copied into your "
-            "checkout. The parent writes Records from your result; a changed store path "
-            "refuses your candidate."
+            "Write only `code` notes in this worktree's store: `rail add code ...`, "
+            "`rail update ...` and `rail link ...`. Never use "
+            f"`rail --store {plan.store.absolute()}` (the canonical store); the parent "
+            "writes every other Record and performs the merge. Any other store path in "
+            "your candidate is refused."
         ),
         "commit expectation": (
             "Leave your work as commits on the current branch. Do not merge, rebase, push "
@@ -462,6 +465,129 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
     return value
 
 
+_CODE_NOTE_KINDS = frozenset({"file", "module", "class", "function", "method"})
+_CODE_RECORD_KINDS = frozenset(
+    {"doc.created", "doc.updated", "relation.changed", "decision.made"}
+)
+
+
+def _code_map_changes(
+    manifest: Manifest,
+    worktree: Path,
+    store_paths: tuple[str, ...],
+    changes: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Split a candidate's store changes into code-map files/records and the rest.
+
+    A worker may carry only a valid ``code`` note and the records that write it.
+    A truncated capture cannot prove what it left out, so every store change is
+    refused in that case.
+    """
+    store_changed = [
+        path for path in changes.get("store_changed", ()) if isinstance(path, str)
+    ]
+    if not changes.get("complete") or not store_changed:
+        return [], store_changed
+    store_roots = [prefix for prefix in store_paths if prefix not in ADAPTER_PATHS]
+    store_prefix = "" if len(store_roots) > 1 else (store_roots[0] if store_roots else "")
+    note_prefix = render_path(
+        manifest, primitive="note", preset="code", slug="x"
+    ).rsplit("/", 1)[0]
+    record_roots = {
+        render_path(
+            manifest,
+            primitive="record",
+            preset="",
+            slug="x",
+            record_id="x",
+            at=now_iso(),
+        ).split("/", 1)[0],
+        render_path(
+            manifest,
+            primitive="record",
+            preset="event",
+            slug="x",
+            record_id="x",
+            at=now_iso(),
+        ).split("/", 1)[0],
+        render_path(
+            manifest,
+            primitive="record",
+            preset="decision",
+            slug="x",
+            record_id="x",
+            at=now_iso(),
+        ).split("/", 1)[0],
+    }
+    notes: dict[str, str] = {}
+    allowed: set[str] = set()
+    for path in store_changed:
+        rel = _store_relative(path, store_prefix)
+        if rel is None or not _under(rel, note_prefix) or not rel.endswith(".md"):
+            continue
+        doc = _read_worktree_doc(worktree / path, rel)
+        if doc is None or doc.problems:
+            continue
+        if doc.primitive != "note" or doc.preset != "code":
+            continue
+        source = doc.fields.get("source_path")
+        if not isinstance(source, str) or not source.strip():
+            continue
+        if doc.fields.get("kind") not in _CODE_NOTE_KINDS:
+            continue
+        notes[path] = doc.slug
+        allowed.add(path)
+    code_slugs = set(notes.values())
+    recorded: set[str] = set()
+    for path in store_changed:
+        if path in allowed:
+            continue
+        rel = _store_relative(path, store_prefix)
+        if rel is None or rel.split("/", 1)[0] not in record_roots:
+            continue
+        doc = _read_worktree_doc(worktree / path, rel)
+        if doc is None or doc.problems or doc.primitive != "record":
+            continue
+        if doc.fields.get("kind") not in _CODE_RECORD_KINDS:
+            continue
+        about = code_slugs.intersection(doc.relations.get("about", ()))
+        if not about:
+            continue
+        recorded.update(about)
+        allowed.add(path)
+    unrecorded = code_slugs - recorded
+    if unrecorded:
+        allowed = {
+            path for path in allowed if notes.get(path) not in unrecorded
+        }
+    return (
+        [path for path in store_changed if path in allowed],
+        [path for path in store_changed if path not in allowed],
+    )
+
+
+def _store_relative(path: str, prefix: str) -> str | None:
+    prefix = prefix.strip("/")
+    if prefix in ("", "."):
+        return path
+    if path == prefix:
+        return ""
+    head = prefix + "/"
+    return path[len(head) :] if path.startswith(head) else None
+
+
+def _under(path: str, prefix: str) -> bool:
+    prefix = prefix.strip("/")
+    return path == prefix or path.startswith(prefix + "/")
+
+
+def _read_worktree_doc(path: Path, rel: str) -> Doc | None:
+    try:
+        return parse_doc(rel, path.read_bytes())
+    except OSError:
+        return None
+
+
 def _judge(
     plan: _Plan, ran: Any
 ) -> tuple[list[str], list[str], dict[str, Any] | None, dict[str, Any]]:
@@ -474,10 +600,12 @@ def _judge(
         base_commit=plan.base,
         store_paths=plan.store_paths,
     )
-    if changes["store_changed"]:
+    _allowed, refused = _code_map_changes(
+        plan.ctx.manifest, plan.paths.worktree, plan.store_paths, changes
+    )
+    if refused:
         reasons.append(
-            "the worker changed store-owned or adapter paths: "
-            + ", ".join(changes["store_changed"])
+            "the worker changed store-owned or adapter paths: " + ", ".join(refused)
         )
     dirty = _status_entries(plan.paths.worktree)
     if dirty:

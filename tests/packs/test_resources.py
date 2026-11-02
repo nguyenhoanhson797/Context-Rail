@@ -10,6 +10,7 @@ from helpers import init_store
 PACKS = ("basic", "flow", "scrum", "waterfall")
 PRIMITIVE_TEMPLATES = ("item", "note", "record", "check")
 STAGE_1B_TEMPLATES = ("charter", "goal", "vision", "scope", "wont", "work-order")
+CODE_TEMPLATES = ("code",)
 ROLES = ("cto", "implementer", "reviewer")
 GOVERNANCE = ("charter", "vision", "wont", "skill", "cto", "profile", "convention", "decision", "event", "check")
 BASE_PRESETS = GOVERNANCE + (
@@ -21,6 +22,7 @@ BASE_PRESETS = GOVERNANCE + (
     "fix",
     "risk",
     "question",
+    "code",
 )
 
 
@@ -31,9 +33,9 @@ def _pack_dir(name: str):
 @pytest.mark.parametrize("name", PACKS)
 def test_builtin_pack_ships_every_declared_resource(name: str) -> None:
     root = _pack_dir(name)
-    missing = [t for t in PRIMITIVE_TEMPLATES + STAGE_1B_TEMPLATES if not (root / "templates" / f"{t}.md").is_file()]
+    missing = [t for t in PRIMITIVE_TEMPLATES + STAGE_1B_TEMPLATES + CODE_TEMPLATES if not (root / "templates" / f"{t}.md").is_file()]
     missing += [r for r in ROLES if not (root / "profiles" / f"{r}.md").is_file()]
-    missing += [s for s in ("test-first", "review-checklist") if not (root / "skills" / s / "SKILL.md").is_file()]
+    missing += [s for s in ("test-first", "review-checklist", "code-map") if not (root / "skills" / s / "SKILL.md").is_file()]
     assert missing == []
 
 
@@ -47,6 +49,35 @@ def test_builtin_pack_names_match_their_directories(tmp_path) -> None:
 def test_every_pack_declares_the_base_presets(tmp_path, name: str) -> None:
     pack = load_pack(name, tmp_path)
     assert set(BASE_PRESETS) <= set(pack.presets)
+
+
+@pytest.mark.parametrize("name", PACKS)
+def test_every_pack_profile_selects_the_code_map_skill(name: str) -> None:
+    from context_rail.store.doc import parse_doc
+
+    root = _pack_dir(name)
+    for role in ROLES:
+        data = (root / "profiles" / f"{role}.md").read_bytes()
+        fields = parse_doc(f"profiles/{role}.md", data).fields
+        declared = fields.get("skills", [])
+        assert any(path.endswith("/code-map.md") for path in declared), (name, role)
+
+
+@pytest.mark.parametrize("name", PACKS)
+def test_every_pack_profile_states_the_code_map_rule(name: str) -> None:
+    root = _pack_dir(name)
+    for role in ROLES:
+        text = (root / "profiles" / f"{role}.md").read_text(encoding="utf-8")
+        assert "code map" in text, (name, role)
+
+
+@pytest.mark.parametrize("name", PACKS)
+def test_every_pack_implementer_may_write_the_code_map(name: str) -> None:
+    from context_rail.store.doc import parse_doc
+
+    data = (_pack_dir(name) / "profiles" / "implementer.md").read_bytes()
+    fields = parse_doc("profiles/implementer.md", data).fields
+    assert {"add", "update", "link"} <= set(fields["allowed_methods"])
 
 
 @pytest.mark.parametrize("name", PACKS)

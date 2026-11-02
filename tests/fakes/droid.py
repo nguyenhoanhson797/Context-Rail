@@ -10,6 +10,7 @@ imports nothing from the package under test.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -169,6 +170,7 @@ def main() -> int:
             work=behavior.get("work"),
             store_edit=bool(behavior.get("store_edit")),
             store_path=behavior.get("store_path"),
+            code_note=bool(behavior.get("code_note")),
             bulk=int(behavior.get("bulk") or 0),
         )
     return _emit(
@@ -359,6 +361,7 @@ def _leave_commit(
     work: str | None = None,
     store_edit: bool = False,
     store_path: str | None = None,
+    code_note: bool = False,
     bulk: int = 0,
 ) -> None:
     content = work if isinstance(work, str) and work.strip() else "fake droid work\n"
@@ -397,12 +400,66 @@ def _leave_commit(
             staged.append(store_path)
         except OSError:
             pass
+    if code_note:
+        staged.extend(_write_code_note(worktree))
     if not (worktree / ".git").exists():
         return
     # Hundreds of long paths overflow one argv on Windows, so stage in chunks.
     for start in range(0, len(staged), 50):
         _git(worktree, "add", "--", *staged[start : start + 50])
     _git(worktree, "commit", "-m", "fake droid candidate")
+
+
+def _write_code_note(worktree: Path) -> list[str]:
+    """A valid code note plus its doc.created Record, as `rail add code` writes them."""
+    stamp = "2026-11-02T00:00:00Z"
+    note_rel = "context-rail/notes/code/src-app-py.md"
+    note = worktree / note_rel
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(
+        "\n".join(
+            [
+                "---",
+                "primitive: note",
+                "preset: code",
+                "title: src/app.py",
+                "tags: [code]",
+                f"created: {stamp}",
+                f"updated: {stamp}",
+                "source_path: src/app.py",
+                "kind: file",
+                "---",
+                "# src/app.py",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    payload = {
+        "id": "01J00000000000000000000001",
+        "primitive": "record",
+        "preset": "event",
+        "kind": "doc.created",
+        "at": stamp,
+        "actor": "implementer",
+        "about": ["src-app-py"],
+        "data": {"path": "notes/code/src-app-py.md"},
+    }
+    payload["digest"] = _digest(payload)
+    record_rel = f"context-rail/records/2026-11/{payload['id']}.json"
+    record = worktree / record_rel
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    return [note_rel, record_rel]
+
+
+def _digest(payload: dict) -> str:
+    canonical = {key: value for key, value in payload.items() if key != "digest"}
+    text = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _git(worktree: Path, *args: str) -> None:

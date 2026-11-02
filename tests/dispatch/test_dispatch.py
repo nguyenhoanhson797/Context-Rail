@@ -410,6 +410,24 @@ def test_worker_store_edits_are_refused(leaf_item, fake_droid, droid_env) -> Non
     assert (leaf_item.root / "src" / "app.py").read_bytes() == b"VALUE = 1\n"
 
 
+def test_an_implementer_code_note_is_part_of_the_candidate(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    fake_droid.set_behaviors([{"mode": "success", "code_note": True}])
+    r = dispatch(leaf_item, "code-note")
+
+    assert r["ok"], r
+    assert r["value"]["status"] == "verified", r
+    worktree = Path(r["value"]["worktree"])
+    assert (worktree / "context-rail/notes/code/src-app-py.md").is_file()
+    assert (
+        worktree / "context-rail/records/2026-11/01J00000000000000000000001.json"
+    ).is_file()
+    run = latest_record(leaf_item.store, "run.completed")
+    assert run["data"]["capture"]["complete"] is True
+    assert "context-rail/notes/code/src-app-py.md" not in run["data"]["files_changed"]
+
+
 def _fake_git(
     real: Any, scripted: dict[str, list[dict[str, Any] | None]]
 ) -> tuple[Any, list[list[str]]]:

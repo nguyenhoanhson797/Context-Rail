@@ -111,6 +111,11 @@ def test_builtin_basic_pack_matches_pinned_values(tmp_path: Path) -> None:
         "question": ("item", ("question",), {}),
         "note": ("note", (), {}),
         "convention": ("note", ("convention",), {}),
+        "code": (
+            "note",
+            ("code",),
+            {"kind": ("file", "module", "class", "function", "method")},
+        ),
         "decision": ("record", ("decision",), {}),
         "event": ("record", ("event",), {}),
         "check": ("check", (), {}),
@@ -136,6 +141,7 @@ def test_default_template_follows_the_primitive(tmp_path: Path) -> None:
     p = load_pack("basic", tmp_path)
     assert p.presets["task"].template == "templates/item.md"
     assert p.presets["note"].template == "templates/note.md"
+    assert p.presets["code"].template == "templates/code.md"
     assert p.presets["decision"].template == "templates/record.md"
     assert p.presets["check"].template == "templates/check.md"
 
@@ -148,6 +154,7 @@ def test_builtin_pack_ships_body_templates() -> None:
     assert {
         "item.md",
         "note.md",
+        "code.md",
         "record.md",
         "check.md",
         "charter.md",

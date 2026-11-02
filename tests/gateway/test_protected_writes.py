@@ -415,7 +415,7 @@ def test_an_unprotected_planning_write_stays_cto_alone(approved_store: Path) -> 
 
 def test_a_profile_can_only_use_its_allowed_methods(approved_store: Path) -> None:
     refused = invoke(
-        "add", {"preset": "task", "title": "Worker item"}, store=approved_store, actor="implementer"
+        "add", {"preset": "task", "title": "Worker item"}, store=approved_store, actor="reviewer"
     )
     assert refused["error"]["code"] == "PERMISSION_DENIED"
 
@@ -423,6 +423,20 @@ def test_a_profile_can_only_use_its_allowed_methods(approved_store: Path) -> Non
         "find", {"preset": "task"}, store=approved_store, actor="implementer"
     )
     assert is_ok(allowed), allowed
+
+
+def test_an_implementer_may_write_a_code_note(approved_store: Path) -> None:
+    added = invoke(
+        "add",
+        {
+            "preset": "code",
+            "title": "src/app.py",
+            "set": ["source_path=src/app.py", "kind=file"],
+        },
+        store=approved_store,
+        actor="implementer",
+    )
+    assert is_ok(added), added
 
 
 def test_move_to_done_cannot_bypass_the_gate(approved_store: Path) -> None:
