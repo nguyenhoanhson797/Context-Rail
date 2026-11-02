@@ -42,6 +42,18 @@ def test_agents_stage_writes_and_then_skips(unapproved_store: Path) -> None:
     assert second["state"] == "unchanged"
 
 
+def test_agents_stage_passes_the_harness_selection(unapproved_store: Path) -> None:
+    context = _context(unapproved_store)
+    try:
+        result = agents_stage(context, _args(harness=["claude"]))
+    finally:
+        context.close()
+
+    assert result["state"] == "written"
+    assert (unapproved_store.parent / "CLAUDE.md").is_file()
+    assert not (unapproved_store.parent / "AGENTS.md").exists()
+
+
 def test_agents_stage_returns_the_adapter_refusal(
     unapproved_store: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
