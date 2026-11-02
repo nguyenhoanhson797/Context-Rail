@@ -933,7 +933,8 @@ def test_secrets_are_scrubbed_and_redacted(
         "TEMP",
         "TMP",
     ):
-        assert name in env, name
+        if name in os.environ:
+            assert name in env, name
     assert env["RAIL_ACTOR"] == "implementer"
     assert "GITHUB_TOKEN" not in env
     assert not any(name.startswith("GIT_") for name in env)

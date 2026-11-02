@@ -132,7 +132,13 @@ def process_alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True
-    return True
+    # A killed child of a killed parent is a zombie until something reaps it,
+    # and a zombie still accepts signal 0; its exit status is all that is left.
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return True
+    return not stat.rpartition(") ")[2].startswith("Z")
 
 
 def write_fake_droid(root: Path, behaviors: Sequence[Any]) -> Path:
