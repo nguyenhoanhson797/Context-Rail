@@ -17,19 +17,23 @@ the package ships the CLI, the MCP server and a loopback UI over one tool table.
 
 ## Install
 
-```powershell
-py -m pip install context-rail
+```bash
+python -m pip install context-rail
 ```
 
-On macOS or Linux use `python` instead of `py`. This installs two equivalent
-entry points, `rail` and `ctx-rail`; every example below also works as
-`py -m context_rail`.
+On Windows use `py` instead of `python` (`py -m pip install context-rail`); that
+is the only difference, every command below works the same in both shells.
+This installs two equivalent entry points, `rail` and `ctx-rail`; every example
+below also works as `python -m context_rail`.
+
+To keep the tool out of your project environments, `pipx install context-rail`
+works too.
 
 ## Quick start
 
 From the project you want to manage:
 
-```powershell
+```bash
 rail init --pack basic            # writes ./context-rail/
 rail add goal "Ship v3"
 rail add task "Write the first task" --rel part_of=ship-v3
@@ -54,7 +58,7 @@ Notes that are easy to trip over:
 `rail init --pack basic` writes only the skeleton (`rail.yaml`, `.gitignore`,
 empty folders). For a picture, the profiles and the agent files:
 
-```powershell
+```bash
 rail init --interview                                   # or --answers-file FILE --confirm "APPROVE charter"
 rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
 rail adapters sync                                      # AGENTS.md + .agents/skills/
@@ -71,7 +75,7 @@ rail sync --install                                     # optional: git merge dr
 
 Useful read commands:
 
-```powershell
+```bash
 rail status            # counts, executable items, blockers, stuck items
 rail digest            # activity, waits, decisions, quality, usage
 rail cto brief         # the bounded brief a CTO session starts from
@@ -83,19 +87,23 @@ rail ci                # doctor issues plus the approval and done gates
 
 ## Skills
 
-Four operator skills under `skills/` teach an agent the rail itself, so it does
-not have to read the engine to answer "what can this do?" or "how do we change
-the workflow?":
+Four operator skills under `skills/` in the repository checkout teach an agent
+the rail itself, so it does not have to read the engine to answer "what can this
+do?" or "how do we change the workflow?":
 
 - `context-rail-v3` — mental model, quick start, command map
 - `context-rail-v3-workflows` — packs, statuses, transitions, BA/PO steps
 - `context-rail-v3-loop` — dispatch → verify → review → merge, refusals
 - `context-rail-v3-ops` — doctor, reindex, recovery, budgets, test lanes
 
-Install them into your agent's skill directory:
+Install them into your agent's skill directory from a checkout:
+
+```bash
+cp -r skills/context-rail-v3* ~/.agents/skills/          # macOS, Linux
+```
 
 ```powershell
-Copy-Item -Recurse skills\context-rail-v3* "$HOME\.agents\skills\"
+Copy-Item -Recurse skills\context-rail-v3* "$HOME\.agents\skills\"   # Windows
 ```
 
 See `skills/README.md` for the difference from the pack skills that are
@@ -107,13 +115,13 @@ Work that launches an agent, or changes the picture's meaning, is gated. The
 brief reports the current state; nothing executes until a human approves the
 charter:
 
-```powershell
+```bash
 rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
 ```
 
 Once the charter is approved, the loop uses isolated git worktrees:
 
-```powershell
+```bash
 rail dispatch <item> --expect <etag> --key <idempotency-key>
 rail review   <item> --run <run-id> --key <idempotency-key>
 rail merge    <item> --run <run-id> --expect <etag> --key <idempotency-key>
@@ -155,20 +163,20 @@ are all generated from one tool table (`src/context_rail/gateway/tools.py`).
 
 From a checkout, install it in editable mode with the test dependencies:
 
-```powershell
-py -m pip install -e .[test]
+```bash
+python -m pip install -e .[test]
 ```
 
-Then run one lane at a time:
+Then run one lane at a time (on Windows use `py -m pytest`):
 
-```powershell
-py -m pytest -q -m "not slow and not perf"          # functional lane
-py -m pytest -q -m "perf and not slow" -p no:xdist  # speed budgets, serial
-py -m pytest -q -m slow -p no:xdist                 # 10k-document stores
+```bash
+python -m pytest -q -m "not slow and not perf"          # functional lane
+python -m pytest -q -m "perf and not slow" -p no:xdist  # speed budgets, serial
+python -m pytest -q -m slow -p no:xdist                 # 10k-document stores
 ```
 
 The speed budgets are fixed: a change that needs more time is a bug in the
-change, never a reason to raise the budget. `py -m pytest -q` on its own also
+change, never a reason to raise the budget. A bare `pytest -q` on its own also
 collects the perf tests, so use the lanes above when the machine is busy.
 
 ## Layout
@@ -190,13 +198,19 @@ src/context_rail/
 
 ## Design
 
-- Visual guide (diagrams and from-zero-to-daily walkthrough):
-  `docs/context-rail-v3-guide.html`
-- Interactive engine graph (primitives, relations, one write path and the agent loop):
-  `docs/context-rail-v3-engine-graph.html`
-- Spec: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
-- Architecture: `library/arch-stage-3.md`
-- Working rules and engine invariants: `AGENTS.md`
+All of these live in the repository, not in the installed package:
+
+- Visual guide (diagrams and a from-zero-to-daily walkthrough):
+  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/context-rail-v3-guide.html>
+- Interactive engine graph (primitives, relations, one write path and the agent
+  loop):
+  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/context-rail-v3-engine-graph.html>
+- Spec:
+  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/superpowers/specs/2026-10-28-context-rail-v3-design.md>
+- Architecture:
+  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/library/arch-stage-3.md>
+- Working rules and engine invariants:
+  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/AGENTS.md>
 
 Engine invariants worth knowing before changing code:
 
@@ -205,3 +219,8 @@ Engine invariants worth knowing before changing code:
 - `context_rail.kernel` is pure: no file, git, process or index access.
 - Unknown manifest schema, pack version, key or policy field is refused, never
   guessed.
+
+## License
+
+MIT. See the `LICENSE` file, or
+<https://github.com/nguyenhoanhson797/Context-Rail/blob/master/LICENSE>.
