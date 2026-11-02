@@ -309,6 +309,7 @@ def picture_ops(
     *,
     pack_name: str,
     draft: bool,
+    include_workspace: bool = True,
 ) -> tuple[list[Op], dict[str, Any]]:
     """The absent-only operations and result facts for one validated picture."""
     manifest = context.manifest
@@ -409,7 +410,8 @@ def picture_ops(
                 ABSENT,
             )
         )
-    ops.extend(agent_ops(context.store, manifest, pack_name))
+    if include_workspace:
+        ops.extend(agent_ops(context.store, manifest, pack_name))
     picture = [
         slugs["goal"],
         slugs["vision"],
@@ -444,6 +446,7 @@ def _materialise(
     key: str | None,
     actor: str,
     draft: bool,
+    include_workspace: bool = True,
 ) -> dict[str, Any]:
     manifest, pack, existing, manifest_data = _store_shape(store, pack_name)
     prepared = _prepare(answers, project_root)
@@ -457,7 +460,13 @@ def _materialise(
     from context_rail.gateway.gateway import Context
 
     context = Context(store=store, manifest=manifest, pack=pack, actor=actor)
-    ops, info = picture_ops(context, parsed, pack_name=pack.name, draft=draft)
+    ops, info = picture_ops(
+        context,
+        parsed,
+        pack_name=pack.name,
+        draft=draft,
+        include_workspace=include_workspace,
+    )
     _check_supplied_charter(answers, info)
     if not existing:
         assert manifest_data is not None

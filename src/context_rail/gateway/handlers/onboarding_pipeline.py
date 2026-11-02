@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -18,7 +19,10 @@ from context_rail.store.write import commit
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["probe", "workspace_seed"]
+__all__ = ["picture_stage", "probe", "workspace_seed"]
+
+_PICTURE_YES = ("y", "yes", "true")
+_INTERVIEW_COMMAND = "rail init --interview"
 
 _CHARTER = "charter"
 
@@ -52,6 +56,90 @@ def probe(project_root: Path, store: Path, pack_name: str = "basic") -> dict[str
         "workspace": {"exists": _workspace_exists(store)},
         "agents": {"exists": _agents_exist(project_root)},
         "git": {"exists": _git_checkout(project_root)},
+    }
+
+
+def picture_stage(
+    context: Context,
+    project_root: Path,
+    *,
+    actor: str,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Write the selected picture source, or skip when one already exists."""
+    from context_rail.gateway.confirmation import validate_confirmation
+    from context_rail.gateway.handlers.onboarding import (
+        _interview,
+        _is_tty,
+        _materialise,
+        _mode,
+        read_answers,
+    )
+
+    found = probe(project_root, context.store, context.pack.name)
+    if found["picture"]["exists"]:
+        return {
+            "state": "skipped",
+            "reason": "picture_present",
+            "slugs": found["picture"]["slugs"],
+        }
+    mode = _mode(args)
+    if mode == "scaffold":
+        if not _is_tty() or actor != "human":
+            return {
+                "state": "skipped",
+                "reason": "no_picture_source",
+                "command": _INTERVIEW_COMMAND,
+            }
+        answer = builtins.input("No picture yet - enter it now? [Y/n]: ").strip().lower()
+        if answer not in _PICTURE_YES:
+            return {
+                "state": "skipped",
+                "reason": "deferred",
+                "command": _INTERVIEW_COMMAND,
+            }
+        mode = "interview"
+    if mode == "draft":
+        from context_rail.store.write import WriteRefused
+
+        if actor != "cto":
+            raise WriteRefused(
+                "PERMISSION_DENIED", "only the CTO actor may propose a draft picture"
+            )
+        answers = read_answers(Path(args["draft_file"]))
+        draft = True
+    else:
+        from context_rail.store.write import WriteRefused
+
+        if actor != "human":
+            raise WriteRefused(
+                "PERMISSION_DENIED", f"{mode} onboarding needs the human actor"
+            )
+        if mode == "answers":
+            reason = validate_confirmation("approve", "charter", args.get("confirm"))
+            if reason is not None:
+                raise WriteRefused(
+                    "VALIDATION_FAILED", reason, {"confirm": "APPROVE charter"}
+                )
+            answers = read_answers(Path(args["answers_file"]))
+        else:
+            answers = _interview(context.pack.name, project_root)
+        draft = False
+    result = _materialise(
+        context.store,
+        project_root,
+        answers,
+        pack_name=context.pack.name,
+        key=None,
+        actor=actor,
+        draft=draft,
+        include_workspace=False,
+    )
+    return {
+        "state": "written",
+        "picture": result["picture"],
+        "written": result["written"],
+        "charter": result["charter"],
     }
 
 
