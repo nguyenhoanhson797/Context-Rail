@@ -61,6 +61,17 @@ def test_skeleton_refuses_a_different_pack(tmp_path: Path) -> None:
     assert (tmp_path / "context-rail" / "rail.yaml").read_bytes() == before
 
 
+def test_skeleton_uses_the_store_pack_when_none_is_named(tmp_path: Path) -> None:
+    skeleton(None, _args(tmp_path, pack="flow"), "human", allow_existing=True)
+
+    result = skeleton(
+        None, _args(tmp_path, pack=None), "human", allow_existing=True
+    )
+
+    assert result["pack"] == "flow"
+    assert result["state"] == "unchanged"
+
+
 def test_skeleton_accepts_a_deprecated_pack_alias(tmp_path: Path) -> None:
     skeleton(None, _args(tmp_path), "human", allow_existing=True)
     manifest = tmp_path / "context-rail" / "rail.yaml"

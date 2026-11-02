@@ -44,7 +44,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("dir", "str", help="project directory (default: the current one)"),
-            Param("pack", "str", default=DEFAULT_PACK, help="pack name"),
+            Param("pack", "str", help="pack name (default: the store's pack, then basic)"),
             Param("root", "str", default="context-rail", help="store folder inside the project"),
             Param("interview", "bool", help="ask the picture questions in a terminal"),
             Param("answers_file", "str", help="JSON answers written by the human"),

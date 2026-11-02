@@ -22,7 +22,12 @@ import yaml
 from context_rail.core.util import now_iso, slugify
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import compose_doc, record_data
-from context_rail.gateway.handlers.init import GITIGNORE, pinned_folders, scaffold
+from context_rail.gateway.handlers.init import (
+    GITIGNORE,
+    _stored_pack,
+    pinned_folders,
+    scaffold,
+)
 from context_rail.model.cto import (
     load_pack_profile,
     load_pack_skills,
@@ -105,7 +110,7 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
         receipt = run(
             project_root,
             store,
-            pack_name=args.get("pack") or "basic",
+            pack_name=_requested_pack(args, store),
             actor=actor,
             actor_named=ACTOR_NAMED.get(),
             args=args,
@@ -137,17 +142,18 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
     saved = replay(store, args["key"])
     if saved is not None:
         return _init_replay(store, saved)
+    pack_name = _requested_pack(args, store)
     if draft:
         answers = read_answers(Path(args["draft_file"]))
     elif mode == "answers":
         answers = read_answers(Path(args["answers_file"]))
     else:
-        answers = _interview(args["pack"], project_root)
+        answers = _interview(pack_name, project_root)
     return _materialise(
         store,
         project_root,
         answers,
-        pack_name=args["pack"],
+        pack_name=pack_name,
         key=args["key"],
         actor=actor,
         draft=draft,
@@ -519,16 +525,29 @@ def _materialise(
     }
 
 
+def _requested_pack(args: dict[str, Any], store: Path) -> str:
+    """The named pack, else the store's own pack, else the built-in default."""
+    name = args.get("pack")
+    if isinstance(name, str) and name.strip():
+        return name
+    if (store / "rail.yaml").is_file():
+        stored = _stored_pack(store)
+        if stored:
+            return stored
+    return "basic"
+
+
 def _scaffold_plan(args: dict[str, Any]) -> dict[str, Any]:
     """The no-write plan for ``init --scaffold --dry-run``."""
     from context_rail.gateway.handlers.onboarding_pipeline import probe
 
     project_root = Path(args["dir"] or Path.cwd())
     store = confine(project_root, args["root"])
-    found = probe(project_root, store, args.get("pack") or "basic")
+    pack_name = _requested_pack(args, store)
+    found = probe(project_root, store, pack_name)
     return {
         "store": str(store),
-        "pack": found["store"]["pack"] or args.get("pack") or "basic",
+        "pack": found["store"]["pack"] or pack_name,
         "stages": {
             "skeleton": {
                 "state": "unchanged" if found["store"]["exists"] else "planned"

@@ -182,7 +182,7 @@ def test_the_engine_names_one_default_pack() -> None:
     assert DEFAULT_MANIFEST["pack"] == DEFAULT_PACK
     init = next(tool for tool in TOOLS if tool.name == "init")
     pack_param = next(param for param in init.params if param.name == "pack")
-    assert pack_param.default == DEFAULT_PACK
+    assert pack_param.default is None
     create = next(tool for tool in TOOLS if tool.name == "pack create")
     from_param = next(param for param in create.params if param.name == "from")
     assert from_param.default == DEFAULT_PACK

@@ -59,7 +59,10 @@ def skeleton(
     """Write the absent skeleton parts, optionally resuming an existing store."""
     directory = Path(args["dir"] or Path.cwd())
     store = confine(directory, args["root"])
-    pack = load_pack(args.get("pack") or DEFAULT_PACK, store)
+    requested = args.get("pack")
+    stored = _stored_pack(store) if (store / "rail.yaml").exists() else None
+    pack_name = requested or stored or DEFAULT_PACK
+    pack = load_pack(pack_name, store)
     manifest, data = initial_manifest(pack.name, store)
     saved = replay(store, args.get("key"))
     if saved is not None:
@@ -76,14 +79,13 @@ def skeleton(
                 "a store already exists here",
                 {"path": str(store / "rail.yaml")},
             )
-        stored = _stored_pack(store)
         if stored is None:
             raise WriteRefused(
                 "CONFLICT",
                 "the existing rail.yaml cannot be read",
                 {"path": str(store / "rail.yaml")},
             )
-        if canonical_pack_name(stored) != pack.name:
+        if requested is not None and canonical_pack_name(stored) != pack.name:
             raise WriteRefused(
                 "CONFLICT",
                 f"the store uses pack {stored!r}, not {pack.name!r}",

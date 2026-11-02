@@ -53,6 +53,24 @@ def test_bare_init_resumes_an_existing_picture(
     assert (unapproved_store.parent / "AGENTS.md").is_file()
 
 
+def test_bare_init_resumes_the_store_pack_without_naming_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = invoke(
+        "init",
+        {"dir": str(tmp_path), "pack": "flow", "scaffold": True},
+        actor="human",
+    )
+    assert is_ok(created), created
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+
+    result = invoke("init", {"dir": str(tmp_path)}, actor="human")
+
+    assert is_ok(result), result
+    assert result["value"]["pack"] == "flow"
+    assert result["value"]["stages"]["skeleton"]["state"] == "unchanged"
+
+
 def test_bare_init_dry_run_writes_nothing(tmp_path: Path) -> None:
     result = invoke(
         "init", {"dir": str(tmp_path), "dry_run": True}, actor="human"
