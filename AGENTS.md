@@ -3,8 +3,8 @@
 Context Rail v3 is an agentic project workspace. A CTO agent runs a project
 through the rail, sub-agents get narrow role-specific context, and a human
 approves the boundary, the quality bar and irreversible actions. This
-repository is a clean rebuild. The legacy v1/v2 code lives in the sibling
-`context-rail-link` repository and is frozen.
+repository is a clean rebuild. The legacy v1/v2 code lives in the private
+sibling `context-rail-link` repository and is frozen; nothing here needs it.
 
 ## Source of truth
 
