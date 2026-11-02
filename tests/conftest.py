@@ -1143,6 +1143,38 @@ def droid_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     return dict(os.environ)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _test_git_identity(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """Every git process gets an author identity, including on a bare runner.
+
+    A temporary home carries a ``.gitconfig`` that keeps the developer's own
+    global config when one exists and always sets a test identity. ``HOME`` and
+    ``USERPROFILE`` are the allow-listed variables the runner hands to a git
+    child, so the identity reaches both a test's direct git call and rail's own,
+    and no test depends on the machine having a git author.
+    """
+    real = _real_global_gitconfig()
+    home = tmp_path_factory.mktemp("git-home")
+    include = f"[include]\n\tpath = {real}\n" if real else ""
+    (home / ".gitconfig").write_text(
+        include
+        + "[user]\n\tname = Context Rail Tests\n\temail = tests@example.invalid\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    saved = {name: os.environ.get(name) for name in ("HOME", "USERPROFILE")}
+    os.environ["HOME"] = str(home)
+    os.environ["USERPROFILE"] = str(home)
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 @pytest.fixture
 def global_excludes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..., Path]:
     """A real global git excludesfile, returned by a writer of ignore patterns.
