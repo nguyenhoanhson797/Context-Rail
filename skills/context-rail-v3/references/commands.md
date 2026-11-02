@@ -52,6 +52,16 @@ rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DI
 
 `target` is `charter`, a protected slug, or `pack:<name>`.
 
+## Versions and measurement
+
+```text
+rail rollback --target-class skill|profile --target PATH --version N --expect ETAG
+              [--confirm "APPROVE <slug>"]
+rail measure versions --target-class skill|profile --target NAME
+                      --before N --after N [--since ISO] [--until ISO]
+rail measure fix --item SLUG [--until ISO]
+```
+
 ## Packs
 
 ```text
@@ -70,10 +80,12 @@ rail doctor [--repair]
 rail reindex [--full]
 rail ci [--warnings-as-errors]
 rail sync [--install] [--remote NAME] [--branch NAME]
-rail sync driver
-rail migrate ...
+rail sync driver <doc|record|config> <base> <ours> <theirs> <path>
+rail adapters sync [--harness agents|claude|cursor|gemini]... [--dry-run]
+                   [--force --confirm "FORCE ADAPTERS adapters"]
+rail migrate --source LEGACY --dir DIR [--root DIR] [--pack NAME] [--dry-run]
 rail mcp serve
-rail ui serve
+rail ui serve [--port N]
 ```
 
 ## Error codes seen most

@@ -84,7 +84,7 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 | Change | `add`, `update`, `link`, `move`, `rename`, `relocate`, `check`, `verify`, `report` |
 | Gate | `approve`, `pack use` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
 | Loop | `dispatch`, `review`, `merge`, `cto tick`, `triage` |
-| Operate | `doctor`, `reindex`, `ci`, `sync`, `migrate`, `mcp serve`, `ui serve` |
+| Operate | `doctor`, `reindex`, `ci`, `sync`, `migrate`, `adapters sync`, `rollback`, `measure fix\|versions`, `mcp serve`, `ui serve` |
 
 Exact flags: `references/commands.md` in this skill.
 

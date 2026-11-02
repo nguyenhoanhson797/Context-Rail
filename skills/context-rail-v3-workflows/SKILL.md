@@ -26,12 +26,13 @@ binary.
 
 | Pack | Shape | Statuses | Extra presets |
 |---|---|---|---|
-| `basic` | one stream | `todo → doing → done` | `milestone`, `bug`, `idea` |
-| `flow` | continuous kanban | `backlog → ready → building → review → shipped` | `idea`, `story`, `epic`, `bug` |
-| `scrum` | sprints | `todo → ready → doing → review → done` | `epic`, `sprint`, `story`, `bug` |
-| `waterfall` | phase gates | `planned → designing → building → testing → done` | `requirement`, `phase`, `milestone`, `risk` |
+| `basic` | one stream | `todo → doing → done` | `milestone`, `idea` |
+| `flow` | continuous kanban | `backlog → ready → building → review → shipped` | `idea`, `story`, `epic` |
+| `scrum` | sprints | `todo → ready → doing → review → done` | `epic`, `sprint`, `story` |
+| `waterfall` | phase gates | `planned → designing → building → testing → done` | `requirement`, `phase`, `milestone` |
 
-All four also declare the shared base presets: `goal`, `scope`, `task`, `bug`,
+Every pack also declares `blocked` and `dropped`; the table lists the flow the
+team sees. All four also declare the shared base presets: `goal`, `scope`, `task`, `bug`,
 `risk`, `question`, `note`, `convention`, `decision`, `event`, `check`,
 `charter`, `vision`, `wont`, `skill`, `cto`, `profile` and `fix`.
 
