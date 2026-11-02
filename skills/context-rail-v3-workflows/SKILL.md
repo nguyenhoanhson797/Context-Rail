@@ -16,7 +16,7 @@ binary.
 | Document types | **Yes** | Pack `presets`: primitive + tags + enum fields + template |
 | Statuses | **Yes** | Any names, each mapped to one of the 5 fixed categories |
 | Transitions | **Yes** | Pack `transitions`: allowed `status → [status]` moves |
-| Folder layout | **Yes** | `rail.yaml` `placement` / `presets`, then `rail relocate` |
+| Folder layout | **Yes** | `rail.yaml` `placement` / `presets`, then `rail change repath` |
 | Agent behaviour | **Yes** | Profile documents: prompt, methods, model, tools, skills |
 | Evidence gates | **Yes, per project** | Charter: 4 gates × 4 rules |
 | Primitives / relations / categories | **No** | 6 / 8 / 5, fixed by the engine |
@@ -43,7 +43,7 @@ team sees. All four also declare the shared base presets: `goal`, `scope`, `task
   path lives in `source_path` because the engine reserves `path`.
 - `small` and `indie` are deprecated aliases for `basic` and `flow`. A store
   that still says `pack: small` keeps working and keeps its approval;
-  `rail pack list` shows the canonical pack and marks it active.
+  `rail ops pack list` shows the canonical pack and marks it active.
 - There is no `agile` pack: agile is the umbrella, `flow` and `scrum` are its
   two shapes.
 - Statuses alone do not gate execution: `ready` maps to `not_started` and
@@ -135,9 +135,9 @@ it with `depends_on`. The engine excludes the story from executable work and
 dispatch refuses it.
 
 ```powershell
-rail add ba_pack "Checkout BA"
-rail add story "Checkout story" --rel depends_on=checkout-ba
-rail status
+rail change add ba_pack "Checkout BA"
+rail change add story "Checkout story" --rel depends_on=checkout-ba
+rail read status
 # "executable": ["checkout-ba"]
 # "blocked": {"checkout-story": "depends_on:checkout-ba"}
 ```
@@ -164,14 +164,14 @@ A full tested pack is in `references/ba-po-pack.yaml`.
 ## Create, validate, switch
 
 ```powershell
-rail pack create --name my-team --from scrum   # copies the whole pack tree
+rail ops pack create --name my-team --from scrum   # copies the whole pack tree
 # edit packs/my-team/pack.yaml, profiles/, templates/
-rail pack validate --name my-team
-rail --actor human pack use --name my-team --expect <rail.yaml etag> \
+rail ops pack validate --name my-team
+rail --actor human ops pack use --name my-team --expect <rail.yaml etag> \
               --map todo=intake --confirm "USE PACK my-team"
 ```
 
-`pack use` is an approval-guarded migration: it rewrites statuses through the
+`ops pack use` is an approval-guarded migration: it rewrites statuses through the
 map and refuses unmapped statuses or presets the target pack lacks. Switching
 does **not** rewrite history.
 

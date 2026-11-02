@@ -1157,7 +1157,7 @@
       <div class="branch">
         <article class="card">
           <h3>If it crashes after step 04</h3>
-          <p>The intent is the witness. The next write or <code>rail doctor --repair</code> rolls the operation forward when it can prove the targets are safe; anything unprovable is kept and reported. <b>Nothing is guessed.</b></p>
+          <p>The intent is the witness. The next write or <code>rail ops doctor --repair</code> rolls the operation forward when it can prove the targets are safe; anything unprovable is kept and reported. <b>Nothing is guessed.</b></p>
         </article>
         <article class="card">
           <h3>If the write is refused</h3>
@@ -1272,14 +1272,14 @@
         <table class="loop-table">
           <thead><tr><th>Step</th><th>Command</th><th>What it gives you</th></tr></thead>
           <tbody>
-            <tr><td class="rel-name">01 Brief</td><td><code>rail cto brief</code></td><td>Approval state, goal and scope, gate rules, executable work, human waits, quality and reversible decisions, inside a character budget.</td></tr>
-            <tr><td class="rel-name">02 Plan</td><td><code>rail add</code> · <code>rail link</code></td><td>Items with <code>part_of</code> and <code>depends_on</code> edges. Writing or loosening acceptance Checks is human-only.</td></tr>
-            <tr><td class="rel-name">03 Dispatch</td><td><code>rail dispatch &lt;item&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>A fresh worktree and branch, a bounded <code>droid exec</code>, a run Record, then verification. Refused before charter approval.</td></tr>
-            <tr><td class="rel-name">04 Verify</td><td><code>rail verify &lt;item&gt;</code></td><td>The Item's declared Checks run in the worktree. A <code>cmd</code> pass is fresh only while its input blobs match.</td></tr>
-            <tr><td class="rel-name">05 Review</td><td><code>rail review &lt;item&gt; --run &lt;id&gt; --key &lt;k&gt;</code></td><td>A different actor in its own worktree. The implementer cannot approve its own work; the verdict binds to the candidate commit.</td></tr>
-            <tr><td class="rel-name">06 Merge</td><td><code>rail merge &lt;item&gt; --run &lt;id&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>Rebase, then fast-forward. One conflict retry, then escalate. <code>--push</code> only when the charter allows it.</td></tr>
-            <tr><td class="rel-name">07 Report</td><td><code>rail report ... --report-file &lt;json&gt;</code></td><td>One structured report per completed run: target class, expectation, observation, impact, evidence. “Nothing to report” is valid.</td></tr>
-            <tr><td class="rel-name">08 Digest</td><td><code>rail digest</code> · <code>rail triage</code></td><td>Activity, waits, reversible decisions, stuck and too-long Items, quality and usage. Triage clusters reports into fixes, proposals or engine issues.</td></tr>
+            <tr><td class="rel-name">01 Brief</td><td><code>rail overview</code></td><td>Approval state, goal and scope, gate rules, executable work, human waits, quality and reversible decisions, inside a character budget.</td></tr>
+            <tr><td class="rel-name">02 Plan</td><td><code>rail change add</code> · <code>rail change link</code></td><td>Items with <code>part_of</code> and <code>depends_on</code> edges. Writing or loosening acceptance Checks is human-only.</td></tr>
+            <tr><td class="rel-name">03 Dispatch</td><td><code>rail loop dispatch &lt;item&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>A fresh worktree and branch, a bounded <code>droid exec</code>, a run Record, then verification. Refused before charter approval.</td></tr>
+            <tr><td class="rel-name">04 Verify</td><td><code>rail check run &lt;item&gt;</code></td><td>The Item's declared Checks run in the worktree. A <code>cmd</code> pass is fresh only while its input blobs match.</td></tr>
+            <tr><td class="rel-name">05 Review</td><td><code>rail loop review &lt;item&gt; --run &lt;id&gt; --key &lt;k&gt;</code></td><td>A different actor in its own worktree. The implementer cannot approve its own work; the verdict binds to the candidate commit.</td></tr>
+            <tr><td class="rel-name">06 Merge</td><td><code>rail loop merge &lt;item&gt; --run &lt;id&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>Rebase, then fast-forward. One conflict retry, then escalate. <code>--push</code> only when the charter allows it.</td></tr>
+            <tr><td class="rel-name">07 Report</td><td><code>rail loop report ... --report-file &lt;json&gt;</code></td><td>One structured report per completed run: target class, expectation, observation, impact, evidence. “Nothing to report” is valid.</td></tr>
+            <tr><td class="rel-name">08 Digest</td><td><code>rail read digest</code> · <code>rail loop triage</code></td><td>Activity, waits, reversible decisions, stuck and too-long Items, quality and usage. Triage clusters reports into fixes, proposals or engine issues.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1348,7 +1348,7 @@ rail init --answers-file answers.json --confirm "APPROVE charter"</code></pre>
           <div class="dot">05</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--any">any actor</span><h3>Make the checkout agent-ready</h3></div>
-            <pre class="cmd"><code>rail adapters sync</code></pre>
+            <pre class="cmd"><code>rail ops adapters render</code></pre>
             <p>Writes the managed <code>AGENTS.md</code> block and one <code>.agents/skills/&lt;name&gt;/SKILL.md</code> per skill Note. Optional harnesses: Claude, Cursor and Gemini. Re-run when a skill changes.</p>
           </div>
         </article>
@@ -1357,9 +1357,9 @@ rail init --answers-file answers.json --confirm "APPROVE charter"</code></pre>
           <div class="dot">06</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--any">any actor</span><h3>Shape the work</h3></div>
-            <pre class="cmd"><code>rail add goal "Ship v3"
-rail add scope "Core engine" --set priority=must
-rail add task "Write the write path" --rel part_of=core-engine</code></pre>
+            <pre class="cmd"><code>rail change add goal "Ship v3"
+rail change add scope "Core engine" --set priority=must
+rail change add task "Write the write path" --rel part_of=core-engine</code></pre>
             <p>Items are placed by <code>rail.yaml</code>. <code>part_of</code> builds the hierarchy; <code>depends_on</code> sets the order.</p>
           </div>
         </article>
@@ -1368,8 +1368,8 @@ rail add task "Write the write path" --rel part_of=core-engine</code></pre>
           <div class="dot">07</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--any">any actor</span><h3>Declare the proof</h3></div>
-            <pre class="cmd"><code>rail check write-path --target write-the-write-path --spec-file check.json --expect absent
-rail verify write-the-write-path</code></pre>
+            <pre class="cmd"><code>rail check declare write-path --target write-the-write-path --spec-file check.json --expect absent
+rail check run write-the-write-path</code></pre>
             <p>Pick a mode: <code>cmd</code>, <code>exists</code>, <code>evidence</code>, <code>review</code> or <code>human</code>. A stale pass is not a pass; writing or loosening acceptance Checks is human-only.</p>
           </div>
         </article>
@@ -1378,8 +1378,8 @@ rail verify write-the-write-path</code></pre>
           <div class="dot">08</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--any">any actor</span><h3>Read the state</h3></div>
-            <pre class="cmd"><code>rail status
-rail cto brief</code></pre>
+            <pre class="cmd"><code>rail read status
+rail overview</code></pre>
             <p>Counts, executable leaves, blockers with reasons and stuck Items; then the bounded CTO page with approval, gates, executable work, human waits and quality.</p>
           </div>
         </article>
@@ -1388,7 +1388,7 @@ rail cto brief</code></pre>
           <div class="dot">09</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Dispatch one leaf</h3></div>
-            <pre class="cmd"><code>rail dispatch write-the-write-path --expect &lt;etag&gt; --key day-1-a</code></pre>
+            <pre class="cmd"><code>rail loop dispatch write-the-write-path --expect &lt;etag&gt; --key day-1-a</code></pre>
             <p>A fresh worktree and branch, a bounded <code>droid exec</code>, a run Record, then the Item's Checks verify the candidate. Not executable if it is a parent, blocked or still depends on open work.</p>
           </div>
         </article>
@@ -1397,7 +1397,7 @@ rail cto brief</code></pre>
           <div class="dot">10</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Review the candidate</h3></div>
-            <pre class="cmd"><code>rail review write-the-write-path --run &lt;run-id&gt; --key day-1-b</code></pre>
+            <pre class="cmd"><code>rail loop review write-the-write-path --run &lt;run-id&gt; --key day-1-b</code></pre>
             <p>Must be a different actor and worktree. The implementer cannot approve its own work; the charter may also require a different model.</p>
           </div>
         </article>
@@ -1406,7 +1406,7 @@ rail cto brief</code></pre>
           <div class="dot">11</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Merge the proof</h3></div>
-            <pre class="cmd"><code>rail merge write-the-write-path --run &lt;run-id&gt; --expect &lt;etag&gt; --key day-1-c</code></pre>
+            <pre class="cmd"><code>rail loop merge write-the-write-path --run &lt;run-id&gt; --expect &lt;etag&gt; --key day-1-c</code></pre>
             <p>Rebase, then fast-forward. One conflict retry, then escalate. <code>--push</code> only when the charter allows it.</p>
           </div>
         </article>
@@ -1415,10 +1415,10 @@ rail cto brief</code></pre>
           <div class="dot">12</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--any">human + CTO</span><h3>Learn, close, repeat</h3></div>
-            <pre class="cmd"><code>rail report --run &lt;run-id&gt; --report-file report.json
-rail triage
-rail digest
-rail ci</code></pre>
+            <pre class="cmd"><code>rail loop report --run &lt;run-id&gt; --report-file report.json
+rail loop triage
+rail read digest
+rail gate</code></pre>
             <p>One report per run. Triage turns clusters into fixes, proposals or engine issues. Digest shows what is stuck or too long. CI gates approval and done gates, never a Check run.</p>
           </div>
         </article>
@@ -1428,12 +1428,12 @@ rail ci</code></pre>
         <div class="refusal"><b>NOT_FOUND: no store found</b><span>Run <code>rail init</code>, or put <code>--store path</code> before the command.</span></div>
         <div class="refusal"><b>charter is not approved</b><span>Run <code>rail --actor human approve charter ...</code>; planning and reads stay open.</span></div>
         <div class="refusal"><b>stale etag</b><span>Re-read the document, then retry with the new etag. Never reuse an old one.</span></div>
-        <div class="refusal"><b>check is stale</b><span>Re-run <code>rail verify</code>. A stale pass is not a pass.</span></div>
+        <div class="refusal"><b>check is stale</b><span>Re-run <code>rail check run</code>. A stale pass is not a pass.</span></div>
         <div class="refusal"><b>cannot be dispatched: depends_on:x</b><span>Finish or drop the dependency; only an executable leaf may be dispatched.</span></div>
         <div class="refusal"><b>cto tick cannot be nested</b><span>Start it from the outer session with <code>RAIL_ACTOR</code> unset.</span></div>
         <div class="refusal"><b>merge conflict</b><span>One rebase retry is automatic; after that the candidate and diagnostics go to a human.</span></div>
-        <div class="refusal"><b>interrupted write</b><span>Run <code>rail doctor --repair</code>; it rolls forward or reports what it cannot prove.</span></div>
-        <div class="refusal"><b>index looks wrong</b><span>Run <code>rail reindex --full</code>. The index is a cache; rebuilding it is always safe.</span></div>
+        <div class="refusal"><b>interrupted write</b><span>Run <code>rail ops doctor --repair</code>; it rolls forward or reports what it cannot prove.</span></div>
+        <div class="refusal"><b>index looks wrong</b><span>Run <code>rail ops reindex --full</code>. The index is a cache; rebuilding it is always safe.</span></div>
       </div>
     </div>
   </section>

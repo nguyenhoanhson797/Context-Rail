@@ -444,8 +444,8 @@
       <div class="stack">
         <div class="layer surfaces">
           <div class="box"><b>CLI</b><span>rail …</span></div>
-          <div class="box"><b>MCP</b><span>rail mcp serve</span></div>
-          <div class="box"><b>Web UI</b><span>rail ui serve</span></div>
+          <div class="box"><b>MCP</b><span>rail serve mcp</span></div>
+          <div class="box"><b>Web UI</b><span>rail serve ui</span></div>
         </div>
         <div class="down">one call</div>
 
@@ -651,7 +651,7 @@ the work needs; the brief reads only what it must.</code></pre>
     </div>
 
     <h3 style="margin-top: 28px;">A real call</h3>
-    <pre><code><span class="c">$</span> rail add task "Write the first task" --rel part_of=ship-v3
+    <pre><code><span class="c">$</span> rail change add task "Write the first task" --rel part_of=ship-v3
 
 {
   <span class="g">"ok": true</span>,
@@ -880,9 +880,9 @@ the work needs; the brief reads only what it must.</code></pre>
         <div class="tcard">
           <span class="phase">Step 2 · 10 minutes</span>
           <h3>Draw the picture</h3>
-          <pre><code>rail add goal "Ship v3"
-rail add task "Write the first task" --rel part_of=ship-v3
-rail status</code></pre>
+          <pre><code>rail change add goal "Ship v3"
+rail change add task "Write the first task" --rel part_of=ship-v3
+rail read status</code></pre>
           <p class="small" style="margin-top: 8px;">
             Goal → scope → tasks → checks. Relations do the structure; tags are
             only for humans.
@@ -906,10 +906,10 @@ rail status</code></pre>
         <div class="tcard">
           <span class="phase">Step 4 · first work</span>
           <h3>Dispatch one item</h3>
-          <pre><code>rail dispatch write-the-first-task --expect &lt;etag&gt; --key first-run</code></pre>
+          <pre><code>rail loop dispatch write-the-first-task --expect &lt;etag&gt; --key first-run</code></pre>
           <p class="small" style="margin-top: 8px;">
-            Then <code>rail review &lt;item&gt; --run &lt;run-id&gt; --key …</code> and
-            <code>rail merge &lt;item&gt; --run &lt;run-id&gt; --expect &lt;etag&gt; --key …</code>.
+            Then <code>rail loop review &lt;item&gt; --run &lt;run-id&gt; --key …</code> and
+            <code>rail loop merge &lt;item&gt; --run &lt;run-id&gt; --expect &lt;etag&gt; --key …</code>.
           </p>
         </div>
       </li>
@@ -918,8 +918,8 @@ rail status</code></pre>
         <div class="tcard">
           <span class="phase">Step 5 · daily</span>
           <h3>Read, then let the tick run</h3>
-          <pre><code>rail cto brief
-rail cto tick --key day-2026-11-02</code></pre>
+          <pre><code>rail overview
+rail loop tick --key day-2026-11-02</code></pre>
           <p class="small" style="margin-top: 8px;">
             The tick takes a single-instance lock, so two CTOS cannot run at
             once, and it must be the outer session.
@@ -931,11 +931,11 @@ rail cto tick --key day-2026-11-02</code></pre>
         <div class="tcard">
           <span class="phase">Step 6 · weekly</span>
           <h3>Hygiene and the ledger</h3>
-          <pre><code>rail digest
-rail ledger
-rail triage
-rail ci
-rail doctor</code></pre>
+          <pre><code>rail read digest
+rail read ledger
+rail loop triage
+rail gate
+rail ops doctor</code></pre>
         </div>
       </li>
     </ol>
@@ -966,9 +966,9 @@ rail doctor</code></pre>
       <div class="card">
         <h3>🧑 You</h3>
         <ul style="margin: 8px 0 0; padding-left: 20px;">
-          <li>Read <code>rail cto brief</code> — two minutes, not two hours.</li>
+          <li>Read <code>rail overview</code> — two minutes, not two hours.</li>
           <li>Answer <code>needs_human</code>: approvals, escalations, waits.</li>
-          <li>Read <code>rail digest</code> for reversible decisions and quality.</li>
+          <li>Read <code>rail read digest</code> for reversible decisions and quality.</li>
           <li>Approve the irreversible few: scope, secrets, releases, budgets.</li>
           <li>Spot-check one merged item when something feels off.</li>
         </ul>
@@ -978,15 +978,15 @@ rail doctor</code></pre>
     <div class="grid g3" style="margin-top: 16px;">
       <div class="card">
         <h4>Morning</h4>
-        <p class="small"><code>rail cto brief</code> → what is executable, what waits, what is stuck, what drifted.</p>
+        <p class="small"><code>rail overview</code> → what is executable, what waits, what is stuck, what drifted.</p>
       </div>
       <div class="card">
         <h4>During the day</h4>
-        <p class="small"><code>rail cto tick --key …</code> → the loop runs. You answer only the waits the brief names.</p>
+        <p class="small"><code>rail loop tick --key …</code> → the loop runs. You answer only the waits the brief names.</p>
       </div>
       <div class="card">
         <h4>Evening</h4>
-        <p class="small"><code>rail digest</code> → counts, quality, usage, and the reversible decisions you may want to undo.</p>
+        <p class="small"><code>rail read digest</code> → counts, quality, usage, and the reversible decisions you may want to undo.</p>
       </div>
     </div>
 
@@ -1110,12 +1110,12 @@ rail doctor</code></pre>
       <table>
         <thead><tr><th>Command</th><th>What you get</th></tr></thead>
         <tbody>
-          <tr><td><code>rail status</code></td><td>Counts, executable items, blockers, stuck items.</td></tr>
-          <tr><td><code>rail digest</code></td><td>Activity, human waits, reversible decisions, quality, usage.</td></tr>
-          <tr><td><code>rail cto brief</code></td><td>The bounded page a CTO session starts from.</td></tr>
-          <tr><td><code>rail find --tag x --text y</code></td><td>Documents matching every filter.</td></tr>
-          <tr><td><code>rail show &lt;slug&gt;</code></td><td>One document with its relations and body.</td></tr>
-          <tr><td><code>rail ledger --since …</code></td><td>Runs with attempt-counted usage and unknown counters kept apart.</td></tr>
+          <tr><td><code>rail read status</code></td><td>Counts, executable items, blockers, stuck items.</td></tr>
+          <tr><td><code>rail read digest</code></td><td>Activity, human waits, reversible decisions, quality, usage.</td></tr>
+          <tr><td><code>rail overview</code></td><td>The bounded page a CTO session starts from.</td></tr>
+          <tr><td><code>rail read find --tag x --text y</code></td><td>Documents matching every filter.</td></tr>
+          <tr><td><code>rail read show &lt;slug&gt;</code></td><td>One document with its relations and body.</td></tr>
+          <tr><td><code>rail read ledger --since …</code></td><td>Runs with attempt-counted usage and unknown counters kept apart.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1125,12 +1125,12 @@ rail doctor</code></pre>
       <table>
         <thead><tr><th>Command</th><th>What it does</th></tr></thead>
         <tbody>
-          <tr><td><code>rail add &lt;preset&gt; "&lt;title&gt;"</code></td><td>Create a document from a preset, optionally with relations.</td></tr>
-          <tr><td><code>rail update &lt;slug&gt; --expect &lt;etag&gt;</code></td><td>Change fields, tags or body.</td></tr>
-          <tr><td><code>rail link &lt;src&gt; &lt;rel&gt; &lt;dst&gt; --expect &lt;etag&gt;</code></td><td>Add or remove one relation.</td></tr>
-          <tr><td><code>rail move &lt;slug&gt; &lt;status&gt; --expect &lt;etag&gt;</code></td><td>Move an item through its lifecycle.</td></tr>
-          <tr><td><code>rail check</code> / <code>rail verify</code></td><td>Declare what proves an item, then run it and record verdicts.</td></tr>
-          <tr><td><code>rail report</code></td><td>File the structured report a completed run owes.</td></tr>
+          <tr><td><code>rail change add &lt;preset&gt; "&lt;title&gt;"</code></td><td>Create a document from a preset, optionally with relations.</td></tr>
+          <tr><td><code>rail change update &lt;slug&gt; --expect &lt;etag&gt;</code></td><td>Change fields, tags or body.</td></tr>
+          <tr><td><code>rail change link &lt;src&gt; &lt;rel&gt; &lt;dst&gt; --expect &lt;etag&gt;</code></td><td>Add or remove one relation.</td></tr>
+          <tr><td><code>rail change move &lt;slug&gt; &lt;status&gt; --expect &lt;etag&gt;</code></td><td>Move an item through its lifecycle.</td></tr>
+          <tr><td><code>rail check declare</code> / <code>rail check run</code></td><td>Declare what proves an item, then run it and record verdicts.</td></tr>
+          <tr><td><code>rail loop report</code></td><td>File the structured report a completed run owes.</td></tr>
           <tr><td><code>rail --actor human approve &lt;target&gt;</code></td><td>The human gate: a typed phrase and a protected-file hash.</td></tr>
         </tbody>
       </table>
@@ -1141,10 +1141,10 @@ rail doctor</code></pre>
       <table>
         <thead><tr><th>Command</th><th>What it launches</th></tr></thead>
         <tbody>
-          <tr><td><code>rail dispatch &lt;item&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>An implementer in an isolated worktree, then verification.</td></tr>
-          <tr><td><code>rail review &lt;item&gt; --run &lt;run&gt; --key &lt;k&gt;</code></td><td>A reviewer in its own worktree; records the verdict.</td></tr>
-          <tr><td><code>rail merge &lt;item&gt; --run &lt;run&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>Rebase and fast-forward onto the default branch.</td></tr>
-          <tr><td><code>rail cto tick --key &lt;k&gt;</code></td><td>One bounded CTO session behind the single-instance lock.</td></tr>
+          <tr><td><code>rail loop dispatch &lt;item&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>An implementer in an isolated worktree, then verification.</td></tr>
+          <tr><td><code>rail loop review &lt;item&gt; --run &lt;run&gt; --key &lt;k&gt;</code></td><td>A reviewer in its own worktree; records the verdict.</td></tr>
+          <tr><td><code>rail loop merge &lt;item&gt; --run &lt;run&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>Rebase and fast-forward onto the default branch.</td></tr>
+          <tr><td><code>rail loop tick --key &lt;k&gt;</code></td><td>One bounded CTO session behind the single-instance lock.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1154,13 +1154,13 @@ rail doctor</code></pre>
       <table>
         <thead><tr><th>Command</th><th>When</th></tr></thead>
         <tbody>
-          <tr><td><code>rail doctor</code> / <code>rail doctor --repair</code></td><td>Integrity check; finish or roll back interrupted writes.</td></tr>
-          <tr><td><code>rail reindex</code></td><td>Sync or rebuild the index explicitly.</td></tr>
-          <tr><td><code>rail ci</code></td><td>Before pushing: doctor issues plus approval and done gates.</td></tr>
-          <tr><td><code>rail pack list | show | validate | use | create</code></td><td>Inspect or switch the workflow pack.</td></tr>
-          <tr><td><code>rail sync --install</code></td><td>Install the git drivers for store-only clones.</td></tr>
+          <tr><td><code>rail ops doctor</code> / <code>rail ops doctor --repair</code></td><td>Integrity check; finish or roll back interrupted writes.</td></tr>
+          <tr><td><code>rail ops reindex</code></td><td>Sync or rebuild the index explicitly.</td></tr>
+          <tr><td><code>rail gate</code></td><td>Before pushing: doctor issues plus approval and done gates.</td></tr>
+          <tr><td><code>rail ops pack list | show | validate | use | create</code></td><td>Inspect or switch the workflow pack.</td></tr>
+          <tr><td><code>rail ops sync install</code></td><td>Install the git drivers for store-only clones.</td></tr>
           <tr><td><code>rail --actor human migrate</code></td><td>Import a v1/v2 store into a fresh v3 store.</td></tr>
-          <tr><td><code>rail mcp serve</code> · <code>rail ui serve</code></td><td>Same tool table over MCP or a loopback web UI.</td></tr>
+          <tr><td><code>rail serve mcp</code> · <code>rail serve ui</code></td><td>Same tool table over MCP or a loopback web UI.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1187,7 +1187,7 @@ rail doctor</code></pre>
           <tr>
             <td><code>VALIDATION_FAILED: unrecognized arguments</code></td>
             <td>Options are in the wrong place, or <code>add</code> got flags instead of positionals.</td>
-            <td><code>rail --store X add task "Title"</code>, not <code>rail add --preset …</code>.</td>
+            <td><code>rail --store X add task "Title"</code>, not <code>rail change add --preset …</code>.</td>
           </tr>
           <tr>
             <td><code>'cto tick' cannot be nested inside a running session</code></td>
@@ -1202,12 +1202,12 @@ rail doctor</code></pre>
           <tr>
             <td>A check reports <code>stale</code></td>
             <td>The files the check declares have changed since its verdict.</td>
-            <td>Re-run <code>rail verify</code>; a stale pass is not a pass.</td>
+            <td>Re-run <code>rail check run</code>; a stale pass is not a pass.</td>
           </tr>
           <tr>
             <td>The index looks wrong</td>
             <td>The cache drifted or was interrupted.</td>
-            <td><code>rail reindex</code>, or delete the index and let it rebuild. Never touch the store.</td>
+            <td><code>rail ops reindex</code>, or delete the index and let it rebuild. Never touch the store.</td>
           </tr>
         </tbody>
       </table>
@@ -1218,9 +1218,9 @@ rail doctor</code></pre>
         <h3>Safe recovery order</h3>
         <ol class="small" style="margin: 6px 0 0; padding-left: 20px;">
           <li>Read the code in the envelope.</li>
-          <li><code>rail doctor</code> for integrity.</li>
-          <li><code>rail reindex</code> if reads disagree with files.</li>
-          <li><code>rail doctor --repair</code> for an interrupted write.</li>
+          <li><code>rail ops doctor</code> for integrity.</li>
+          <li><code>rail ops reindex</code> if reads disagree with files.</li>
+          <li><code>rail ops doctor --repair</code> for an interrupted write.</li>
           <li>Only then touch files by hand.</li>
         </ol>
       </div>

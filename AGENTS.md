@@ -14,6 +14,7 @@ published.
 - Design: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
 - Stage 3 plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-3.md`
 - Stage 3 architecture: `library/arch-stage-3.md`
+- Command surface (implemented): `docs/superpowers/specs/2026-11-02-command-surface-consolidation.md`
 - Stage 2 plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-2.md`
 - Stage 2 architecture: `library/arch-stage-2.md`
 - Stage 1b plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-1b-cto-slice.md`

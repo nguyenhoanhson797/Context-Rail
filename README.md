@@ -40,9 +40,9 @@ From the project you want to manage:
 
 ```bash
 rail init --pack basic            # writes ./context-rail/ and offers the picture
-rail add task "Write the first task"
-rail status
-rail cto brief
+rail change add task "Write the first task"
+rail read status
+rail overview
 ```
 
 `rail init` is resumable: re-running it keeps what already exists and continues
@@ -56,8 +56,8 @@ infrastructure failure.
 Notes that are easy to trip over:
 
 - `--store` and `--actor` are global options: they go before the command,
-  e.g. `rail --store path/to/context-rail status`.
-- `add` takes positional arguments: `rail add <preset> "<title>"`.
+  e.g. `rail --store path/to/context-rail read status`.
+- `change add` takes positional arguments: `rail change add <preset> "<title>"`.
 - Without `--store`, the nearest `context-rail` folder above the current
   directory is used.
 
@@ -94,21 +94,21 @@ Useful flags:
   the `human` actor; a CTO may only propose with `--draft-file`, and a draft
   records no approval.
 
-`adapters sync` and `sync --install` remain available on their own. `adapters
-sync` mirrors the workspace profiles and skills into `AGENTS.md` and
-`.agents/skills/` (or `CLAUDE.md`, `.cursor/`, `GEMINI.md`); re-run it when a
+`ops adapters render` and `ops sync install` remain available on their own.
+`ops adapters render` mirrors the workspace profiles and skills into `AGENTS.md`
+and `.agents/skills/` (or `CLAUDE.md`, `.cursor/`, `GEMINI.md`); re-run it when a
 skill changes.
 
 Useful read commands:
 
 ```bash
-rail status            # counts, executable items, blockers, stuck items
-rail digest            # activity, waits, decisions, quality, usage
-rail cto brief         # the bounded brief a CTO session starts from
-rail find --rel part_of=ship-v3
-rail show <slug>
-rail doctor            # store integrity issues
-rail ci                # doctor issues plus the approval and done gates
+rail overview          # the daily starting page
+rail read status       # counts, executable items, blockers, stuck items
+rail read digest       # activity, waits, decisions, quality, usage
+rail read find --rel part_of=ship-v3
+rail read show <slug>
+rail ops doctor        # store integrity issues
+rail gate              # doctor issues plus the approval and done gates
 ```
 
 ## Skills
@@ -145,7 +145,7 @@ charter:
 rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
 ```
 
-`approve`, `migrate` and `pack use` are human-only tools. They need an
+`approve`, `ops migrate` and `ops pack use` are human-only tools. They need an
 explicitly named human: pass `--actor human` or set `RAIL_ACTOR=human`. A bare
 command still defaults to `human` for ordinary reads and writes, but not for
 these tools. The actor name is a workflow claim, not authentication; anyone
@@ -154,12 +154,12 @@ with shell access as your OS user can act as you.
 Once the charter is approved, the loop uses isolated git worktrees:
 
 ```bash
-rail dispatch <item> --expect <etag> --key <idempotency-key>
-rail review   <item> --run <run-id> --key <idempotency-key>
-rail merge    <item> --run <run-id> --expect <etag> --key <idempotency-key>
+rail loop dispatch <item> --expect <etag> --key <idempotency-key>
+rail loop review   <item> --run <run-id> --key <idempotency-key>
+rail loop merge    <item> --run <run-id> --expect <etag> --key <idempotency-key>
 ```
 
-`rail cto tick --key <idempotency-key>` starts one bounded CTO session behind a
+`rail loop tick --key <idempotency-key>` starts one bounded CTO session behind a
 single-instance lock. It must be the outer session, so it refuses to start when
 `RAIL_ACTOR` is already set.
 
@@ -178,19 +178,29 @@ single-instance lock. It must be the outer session, so it refuses to start when
 
 ## Command surface
 
-- **Store**: `init`, `add`, `update`, `link`, `move`, `rename`, `relocate`,
-  `show`, `find`, `reindex`, `doctor`, `ci`
-- **Views**: `status`, `digest`, `cto brief`, `ledger`
-- **Checks and quality**: `check`, `verify`, `report`, `triage`, `review`
-- **Agent loop**: `dispatch`, `merge`, `cto tick`, `approve`
-- **Packs, profiles and adapters**: `pack list|use|create`, `rollback`,
-  `adapters sync` (AGENTS.md, `.agents/skills/`, `CLAUDE.md`, `.cursor/`)
-- **Measurement**: `measure fix|versions`
-- **Interop**: `migrate` (v1/v2 import), `sync` (clones and git drivers),
-  `mcp serve` (MCP over stdio), `ui serve` (loopback HTTP)
+Start with `rail overview`; it is the bounded daily page. The rest is grouped by
+what you are doing:
 
-`rail <command> --help` is the authoritative list; the CLI, MCP server and UI
-are all generated from one tool table (`src/context_rail/gateway/tools.py`).
+| Group | Commands |
+|---|---|
+| **Daily** | `init`, `approve`, `overview`, `read status\|digest\|find\|show\|ledger`, `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop dispatch\|review\|merge\|report\|triage\|tick`, `gate` |
+| **Operations** | `ops doctor\|reindex\|migrate\|rollback`, `ops pack list\|show\|validate\|create\|use`, `ops sync`, `ops sync install`, `ops adapters render`, `ops measure versions\|fix` |
+| **Transports** | `serve mcp`, `serve ui` |
+
+The loop gates stay separate on purpose: `dispatch` launches an implementer,
+`review` is a different actor, and `merge` fast-forwards only an approved
+candidate. `gate` is a read-only governance check; it never runs a Check.
+
+Every former flat command name remains accepted, including `status`, `dispatch`,
+`review`, `merge`, `check`, `verify`, `relocate`, `ci`, `pack`, `sync`,
+`adapters sync`, `cto brief`, `cto tick`, `mcp serve` and `ui serve`. The
+grouped names are the documented surface; the flat names are compatibility
+aliases.
+
+`rail <command> --help` is the authoritative list. The CLI, MCP server and UI
+are generated from one canonical tool table
+(`src/context_rail/gateway/tools.py`); the grouped names live in
+`src/context_rail/core/tool_names.py`.
 
 ## Testing
 
@@ -218,7 +228,7 @@ collects the perf tests, so use the lanes above when the machine is busy.
 src/context_rail/
   kernel/     pure rules: structure, budgets, gates, timestamps (no I/O)
   model/      manifest, pack, policy and field validation
-  core/       result, util and the fixed primitive names
+  core/       result, util, fixed primitive and grouped command names
   store/      the only write path, the SQLite cache, queries, sync
   runner/     dispatch, review, merge, droid protocol, control files
   gateway/    tool table, handlers, permissions, JSON envelope

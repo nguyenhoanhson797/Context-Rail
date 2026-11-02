@@ -1,6 +1,6 @@
 ---
 name: context-rail-v3-ops
-description: 'Operate a Context Rail v3 store: where state lives, doctor/reindex/ci/sync/migrate, recovery order after a refusal, speed budgets and the test lanes. Load when something looks wrong or before shipping.'
+description: 'Operate a Context Rail v3 store: where state lives, ops doctor/reindex/gate/sync/migrate, recovery order after a refusal, speed budgets and the test lanes. Load when something looks wrong or before shipping.'
 ---
 
 # Context Rail v3 — operations
@@ -30,27 +30,27 @@ context-rail/.rail-local/    index, locks, dispatch/tick/merge progress
 ## Actor identity
 
 `--actor` and `RAIL_ACTOR` are workflow claims, not authentication. Human-only
-tools (`approve`, `migrate`, `pack use`) require an explicitly named human:
-`--actor human` or `RAIL_ACTOR=human`. Anyone with shell access as your OS user
-can act as you; use OS-level isolation if you need a real boundary.
+tools (`approve`, `ops migrate`, `ops pack use`) require an explicitly named
+human: `--actor human` or `RAIL_ACTOR=human`. Anyone with shell access as your
+OS user can act as you; use OS-level isolation if you need a real boundary.
 
 ## Maintenance
 
 ```powershell
-rail doctor                 # integrity issues
-rail doctor --repair        # finish or roll back an interrupted write first
-rail reindex                # sync the index with the files
-rail reindex --full         # rebuild from scratch
-rail ci                     # doctor + approval and done gates (never runs checks)
-rail ci --warnings-as-errors
+rail ops doctor             # integrity issues
+rail ops doctor --repair    # finish or roll back an interrupted write first
+rail ops reindex            # sync the index with the files
+rail ops reindex --full     # rebuild from scratch
+rail gate                   # doctor + approval and done gates (never runs checks)
+rail gate --warnings-as-errors
 ```
 
 ## Recovery order
 
 1. Read the code and `error.details` in the envelope — refusals name the fix.
-2. `rail doctor` for integrity.
-3. `rail reindex` when reads disagree with files.
-4. `rail doctor --repair` for an interrupted multi-file write.
+2. `rail ops doctor` for integrity.
+3. `rail ops reindex` when reads disagree with files.
+4. `rail ops doctor --repair` for an interrupted multi-file write.
 5. Only then edit files by hand; the next command re-syncs the index.
 
 Never hand-edit the SQLite index and never delete the store to fix a view.
@@ -60,20 +60,20 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `NOT_FOUND: no store found` | Not inside a project, or no `rail.yaml` | `rail init`, or `--store` before the command |
-| `CONFLICT` on a write | Etag changed since you read it | Re-read (`show`/`status`), then retry with the new etag |
-| A check reports `stale` | Declared inputs changed since the verdict | `rail verify` again |
+| `CONFLICT` on a write | Etag changed since you read it | Re-read (`read show`/`read status`), then retry with the new etag |
+| A check reports `stale` | Declared inputs changed since the verdict | `rail check run` again |
 | `doctor` flags approval drift | A protected file changed after approval | Re-approve the target |
-| The index is corrupt or missing | Cache only | `rail reindex --full` |
+| The index is corrupt or missing | Cache only | `rail ops reindex --full` |
 | Two CTOS at once | Single-instance lock | Let the running tick finish |
 
 ## Surfaces and interop
 
 ```powershell
-rail mcp serve              # the same tool table over MCP stdio
-rail ui serve               # loopback web UI
-rail sync --install         # git merge drivers for store-only clones
-rail sync                   # integrate and publish clone changes
-rail --actor human migrate ...  # import a v1/v2 legacy store
+rail serve mcp                  # the same tool table over MCP stdio
+rail serve ui                   # loopback web UI
+rail ops sync install           # git merge drivers for store-only clones
+rail ops sync                   # integrate and publish clone changes
+rail --actor human ops migrate ...  # import a v1/v2 legacy store
 ```
 
 ## Speed budgets (fixed, tested in CI)
@@ -81,7 +81,7 @@ rail --actor human migrate ...  # import a v1/v2 legacy store
 | Operation | 1,000 docs | 10,000 docs |
 |---|---|---|
 | CLI startup | < 150 ms | < 150 ms |
-| Warm read (`cto brief`, `status`) | < 300 ms | < 1 s |
+| Warm read (`overview`, `read status`) | < 300 ms | < 1 s |
 | Cold rebuild | < 10 s | < 60 s |
 | Single write | < 200 ms | < 200 ms |
 
@@ -100,7 +100,7 @@ perf tests, so use the lanes above when the machine is busy.
 
 ## Before you ship
 
-- `rail doctor` clean (or only informational findings).
-- `rail ci` passes; approval hashes match.
+- `rail ops doctor` clean (or only informational findings).
+- `rail gate` passes; approval hashes match.
 - The default branch is the one the charter names.
 - The store is committed; the index and `.rail-local/` are not.

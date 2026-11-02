@@ -39,17 +39,17 @@ own words into these; the engine never reads a status name or a tag.
 
 ```powershell
 rail init --pack basic --scaffold      # skeleton only for this quick tour
-rail add goal "Ship v3"
-rail add task "Write the first task" --rel part_of=ship-v3
-rail status                            # executable: write-the-first-task
-rail cto brief                         # the CTO's bounded starting page
+rail change add goal "Ship v3"
+rail change add task "Write the first task" --rel part_of=ship-v3
+rail read status                       # executable: write-the-first-task
+rail overview                          # the CTO's bounded starting page
 ```
 
 Drop `--scaffold` to run the resumable onboarding pipeline instead: it offers
 the picture, approval, agent files and optional git drivers.
 
-Global options go **before** the command (`rail --store path status`).
-`add` takes positional arguments: `rail add <preset> "<title>"`.
+Global options go **before** the command (`rail --store path read status`).
+`change add` takes positional arguments: `rail change add <preset> "<title>"`.
 Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
 ## Onboarding a project — what each step generates
@@ -60,8 +60,8 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 | Skeleton only | `rail init --pack basic --scaffold` | `rail.yaml`, `.gitignore`, empty pinned folders |
 | Picture source | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter"` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the pack's worker skills |
 | Approve | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` | an approval record with the protected-file hashes |
-| Agent files | `rail adapters sync [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block) and `.agents/skills/<name>/SKILL.md` per skill note |
-| Git drivers | `rail sync --install` | `.gitattributes` and clone-local merge drivers |
+| Agent files | `rail ops adapters render [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block) and `.agents/skills/<name>/SKILL.md` per skill note |
+| Git drivers | `rail ops sync install` | `.gitattributes` and clone-local merge drivers |
 
 - Bare `init` is resumable: it keeps what exists and continues from the next
   missing stage. `--dry-run` prints the plan and writes nothing.
@@ -71,7 +71,7 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
   drivers.
 - The picture modes need the `human` actor. A CTO may only propose with
   `--draft-file`, and a draft records no approval.
-- `adapters sync` is what makes the checkout agent-ready. Re-run it when a
+- `ops adapters render` is what makes the checkout agent-ready. Re-run it when a
   skill note changes; `--force` replaces a hand-edited block (human only,
   typed phrase `FORCE ADAPTERS adapters`).
 
@@ -79,19 +79,19 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
 | Command | Answers |
 |---|---|
-| `rail status` | Counts, executable items, blockers with reasons, stuck items |
-| `rail cto brief` | Approval state, goal, gates, executable work, waits, quality |
-| `rail digest` | Activity, human waits, reversible decisions, quality, usage |
+| `rail overview` | The daily starting page: approval, goal, gates, executable work, waits |
+| `rail read status` | Counts, executable items, blockers with reasons, stuck items |
+| `rail read digest` | Activity, human waits, reversible decisions, quality, usage |
 
 ## Five command families
 
 | Family | Commands |
 |---|---|
-| Read | `status`, `digest`, `cto brief`, `find`, `show`, `ledger` |
-| Change | `add`, `update`, `link`, `move`, `rename`, `relocate`, `check`, `verify`, `report` |
-| Gate | `approve`, `pack use` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
-| Loop | `dispatch`, `review`, `merge`, `cto tick`, `triage` |
-| Operate | `doctor`, `reindex`, `ci`, `sync`, `migrate`, `adapters sync`, `rollback`, `measure fix\|versions`, `mcp serve`, `ui serve` |
+| Read | `overview`, `read status\|digest\|find\|show\|ledger` |
+| Change | `change add\|update\|link\|move\|rename\|repath`, `check declare\|run`, `loop report\|triage` |
+| Gate | `approve`, `ops pack use`, `gate` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
+| Loop | `loop dispatch\|review\|merge\|tick` |
+| Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui` |
 
 Exact flags: `references/commands.md` in this skill.
 
@@ -111,8 +111,8 @@ Exact flags: `references/commands.md` in this skill.
 | `NOT_FOUND: no store found` | `rail init`, or put `--store` before the command |
 | `VALIDATION_FAILED: unrecognized arguments` | Global options belong before the command; `add` is positional |
 | “the charter is not approved; nothing executes yet” | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` |
-| `'cto tick' cannot be nested inside a running session` | Start it from the outer session, with `RAIL_ACTOR` unset |
-| A check is `stale` | Re-run `rail verify`; a stale pass is not a pass |
+| `'cto tick' cannot be nested inside a running session` | Start `rail loop tick` from the outer session, with `RAIL_ACTOR` unset |
+| A check is `stale` | Re-run `rail check run`; a stale pass is not a pass |
 
 ## Invariants worth knowing before changing anything
 
