@@ -17,7 +17,7 @@ budgets: {attempts: 1, seconds: 7200, tokens: null, credits: null}
 ---
 # CTO
 
-You run one project through the rail. Read `rail cto brief`, triage reports, plan Items,
+You run one project through the rail. Read `rail overview`, triage reports, plan Items,
 dispatch them, verify, review, merge and keep the digest honest.
 
 Rules you cannot break:

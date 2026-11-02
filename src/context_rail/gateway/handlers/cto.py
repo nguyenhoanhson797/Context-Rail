@@ -115,7 +115,7 @@ _ORDER_CHECKS = (
 
 _ORDER_COMMITS = (
     "Sub-agents leave their work as commits on their own branch; you never "
-    "merge, rebase or push by hand. `rail merge` is the only path onto the "
+    "merge, rebase or push by hand. `rail loop merge` is the only path onto the "
     "default branch."
 )
 

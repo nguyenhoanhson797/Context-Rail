@@ -269,8 +269,8 @@ def _sections(plan: _Plan, doc: Doc) -> dict[str, str]:
         "checks": check_lines,
         "allowed rail methods": methods,
         "no-store-edit rule": (
-            "Write only `code` notes in this worktree's store: `rail add code ...`, "
-            "`rail update ...` and `rail link ...`. Never use "
+            "Write only `code` notes in this worktree's store: `rail change add code ...`, "
+            "`rail change update ...` and `rail change link ...`. Never use "
             f"`rail --store {plan.store.absolute()}` (the canonical store); the parent "
             "writes every other Record and performs the merge. Any other store path in "
             "your candidate is refused."

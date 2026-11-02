@@ -74,11 +74,11 @@ SEVERITIES: dict[str, str] = {
 
 SEVERITIES.update(stage2.SEVERITY)
 
-_REPAIR = "rail doctor --repair"
+_REPAIR = "rail ops doctor --repair"
 _APPROVE = 'rail approve charter --confirm "APPROVE charter" --confirmer <you>'
-_RELOCATE = "rail relocate"
-_TRIAGE = "rail triage"
-_REPORT = "rail report <item> --run <run> --report-file <file>"
+_RELOCATE = "rail change repath"
+_TRIAGE = "rail loop triage"
+_REPORT = "rail loop report <item> --run <run> --report-file <file>"
 _CHARTER = "charter.md"
 _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
 _FRESHNESS_CODES = {"stale": "check_stale", "unknown": "check_unknown"}
@@ -327,7 +327,7 @@ def _invalid_payload(row: _Row) -> dict[str, Any]:
             "check_invalid",
             row.path,
             f"{row.path!r} carries a Check spec that does not validate",
-            fix=f"rail check {row.slug} --spec-file <file> --expect <etag>",
+            fix=f"rail check declare {row.slug} --spec-file <file> --expect <etag>",
         )
     if row.primitive == "actor":
         return _issue(
@@ -622,7 +622,7 @@ def _check_issues(context: Any, ix: Index) -> list[dict[str, Any]]:
                 path,
                 f"check {row['slug']!r} is {state!r}: its last verdict no longer "
                 "describes the declared inputs",
-                fix=f"rail verify {row['slug']}",
+                fix=f"rail check run {row['slug']}",
             )
         )
     return issues
@@ -771,7 +771,7 @@ def _run_issues(ix: Index) -> list[dict[str, Any]]:
                 "run_incomplete",
                 path,
                 f"the CTO tick {dispatch_id!r} started but recorded no completed run",
-                fix="rail cto tick --key <key>",
+                fix="rail loop tick --key <key>",
             )
         )
     return issues

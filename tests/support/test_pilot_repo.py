@@ -70,7 +70,7 @@ def test_pilot_generator_prints_the_next_commands(tmp_path: Path) -> None:
     text = completed.stdout
     assert "rail --store" in text
     assert "approve charter --confirm" in text
-    assert "cto tick --key pilot-tick-1" in text
+    assert "loop tick --key pilot-tick-1" in text
     assert "custom:Deepseek-V4-flash-0" in text
     assert "custom:gemini-3.8-flash-LTN-0" in text
     assert (root / "pilot" / "README.md").is_file()

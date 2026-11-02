@@ -303,7 +303,7 @@ def git_drivers_stage(
         return {
             "state": "skipped",
             "reason": "no_terminal",
-            "command": "rail sync --install",
+            "command": "rail ops sync install",
         }
     try:
         answer = (
@@ -315,7 +315,7 @@ def git_drivers_stage(
         return {
             "state": "skipped",
             "reason": "deferred",
-            "command": "rail sync --install",
+            "command": "rail ops sync install",
         }
     try:
         result = sync_handler(
@@ -476,9 +476,9 @@ def _next_steps(approved: bool, stages: dict[str, Any]) -> list[str]:
         steps.append(_APPROVE_COMMAND)
     steps.extend(
         [
-            'rail add task "..."',
-            "rail cto brief",
-            "rail ui serve",
+            'rail change add task "..."',
+            "rail overview",
+            "rail serve ui",
         ]
     )
     return steps

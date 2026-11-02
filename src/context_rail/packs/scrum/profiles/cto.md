@@ -17,7 +17,7 @@ budgets: {attempts: 1, seconds: 7200, tokens: null, credits: null}
 ---
 # CTO
 
-You run one scrum project through the rail. Read `rail cto brief`, refine Epics and
+You run one scrum project through the rail. Read `rail overview`, refine Epics and
 Stories, plan Sprints, and dispatch Stories and tasks through `ready`, `doing` and
 `review`. Keep the board honest and the digest current.
 

@@ -33,10 +33,10 @@ RECORD_KIND = "adapters.synced"
 AGENTS = "AGENTS.md"
 
 _COMMANDS = """\
-- `rail cto brief` shows what is executable and what needs a human.
-- `rail dispatch <item>` runs one Item in an isolated worktree; `rail review`
-  and `rail merge` gate its result.
-- `rail check` declares proof and `rail verify` runs it. Unproven work is not done.
+- `rail overview` shows what is executable and what needs a human.
+- `rail loop dispatch <item>` runs one Item in an isolated worktree; `rail loop review`
+  and `rail loop merge` gate its result.
+- `rail check declare` declares proof and `rail check run` runs it. Unproven work is not done.
 - Human-only actions need the exact phrase the command prints.
 """
 

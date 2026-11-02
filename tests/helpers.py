@@ -400,7 +400,7 @@ def item_etag(run: Any) -> str:
 
 
 def merge_call(run: Any, key: str, **extra: Any) -> dict[str, Any]:
-    """Invoke ``rail merge`` for one fixture through the gateway as the CTO."""
+    """Invoke ``rail loop merge`` for one fixture through the gateway as the CTO."""
     from context_rail.gateway.gateway import invoke
 
     args: dict[str, Any] = {
@@ -414,7 +414,7 @@ def merge_call(run: Any, key: str, **extra: Any) -> dict[str, Any]:
 
 
 def review_call(run: Any, key: str, **extra: Any) -> dict[str, Any]:
-    """Invoke ``rail review`` for one fixture through the gateway as the CTO."""
+    """Invoke ``rail loop review`` for one fixture through the gateway as the CTO."""
     from context_rail.gateway.gateway import invoke
 
     args: dict[str, Any] = {"item": run.item, "run": run.run, "key": key}

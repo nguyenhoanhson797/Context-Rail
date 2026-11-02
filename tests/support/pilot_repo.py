@@ -85,10 +85,10 @@ Each step is one command line: the global flags --store and --actor always
 precede the subcommand, exactly one init mode is named, and every argument
 that can carry a space is quoted.
   1. rail --store "{store}" --actor human init --dir "{project}" --answers-file "<answers.json>" --confirm "APPROVE charter"
-  2. rail --store "{store}" --actor human check "<slug>" --target "<item>" --spec-file "<acceptance.json>" --expect absent --confirm "APPROVE <slug>"
+  2. rail --store "{store}" --actor human check declare "<slug>" --target "<item>" --spec-file "<acceptance.json>" --expect absent --confirm "APPROVE <slug>"
   3. rail --store "{store}" --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"
-  4. rail --store "{store}" --actor human ci
-  5. rail --store "{store}" --actor cto cto tick --key pilot-tick-1 --timeout 1800
+  4. rail --store "{store}" --actor human gate
+  5. rail --store "{store}" --actor cto loop tick --key pilot-tick-1 --timeout 1800
 model check: custom:Deepseek-V4-flash-0 (implementer, CTO) and
              custom:gemini-3.8-flash-LTN-0 (reviewer); never print a key.
 """

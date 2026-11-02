@@ -411,7 +411,7 @@ def _leave_commit(
 
 
 def _write_code_note(worktree: Path) -> list[str]:
-    """A valid code note plus its doc.created Record, as `rail add code` writes them."""
+    """A valid code note plus its doc.created Record, as `rail change add code` writes them."""
     stamp = "2026-11-02T00:00:00Z"
     note_rel = "context-rail/notes/code/src-app-py.md"
     note = worktree / note_rel

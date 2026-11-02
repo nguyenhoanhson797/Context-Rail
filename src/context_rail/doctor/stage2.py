@@ -38,7 +38,7 @@ SEVERITY: dict[str, str] = {
     "interrupted_sync": "warning",
 }
 
-_SYNC_INSTALL = "rail sync --install"
+_SYNC_INSTALL = "rail ops sync install"
 _VERSIONED_KINDS = ("skill.changed", "profile.changed")
 _BUILTIN_PROBE = ".rail-builtin-probe"
 
@@ -67,7 +67,7 @@ def _selected_pack(store: Path, manifest: Manifest) -> list[dict[str, Any]]:
                 "rail.yaml",
                 f"the selected pack {manifest.pack!r} cannot be read: "
                 f"{error.message}",
-                fix=f"rail pack validate --name {manifest.pack}",
+                fix=f"rail ops pack validate --name {manifest.pack}",
             )
         ]
     return []
@@ -217,7 +217,7 @@ def _sync_intent(store: Path) -> list[dict[str, Any]]:
             "interrupted_sync",
             "sync/intent.json",
             "an interrupted sync is waiting to be resumed",
-            fix="rail sync",
+            fix="rail ops sync",
         )
     ]
 

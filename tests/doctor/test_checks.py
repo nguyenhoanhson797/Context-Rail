@@ -321,7 +321,7 @@ def test_intent_pending_reported_alone(store_factory) -> None:
 
     assert [issue["code"] for issue in report["issues"]] == ["intent_pending"]
     assert report["issues"][0]["severity"] == "error"
-    assert report["issues"][0]["fix"] == "rail doctor --repair"
+    assert report["issues"][0]["fix"] == "rail ops doctor --repair"
 
 
 def test_placement_mismatch_reported_alone(store_factory) -> None:
@@ -334,7 +334,7 @@ def test_placement_mismatch_reported_alone(store_factory) -> None:
     issue = report["issues"][0]
     assert issue["severity"] == "warning"
     assert issue["path"] == "items/misc/t.md"
-    assert "rail relocate" in issue["fix"]
+    assert "rail change repath" in issue["fix"]
 
 
 def test_unknown_preset_reported_alone(store_factory) -> None:
