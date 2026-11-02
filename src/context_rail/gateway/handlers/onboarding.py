@@ -530,7 +530,7 @@ def _requested_pack(args: dict[str, Any], store: Path) -> str:
     """The named pack, else the store's own pack, else the built-in default."""
     name = args.get("pack")
     if isinstance(name, str) and name.strip():
-        return name
+        return name.strip()
     if (store / "rail.yaml").is_file():
         stored = _stored_pack(store)
         if stored:

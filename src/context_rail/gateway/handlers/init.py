@@ -137,4 +137,4 @@ def _stored_pack(store: Path) -> str | None:
     except (OSError, yaml.YAMLError):
         return None
     name = data.get("pack") if isinstance(data, dict) else None
-    return name if isinstance(name, str) and name else None
+    return name.strip() if isinstance(name, str) and name.strip() else None
