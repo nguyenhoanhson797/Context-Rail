@@ -4,11 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "context-rail"
-version = "3.0.2"
+version = "3.0.3"
 description = "An agentic project workspace: files are the truth, agents work through one write path"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = ["PyYAML>=6.0", "mcp>=2.3.0,<3"]
+keywords = ["agents", "context", "project-management", "markdown", "sqlite", "workflow", "mcp", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
 
 [project.optional-dependencies]
 test = ["pytest>=8", "pytest-timeout>=2.3"]
