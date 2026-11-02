@@ -66,8 +66,8 @@ rail ledger [--item <slug>] [--since <iso>]
 
 ## Failure and retry
 
-- A failed run gets **one retry**, continuing the same `droid` session with the
-  failure output attached.
+- A failed run gets one retry by default (the pack's `policy.retries`), continuing
+  the same `droid` session with the failure output attached.
 - Still failing → the item escalates with its evidence; it is not retried
   forever.
 - A merge conflict gets one rebase retry, then escalation.
