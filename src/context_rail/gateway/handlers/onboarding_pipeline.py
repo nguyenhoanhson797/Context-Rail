@@ -529,6 +529,8 @@ def render_card(receipt: dict[str, Any]) -> str:
             detail = ": " + ", ".join(stage["written"])
         elif stage.get("reason"):
             detail = f" ({stage['reason']})"
+        if stage.get("command"):
+            detail += f" - {stage['command']}"
         lines.append(f"  {name:<11} {state}{detail}")
     if receipt.get("status") is not None:
         counts = receipt["status"].get("counts", {})

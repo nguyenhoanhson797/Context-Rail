@@ -125,4 +125,5 @@ def test_render_card_names_every_stage(
 
     assert "context rail - onboarding" in card
     assert "approval" in card
+    assert "rail --actor human approve charter" in card
     assert "next:" in card
