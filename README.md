@@ -26,6 +26,11 @@ is the only difference, every command below works the same in both shells.
 This installs two equivalent entry points, `rail` and `ctx-rail`; every example
 below also works as `python -m context_rail`.
 
+`python -m pip` installs into the interpreter that will run the tool. Bare
+`pip install context-rail` is the same command whenever `pip` on your `PATH`
+belongs to that interpreter; on a machine with several Pythons, the module form
+is the one that cannot pick the wrong one.
+
 To keep the tool out of your project environments, `pipx install context-rail`
 works too.
 
