@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml
 from context_rail.model.manifest import Manifest, initial_manifest
 from context_rail.model.pack import load_pack
@@ -44,28 +45,87 @@ def _static_prefix(template: str) -> str:
 
 def scaffold(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Create ``<dir>/<root>`` with the pack's manifest and pinned folders."""
+    result = skeleton(_ctx, args, actor, allow_existing=False)
+    return {"store": result["store"], "pack": result["pack"]}
+
+
+def skeleton(
+    _ctx: Context | None,
+    args: dict[str, Any],
+    actor: str,
+    *,
+    allow_existing: bool,
+) -> dict[str, Any]:
+    """Write the absent skeleton parts, optionally resuming an existing store."""
     directory = Path(args["dir"] or Path.cwd())
     store = confine(directory, args["root"])
-    pack = load_pack(args["pack"], store)
+    pack = load_pack(args.get("pack") or DEFAULT_PACK, store)
     manifest, data = initial_manifest(pack.name, store)
-    if replay(store, args["key"]) is not None:
-        return {"store": str(store), "pack": _stored_pack(store) or pack.name}
+    saved = replay(store, args.get("key"))
+    if saved is not None:
+        return {
+            "store": str(store),
+            "pack": _stored_pack(store) or pack.name,
+            "state": "unchanged",
+            "written": [],
+        }
     if (store / "rail.yaml").exists():
-        raise WriteRefused(
-            "CONFLICT",
-            "a store already exists here",
-            {"path": str(store / "rail.yaml")},
-        )
+        if not allow_existing:
+            raise WriteRefused(
+                "CONFLICT",
+                "a store already exists here",
+                {"path": str(store / "rail.yaml")},
+            )
+        stored = _stored_pack(store)
+        if stored is None:
+            raise WriteRefused(
+                "CONFLICT",
+                "the existing rail.yaml cannot be read",
+                {"path": str(store / "rail.yaml")},
+            )
+        if stored != pack.name:
+            raise WriteRefused(
+                "CONFLICT",
+                f"the store uses pack {stored!r}, not {pack.name!r}",
+                {"stored": stored, "requested": pack.name},
+            )
+        written: list[str] = []
+        if not (store / ".gitignore").exists():
+            result = commit(
+                store,
+                manifest,
+                [Op(".gitignore", GITIGNORE, ABSENT)],
+                None,
+                actor=actor,
+                key=args.get("key"),
+            )
+            written = result["written"]
+        _make_pinned_folders(store, manifest)
+        return {
+            "store": str(store),
+            "pack": stored,
+            "state": "written" if written else "unchanged",
+            "written": written,
+        }
     ops = [
         Op("rail.yaml", yaml.safe_dump(data, sort_keys=False).encode("utf-8"), ABSENT),
         Op(".gitignore", GITIGNORE, ABSENT),
     ]
-    commit(store, manifest, ops, None, actor=actor, key=args["key"])
+    result = commit(store, manifest, ops, None, actor=actor, key=args.get("key"))
+    _make_pinned_folders(store, manifest)
+    return {
+        "store": str(store),
+        "pack": pack.name,
+        "state": "written",
+        "written": result["written"],
+    }
+
+
+def _make_pinned_folders(store: Path, manifest: Manifest) -> None:
     # commit writes files, and a fresh store's pinned folders hold none yet, so
     # they are made here instead of as placeholders the index would count.
     for folder in pinned_folders(manifest):
         (store / folder).mkdir(parents=True, exist_ok=True)
-    return {"store": str(store), "pack": pack.name}
 
 
 def _stored_pack(store: Path) -> str | None:
