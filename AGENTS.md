@@ -30,8 +30,8 @@ exist, so new work starts from a new design rather than a new stage plan.
 - Use `py`, not `python`.
 - Install: `py -m pip install -e .[test]`
 - Default test lane: `py -m pytest -q` (excludes `slow` only, so it also collects
-  `perf`; the milestone gate is `commands.test` in `services.yaml`, functional lane
-  then serial perf lane)
+  `perf`; the milestone gate is `.github/workflows/ci.yml`, functional lane then
+  serial perf lane)
 - Speed budgets: `py -m pytest -q -m perf`; 10k-doc and other slow tests: `py -m pytest -q -m slow`
 - Profile a slow command: `py -m cProfile -s cumtime -m context_rail <command>`
 
