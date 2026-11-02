@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from context_rail.core.util import now_iso
-from context_rail.gateway.handlers.init import GITIGNORE, PINNED_FOLDERS
+from context_rail.gateway.handlers.init import GITIGNORE, pinned_folders
 from context_rail.gateway.handlers.onboarding import agent_ops
-from context_rail.model.manifest import DEFAULT_MANIFEST, manifest_from_mapping
+from context_rail.model.manifest import initial_manifest
 from context_rail.model.pack import load_pack
 from context_rail.store.legacy import read_legacy
 from context_rail.store.location import confine
@@ -54,7 +54,7 @@ def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, 
         )
     pack = load_pack(args["pack"], target)
     legacy = read_legacy(source)
-    manifest = manifest_from_mapping({**DEFAULT_MANIFEST, "pack": pack.name}, target)
+    manifest, manifest_data = initial_manifest(pack.name, target)
     plan = plan_migration(
         legacy, pack=pack, manifest=manifest, at=now_iso()
     )
@@ -73,7 +73,7 @@ def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, 
         return summary
 
     ops = [
-        Op("rail.yaml", _manifest_bytes(pack.name), ABSENT),
+        Op("rail.yaml", _manifest_bytes(manifest_data), ABSENT),
         Op(".gitignore", GITIGNORE, ABSENT),
         *(Op(document.rel, document.data, ABSENT) for document in plan.documents),
         *(Op(record.rel, record.data, ABSENT) for record in plan.records),
@@ -93,15 +93,14 @@ def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, 
         },
     }
     result = commit(target, manifest, ops, record, actor=actor, key=key)
-    for folder in PINNED_FOLDERS:
+    for folder in pinned_folders(manifest):
         (target / folder).mkdir(parents=True, exist_ok=True)
     summary["written"] = list(result["written"])
     summary["record"] = result["record"]
     return summary
 
 
-def _manifest_bytes(pack_name: str) -> bytes:
-    data = {**DEFAULT_MANIFEST, "pack": pack_name}
+def _manifest_bytes(data: dict[str, Any]) -> bytes:
     text = yaml.safe_dump(data, sort_keys=False)
     return text.encode("utf-8")
 

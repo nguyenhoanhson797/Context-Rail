@@ -6,6 +6,7 @@ placement token is refused instead of being guessed at.
 
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,7 +17,7 @@ from context_rail.core.util import canonical_iso, load_yaml
 from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
-from context_rail.model.pack import load_pack
+from context_rail.model.pack import load_pack, pack_layout
 from context_rail.model.primitives import PRIMITIVES, SCHEMA_VERSION
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "Manifest",
     "ModelError",
     "TOKENS",
+    "initial_manifest",
     "load_manifest",
     "manifest_from_mapping",
     "render_path",
@@ -71,6 +73,22 @@ DEFAULT_MANIFEST: dict[str, Any] = {
         "profile": "workspace/profiles/{slug}/profile.md",
     },
 }
+
+
+def initial_manifest(pack: str, store: Path) -> tuple[Manifest, dict[str, Any]]:
+    """The manifest and serializable data a new store of ``pack`` starts with.
+
+    A pack may ship ``layout.yaml`` defaults under ``placement`` and ``presets``;
+    missing keys fall back to :data:`DEFAULT_MANIFEST`. The result is the store's
+    committed manifest, so later reads never consult the pack layout again.
+    """
+    data = copy.deepcopy(DEFAULT_MANIFEST)
+    data["pack"] = pack
+    layout = pack_layout(pack, store)
+    if layout is not None:
+        data["placement"].update(layout["placement"])
+        data["presets"].update(layout["presets"])
+    return manifest_from_mapping(data, store), data
 
 
 def load_manifest(store: Path) -> Manifest:

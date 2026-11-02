@@ -1,5 +1,6 @@
 """The pack (``pack.yaml``): statuses, transitions, presets and policy.
 
+A pack may also ship ``layout.yaml`` with placement defaults for a new store.
 Everything here fails closed: an unknown version, key, category, status or
 policy value is refused instead of being guessed at.
 """
@@ -32,6 +33,8 @@ from context_rail.model.primitives import (
 __all__ = [
     "DEPRECATED_PACK_ALIASES",
     "DEFAULT_PACK",
+    "LAYOUT_FILE",
+    "LAYOUT_KEYS",
     "PACK_KEYS",
     "PACK_VERSION",
     "Pack",
@@ -42,6 +45,8 @@ __all__ = [
     "check_pack_name",
     "effective_measurement_min_runs",
     "load_pack",
+    "pack_layout",
+    "pack_layout_source",
     "pack_policy_digest",
 ]
 
@@ -49,6 +54,8 @@ PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets",
 REQUIRED_PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
 PRESET_KEYS = ("primitive", "tags", "fields", "template")
 EXECUTION_KEYS = ("dispatch", "merge")
+LAYOUT_FILE = "layout.yaml"
+LAYOUT_KEYS = ("placement", "presets")
 PACK_VERSION = 1
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
 DEFAULT_MEASUREMENT_MIN_RUNS = 10
@@ -135,6 +142,41 @@ def load_pack(name: str, store: Path) -> Pack:
         _refuse(f"unknown pack {name!r}")
     pack = cached_model(builtin, lambda: _parse_pack(_read_text(builtin), canonical))
     return replace(pack, name=name)
+
+
+def pack_layout_source(name: str, store: Path) -> Any | None:
+    """The optional ``layout.yaml`` beside the pack, or None when it ships none."""
+    _check_name(name)
+    local = Path(store) / "packs" / name
+    if (local / "pack.yaml").is_file():
+        layout = local / LAYOUT_FILE
+        return layout if layout.is_file() else None
+    canonical = canonical_pack_name(name)
+    local = Path(store) / "packs" / canonical
+    if (local / "pack.yaml").is_file():
+        layout = local / LAYOUT_FILE
+        return layout if layout.is_file() else None
+    builtin = _builtin_pack(canonical)
+    if builtin is None:
+        return None
+    layout = builtin.parent.joinpath(LAYOUT_FILE)
+    return layout if layout.is_file() else None
+
+
+def pack_layout(name: str, store: Path) -> dict[str, Any] | None:
+    """Load a pack's layout defaults, refusing an unknown key or malformed file."""
+    source = pack_layout_source(name, store)
+    if source is None:
+        return None
+    data = _mapping(
+        _strict_yaml(_read_text(source, LAYOUT_FILE), LAYOUT_FILE), LAYOUT_FILE
+    )
+    unknown = sorted(set(data) - set(LAYOUT_KEYS))
+    if unknown:
+        _refuse(f"{LAYOUT_FILE} has unknown key(s): " + ", ".join(unknown))
+    placement = _mapping(data.get("placement", {}), f"{LAYOUT_FILE} placement")
+    presets = _mapping(data.get("presets", {}), f"{LAYOUT_FILE} presets")
+    return {"placement": dict(placement), "presets": dict(presets)}
 
 
 def canonical_pack_name(name: str) -> str:
@@ -364,41 +406,41 @@ def _mapping(value: Any, what: str) -> dict[str, Any]:
     return value
 
 
-def _read_text(source: Any) -> str:
+def _read_text(source: Any, label: str = "pack.yaml") -> str:
     try:
         return source.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as exc:
-        _refuse(f"pack.yaml is not valid UTF-8: {exc}")
+        _refuse(f"{label} is not valid UTF-8: {exc}")
     except OSError as exc:
-        _refuse(f"cannot read pack.yaml: {exc}")
+        _refuse(f"cannot read {label}: {exc}")
 
 
 _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
-def _strict_yaml(text: str) -> Any:
+def _strict_yaml(text: str, label: str = "pack.yaml") -> Any:
     try:
         node = yaml.compose(text, Loader=_LOADER)
     except yaml.YAMLError:
-        _refuse("pack.yaml is not valid YAML")
+        _refuse(f"{label} is not valid YAML")
     if node is not None:
-        _reject_duplicate_keys(node)
+        _reject_duplicate_keys(node, label)
     return load_yaml(text)
 
 
-def _reject_duplicate_keys(node: Any) -> None:
+def _reject_duplicate_keys(node: Any, label: str = "pack.yaml") -> None:
     if isinstance(node, yaml.MappingNode):
         seen: set[tuple[str, str]] = set()
         for key_node, value_node in node.value:
             if isinstance(key_node, yaml.ScalarNode):
                 marker = (key_node.tag, key_node.value)
                 if marker in seen:
-                    _refuse(f"pack.yaml repeats the key {key_node.value!r}")
+                    _refuse(f"{label} repeats the key {key_node.value!r}")
                 seen.add(marker)
-            _reject_duplicate_keys(value_node)
+            _reject_duplicate_keys(value_node, label)
     elif isinstance(node, yaml.SequenceNode):
         for item in node.value:
-            _reject_duplicate_keys(item)
+            _reject_duplicate_keys(item, label)
 
 
 def _refuse(message: str) -> NoReturn:

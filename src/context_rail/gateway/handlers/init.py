@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from context_rail.core.util import load_yaml
-from context_rail.model.manifest import DEFAULT_MANIFEST, manifest_from_mapping
+from context_rail.model.manifest import Manifest, initial_manifest
 from context_rail.model.pack import load_pack
 from context_rail.store.location import confine
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
@@ -16,27 +16,38 @@ from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
 if TYPE_CHECKING:  # the gateway imports this module only when init is invoked
     from context_rail.gateway.gateway import Context
 
-PINNED_FOLDERS = (
-    "items",
-    "notes",
-    "checks",
-    "records",
-    "policies",
-    "workspace/profiles",
-    "workspace/skills",
-    "packs",
-    "templates",
-)
+BASE_FOLDERS = ("packs", "templates", "workspace/skills")
 GITIGNORE = b".rail-local/\n"
 
 
+def pinned_folders(manifest: Manifest) -> tuple[str, ...]:
+    """The static primitive-placement folders a fresh store should create empty."""
+    found = set(BASE_FOLDERS)
+    for template in manifest.placement.values():
+        prefix = _static_prefix(template)
+        if prefix:
+            found.add(prefix)
+    return tuple(sorted(found))
+
+
+def _static_prefix(template: str) -> str:
+    parts = template.split("/")
+    literal: list[str] = []
+    for part in parts:
+        if "{" in part:
+            break
+        literal.append(part)
+    else:
+        literal = literal[:-1]
+    return "/".join(literal)
+
+
 def scaffold(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Create ``<dir>/<root>`` with the default manifest and pinned folders."""
+    """Create ``<dir>/<root>`` with the pack's manifest and pinned folders."""
     directory = Path(args["dir"] or Path.cwd())
     store = confine(directory, args["root"])
     pack = load_pack(args["pack"], store)
-    data = {**DEFAULT_MANIFEST, "pack": pack.name}
-    manifest = manifest_from_mapping(data, store)
+    manifest, data = initial_manifest(pack.name, store)
     if replay(store, args["key"]) is not None:
         return {"store": str(store), "pack": _stored_pack(store) or pack.name}
     if (store / "rail.yaml").exists():
@@ -52,7 +63,7 @@ def scaffold(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str
     commit(store, manifest, ops, None, actor=actor, key=args["key"])
     # commit writes files, and a fresh store's pinned folders hold none yet, so
     # they are made here instead of as placeholders the index would count.
-    for folder in PINNED_FOLDERS:
+    for folder in pinned_folders(manifest):
         (store / folder).mkdir(parents=True, exist_ok=True)
     return {"store": str(store), "pack": pack.name}
 

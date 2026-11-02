@@ -22,16 +22,15 @@ import yaml
 from context_rail.core.util import now_iso, slugify
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import compose_doc, record_data
-from context_rail.gateway.handlers.init import GITIGNORE, PINNED_FOLDERS, scaffold
+from context_rail.gateway.handlers.init import GITIGNORE, pinned_folders, scaffold
 from context_rail.model.cto import (
     load_pack_profile,
     load_pack_skills,
 )
 from context_rail.model.manifest import (
-    DEFAULT_MANIFEST,
     Manifest,
+    initial_manifest,
     load_manifest,
-    manifest_from_mapping,
     render_path,
 )
 from context_rail.model.pack import Pack, canonical_pack_name, load_pack
@@ -446,7 +445,7 @@ def _materialise(
     actor: str,
     draft: bool,
 ) -> dict[str, Any]:
-    manifest, pack, existing = _store_shape(store, pack_name)
+    manifest, pack, existing, manifest_data = _store_shape(store, pack_name)
     prepared = _prepare(answers, project_root)
     parsed = parse_answers(prepared)
     if parsed["pack"] != pack.name:
@@ -461,14 +460,18 @@ def _materialise(
     ops, info = picture_ops(context, parsed, pack_name=pack.name, draft=draft)
     _check_supplied_charter(answers, info)
     if not existing:
-        data = {**DEFAULT_MANIFEST, "pack": pack.name}
+        assert manifest_data is not None
         ops = [
-            Op("rail.yaml", yaml.safe_dump(data, sort_keys=False).encode("utf-8"), ABSENT),
+            Op(
+                "rail.yaml",
+                yaml.safe_dump(manifest_data, sort_keys=False).encode("utf-8"),
+                ABSENT,
+            ),
             Op(".gitignore", GITIGNORE, ABSENT),
             *ops,
         ]
     result = commit(store, manifest, ops, info["record"], actor=actor, key=key)
-    for folder in PINNED_FOLDERS:
+    for folder in pinned_folders(manifest):
         (store / folder).mkdir(parents=True, exist_ok=True)
     return {
         "store": str(store),
@@ -498,14 +501,16 @@ def _mode(args: dict[str, Any]) -> str:
     ]
 
 
-def _store_shape(store: Path, pack_name: str) -> tuple[Manifest, Pack, bool]:
-    """The manifest and pack onboarding writes against, plus whether a store exists."""
+def _store_shape(
+    store: Path, pack_name: str
+) -> tuple[Manifest, Pack, bool, dict[str, Any] | None]:
+    """The manifest, pack and manifest bytes a picture writes against."""
     if (store / "rail.yaml").is_file():
         manifest = load_manifest(store)
-        return manifest, load_pack(manifest.pack, store), True
+        return manifest, load_pack(manifest.pack, store), True, None
     pack = load_pack(pack_name, store)
-    data = {**DEFAULT_MANIFEST, "pack": pack.name}
-    return manifest_from_mapping(data, store), pack, False
+    manifest, data = initial_manifest(pack.name, store)
+    return manifest, pack, False, data
 
 
 def _prepare(answers: dict[str, Any], project_root: Path) -> dict[str, Any]:

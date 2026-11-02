@@ -17,12 +17,13 @@ from context_rail.gateway.confirmation import (
 )
 from context_rail.kernel.packs import parse_map_entries, plan_status_map
 from context_rail.model.errors import ModelError
-from context_rail.model.manifest import manifest_from_mapping
+from context_rail.model.manifest import initial_manifest, manifest_from_mapping
 from context_rail.model.pack import (
     REQUIRED_PRESETS,
     check_pack_name,
     effective_measurement_min_runs,
     load_pack,
+    pack_layout,
 )
 from context_rail.store import query
 from context_rail.store.approval import (
@@ -130,6 +131,12 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
                         "message": f"pack {name!r} ships no {template}",
                     }
                 )
+        try:
+            has_layout = pack_layout(name, ctx.store) is not None
+            if has_layout:
+                initial_manifest(name, ctx.store)
+        except ModelError as error:
+            problems.append({"path": "layout.yaml", "message": error.message})
     except ModelError as error:
         problems.append({"path": "pack.yaml", "message": error.message})
     return {"valid": not problems, "problems": problems}

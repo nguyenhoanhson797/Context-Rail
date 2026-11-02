@@ -140,7 +140,8 @@ single-instance lock. It must be the outer session, so it refuses to start when
 
 - **Store**: `<project>/context-rail/`, a plain directory of Markdown documents
   plus `rail.yaml`. It is the product's only source of truth and is meant to be
-  committed to git.
+  committed to git. A pack may ship `layout.yaml` placement defaults; `init`
+  seeds `rail.yaml` from them, and `rail.yaml` is authoritative afterwards.
 - **Index**: a rebuildable SQLite cache under the worktree's git dir, or
   `<store>/.rail-local/` outside git. Never in the repository tree; deleting it
   only costs a rebuild.
