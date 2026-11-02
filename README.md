@@ -5,8 +5,8 @@ index is only a cache, and every change goes through one write path.
 
 A CTO agent runs a project through the rail, sub-agents get narrow,
 role-specific context, and a human approves the boundary, the quality bar and
-irreversible actions. This repository is a clean rebuild; the legacy v1/v2 code
-lives in the sibling `context-rail-link` repository and is frozen.
+irreversible actions. The store it manages is plain Markdown you commit to git;
+the package ships the CLI, the MCP server and a loopback UI over one tool table.
 
 ## Requirements
 
@@ -18,12 +18,19 @@ lives in the sibling `context-rail-link` repository and is frozen.
 ## Install
 
 ```powershell
-py -m pip install -e .[test]
+py -m pip install context-rail
 ```
 
 On macOS or Linux use `python` instead of `py`. This installs two equivalent
 entry points, `rail` and `ctx-rail`; every example below also works as
 `py -m context_rail`.
+
+To work on the rail itself, install the checkout in editable mode with the test
+dependencies:
+
+```powershell
+py -m pip install -e .[test]
+```
 
 ## Quick start
 
@@ -142,7 +149,9 @@ single-instance lock. It must be the outer session, so it refuses to start when
 - **Views**: `status`, `digest`, `cto brief`, `ledger`
 - **Checks and quality**: `check`, `verify`, `report`, `triage`, `review`
 - **Agent loop**: `dispatch`, `merge`, `cto tick`, `approve`
-- **Packs and profiles**: `pack list|use|create`, `rollback`
+- **Packs, profiles and adapters**: `pack list|use|create`, `rollback`,
+  `adapters sync` (AGENTS.md, `.agents/skills/`, `CLAUDE.md`, `.cursor/`)
+- **Measurement**: `measure fix|versions`
 - **Interop**: `migrate` (v1/v2 import), `sync` (clones and git drivers),
   `mcp serve` (MCP over stdio), `ui serve` (loopback HTTP)
 
@@ -167,11 +176,14 @@ collects the perf tests, so use the lanes above when the machine is busy.
 src/context_rail/
   kernel/     pure rules: structure, budgets, gates, timestamps (no I/O)
   model/      manifest, pack, policy and field validation
+  core/       result, util and the fixed primitive names
   store/      the only write path, the SQLite cache, queries, sync
   runner/     dispatch, review, merge, droid protocol, control files
   gateway/    tool table, handlers, permissions, JSON envelope
   context/    the computed CTO views (brief, status, digest)
   doctor/     integrity checks
+  packs/      the built-in pack with its profiles, skills and templates
+  ui/         the loopback HTTP UI
   cli.py      thin argparse surface: stdlib plus the tool table at import
 ```
 
