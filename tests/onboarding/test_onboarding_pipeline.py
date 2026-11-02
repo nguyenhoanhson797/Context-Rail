@@ -28,6 +28,7 @@ def test_bare_init_scaffolds_and_seeds_the_workspace(
     assert stages["picture"]["state"] == "skipped"
     assert stages["picture"]["reason"] == "no_picture_source"
     assert stages["approval"]["reason"] == "picture_deferred"
+    assert value["next"][0] == "rail init --interview"
     store = Path(value["store"])
     assert (store / "workspace" / "cto" / "profile.md").is_file()
     assert not (store / "charter.md").exists()
@@ -80,6 +81,7 @@ def test_bare_init_dry_run_writes_nothing(tmp_path: Path) -> None:
     value = result["value"]
     assert value["dry_run"] is True
     assert value["stages"]["skeleton"]["state"] == "planned"
+    assert value["next"][0] == "rail init --interview"
     assert not (tmp_path / "context-rail").exists()
 
 

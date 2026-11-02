@@ -453,12 +453,21 @@ def _receipt(
         "stages": stages,
         "status": status,
         "approval": "approved" if approved else "missing",
-        "next": _next_steps(approved),
+        "next": _next_steps(approved, stages),
         "dry_run": False,
     }
 
 
-def _next_steps(approved: bool) -> list[str]:
+def _next_steps(approved: bool, stages: dict[str, Any]) -> list[str]:
+    picture = stages.get("picture", {})
+    if picture.get("state") == "skipped" and picture.get("reason") in {
+        "deferred",
+        "no_picture_source",
+    }:
+        return [
+            picture.get("command") or _INTERVIEW_COMMAND,
+            'rail init --answers-file FILE --confirm "APPROVE charter"',
+        ]
     steps = []
     if not approved:
         steps.append(_APPROVE_COMMAND)
@@ -504,6 +513,13 @@ def _dry_receipt(
             {"state": "planned"} if plan["git"]["exists"] else {"state": "skipped", "reason": "not_git"}
         ),
     }
+    if not picture["exists"]:
+        next_steps = [
+            _INTERVIEW_COMMAND,
+            'rail init --answers-file FILE --confirm "APPROVE charter"',
+        ]
+    else:
+        next_steps = _next_steps(plan["approval"]["state"] == "recorded", stages)
     return {
         "store": str(store),
         "pack": plan["store"]["pack"] or "basic",
@@ -512,7 +528,7 @@ def _dry_receipt(
         "approval": (
             "approved" if plan["approval"]["state"] == "recorded" else "missing"
         ),
-        "next": _next_steps(plan["approval"]["state"] == "recorded"),
+        "next": next_steps,
         "dry_run": True,
     }
 
