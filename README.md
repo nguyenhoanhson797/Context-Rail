@@ -47,7 +47,7 @@ rail cto brief
 
 `rail init` is resumable: re-running it keeps what already exists and continues
 from the next missing stage. On a terminal it offers the onboarding interview;
-without one it scaffolds the store and prints the command to resume.
+without one it scaffolds the store and returns the command to resume.
 
 Every command prints one JSON envelope (`{"ok": true, "value": ...}` or
 `{"ok": false, "error": {...}}`) and exits 0 on success, 1 on a refusal, 2 on an
