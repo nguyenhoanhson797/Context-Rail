@@ -7,7 +7,7 @@ from typing import Any
 
 from context_rail.core.util import now_iso
 from context_rail.gateway.gateway import invoke
-from context_rail.gateway.tools import TOOLS
+from context_rail.gateway.tools import SURFACE_TOOLS, TOOLS, canonical_tool
 
 __all__ = [
     "call_tool",
@@ -65,7 +65,8 @@ def tool_catalog() -> dict[str, Any]:
                     for param in tool.params
                 ],
             }
-            for tool in TOOLS
+            for tool in SURFACE_TOOLS
+            if not tool.hidden
         ],
     }
 
@@ -75,11 +76,11 @@ def call_tool(
 ) -> dict[str, Any]:
     from context_rail.store.write import WriteRefused
 
-    if name in _REFUSED:
+    if canonical_tool(name) in _REFUSED:
         raise WriteRefused(
             "FORBIDDEN", f"{name!r} cannot be started over HTTP", {"tool": name}
         )
-    if name not in {tool.name for tool in TOOLS}:
+    if canonical_tool(name) not in {tool.name for tool in TOOLS}:
         raise WriteRefused("NOT_FOUND", f"unknown tool {name!r}", {"tool": name})
     if not isinstance(arguments, dict):
         raise WriteRefused("VALIDATION_FAILED", "arguments must be a mapping")

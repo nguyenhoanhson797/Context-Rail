@@ -10,7 +10,16 @@ import argparse
 import json
 import sys
 
-from context_rail.gateway.tools import TOOLS, Param, Tool
+from context_rail.gateway.tools import (
+    GROUP_SUMMARIES,
+    LEGACY_TO_SURFACE,
+    SURFACE_TOOLS,
+    TOOLS,
+    VISIBLE_PATHS,
+    Param,
+    Tool,
+    canonical_tool,
+)
 
 __all__ = ["main"]
 
@@ -31,6 +40,13 @@ def _parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="rail",
         description="Context Rail: an agentic project workspace.",
+        epilog=(
+            "Daily: rail overview; rail read ...; rail change ...; "
+            "rail check declare|run; rail loop ...; rail gate.\n"
+            "Setup and operations: rail init; rail ops ...; rail serve ...\n"
+            "Every former flat command name remains accepted."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--store", help="store folder (default: the nearest context-rail folder)"
@@ -42,7 +58,7 @@ def _parser() -> argparse.ArgumentParser:
             "human-only tools need an explicit human)"
         ),
     )
-    _subcommands(parser, TOOLS, required=False)
+    _subcommands(parser, SURFACE_TOOLS, required=False)
     return parser
 
 
@@ -65,14 +81,32 @@ def _subcommands(
     for head in sorted(set(leaves) | set(nested)):
         leaf = leaves.get(head)
         grouped = nested.get(head)
+        visible_leaf = leaf is not None and not leaf.hidden
+        visible_children = grouped is not None and any(not tool.hidden for tool in grouped)
+        visible = visible_leaf or visible_children
+        summary = (
+            leaf.summary
+            if visible_leaf and leaf is not None
+            else GROUP_SUMMARIES.get(head, f"{head} commands")
+        )
         parser = subparsers.add_parser(
             head,
-            help=(leaf.summary if leaf is not None else f"{head} commands"),
-            description=(leaf.summary if leaf is not None else None),
+            help=(summary if visible else argparse.SUPPRESS),
+            description=(summary if visible else None),
         )
+        if not visible:
+            # argparse prints the literal SUPPRESS string for a hidden
+            # subparser, so drop its pseudo-action from the help listing.
+            subparsers._choices_actions = [
+                action for action in subparsers._choices_actions if action.dest != head
+            ]
         if leaf is not None:
             parser.set_defaults(_tool=prefix + head)
-            _tool_params(parser, leaf)
+            _tool_params(
+                parser,
+                leaf,
+                hidden=leaf.hidden and visible_children,
+            )
         if grouped:
             rest_names = tuple(
                 tool._replace(name=tool.name[len(head) + 1 :]) for tool in grouped
@@ -85,16 +119,21 @@ def _subcommands(
             )
 
 
-def _tool_params(parser: argparse.ArgumentParser, tool: Tool) -> None:
+def _tool_params(parser: argparse.ArgumentParser, tool: Tool, *, hidden: bool = False) -> None:
     for param in tool.params:
         if param.positional:
-            supplied: dict[str, object] = {"help": param.help}
+            supplied: dict[str, object] = {
+                "help": argparse.SUPPRESS if hidden else param.help
+            }
             if not param.required:
                 supplied["nargs"] = "?"
                 supplied["default"] = None
             parser.add_argument(param.name, **supplied)
             continue
-        options: dict[str, object] = {"dest": param.name, "help": param.help}
+        options: dict[str, object] = {
+            "dest": param.name,
+            "help": argparse.SUPPRESS if hidden else param.help,
+        }
         if param.repeat:
             options["action"] = "append"
         elif param.type == "bool":
@@ -183,9 +222,64 @@ def _emit(result: dict, *, stderr: bool = False) -> None:
     buffer.flush()
 
 
+def _command_index(argv: list[str]) -> int | None:
+    """Where the command starts, after the two global value options."""
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token in ("-h", "--help"):
+            return None
+        if token in ("--store", "--actor"):
+            if index + 1 >= len(argv):
+                return None
+            index += 2
+            continue
+        if token.startswith("--store=") or token.startswith("--actor="):
+            index += 1
+            continue
+        if token.startswith("-"):
+            return None
+        return index
+    return None
+
+
+def _match_path(
+    argv: list[str], index: int, paths: dict[str, str] | frozenset[str]
+) -> str | None:
+    best: str | None = None
+    for path in paths:
+        words = path.split()
+        if argv[index : index + len(words)] != words:
+            continue
+        if best is None or len(words) > len(best.split()):
+            best = path
+    return best
+
+
+def _expand_legacy(argv: list[str]) -> list[str]:
+    """Rewrite a flat command to its grouped surface before argparse sees it."""
+    index = _command_index(argv)
+    if index is None:
+        return argv
+    visible = _match_path(argv, index, VISIBLE_PATHS)
+    legacy = _match_path(argv, index, LEGACY_TO_SURFACE)
+    if visible is not None and (
+        legacy is None or len(visible.split()) >= len(legacy.split())
+    ):
+        return argv
+    if legacy is None:
+        return argv
+    surface = LEGACY_TO_SURFACE[legacy]
+    rest = argv[index + len(legacy.split()) :]
+    if legacy == "sync" and "--install" in rest:
+        rest = [token for token in rest if token != "--install"]
+        surface = "ops sync install"
+    return argv[:index] + surface.split() + rest
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one command and return the process exit code."""
-    args = list(sys.argv[1:] if argv is None else argv)
+    args = _expand_legacy(list(sys.argv[1:] if argv is None else argv))
     try:
         namespace = _parser().parse_args(_join_dash_values(args))
     except SystemExit as exc:
@@ -204,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     declared = next(
-        (entry for entry in TOOLS if entry.name == tool), None
+        (entry for entry in SURFACE_TOOLS if entry.name == tool), None
     )
     names = {param.name for param in declared.params} if declared else set()
     params = {
@@ -223,7 +317,7 @@ def main(argv: list[str] | None = None) -> int:
         store=namespace.store,
         actor=namespace.actor,
     )
-    if tool in {"mcp serve", "sync driver", "ui serve"}:
+    if canonical_tool(tool) in {"mcp serve", "sync driver", "ui serve"}:
         if result.get("ok") is True:
             return 0
         _emit(result, stderr=True)

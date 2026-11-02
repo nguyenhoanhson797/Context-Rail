@@ -567,6 +567,12 @@ def test_allowed_methods_use_exact_tool_names() -> None:
         parse_profile(profile_fields(allowed_methods=["cto_brief"]))
     with pytest.raises(ModelError):
         parse_profile(profile_fields(allowed_methods=[]))
+
+
+def test_allowed_methods_accept_the_grouped_surface_names() -> None:
+    methods = ["read status", "change repath", "check run", "gate"]
+    profile = parse_profile(profile_fields(allowed_methods=methods))
+    assert profile.allowed_methods == tuple(methods)
     assert parse_profile(profile_fields(allowed_methods=["find"])).allowed_methods == ("find",)
 
 

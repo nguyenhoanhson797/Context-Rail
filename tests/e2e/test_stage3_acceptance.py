@@ -62,7 +62,7 @@ def test_a_legacy_store_survives_migration_ui_adapters_and_reindex(
         status, catalog, _ = ui_call(ui.base, "/api/tools", token=ui.token)
         assert status == 200
         names = {tool["name"] for tool in catalog["value"]}
-        assert {"find", "migrate", "ui serve"} <= names
+        assert {"read find", "ops migrate", "serve ui"} <= names
 
         status, posted, _ = ui_call(
             ui.base,

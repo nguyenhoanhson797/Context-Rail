@@ -10,8 +10,26 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from context_rail.core.defaults import DEFAULT_PACK
+from context_rail.core.tool_names import (
+    ALIAS_DEFAULTS,
+    ALIAS_SUMMARIES,
+    GROUP_SUMMARIES,
+    LEGACY_TO_SURFACE,
+    VISIBLE_ALIASES,
+    VISIBLE_PATHS,
+    canonical_tool,
+)
 
-__all__ = ["TOOLS", "Param", "Tool"]
+__all__ = [
+    "GROUP_SUMMARIES",
+    "LEGACY_TO_SURFACE",
+    "SURFACE_TOOLS",
+    "TOOLS",
+    "VISIBLE_PATHS",
+    "Param",
+    "Tool",
+    "canonical_tool",
+]
 
 
 class Param(NamedTuple):
@@ -35,6 +53,7 @@ class Tool(NamedTuple):
     params: tuple[Param, ...]
     handler: str
     decision: str = "cto-alone"
+    hidden: bool = False
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -511,3 +530,36 @@ for _tool in TOOLS:
                 f"tool {_tool.name!r} parameter {_param.name!r} has unknown type {_param.type!r}"
             )
 del _tool, _param
+
+_TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
+_SURFACE_LEAVES = {"init", "approve"}
+
+
+def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:
+    """A surface clone of one canonical tool, optionally with alias defaults."""
+    base = _TOOLS_BY_NAME[canonical]
+    defaults = ALIAS_DEFAULTS.get(alias, {})
+    params = tuple(
+        param._replace(default=defaults[param.name])
+        if param.name in defaults
+        else param
+        for param in base.params
+    )
+    return base._replace(
+        name=alias,
+        summary=ALIAS_SUMMARIES.get(alias, base.summary),
+        params=params,
+        hidden=hidden,
+    )
+
+
+SURFACE_TOOLS: tuple[Tool, ...] = (
+    tuple(tool for tool in TOOLS if tool.name in _SURFACE_LEAVES)
+    + tuple(
+        _alias_tool(alias, canonical, hidden=False)
+        for alias, canonical in VISIBLE_ALIASES.items()
+    )
+    + tuple(tool._replace(hidden=True) for tool in TOOLS if tool.name == "sync driver")
+)
+
+del _TOOLS_BY_NAME, _SURFACE_LEAVES, _alias_tool

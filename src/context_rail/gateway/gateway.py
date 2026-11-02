@@ -25,6 +25,11 @@ from typing import Any, Callable
 from context_rail.core.result import fail, ok
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.execution import ACTOR_NAMED
+from context_rail.core.tool_names import (
+    alias_defaults,
+    canonical_methods,
+    canonical_tool,
+)
 from context_rail.gateway.tools import TOOLS, Param, Tool
 from context_rail.kernel import rights
 from context_rail.kernel.lifecycle import category_of
@@ -160,7 +165,11 @@ def invoke(
     context: Context | None = None
     try:
         tool = _tool(name)
-        params = _parameters(tool, args)
+        defaults = alias_defaults(name) if isinstance(name, str) else {}
+        if args is None or isinstance(args, dict):
+            params = _parameters(tool, {**defaults, **(args or {})})
+        else:
+            params = _parameters(tool, args)
         if tool.name not in {"init", "migrate"}:
             context = _open_context(store, resolved_actor)
         refusal = _authorize(
@@ -255,13 +264,14 @@ def _authorize(
         if nested is not None:
             return fail("PERMISSION_DENIED", nested, {"tool": tool.name, "actor": actor})
     profile = context.profile
+    allowed = canonical_methods(profile.allowed_methods) if profile is not None else frozenset()
     # ``cto tick`` starts the CTO session rather than acting inside one, and
     # ``mcp serve``/``ui serve`` only open transports whose calls are gated one
     # by one, so none of them is narrowed by the caller's profile.
     if (
         profile is not None
         and tool.name not in ("cto tick", "mcp serve", "ui serve")
-        and tool.name not in profile.allowed_methods
+        and tool.name not in allowed
     ):
         return fail(
             "PERMISSION_DENIED",
@@ -389,9 +399,12 @@ def _confirmation_target(
 
 
 def _tool(name: Any) -> Tool:
-    if not isinstance(name, str) or name not in _BY_NAME:
+    if not isinstance(name, str):
         raise WriteRefused("VALIDATION_FAILED", f"unknown tool {name!r}")
-    return _BY_NAME[name]
+    canonical = canonical_tool(name)
+    if canonical not in _BY_NAME:
+        raise WriteRefused("VALIDATION_FAILED", f"unknown tool {name!r}")
+    return _BY_NAME[canonical]
 
 
 def _resolve_actor(actor: str | None) -> tuple[str, bool]:

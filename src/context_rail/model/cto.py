@@ -28,6 +28,7 @@ from context_rail.model.fields import (
     string_list,
 )
 from context_rail.core.defaults import DEFAULT_PACK
+from context_rail.core.tool_names import ALIASES
 from context_rail.model.pack import canonical_pack_name
 
 __all__ = [
@@ -208,7 +209,7 @@ CTO_METHODS = WORKER_METHODS + (
     "mcp serve",
     "ui serve",
 )
-PROFILE_METHODS = CTO_METHODS + ("init", "approve", "cto tick", "migrate")
+PROFILE_METHODS = CTO_METHODS + ("init", "approve", "cto tick", "migrate") + tuple(ALIASES)
 
 REPORT_TARGET_CLASSES = (
     "item",

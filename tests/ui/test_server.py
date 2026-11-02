@@ -31,11 +31,22 @@ def test_tools_and_reads_go_through_the_gateway(ui_server) -> None:
     status, payload, _ = _call(ui_server.base, "/api/tools", token=ui_server.token)
     assert status == 200
     names = {tool["name"] for tool in payload["value"]}
-    assert {"find", "migrate", "ui serve"} <= names
+    assert {"read find", "ops migrate", "serve ui"} <= names
 
     status, payload, _ = _call(
         ui_server.base,
         "/api/tool/find",
+        token=ui_server.token,
+        method="POST",
+        body={"preset": "task"},
+    )
+    assert status == 200, payload
+    assert payload["ok"] is True
+    assert payload["value"]["items"] == []
+
+    status, payload, _ = _call(
+        ui_server.base,
+        "/api/tool/read%20find",
         token=ui_server.token,
         method="POST",
         body={"preset": "task"},

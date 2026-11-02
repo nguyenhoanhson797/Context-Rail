@@ -30,25 +30,24 @@ def _json(proc: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     return json.loads(proc.stdout)
 
 
-def test_cli_help_is_text_and_lists_every_tool(tmp_path):
+def test_cli_help_is_text_and_lists_the_grouped_surface(tmp_path):
     proc = run_cli(tmp_path, "--help")
 
     assert proc.returncode == 0
     assert not proc.stdout.startswith("{")
     for name in (
         "init",
-        "add",
-        "update",
-        "move",
-        "link",
-        "find",
-        "show",
-        "status",
-        "reindex",
+        "approve",
+        "overview",
+        "read",
+        "change",
         "check",
-        "verify",
+        "loop",
+        "gate",
+        "ops",
+        "serve",
     ):
-        assert name in proc.stdout
+        assert f"\n    {name}" in proc.stdout, name
 
 
 def test_cli_parser_errors_print_one_envelope(tmp_path):
