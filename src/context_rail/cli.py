@@ -97,9 +97,11 @@ def _subcommands(
         if not visible:
             # argparse prints the literal SUPPRESS string for a hidden
             # subparser, so drop its pseudo-action from the help listing.
-            subparsers._choices_actions = [
-                action for action in subparsers._choices_actions if action.dest != head
-            ]
+            actions = getattr(subparsers, "_choices_actions", None)
+            if actions is not None:
+                subparsers._choices_actions = [
+                    action for action in actions if action.dest != head
+                ]
         if leaf is not None:
             parser.set_defaults(_tool=prefix + head)
             _tool_params(
