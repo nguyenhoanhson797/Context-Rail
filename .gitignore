@@ -9,3 +9,10 @@ dist/
 .coverage
 htmlcov/
 .env
+
+# Local-only project records: kept on disk, never published
+docs/superpowers/
+docs/reference/
+library/
+evidence/
+uv.lock

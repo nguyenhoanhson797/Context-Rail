@@ -198,19 +198,16 @@ src/context_rail/
 
 ## Design
 
-All of these live in the repository, not in the installed package:
-
 - Visual guide (diagrams and a from-zero-to-daily walkthrough):
   <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/context-rail-v3-guide.html>
 - Interactive engine graph (primitives, relations, one write path and the agent
   loop):
   <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/context-rail-v3-engine-graph.html>
-- Spec:
-  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/superpowers/specs/2026-10-28-context-rail-v3-design.md>
-- Architecture:
-  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/library/arch-stage-3.md>
 - Working rules and engine invariants:
   <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/AGENTS.md>
+
+The design spec, the stage plans and the architecture records are working
+material and stay out of the published repository.
 
 Engine invariants worth knowing before changing code:
 

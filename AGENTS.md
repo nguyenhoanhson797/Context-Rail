@@ -8,6 +8,9 @@ sibling `context-rail-link` repository and is frozen; nothing here needs it.
 
 ## Source of truth
 
+These records are working material: they stay on disk, untracked, and are never
+published.
+
 - Design: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
 - Stage 3 plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-3.md`
 - Stage 3 architecture: `library/arch-stage-3.md`
@@ -37,10 +40,11 @@ exist, so new work starts from a new design rather than a new stage plan.
 
 ## Legacy reference code
 
-`docs/reference/legacy/` holds read-only copies of the v2 modules the plan
-reuses (see its README for which task uses what). Copy what a task names into
-`src/context_rail/` and adapt it there. Never import from `docs/`, never edit
-the copies, and never modify the `context-rail-link` repository.
+`docs/reference/legacy/` (local only, never published) holds read-only copies of
+the v2 modules the plan reuses (see its README for which task uses what). Copy
+what a task names into `src/context_rail/` and adapt it there. Never import from
+`docs/`, never edit the copies, and never modify the `context-rail-link`
+repository.
 
 ## Engine rules (from the design; do not break them)
 
