@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, load_manifest, render_path
@@ -41,7 +42,9 @@ _APPROVE_COMMAND = (
 _CHARTER = "charter"
 
 
-def probe(project_root: Path, store: Path, pack_name: str = "basic") -> dict[str, Any]:
+def probe(
+    project_root: Path, store: Path, pack_name: str = DEFAULT_PACK
+) -> dict[str, Any]:
     """Describe the store, picture, approval, workspace, agents and git state."""
     project_root = Path(project_root)
     store = Path(store)
@@ -528,7 +531,7 @@ def _dry_receipt(
         next_steps = _next_steps(plan["approval"]["state"] == "recorded", stages)
     return {
         "store": str(store),
-        "pack": plan["store"]["pack"] or "basic",
+        "pack": plan["store"]["pack"] or DEFAULT_PACK,
         "stages": stages,
         "status": None,
         "approval": (

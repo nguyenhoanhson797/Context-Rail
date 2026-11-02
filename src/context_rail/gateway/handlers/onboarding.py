@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 import yaml
 
+from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import now_iso, slugify
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import compose_doc, record_data
@@ -534,7 +535,7 @@ def _requested_pack(args: dict[str, Any], store: Path) -> str:
         stored = _stored_pack(store)
         if stored:
             return stored
-    return "basic"
+    return DEFAULT_PACK
 
 
 def _scaffold_plan(args: dict[str, Any]) -> dict[str, Any]:
