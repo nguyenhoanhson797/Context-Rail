@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "context-rail"
-version = "3.0.0"
+version = "3.0.1"
 description = "An agentic project workspace: files are the truth, agents work through one write path"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,6 +16,9 @@ test = ["pytest>=8", "pytest-timeout>=2.3"]
 [project.scripts]
 rail = "context_rail.cli:main"
 ctx-rail = "context_rail.cli:main"
+
+[project.urls]
+Repository = "https://github.com/nguyenhoanhson797/Context-Rail"
 
 [tool.setuptools.packages.find]
 where = ["src"]
