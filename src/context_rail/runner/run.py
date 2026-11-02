@@ -22,6 +22,7 @@ import signal
 import subprocess
 import tempfile
 import time
+from typing import BinaryIO
 
 from context_rail.store.location import PathEscape
 from context_rail.store.write import WriteRefused
@@ -50,6 +51,8 @@ _MARKER = "\n[omitted]\n"
 #: two-character value would redact ordinary output without protecting anything.
 _MIN_SECRET = 6
 _READ_CHUNK = 65536
+#: How long a capture file may stay locked by a just-killed process tree.
+_CAPTURE_WAIT = 2.0
 
 
 def redact(text: str, secrets: list[str]) -> str:
@@ -294,9 +297,25 @@ def _redact_prefix(
     return "".join(pieces), text[max(limit, index) :]
 
 
+def _open_capture(path: Path) -> BinaryIO:
+    """Open one captured stream, outwaiting a killed child's handle release.
+
+    ``taskkill`` returns before Windows has torn the process tree down, so a
+    grandchild can still hold the inherited handle on its capture file.
+    """
+    deadline = time.monotonic() + _CAPTURE_WAIT
+    while True:
+        try:
+            return path.open("rb")
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+
+
 def _reduce(path: Path, capture: _Capture, secrets: tuple[str, ...]) -> None:
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-    with path.open("rb") as stream:
+    with _open_capture(path) as stream:
         while chunk := stream.read(_READ_CHUNK):
             capture.feed(decoder.decode(chunk, final=False))
         capture.feed(decoder.decode(b"", final=True), final=True)
