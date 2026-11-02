@@ -187,7 +187,9 @@ def _rooted_repo(tmp_path):
     root = tmp_path / "rooted"
     root.mkdir()
     created = invoke(
-        "init", {"dir": str(root), "root": ".", "pack": "basic"}, actor="human"
+        "init",
+        {"dir": str(root), "root": ".", "pack": "basic", "scaffold": True},
+        actor="human",
     )
     assert is_ok(created), created
     (root / "src").mkdir()

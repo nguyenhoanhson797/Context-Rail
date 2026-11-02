@@ -350,7 +350,7 @@ def test_cli_status_and_reindex_rebuild_a_corrupt_index(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
     run_git(root, "init")
-    init = run_cli(root, "--actor", "human", "init", "--dir", ".")
+    init = run_cli(root, "--actor", "human", "init", "--dir", ".", "--scaffold")
     assert init.returncode == 0, init.stdout
     added = run_cli(root, "--actor", "cto", "add", "task", "A")
     assert added.returncode == 0, added.stdout

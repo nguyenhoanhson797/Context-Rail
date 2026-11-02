@@ -662,7 +662,9 @@ def indexed_store_with_duplicate(
 @pytest.fixture
 def store_with_links(tmp_path: Path) -> Path:
     """An initialized store holding goal ``auth`` and tasks t1-t3 linked to it."""
-    created = invoke("init", {"dir": str(tmp_path)}, actor="human")
+    created = invoke(
+        "init", {"dir": str(tmp_path), "scaffold": True}, actor="human"
+    )
     assert is_ok(created), created
     store = Path(created["value"]["store"])
     goal = invoke("add", {"preset": "goal", "title": "auth"}, store=store, actor="cto")

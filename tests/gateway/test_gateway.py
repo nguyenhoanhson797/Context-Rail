@@ -210,7 +210,9 @@ def test_keyed_init_replays_instead_of_refusing(tmp_path):
 
 
 def test_add_move_show_roundtrip(tmp_path):
-    assert is_ok(invoke("init", {"dir": str(tmp_path)}, actor="human"))
+    assert is_ok(
+        invoke("init", {"dir": str(tmp_path), "scaffold": True}, actor="human")
+    )
     r = invoke(
         "add", {"preset": "task", "title": "Login page"}, store=tmp_path / "context-rail", actor="cto"
     )
