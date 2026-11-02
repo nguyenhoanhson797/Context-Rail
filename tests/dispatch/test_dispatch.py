@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -247,7 +248,10 @@ def test_retry_continues_the_same_session(leaf_item, fake_droid, droid_env) -> N
     assert [entry["status"] for entry in attempts] == ["failed", "verified"]
     assert attempts[0]["session_id"] == session
     assert attempts[1]["session_id"] == session
-    verdicts = [json.loads(path.read_text(encoding="utf-8")) for path in (leaf_item.store / "records").rglob("*.json")]
+    verdicts = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted((leaf_item.store / "records").rglob("*.json"))
+    ]
     checks = [row for row in verdicts if row.get("kind") == "check.verdict"]
     assert [row["data"]["passed"] for row in checks] == [False, True]
     assert len(branches(leaf_item.root, f"rail/{leaf_item.slug}/*")) == 1
@@ -275,7 +279,7 @@ def test_two_failures_escalate_and_block(leaf_item, fake_droid, droid_env) -> No
     assert branches(leaf_item.root, f"rail/{leaf_item.slug}/*")
     checks = [
         json.loads(path.read_text(encoding="utf-8"))
-        for path in (leaf_item.store / "records").rglob("*.json")
+        for path in sorted((leaf_item.store / "records").rglob("*.json"))
     ]
     failures = [row for row in checks if row.get("kind") == "check.verdict"]
     assert failures and all(row["data"]["passed"] is False for row in failures)
@@ -734,6 +738,15 @@ def test_pending_launch_refuses_relaunch(leaf_item, fake_droid, droid_env) -> No
         launched = len(fake_droid.log())
     finally:
         kill_tree(proc)
+        # The runner starts the droid in its own session, so killing the CLI
+        # cannot reach it; the fake droid records a child in that same group.
+        child_file = fake_droid.root / "fake-droid-child.json"
+        if os.name != "nt" and child_file.is_file():
+            pid = json.loads(child_file.read_text(encoding="utf-8"))["pid"]
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
 
     child = fake_droid.root / "fake-droid-child.json"
     if child.is_file():
