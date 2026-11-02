@@ -66,8 +66,9 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 - Bare `init` is resumable: it keeps what exists and continues from the next
   missing stage. `--dry-run` prints the plan and writes nothing.
 - `--scaffold` preserves the old skeleton-only behavior. The picture modes
-  write the picture and leave approval `missing`; run bare `rail init` again to
-  resume approval, agent files and git drivers.
+  write the picture and leave approval `missing`; run
+  `rail --actor human init` again to resume approval, agent files and git
+  drivers.
 - The picture modes need the `human` actor. A CTO may only propose with
   `--draft-file`, and a draft records no approval.
 - `adapters sync` is what makes the checkout agent-ready. Re-run it when a

@@ -89,9 +89,10 @@ Useful flags:
 - `--harness agents|claude|cursor|gemini` limits the generated agent files.
 - `--interview`, `--answers-file FILE --confirm "APPROVE charter"` and
   `--draft-file FILE` remain picture-source modes. They write the picture and
-  leave approval `missing`; run `rail init` again to resume the rest.
-  `--interview` and `--answers-file` need the `human` actor; a CTO may only
-  propose with `--draft-file`, and a draft records no approval.
+  leave approval `missing`; run `rail --actor human init` again to resume
+  approval, agent files and git drivers. `--interview` and `--answers-file` need
+  the `human` actor; a CTO may only propose with `--draft-file`, and a draft
+  records no approval.
 
 `adapters sync` and `sync --install` remain available on their own. `adapters
 sync` mirrors the workspace profiles and skills into `AGENTS.md` and
