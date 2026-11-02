@@ -47,6 +47,18 @@ def test_read_and_rebuild_budgets(tmp_path, n, warm_ms, cold_s):
 
 
 @pytest.mark.perf
+def test_init_dry_run_is_a_cold_start(tmp_path):
+    make_store(tmp_path, 1000)
+
+    start = time.perf_counter()
+    result = invoke("init", {"dir": str(tmp_path), "dry_run": True}, actor="human")
+    elapsed = time.perf_counter() - start
+
+    assert result["ok"], result
+    assert elapsed < 5, f"init dry-run took {elapsed:.2f}s"
+
+
+@pytest.mark.perf
 def test_single_write_budget(tmp_path):
     store = make_store(tmp_path, 1000)
     pack = load_pack("basic", store)
