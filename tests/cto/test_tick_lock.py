@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -86,6 +88,15 @@ def test_a_running_tick_holds_the_lock_and_a_following_one_waits_its_turn(
         assert len(fake_droid.log()) == 1
     finally:
         kill_tree(first)
+        # The droid runs in its own session, so the CLI's group kill misses it;
+        # kill the group the fake droid recorded its child in.
+        child_file = fake_droid.root / "fake-droid-child.json"
+        if os.name != "nt" and child_file.is_file():
+            pid = json.loads(child_file.read_text(encoding="utf-8"))["pid"]
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
 
     child = fake_droid.root / "fake-droid-child.json"
     if child.is_file():

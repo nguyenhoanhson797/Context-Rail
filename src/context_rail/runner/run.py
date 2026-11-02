@@ -52,7 +52,7 @@ _MARKER = "\n[omitted]\n"
 _MIN_SECRET = 6
 _READ_CHUNK = 65536
 #: How long a capture file may stay locked by a just-killed process tree.
-_CAPTURE_WAIT = 2.0
+_CAPTURE_WAIT = 10.0
 
 
 def redact(text: str, secrets: list[str]) -> str:
