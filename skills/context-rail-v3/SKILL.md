@@ -55,7 +55,7 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 |---|---|---|
 | Skeleton | `rail init --pack basic` | `rail.yaml`, `.gitignore`, empty pinned folders |
 | Picture | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter"` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the pack's worker skills |
-| Approve | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"` | an approval record with the protected-file hashes |
+| Approve | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` | an approval record with the protected-file hashes |
 | Agent files | `rail adapters sync [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block) and `.agents/skills/<name>/SKILL.md` per skill note |
 | Git drivers | `rail sync --install` | `.gitattributes` and clone-local merge drivers |
 
@@ -103,7 +103,7 @@ Exact flags: `references/commands.md` in this skill.
 |---|---|
 | `NOT_FOUND: no store found` | `rail init`, or put `--store` before the command |
 | `VALIDATION_FAILED: unrecognized arguments` | Global options belong before the command; `add` is positional |
-| “the charter is not approved; nothing executes yet” | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"` |
+| “the charter is not approved; nothing executes yet” | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` |
 | `'cto tick' cannot be nested inside a running session` | Start it from the outer session, with `RAIL_ACTOR` unset |
 | A check is `stale` | Re-run `rail verify`; a stale pass is not a pass |
 

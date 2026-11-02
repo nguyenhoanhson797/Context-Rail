@@ -167,7 +167,7 @@ A full tested pack is in `references/ba-po-pack.yaml`.
 rail pack create --name my-team --from scrum   # copies the whole pack tree
 # edit packs/my-team/pack.yaml, profiles/, templates/
 rail pack validate --name my-team
-rail pack use --name my-team --expect <rail.yaml etag> \
+rail --actor human pack use --name my-team --expect <rail.yaml etag> \
               --map todo=intake --confirm "USE PACK my-team"
 ```
 

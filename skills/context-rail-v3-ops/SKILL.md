@@ -27,6 +27,13 @@ context-rail/.rail-local/    index, locks, dispatch/tick/merge progress
 - Control files prove a dispatch, tick or merge happened; they are written
   atomically and are machine-local.
 
+## Actor identity
+
+`--actor` and `RAIL_ACTOR` are workflow claims, not authentication. Human-only
+tools (`approve`, `migrate`, `pack use`) require an explicitly named human:
+`--actor human` or `RAIL_ACTOR=human`. Anyone with shell access as your OS user
+can act as you; use OS-level isolation if you need a real boundary.
+
 ## Maintenance
 
 ```powershell
@@ -66,7 +73,7 @@ rail mcp serve              # the same tool table over MCP stdio
 rail ui serve               # loopback web UI
 rail sync --install         # git merge drivers for store-only clones
 rail sync                   # integrate and publish clone changes
-rail migrate ...            # import a v1/v2 legacy store
+rail --actor human migrate ...  # import a v1/v2 legacy store
 ```
 
 ## Speed budgets (fixed, tested in CI)

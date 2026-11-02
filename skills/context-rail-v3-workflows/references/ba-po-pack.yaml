@@ -1,7 +1,7 @@
 # Tested BA/PO pack example.
 # Copy it to <store>/packs/scrum-ba/pack.yaml, then:
 #   rail pack validate --name scrum-ba
-#   rail pack use --name scrum-ba --expect <rail.yaml etag> --confirm "USE PACK scrum-ba"
+#   rail --actor human pack use --name scrum-ba --expect <rail.yaml etag> --confirm "USE PACK scrum-ba"
 #
 # The manifest places these presets by default, so a store-local pack must
 # declare them or the next write fails with "undeclared preset(s)":

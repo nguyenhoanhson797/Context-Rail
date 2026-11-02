@@ -65,7 +65,7 @@ empty folders). For a picture, the profiles and the agent files:
 
 ```bash
 rail init --interview                                   # or --answers-file FILE --confirm "APPROVE charter"
-rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
 rail adapters sync                                      # AGENTS.md + .agents/skills/
 rail sync --install                                     # optional: git merge drivers
 ```
@@ -73,7 +73,8 @@ rail sync --install                                     # optional: git merge dr
 - `--interview` and `--answers-file` need the `human` actor; a CTO may only
   propose with `--draft-file`, and a draft records no approval.
 - `init --answers-file` writes the picture but leaves approval `missing`; the
-  `approve` step is what records it.
+  `approve` step is what records it, and it needs an explicit `--actor human`
+  or `RAIL_ACTOR=human`.
 - `adapters sync` mirrors the workspace profiles and skills into `AGENTS.md`
   and `.agents/skills/` (or `CLAUDE.md`, `.cursor/`, `GEMINI.md`). It is a
   separate step today; re-run it when a skill changes.
@@ -121,8 +122,14 @@ brief reports the current state; nothing executes until a human approves the
 charter:
 
 ```bash
-rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
 ```
+
+`approve`, `migrate` and `pack use` are human-only tools. They need an
+explicitly named human: pass `--actor human` or set `RAIL_ACTOR=human`. A bare
+command still defaults to `human` for ordinary reads and writes, but not for
+these tools. The actor name is a workflow claim, not authentication; anyone
+with shell access as your OS user can act as you.
 
 Once the charter is approved, the loop uses isolated git worktrees:
 

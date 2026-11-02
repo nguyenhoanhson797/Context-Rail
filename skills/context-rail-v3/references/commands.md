@@ -1,6 +1,8 @@
 # Command reference
 
 Global options, before the command: `--store PATH`, `--actor NAME`.
+Human-only tools (`approve`, `migrate`, `pack use`) need an explicitly named
+human: `--actor human` or `RAIL_ACTOR=human`.
 Every command accepts `--key` for idempotency where it writes.
 Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
@@ -47,7 +49,7 @@ rail status
 ## Gates and approvals
 
 ```text
-rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
+rail --actor human approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
 ```
 
 `target` is `charter`, a protected slug, or `pack:<name>`.
@@ -69,7 +71,7 @@ rail pack list
 rail pack show --name NAME
 rail pack validate --name NAME
 rail pack create --name NAME [--from SOURCE]
-rail pack use --name NAME --expect RAIL_YAML_ETAG
+rail --actor human pack use --name NAME --expect RAIL_YAML_ETAG
               [--map OLD=NEW]... [--dry-run] --confirm "USE PACK <name>"
 ```
 
@@ -83,7 +85,7 @@ rail sync [--install] [--remote NAME] [--branch NAME]
 rail sync driver <doc|record|config> <base> <ours> <theirs> <path>
 rail adapters sync [--harness agents|claude|cursor|gemini]... [--dry-run]
                    [--force --confirm "FORCE ADAPTERS adapters"]
-rail migrate --source LEGACY --dir DIR [--root DIR] [--pack NAME] [--dry-run]
+rail --actor human migrate --source LEGACY --dir DIR [--root DIR] [--pack NAME] [--dry-run]
 rail mcp serve
 rail ui serve [--port N]
 ```

@@ -153,7 +153,7 @@ def invoke(
     actor: str | None = None,
 ) -> dict[str, Any]:
     """Run one tool and return a Result envelope; no exception escapes."""
-    resolved_actor = _resolve_actor(actor)
+    resolved_actor, actor_named = _resolve_actor(actor)
     actor_env = _actor_env()
     context: Context | None = None
     try:
@@ -161,7 +161,9 @@ def invoke(
         params = _parameters(tool, args)
         if tool.name not in {"init", "migrate"}:
             context = _open_context(store, resolved_actor)
-        refusal = _authorize(tool, params, context, resolved_actor, actor_env)
+        refusal = _authorize(
+            tool, params, context, resolved_actor, actor_env, actor_named
+        )
         if refusal is not None:
             return refusal
         handler = _handler(tool.handler)
@@ -228,12 +230,20 @@ def _authorize(
     context: Context | None,
     actor: str,
     actor_env: str | None = None,
+    actor_named: bool = True,
 ) -> dict[str, Any] | None:
     """The refusal a call earns before its handler runs, if it earns one."""
     refusal = rights.allowed(tool.permission, actor)
     if refusal is not None:
         return fail(
             "PERMISSION_DENIED", refusal, {"tool": tool.name, "actor": actor}
+        )
+    if tool.permission == "human" and not actor_named:
+        return fail(
+            "PERMISSION_DENIED",
+            "human-only tools need an explicitly named human; "
+            "pass --actor human or set RAIL_ACTOR=human",
+            {"tool": tool.name, "actor": actor, "reason": "actor_not_named"},
         )
     if tool.permission == "human" or context is None:
         return None
@@ -381,14 +391,19 @@ def _tool(name: Any) -> Tool:
     return _BY_NAME[name]
 
 
-def _resolve_actor(actor: str | None) -> str:
-    """The explicit actor, else ``RAIL_ACTOR``, else ``human``."""
+def _resolve_actor(actor: str | None) -> tuple[str, bool]:
+    """The actor and whether the caller named it, defaulting to ``human``.
+
+    The default keeps ordinary CLI commands convenient. Human-only tools use
+    the second value to refuse an unnamed default, so a bare command cannot
+    record a human decision by accident.
+    """
     if isinstance(actor, str) and actor.strip():
-        return actor
+        return actor, True
     from_env = os.environ.get("RAIL_ACTOR")
     if isinstance(from_env, str) and from_env.strip():
-        return from_env
-    return "human"
+        return from_env, True
+    return "human", False
 
 
 def _parameters(tool: Tool, args: dict[str, Any] | None) -> dict[str, Any]:

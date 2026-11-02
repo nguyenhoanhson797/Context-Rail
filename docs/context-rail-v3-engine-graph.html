@@ -1339,7 +1339,7 @@ rail init --answers-file answers.json --confirm "APPROVE charter"</code></pre>
           <div class="dot">04</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--human">human</span><h3>Approve the boundary</h3></div>
-            <pre class="cmd"><code>rail approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
+            <pre class="cmd"><code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
             <p>Records the approval with hashes of the protected files. Until this exists, the CTO may plan and read, but nothing executes.</p>
           </div>
         </article>
@@ -1426,7 +1426,7 @@ rail ci</code></pre>
 
       <div class="refusals">
         <div class="refusal"><b>NOT_FOUND: no store found</b><span>Run <code>rail init</code>, or put <code>--store path</code> before the command.</span></div>
-        <div class="refusal"><b>charter is not approved</b><span>Run <code>rail approve charter ...</code>; planning and reads stay open.</span></div>
+        <div class="refusal"><b>charter is not approved</b><span>Run <code>rail --actor human approve charter ...</code>; planning and reads stay open.</span></div>
         <div class="refusal"><b>stale etag</b><span>Re-read the document, then retry with the new etag. Never reuse an old one.</span></div>
         <div class="refusal"><b>check is stale</b><span>Re-run <code>rail verify</code>. A stale pass is not a pass.</span></div>
         <div class="refusal"><b>cannot be dispatched: depends_on:x</b><span>Finish or drop the dependency; only an executable leaf may be dispatched.</span></div>

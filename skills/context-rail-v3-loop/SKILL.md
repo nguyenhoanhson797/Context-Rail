@@ -58,7 +58,7 @@ rail ledger [--item <slug>] [--since <iso>]
 |---|---|
 | `INVALID_STATE: '<slug>' cannot be dispatched: depends_on:<x>` | Not an executable leaf; finish or drop the dependency |
 | `INVALID_STATE: ... is a 'reviewer', not an implementer` | Wrong profile recipe for the command |
-| `INVALID_STATE: the charter is not approved` (the gateway says “the charter is not approved; nothing executes yet”) | Run `rail approve charter ...` first |
+| `INVALID_STATE: the charter is not approved` (the gateway says “the charter is not approved; nothing executes yet”) | Run `rail --actor human approve charter ...` first |
 | `BUSINESS_RULE_VIOLATED: the item_done gate is not satisfied` | Missing/stale checks, review, acceptance or human verdict |
 | `'cto tick' cannot be nested inside a running session` | A child session already set `RAIL_ACTOR` |
 | A review from the implementer | Separation rule; use a distinct reviewer profile |

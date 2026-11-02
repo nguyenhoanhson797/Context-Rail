@@ -36,7 +36,11 @@ def _parser() -> argparse.ArgumentParser:
         "--store", help="store folder (default: the nearest context-rail folder)"
     )
     parser.add_argument(
-        "--actor", help="acting actor (default: RAIL_ACTOR, then human)"
+        "--actor",
+        help=(
+            "acting actor (default: RAIL_ACTOR, then human; "
+            "human-only tools need an explicit human)"
+        ),
     )
     _subcommands(parser, TOOLS)
     return parser

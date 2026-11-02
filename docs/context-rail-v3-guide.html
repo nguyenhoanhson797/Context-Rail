@@ -712,7 +712,7 @@ the work needs; the brief reads only what it must.</code></pre>
       <div class="card">
         <h3>Approval is a typed phrase</h3>
         <p class="small">The tool never asks “are you sure?”. It asks for a phrase that names the exact target:</p>
-        <pre><code>rail approve charter \
+        <pre><code>rail --actor human approve charter \
   --confirm "APPROVE charter" \
   --confirmer "Ada"</code></pre>
         <p class="small" style="margin-top: 10px;">
@@ -890,7 +890,7 @@ rail status</code></pre>
         <div class="tcard">
           <span class="phase">Step 3 · the boundary</span>
           <h3>Approve the charter</h3>
-          <pre><code>rail approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
+          <pre><code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
           <p class="small" style="margin-top: 8px;">
             This is the moment the human hands over autonomy. Until then the CTO
             plans but nothing executes.
@@ -1127,7 +1127,7 @@ rail doctor</code></pre>
           <tr><td><code>rail move &lt;slug&gt; &lt;status&gt; --expect &lt;etag&gt;</code></td><td>Move an item through its lifecycle.</td></tr>
           <tr><td><code>rail check</code> / <code>rail verify</code></td><td>Declare what proves an item, then run it and record verdicts.</td></tr>
           <tr><td><code>rail report</code></td><td>File the structured report a completed run owes.</td></tr>
-          <tr><td><code>rail approve &lt;target&gt;</code></td><td>The human gate: a typed phrase and a protected-file hash.</td></tr>
+          <tr><td><code>rail --actor human approve &lt;target&gt;</code></td><td>The human gate: a typed phrase and a protected-file hash.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1155,7 +1155,7 @@ rail doctor</code></pre>
           <tr><td><code>rail ci</code></td><td>Before pushing: doctor issues plus approval and done gates.</td></tr>
           <tr><td><code>rail pack list | show | validate | use | create</code></td><td>Inspect or switch the workflow pack.</td></tr>
           <tr><td><code>rail sync --install</code></td><td>Install the git drivers for store-only clones.</td></tr>
-          <tr><td><code>rail migrate</code></td><td>Import a v1/v2 store into a fresh v3 store.</td></tr>
+          <tr><td><code>rail --actor human migrate</code></td><td>Import a v1/v2 store into a fresh v3 store.</td></tr>
           <tr><td><code>rail mcp serve</code> · <code>rail ui serve</code></td><td>Same tool table over MCP or a loopback web UI.</td></tr>
         </tbody>
       </table>
@@ -1193,7 +1193,7 @@ rail doctor</code></pre>
           <tr>
             <td>“the charter is not approved; nothing executes yet”</td>
             <td>The human gate has not been passed.</td>
-            <td><code>rail approve charter --confirm "APPROVE charter" --confirmer "…"</code></td>
+            <td><code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "…"</code></td>
           </tr>
           <tr>
             <td>A check reports <code>stale</code></td>
