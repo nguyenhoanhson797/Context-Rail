@@ -42,7 +42,7 @@ def _parser() -> argparse.ArgumentParser:
             "human-only tools need an explicit human)"
         ),
     )
-    _subcommands(parser, TOOLS)
+    _subcommands(parser, TOOLS, required=False)
     return parser
 
 
@@ -192,6 +192,17 @@ def main(argv: list[str] | None = None) -> int:
         return int(exc.code or 0)
     reserved = {"store", "actor", "group", "_tool"}
     tool = getattr(namespace, "_tool", None)
+    if tool is None:
+        _emit(
+            {
+                "ok": True,
+                "value": {
+                    "message": "No command given. Start with `rail init` to create or resume a store.",
+                    "next": "rail init",
+                },
+            }
+        )
+        return 0
     declared = next(
         (entry for entry in TOOLS if entry.name == tool), None
     )
