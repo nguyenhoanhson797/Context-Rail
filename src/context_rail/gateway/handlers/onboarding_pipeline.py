@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -13,8 +13,12 @@ from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, load_manifest, render_path
 from context_rail.store.approval import APPROVAL_KIND
 from context_rail.store.doc import parse_doc
+from context_rail.store.write import commit
 
-__all__ = ["probe"]
+if TYPE_CHECKING:
+    from context_rail.gateway.gateway import Context
+
+__all__ = ["probe", "workspace_seed"]
 
 _CHARTER = "charter"
 
@@ -49,6 +53,28 @@ def probe(project_root: Path, store: Path, pack_name: str = "basic") -> dict[str
         "agents": {"exists": _agents_exist(project_root)},
         "git": {"exists": _git_checkout(project_root)},
     }
+
+
+def workspace_seed(context: Context) -> dict[str, Any]:
+    """Write the active pack's absent profiles and skill notes."""
+    from context_rail.gateway.handlers.onboarding import agent_ops
+
+    ops = [
+        op
+        for op in agent_ops(context.store, context.manifest, context.pack.name)
+        if not (context.store / op.path).is_file()
+    ]
+    if not ops:
+        return {"state": "unchanged", "written": []}
+    result = commit(
+        context.store,
+        context.manifest,
+        ops,
+        None,
+        actor=context.actor,
+        index=context.index,
+    )
+    return {"state": "written", "written": result["written"]}
 
 
 def _raw_pack(store: Path) -> str | None:
