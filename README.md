@@ -25,13 +25,6 @@ On macOS or Linux use `python` instead of `py`. This installs two equivalent
 entry points, `rail` and `ctx-rail`; every example below also works as
 `py -m context_rail`.
 
-To work on the rail itself, install the checkout in editable mode with the test
-dependencies:
-
-```powershell
-py -m pip install -e .[test]
-```
-
 ## Quick start
 
 From the project you want to manage:
@@ -159,6 +152,14 @@ single-instance lock. It must be the outer session, so it refuses to start when
 are all generated from one tool table (`src/context_rail/gateway/tools.py`).
 
 ## Testing
+
+From a checkout, install it in editable mode with the test dependencies:
+
+```powershell
+py -m pip install -e .[test]
+```
+
+Then run one lane at a time:
 
 ```powershell
 py -m pytest -q -m "not slow and not perf"          # functional lane
