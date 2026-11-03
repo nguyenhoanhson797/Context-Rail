@@ -14,7 +14,7 @@ from context_rail.core.result import is_ok
 from context_rail.core.util import dump_frontmatter, load_yaml
 from context_rail.gateway.gateway import invoke
 from context_rail.store.doc import record_digest
-from helpers import touch_doc
+from helpers import init_pack_store, nested_pack_document, touch_doc
 
 STAMP = "2026-10-28T00:00:00Z"
 RECORD_KEYS = {"id", "primitive", "preset", "kind", "at", "actor", "about", "data", "digest"}
@@ -531,6 +531,94 @@ def test_invalid_transition_refused(tmp_path):
 
     assert result["error"]["code"] == "VALIDATION_FAILED"
     assert (store / "items/task/login-page.md").read_bytes() == before
+
+
+def test_move_refuses_a_preset_with_no_workflow(tmp_path):
+    store = _init(tmp_path)
+    path = store / "items" / "task" / "ghost.md"
+    path.parent.mkdir(parents=True)
+    front = {
+        "primitive": "item",
+        "preset": "ghost",
+        "title": "Ghost",
+        "status": "todo",
+        "tags": ["task"],
+        "created": STAMP,
+        "updated": STAMP,
+    }
+    path.write_text(
+        "---\n" + dump_frontmatter(front) + "---\n# Ghost\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = invoke(
+        "move",
+        {"slug": "ghost", "status": "doing", "expect": _etag(store, "ghost")},
+        store=store,
+        actor="cto",
+    )
+
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+    assert "unknown preset" in result["error"]["message"] or "ghost" in result[
+        "error"
+    ]["message"]
+
+
+def test_move_uses_the_preset_workflow(tmp_path):
+    document = nested_pack_document("twoways")
+    document["statuses"] = {
+        "todo": "not_started",
+        "doing": "active",
+        "fixing": "active",
+        "done": "done",
+    }
+    document["initial"] = "todo"
+    document["transitions"] = {"todo": ["done"], "done": []}
+    document["workflows"] = {
+        "sprint": {
+            "initial": "todo",
+            "transitions": {"todo": ["doing"], "doing": ["done"], "done": []},
+        },
+        "bugfix": {
+            "initial": "todo",
+            "transitions": {"todo": ["fixing"], "fixing": ["done"], "done": []},
+        },
+    }
+    document["presets"]["task"]["workflow"] = "sprint"
+    document["presets"]["bug"] = {
+        "primitive": "item",
+        "tags": ["bug"],
+        "workflow": "bugfix",
+    }
+    store = init_pack_store(tmp_path, document)
+    assert is_ok(invoke("add", {"preset": "task", "title": "A task"}, store=store))
+    assert is_ok(invoke("add", {"preset": "bug", "title": "A bug"}, store=store))
+
+    moved = invoke(
+        "move",
+        {"slug": "a-task", "status": "doing", "expect": _etag(store, "a-task")},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(moved), moved
+
+    refused = invoke(
+        "move",
+        {"slug": "a-bug", "status": "doing", "expect": _etag(store, "a-bug")},
+        store=store,
+        actor="cto",
+    )
+    assert refused["error"]["code"] == "VALIDATION_FAILED"
+    assert "bugfix" in refused["error"]["message"]
+
+    allowed = invoke(
+        "move",
+        {"slug": "a-bug", "status": "fixing", "expect": _etag(store, "a-bug")},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(allowed), allowed
 
 
 def test_move_records_status_changed(tmp_path):

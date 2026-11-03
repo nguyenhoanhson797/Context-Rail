@@ -125,6 +125,21 @@ class Workflow:
     transitions: dict[str, tuple[str, ...]]
     execution: dict[str, dict[str, bool]]
     quality: dict[str, QualityRule]
+    statuses: dict[str, str] = field(default_factory=dict)
+
+    def dispatchable(self, status: str) -> bool:
+        """Whether an Item in ``status`` may be dispatched under this workflow."""
+        declared = self.execution.get(status, {})
+        if "dispatch" in declared:
+            return declared["dispatch"]
+        return self.statuses.get(status) in WORKABLE_CATEGORIES
+
+    def mergeable(self, status: str) -> bool:
+        """Whether an Item in ``status`` may be merged under this workflow."""
+        declared = self.execution.get(status, {})
+        if "merge" in declared:
+            return declared["merge"]
+        return self.statuses.get(status) not in FINISHED_CATEGORIES
 
 
 @dataclass(frozen=True)
@@ -155,20 +170,6 @@ class Pack:
     policy: dict[str, Any]
     execution: dict[str, dict[str, bool]]
     workflows: dict[str, Workflow]
-
-    def dispatchable(self, status: str) -> bool:
-        """Whether an Item in ``status`` may be dispatched."""
-        declared = self.execution.get(status, {})
-        if "dispatch" in declared:
-            return declared["dispatch"]
-        return self.statuses.get(status) in WORKABLE_CATEGORIES
-
-    def mergeable(self, status: str) -> bool:
-        """Whether an Item in ``status`` may be merged."""
-        declared = self.execution.get(status, {})
-        if "merge" in declared:
-            return declared["merge"]
-        return self.statuses.get(status) not in FINISHED_CATEGORIES
 
     def workflow(self, name: str) -> Workflow:
         """The workflow called ``name``, refusing an unknown one."""
@@ -377,6 +378,7 @@ def _workflows(
             transitions=transitions,
             execution=execution,
             quality={},
+            statuses=statuses,
         )
     }
     declared = _mapping(raw, "workflows")
@@ -405,6 +407,7 @@ def _workflows(
             transitions=workflow_transitions,
             execution=workflow_execution,
             quality=workflow_quality,
+            statuses=statuses,
         )
     return workflows
 

@@ -91,19 +91,26 @@ def item_rows(ix: Any, pack: Pack) -> list[structure.ItemRow]:
         edges.setdefault(src, {}).setdefault(rel, []).append(dst)
     activity = query.last_activity_ms(ix)
     rows = ix.conn.execute(
-        "SELECT slug, category, status FROM docs WHERE primitive = 'item' AND broken = 0"
+        "SELECT slug, category, status, preset FROM docs "
+        "WHERE primitive = 'item' AND broken = 0"
     ).fetchall()
-    return [
-        structure.ItemRow(
-            slug=slug,
-            category=category,
-            part_of=_ordered(edges.get(slug, {}).get("part_of", ())),
-            depends_on=_ordered(edges.get(slug, {}).get("depends_on", ())),
-            last_activity_ms=activity.get(slug),
-            dispatchable=pack.dispatchable(status or ""),
+    result: list[structure.ItemRow] = []
+    for slug, category, status, preset in rows:
+        declared = pack.presets.get(preset or "")
+        workflow = pack.workflows[
+            declared.workflow if declared is not None else "default"
+        ]
+        result.append(
+            structure.ItemRow(
+                slug=slug,
+                category=category,
+                part_of=_ordered(edges.get(slug, {}).get("part_of", ())),
+                depends_on=_ordered(edges.get(slug, {}).get("depends_on", ())),
+                last_activity_ms=activity.get(slug),
+                dispatchable=workflow.dispatchable(status or ""),
+            )
         )
-        for slug, category, status in rows
-    ]
+    return result
 
 
 def _ordered(values: Sequence[str]) -> tuple[str, ...]:

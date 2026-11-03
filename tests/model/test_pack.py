@@ -362,6 +362,7 @@ def test_a_pack_can_declare_named_workflows(tmp_path: Path) -> None:
         },
         execution={},
         quality={},
+        statuses=pack.statuses,
     )
     bugfix = pack.workflow("bugfix")
     assert bugfix.initial == "doing"

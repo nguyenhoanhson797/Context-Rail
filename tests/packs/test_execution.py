@@ -28,10 +28,15 @@ def _document(name: str) -> dict:
 
 def test_statuses_without_flags_keep_the_category_defaults(tmp_path: Path) -> None:
     pack = load_pack("basic", tmp_path)
-    assert pack.dispatchable("todo") and pack.dispatchable("doing")
-    assert not pack.dispatchable("blocked") and not pack.dispatchable("done")
-    assert pack.mergeable("doing") and pack.mergeable("todo")
-    assert not pack.mergeable("done") and not pack.mergeable("dropped")
+    workflow = pack.workflow("default")
+    assert workflow.dispatchable("todo")
+    assert workflow.dispatchable("doing")
+    assert not workflow.dispatchable("blocked")
+    assert not workflow.dispatchable("done")
+    assert workflow.mergeable("doing")
+    assert workflow.mergeable("todo")
+    assert not workflow.mergeable("done")
+    assert not workflow.mergeable("dropped")
 
 
 @pytest.mark.parametrize("name", ["flow", "scrum"])
@@ -39,9 +44,10 @@ def test_shipped_packs_stop_dispatching_an_item_in_review(
     name: str, tmp_path: Path
 ) -> None:
     pack = load_pack(name, tmp_path)
-    assert pack.dispatchable("doing" if name == "scrum" else "building")
-    assert not pack.dispatchable("review")
-    assert pack.mergeable("review")
+    workflow = pack.workflow("default")
+    assert workflow.dispatchable("doing" if name == "scrum" else "building")
+    assert not workflow.dispatchable("review")
+    assert workflow.mergeable("review")
 
 
 def test_an_unknown_execution_status_refuses(tmp_path: Path) -> None:

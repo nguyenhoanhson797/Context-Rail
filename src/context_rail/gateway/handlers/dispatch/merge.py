@@ -230,11 +230,12 @@ def _run_merge(
             f"{slug!r} is already {doc.status!r}",
             {"item": slug, "status": doc.status},
         )
-    if not ctx.pack.mergeable(status):
+    workflow = ctx.pack.workflow_for(doc.preset or "")
+    if not workflow.mergeable(status):
         raise WriteRefused(
             "INVALID_STATE",
-            f"the {ctx.pack.name} pack does not allow merging from {status!r}",
-            {"item": slug, "status": status},
+            f"the {workflow.name!r} workflow does not allow merging from {status!r}",
+            {"item": slug, "status": status, "workflow": workflow.name},
         )
 
     store_paths = _store_paths(ctx, root)

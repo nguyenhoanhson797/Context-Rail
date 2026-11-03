@@ -736,6 +736,34 @@ def copy_pack_templates(store: Path, name: str) -> None:
             )
 
 
+def init_pack_store(
+    tmp_path: Path,
+    document: dict[str, Any],
+    *,
+    layout: dict[str, str] | None = None,
+) -> Path:
+    """Initialize a store on a local pack document and return its directory."""
+    from context_rail.gateway.gateway import invoke
+
+    name = document["name"]
+    store = Path(tmp_path) / "context-rail"
+    write_pack(store, name, document)
+    copy_pack_templates(store, name)
+    if layout is not None:
+        (store / "packs" / name / "layout.yaml").write_text(
+            yaml.safe_dump({"presets": dict(layout)}, sort_keys=False),
+            encoding="utf-8",
+            newline="\n",
+        )
+    result = invoke(
+        "init",
+        {"dir": str(tmp_path), "pack": name, "scaffold": True},
+        actor="human",
+    )
+    assert result["ok"] is True, result
+    return Path(result["value"]["store"])
+
+
 def init_nested_store(
     tmp_path: Path,
     *,
@@ -744,26 +772,11 @@ def init_nested_store(
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Initialize a store on the nested pack, seeded with a structural layout."""
-    from context_rail.gateway.gateway import invoke
-
-    store = Path(tmp_path) / "context-rail"
-    write_pack(store, name, nested_pack_document(name, extra))
-    copy_pack_templates(store, name)
-    (store / "packs" / name / "layout.yaml").write_text(
-        yaml.safe_dump(
-            {"presets": dict(NESTED_LAYOUT if layout is None else layout)},
-            sort_keys=False,
-        ),
-        encoding="utf-8",
-        newline="\n",
+    return init_pack_store(
+        tmp_path,
+        nested_pack_document(name, extra),
+        layout=NESTED_LAYOUT if layout is None else layout,
     )
-    result = invoke(
-        "init",
-        {"dir": str(tmp_path), "pack": name, "scaffold": True},
-        actor="human",
-    )
-    assert result["ok"] is True, result
-    return Path(result["value"]["store"])
 
 
 def set_preset_placement(store: Path, **presets: str) -> None:

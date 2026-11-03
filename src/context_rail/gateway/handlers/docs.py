@@ -523,7 +523,9 @@ def move(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 f"{rel!r} is at etag {actual}, not {expect}",
                 {"path": rel, "expected": expect, "actual": actual},
             )
-        reason = check_transition(ctx.pack, doc.status or "", target)
+        reason = check_transition(
+            ctx.pack.workflow_for(doc.preset or ""), doc.status or "", target
+        )
         if reason is not None:
             raise WriteRefused("VALIDATION_FAILED", reason, {"path": rel})
         if resolution is not None and not resolution.strip():
