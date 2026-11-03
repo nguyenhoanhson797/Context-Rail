@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from importlib import resources
 from pathlib import Path
 from typing import Any, NoReturn
@@ -21,7 +21,7 @@ from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.cache import cached_model
 from context_rail.model.errors import ModelError
-from context_rail.model.fields import relative_path
+from context_rail.model.fields import relative_path, reserved_fields
 from context_rail.model.primitives import (
     CATEGORIES,
     FINISHED_CATEGORIES,
@@ -52,7 +52,7 @@ __all__ = [
 
 PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy", "execution")
 REQUIRED_PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
-PRESET_KEYS = ("primitive", "tags", "fields", "template")
+PRESET_KEYS = ("primitive", "tags", "fields", "template", "required", "defaults")
 EXECUTION_KEYS = ("dispatch", "merge")
 LAYOUT_FILE = "layout.yaml"
 LAYOUT_KEYS = ("placement", "presets")
@@ -60,6 +60,7 @@ PACK_VERSION = 1
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
 DEFAULT_MEASUREMENT_MIN_RUNS = 10
 _PACK_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+_FIELD_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 # The engine reads these presets by name (the charter and skill documents, the
 # manifest's placed presets and the legacy migration fallback), so every pack
@@ -91,6 +92,8 @@ class Preset:
     tags: tuple[str, ...]
     fields: dict[str, tuple[str, ...]]
     template: str
+    required: tuple[str, ...] = ()
+    defaults: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -323,6 +326,8 @@ def _preset(name: str, raw: Any) -> Preset:
         _refuse(f"preset {name!r} has unknown primitive {primitive!r}")
     tags = _string_list(entry.get("tags", []), f"preset {name!r} tags")
     fields = _fields(entry.get("fields", {}), name)
+    required = _required(entry.get("required", []), name, primitive)
+    defaults = _defaults(entry.get("defaults", {}), name, required, fields)
     template = entry.get("template", DEFAULT_TEMPLATE.format(primitive=primitive))
     if not isinstance(template, str) or not template:
         _refuse(f"preset {name!r} template must be a non-empty string")
@@ -333,7 +338,56 @@ def _preset(name: str, raw: Any) -> Preset:
         tags=tags,
         fields=fields,
         template=template,
+        required=required,
+        defaults=defaults,
     )
+
+
+def _required(raw: Any, preset: str, primitive: str) -> tuple[str, ...]:
+    names = _string_list(raw, f"preset {preset!r} required")
+    if len(set(names)) != len(names):
+        _refuse(f"preset {preset!r} required repeats a field")
+    reserved = reserved_fields(primitive)
+    for name in names:
+        if not _FIELD_NAME.fullmatch(name):
+            _refuse(f"preset {preset!r} required has a malformed field {name!r}")
+        if name in reserved:
+            _refuse(f"preset {preset!r} required names reserved field {name!r}")
+    return names
+
+
+def _defaults(
+    raw: Any,
+    preset: str,
+    required: tuple[str, ...],
+    fields: dict[str, tuple[str, ...]],
+) -> dict[str, Any]:
+    defaults = _mapping(raw, f"preset {preset!r} defaults")
+    missing = sorted(set(defaults) - set(required))
+    if missing:
+        _refuse(
+            f"preset {preset!r} defaults field(s) that are not required: "
+            + ", ".join(missing)
+        )
+    for name, value in defaults.items():
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, str):
+            if not value:
+                _refuse(f"preset {preset!r} default {name!r} must not be empty")
+        elif isinstance(value, (int, float)):
+            if not math.isfinite(value):
+                _refuse(f"preset {preset!r} default {name!r} must be finite")
+        else:
+            _refuse(
+                f"preset {preset!r} default {name!r} must be a JSON scalar"
+            )
+        allowed = fields.get(name)
+        if allowed is not None and value not in allowed:
+            _refuse(
+                f"preset {preset!r} default {name!r} is outside its declared enum"
+            )
+    return dict(defaults)
 
 
 def _fields(raw: Any, preset: str) -> dict[str, tuple[str, ...]]:

@@ -9,20 +9,30 @@ from __future__ import annotations
 import math
 import os
 import re
+from functools import lru_cache
 from typing import Any, Iterable, NoReturn
 
 from context_rail.model.errors import ModelError
+from context_rail.model.primitives import (
+    DOC_RESERVED_KEYS,
+    MANAGED_KEYS,
+    RECORD_STAMPED_KEYS,
+    RELATIONS,
+)
 
 __all__ = [
     "boolean",
     "finite_number",
+    "glob_regex",
     "integer",
+    "invalid_glob",
     "is_number",
     "mapping",
     "no_unknown",
     "refuse",
     "relative_path",
     "require",
+    "reserved_fields",
     "schema_version",
     "string",
     "string_list",
@@ -153,3 +163,63 @@ def relative_path(value: Any, what: str, *, glob: bool = False) -> str:
     if not glob and _GLOB_CHARS & set(text):
         refuse(f"{what} must be a plain path, not a glob: {text!r}")
     return text
+
+
+def reserved_fields(primitive: str) -> frozenset[str]:
+    """Field names a preset of ``primitive`` may not require or default."""
+    names = set(DOC_RESERVED_KEYS) | set(MANAGED_KEYS) | set(RELATIONS)
+    if primitive == "record":
+        names.update(RECORD_STAMPED_KEYS)
+        names.update({"kind", "at", "actor", "data", "id", "digest"})
+    return frozenset(names)
+
+
+def invalid_glob(glob: str) -> str | None:
+    """Why ``glob`` cannot compile, or None when it can."""
+    try:
+        glob_regex(glob.replace("\\", "/"))
+    except re.error as error:
+        return str(error)
+    return None
+
+
+@lru_cache(maxsize=256)
+def glob_regex(pattern: str) -> re.Pattern[str]:
+    """Compile one input glob into its bounded matcher."""
+    pieces = ["^"]
+    segments = pattern.split("/")
+    for position, segment in enumerate(segments):
+        last = position == len(segments) - 1
+        if segment == "**":
+            pieces.append(".*" if last else "(?:[^/]+/)*")
+            continue
+        pieces.append(_segment_regex(segment))
+        if not last:
+            pieces.append("/")
+    pieces.append("$")
+    return re.compile("".join(pieces))
+
+
+def _segment_regex(segment: str) -> str:
+    pieces: list[str] = []
+    index = 0
+    while index < len(segment):
+        character = segment[index]
+        if character == "*":
+            pieces.append("[^/]*")
+        elif character == "?":
+            pieces.append("[^/]")
+        elif character == "[":
+            closing = segment.find("]", index + 2)
+            if closing < 0:
+                pieces.append(re.escape(character))
+            else:
+                body = segment[index + 1 : closing]
+                if body.startswith("!"):
+                    body = "^" + body[1:]
+                pieces.append("[" + body + "]")
+                index = closing
+        else:
+            pieces.append(re.escape(character))
+        index += 1
+    return "".join(pieces)

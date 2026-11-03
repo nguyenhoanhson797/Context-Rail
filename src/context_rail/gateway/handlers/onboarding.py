@@ -22,7 +22,11 @@ import yaml
 from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import now_iso, slugify
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
-from context_rail.gateway.handlers.common import compose_doc, record_data
+from context_rail.gateway.handlers.common import (
+    compose_doc,
+    prepare_document_fields,
+    record_data,
+)
 from context_rail.gateway.handlers.init import (
     GITIGNORE,
     _stored_pack,
@@ -384,7 +388,7 @@ def picture_ops(
         Op(
             charter_path,
             compose_doc(
-                _charter_frontmatter(charter, slugs, protected, stamp),
+                _charter_frontmatter(pack, charter, slugs, protected, stamp),
                 _template_text(context.store, pack_name, "charter", "Charter"),
             ),
             ABSENT,
@@ -681,13 +685,17 @@ def _doc_front(
         "updated": stamp,
     }
     front.update(fields)
-    return front
+    return prepare_document_fields(pack.presets[preset], front)
 
 
 def _charter_frontmatter(
-    charter: Charter, slugs: dict[str, Any], protected: Sequence[str], stamp: str
+    pack: Pack,
+    charter: Charter,
+    slugs: dict[str, Any],
+    protected: Sequence[str],
+    stamp: str,
 ) -> dict[str, Any]:
-    return {
+    front: dict[str, Any] = {
         "primitive": "policy",
         "preset": "charter",
         "title": "Charter",
@@ -720,29 +728,55 @@ def _charter_frontmatter(
         "allow_push": charter.allow_push,
         "reviewer_different_model": charter.reviewer_different_model,
     }
+    return prepare_document_fields(pack.presets["charter"], front)
 
 
 def agent_ops(store: Path, manifest: Manifest, pack_name: str) -> list[Op]:
     """The active pack's Actor profiles and scoped skill Notes, absent-only."""
     ops: list[Op] = []
+    pack = load_pack(pack_name, store)
     skills = load_pack_skills(pack_name)
     for name in ("cto", "implementer", "reviewer"):
         profile = load_pack_profile(pack_name, name)
         preset = "cto" if name == "cto" else "profile"
         path = render_path(manifest, primitive="actor", preset=preset, slug=name)
-        ops.append(
-            Op(
-                path,
-                _materialised_profile(pack_name, name, preset).encode("utf-8"),
-                ABSENT,
-            )
+        text = _apply_metadata(
+            _materialised_profile(pack_name, name, preset), pack.presets[preset]
         )
+        ops.append(Op(path, text.encode("utf-8"), ABSENT))
         for declared in profile.skills:
             slug = PurePosixPath(declared).stem
             text = skills.get(slug)
             if text is not None:
+                text = _apply_metadata(text, pack.presets["skill"])
                 ops.append(Op(declared, text.encode("utf-8"), ABSENT))
     return ops
+
+
+def _apply_metadata(text: str, preset: Any) -> str:
+    """Add a materialised document's preset defaults to its frontmatter."""
+    if not preset.required and not preset.defaults:
+        return text
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return text
+    end = next(
+        (index for index in range(1, len(lines)) if lines[index].strip() == "---"),
+        None,
+    )
+    if end is None:
+        return text
+    try:
+        front = yaml.safe_load("\n".join(lines[1:end])) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(front, dict):
+        return text
+    merged = prepare_document_fields(preset, front)
+    if merged == front:
+        return text
+    dumped = yaml.safe_dump(merged, sort_keys=False).strip()
+    return "\n".join(["---", dumped, "---", *lines[end + 1 :]])
 
 
 def _materialised_profile(pack_name: str, name: str, preset: str) -> str:

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from context_rail.core.util import now_iso
 from context_rail.gateway.handlers.common import (
     compose_doc,
+    prepare_document_fields,
     preset_for,
     record_data,
     slug_of_path,
@@ -422,7 +423,7 @@ def _existing_outputs(ctx: Context, action: str, outputs: Sequence[str]) -> list
 def _fix_document(
     ctx: Context, decision: ClusterDecision, rows: Sequence[dict[str, Any]]
 ) -> tuple[str, bytes]:
-    preset_for(ctx.pack, "fix")
+    preset = preset_for(ctx.pack, "fix")
     target = decision.fingerprint
     title = f"Fix {rows[0]['target']}"
     slug = unique_slug(ctx.index, title)
@@ -445,6 +446,7 @@ def _fix_document(
         f"- expected: {rows[0]['data'].get('expected') or '(none)'}\n"
         f"- observed: {rows[0]['data'].get('observed') or '(none)'}\n"
     )
+    front = prepare_document_fields(preset, front)
     rel = render_path(ctx.manifest, primitive="item", preset="fix", slug=slug)
     return rel, compose_doc(front, body)
 
@@ -482,6 +484,7 @@ def _proposal_document(
         "This is not active policy. A human decision adopts it; the cluster's "
         f"reports are {', '.join(decision.reports)}.\n"
     )
+    front = prepare_document_fields(ctx.pack.presets["note"], front)
     rel = render_path(ctx.manifest, primitive="note", preset="note", slug=slug)
     return rel, compose_doc(front, body)
 

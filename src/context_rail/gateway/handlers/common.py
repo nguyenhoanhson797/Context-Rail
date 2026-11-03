@@ -15,21 +15,20 @@ from context_rail.kernel import gates, rights
 from context_rail.model.cto import Profile, parse_profile, parse_report
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import render_path
+from context_rail.model.metadata import (
+    prepare_fields,
+    validate_engine_fields,
+    validate_preset_fields,
+)
 from context_rail.model.pack import Pack, Preset, canonical_pack_name
-from context_rail.model.primitives import RELATIONS
+from context_rail.model.primitives import MANAGED_KEYS, RELATIONS
 from context_rail.store.doc import Doc, etag, parse_doc
-from context_rail.store.git_index import invalid_glob
 from context_rail.store.index import Index
 from context_rail.store.location import PathEscape, confine, worktree_git_dir
 from context_rail.store.write import WriteRefused, commit, resolve_unique
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
-
-#: Frontmatter keys the engine owns; ``--set`` may not replace them.
-MANAGED_KEYS = frozenset(
-    {"slug", "path", "id", "digest", "created", "updated", "primitive", "preset", "status"}
-)
 
 
 def validate_field_values(fields: dict[str, Any]) -> None:
@@ -39,23 +38,10 @@ def validate_field_values(fields: dict[str, Any]) -> None:
     a Check that no longer parses, and an uncompilable input glob would leave
     every read of its proof at ``unknown``.
     """
-    if "acceptance" in fields and not isinstance(fields["acceptance"], bool):
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            "acceptance must be true or false",
-            {"key": "acceptance"},
-        )
-    declared = fields.get("inputs")
-    if not isinstance(declared, (list, tuple)):
-        return
-    for glob in declared:
-        problem = invalid_glob(glob) if isinstance(glob, str) else None
-        if problem is not None:
-            raise WriteRefused(
-                "VALIDATION_FAILED",
-                f"{glob!r} is not a valid input glob: {problem}",
-                {"inputs": glob},
-            )
+    try:
+        validate_engine_fields(fields)
+    except ModelError as exc:
+        raise WriteRefused(exc.code, exc.message, exc.details) from None
 
 
 def validate_preset_field_values(preset: Preset, fields: dict[str, Any]) -> None:
@@ -64,15 +50,18 @@ def validate_preset_field_values(preset: Preset, fields: dict[str, Any]) -> None
     Undeclared keys stay free text: a Check's ``acceptance`` and ``inputs`` are
     engine fields no pack declares, and teams add their own.
     """
-    for key, allowed in preset.fields.items():
-        if key not in fields:
-            continue
-        if fields[key] not in allowed:
-            raise WriteRefused(
-                "VALIDATION_FAILED",
-                f"{key!r} must be one of: " + ", ".join(allowed),
-                {"key": key, "value": fields[key], "allowed": list(allowed)},
-            )
+    try:
+        validate_preset_fields(preset, fields)
+    except ModelError as exc:
+        raise WriteRefused(exc.code, exc.message, exc.details) from None
+
+
+def prepare_document_fields(preset: Preset, fields: dict[str, Any]) -> dict[str, Any]:
+    """Merge preset defaults and enforce its metadata contract at the boundary."""
+    try:
+        return prepare_fields(preset, fields)
+    except ModelError as exc:
+        raise WriteRefused(exc.code, exc.message, exc.details) from None
 
 
 def protected_change(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 MODEL_CODES = ("SCHEMA_UNSUPPORTED", "VALIDATION_FAILED")
 
 
@@ -12,9 +14,10 @@ class ModelError(Exception):
     the Result envelope.
     """
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, details: dict[str, Any] | None = None) -> None:
         if code not in MODEL_CODES:
             raise ValueError(f"unknown model error code: {code!r}")
         super().__init__(message)
         self.code = code
         self.message = message
+        self.details = details or {}

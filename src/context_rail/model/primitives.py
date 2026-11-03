@@ -29,6 +29,26 @@ WINDOWS_RESERVED_NAMES = frozenset(
 
 SCHEMA_VERSION = 3
 
+#: Frontmatter keys the document parser owns; a preset may not require them.
+DOC_RESERVED_KEYS = (
+    "primitive",
+    "preset",
+    "title",
+    "status",
+    "tags",
+    "created",
+    "updated",
+    "digest",
+)
+#: Frontmatter keys the engine owns; ``--set`` may not replace them.
+MANAGED_KEYS = frozenset(
+    {"slug", "path", "id", "digest", "created", "updated", "primitive", "preset", "status"}
+)
+#: Keys a record request may never set: commit stamps identity and the digest.
+RECORD_STAMPED_KEYS = frozenset(
+    {"id", "primitive", "preset", "kind", "at", "actor", "about", "data", "digest"}
+)
+
 #: The policy values a ``pack.yaml`` may set.
 PACK_POLICY_KEYS = ("stuck_hours", "retries", "measurement_min_runs")
 

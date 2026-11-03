@@ -447,15 +447,19 @@ def _check_declared_presets(
 
 
 def _check_fields(preset: Any, template: str, where: str) -> None:
-    allowed = set(getattr(preset, "required", ())) | set(
-        getattr(preset, "defaults", {})
-    )
-    missing = sorted(set(field_tokens(template, where)) - allowed)
+    allowed = set(preset.required) | set(preset.defaults)
+    used = set(field_tokens(template, where))
+    missing = sorted(used - allowed)
     if missing:
         _refuse(
             f"{where} uses field(s) not required or defaulted by "
             f"{preset.name!r}: " + ", ".join(missing)
         )
+    for name in sorted(used & set(preset.defaults)):
+        if not isinstance(preset.defaults[name], str):
+            _refuse(
+                f"{where} uses field {name!r} in a path, so its default must be a string"
+            )
 
 
 def _parse_at(at: str) -> datetime:

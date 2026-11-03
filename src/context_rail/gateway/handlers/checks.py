@@ -19,12 +19,14 @@ from context_rail.core.util import sha256_hex
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import (
     compose_doc,
+    prepare_document_fields,
     preset_for,
     template_body,
 )
 from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import Check, parse_check, parse_verdict
 from context_rail.model.manifest import render_path
+from context_rail.model.pack import Preset
 from context_rail.runner import git as git_runner
 from context_rail.runner.run import run as run_command
 from context_rail.store import query
@@ -153,7 +155,7 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "acceptance checks are written by the human only",
                 {"slug": slug},
             )
-        front = _frontmatter(preset.name, spec, item)
+        front = _frontmatter(preset, spec, item)
         body = template_body(store, ctx.pack, preset, slug)
         record_about = [slug, item] if item is not None else [slug]
         result = commit(
@@ -638,10 +640,10 @@ def _payload(row: Mapping[str, Any], **values: Any) -> dict[str, Any]:
 # ── declaration helpers ───────────────────────────────────────────────────
 
 
-def _frontmatter(preset: str, spec: Check, item: str | None) -> dict[str, Any]:
+def _frontmatter(preset: Preset, spec: Check, item: str | None) -> dict[str, Any]:
     front: dict[str, Any] = {
         "primitive": "check",
-        "preset": preset,
+        "preset": preset.name,
         "schema": spec.schema,
         "mode": spec.mode,
         "acceptance": spec.acceptance,
@@ -660,7 +662,7 @@ def _frontmatter(preset: str, spec: Check, item: str | None) -> dict[str, Any]:
         front["legacy"] = dict(spec.legacy)
     if item is not None:
         front["verifies"] = [f"[[{item}]]"]
-    return front
+    return prepare_document_fields(preset, front)
 
 
 def _validate_definition(spec: Check) -> None:

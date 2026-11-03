@@ -36,7 +36,7 @@ from context_rail.core.util import (
     write_bytes_atomic,
 )
 from context_rail.model.manifest import Manifest, render_path
-from context_rail.model.primitives import RELATIONS
+from context_rail.model.primitives import RECORD_STAMPED_KEYS, RELATIONS
 from context_rail.store.adapters import ADAPTER_PREFIX, project_root, resolve_adapter
 from context_rail.store.doc import etag, parse_doc, record_digest
 from context_rail.store.index import Index
@@ -76,9 +76,7 @@ _RECORD_REQUEST_KEYS = frozenset(
     }
 )
 #: Keys a record request may never set: commit stamps identity and the digest.
-_RECORD_STAMPED_KEYS = frozenset(
-    {"id", "primitive", "preset", "kind", "at", "actor", "about", "data", "digest"}
-)
+_RECORD_STAMPED_KEYS = RECORD_STAMPED_KEYS
 _RECORD_PAYLOAD_ORDER = (
     "id",
     "primitive",

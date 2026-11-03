@@ -17,6 +17,7 @@ from context_rail.gateway.handlers.common import (
     parse_relations,
     parse_set_values,
     parse_tags,
+    prepare_document_fields,
     preset_for,
     protected_change,
     read_doc,
@@ -26,8 +27,6 @@ from context_rail.gateway.handlers.common import (
     slug_of_path,
     template_body,
     unique_slug,
-    validate_field_values,
-    validate_preset_field_values,
     versioned_change_record,
     versioned_kind,
 )
@@ -55,8 +54,6 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         raise WriteRefused("VALIDATION_FAILED", "a document needs a title")
     relations = parse_relations(args["rel"])
     fields = parse_set_values(args["set"])
-    validate_field_values(fields)
-    validate_preset_field_values(preset, fields)
     for generated in ("title", "tags"):
         if generated in fields:
             raise WriteRefused(
@@ -64,6 +61,7 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 f"{generated!r} comes from the add arguments, not --set",
                 {"key": generated},
             )
+    fields = prepare_document_fields(preset, fields)
     tags = parse_tags(args["tag"])
     key = args["key"]
     store = ctx.store
@@ -145,6 +143,7 @@ def _add_record(
 ) -> dict[str, Any]:
     """One record-preset add: exactly one immutable record, no mutable document."""
     store = ctx.store
+    fields = prepare_document_fields(preset, fields)
     preview = render_path(
         ctx.manifest,
         primitive="record",
@@ -206,7 +205,6 @@ def _add_record(
 def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Change fields, tags or body; never status, identity or a record."""
     values = parse_set_values(args["set"])
-    validate_field_values(values)
     edits = args["tag"]
     if "tags" in values and edits:
         raise WriteRefused(
@@ -224,8 +222,11 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         rel = resolve_unique(index, args["slug"])
         data, doc = read_doc(store, rel)
         preset = ctx.pack.presets.get(doc.preset or "")
+        merged = {**doc.fields, **values}
         if preset is not None:
-            validate_preset_field_values(preset, values)
+            merged = prepare_document_fields(preset, merged)
+        else:
+            validate_field_values(values)
         if doc.primitive == "record":
             raise WriteRefused("INVALID_STATE", "records are immutable", {"path": rel})
         if doc.primitive is None:
@@ -250,7 +251,7 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             )
         front = doc_frontmatter(doc)
         changed = False
-        for name, value in values.items():
+        for name, value in merged.items():
             if front.get(name) != value:
                 front[name] = value
                 changed = True

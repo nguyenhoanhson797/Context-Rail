@@ -21,9 +21,11 @@ import stat as stat_module
 import struct
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+from context_rail.model.fields import glob_regex as _glob_regex
+from context_rail.model.fields import invalid_glob
 
 __all__ = [
     "FRESHNESS_STATES",
@@ -568,47 +570,6 @@ def _untrusted(
     version: int | None = None,
 ) -> IndexSnapshot:
     return IndexSnapshot({}, version, width, written_at, kind, reason)
-
-
-@lru_cache(maxsize=256)
-def _glob_regex(pattern: str) -> re.Pattern[str]:
-    pieces = ["^"]
-    segments = pattern.split("/")
-    for position, segment in enumerate(segments):
-        last = position == len(segments) - 1
-        if segment == "**":
-            pieces.append(".*" if last else "(?:[^/]+/)*")
-            continue
-        pieces.append(_segment_regex(segment))
-        if not last:
-            pieces.append("/")
-    pieces.append("$")
-    return re.compile("".join(pieces))
-
-
-def _segment_regex(segment: str) -> str:
-    pieces: list[str] = []
-    index = 0
-    while index < len(segment):
-        character = segment[index]
-        if character == "*":
-            pieces.append("[^/]*")
-        elif character == "?":
-            pieces.append("[^/]")
-        elif character == "[":
-            closing = segment.find("]", index + 2)
-            if closing < 0:
-                pieces.append(re.escape(character))
-            else:
-                body = segment[index + 1 : closing]
-                if body.startswith("!"):
-                    body = "^" + body[1:]
-                pieces.append("[" + body + "]")
-                index = closing
-        else:
-            pieces.append(re.escape(character))
-        index += 1
-    return "".join(pieces)
 
 
 def _text(value: Any) -> str | None:

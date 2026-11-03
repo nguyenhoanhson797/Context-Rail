@@ -144,6 +144,66 @@ def test_add_accepts_a_declared_value_and_an_undeclared_field(tmp_path: Path) ->
     assert result["ok"] is True, result
 
 
+def test_add_applies_a_preset_default(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    document = _basic_document()
+    document["presets"]["task"]["required"] = ["area"]
+    document["presets"]["task"]["defaults"] = {"area": "general"}
+    write_pack(store, "basic", document)
+
+    created = invoke(
+        "add", {"preset": "task", "title": "Defaulted"}, store=store, actor="cto"
+    )
+
+    assert created["ok"] is True, created
+    text = (store / created["value"]["path"]).read_text(encoding="utf-8")
+    assert "area: general" in text
+
+
+def test_add_refuses_a_missing_required_field(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    document = _basic_document()
+    document["presets"]["task"]["required"] = ["area"]
+    write_pack(store, "basic", document)
+
+    result = invoke(
+        "add", {"preset": "task", "title": "No area"}, store=store, actor="cto"
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+    assert result["error"]["details"]["missing"] == ["area"]
+    assert list((store / "items" / "task").glob("no-area.md")) == []
+
+
+def test_update_revalidates_the_merged_metadata(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    document = _basic_document()
+    document["presets"]["task"]["required"] = ["area"]
+    document["presets"]["task"]["defaults"] = {"area": "general"}
+    write_pack(store, "basic", document)
+    created = invoke(
+        "add", {"preset": "task", "title": "Merged"}, store=store, actor="cto"
+    )
+    assert created["ok"] is True, created
+
+    result = invoke(
+        "update",
+        {
+            "slug": "merged",
+            "set": ["area="],
+            "expect": created["value"]["etag"],
+        },
+        store=store,
+        actor="cto",
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+    assert "area" in result["error"]["message"]
+
+
+
 def test_update_refuses_a_value_outside_a_preset_enum(tmp_path: Path) -> None:
     store = init_store(tmp_path)
     created = invoke(

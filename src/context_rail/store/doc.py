@@ -11,22 +11,13 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from context_rail.core.util import load_yaml, sha256_hex
-from context_rail.model.primitives import RELATIONS
+from context_rail.model.primitives import DOC_RESERVED_KEYS, RELATIONS
 
 PARSE_ERROR = "parse_error"
 BAD_ENCODING = "bad_encoding"
 UNKNOWN_RELATION = "unknown_relation"
 
-RESERVED_KEYS = (
-    "primitive",
-    "preset",
-    "title",
-    "status",
-    "tags",
-    "created",
-    "updated",
-    "digest",
-)
+RESERVED_KEYS = DOC_RESERVED_KEYS
 
 _FENCE = "---"
 _WIKILINK = re.compile(r"\[\[([^\[\]|]+)(?:\|[^\[\]]*)?\]\]")
