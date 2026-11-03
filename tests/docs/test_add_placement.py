@@ -66,6 +66,21 @@ def test_add_and_record_use_the_resolver(tmp_path: Path) -> None:
     assert moved_record.is_file()
 
 
+def test_a_decision_record_uses_its_own_about_placement(tmp_path: Path) -> None:
+    store = init_nested_store(tmp_path)
+    set_preset_placement(store, decision="records/{about}/{id}.json")
+    _add(store, "phase", "Phase 1")
+    _add(store, "sprint", "Sprint 3", ["part_of=phase-1"])
+    _add(store, "task", "Task", ["part_of=sprint-3"])
+
+    decision = _add(store, "decision", "Adopt it", ["about=task"])
+
+    assert decision["path"] == (
+        "records/items/phase/phase-1/sprint-3/general/task/"
+        f"{decision['record']}.json"
+    )
+
+
 def test_relocate_moves_a_record_without_rewriting_it(tmp_path: Path) -> None:
     store = init_nested_store(tmp_path)
     _add(store, "phase", "Phase 1")
