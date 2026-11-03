@@ -195,6 +195,19 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.reports:triage",
     ),
     Tool(
+        name="do",
+        summary="Run one declarative pack action with the caller's permissions.",
+        permission="write",
+        params=(
+            Param("action", "str", required=True, positional=True, help="action name"),
+            Param("item", "str", help="the item the action works on"),
+            Param("etag", "str", help="the item's current etag, when the action moves it"),
+            Param("set", "str", repeat=True, help="action parameter as NAME=VALUE"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.actions:do",
+    ),
+    Tool(
         name="cto brief",
         summary="Assemble the bounded CTO brief from the indexed project state.",
         permission="read",

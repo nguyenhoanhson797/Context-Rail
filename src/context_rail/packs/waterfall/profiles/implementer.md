@@ -2,7 +2,7 @@
 schema: 1
 version: 1
 recipe: implementer
-allowed_methods: [find, show, cto brief, ledger, report, add, update, link]
+allowed_methods: [do, find, show, cto brief, ledger, report, add, update, link]
 budget: {max_chars: 12000, max_docs: 20}
 model: 'custom:Deepseek-V4-flash-0'
 effort: null

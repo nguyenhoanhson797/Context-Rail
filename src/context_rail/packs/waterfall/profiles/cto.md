@@ -2,7 +2,7 @@
 schema: 1
 version: 1
 recipe: cto
-allowed_methods: [find, show, cto brief, ledger, report, add, update, move, link,
+allowed_methods: [do, find, show, cto brief, ledger, report, add, update, move, link,
                   rename, relocate, status, reindex, doctor, check, verify, dispatch,
                   review, merge, triage, digest, adapters sync, ci, pack list, pack show,
                   pack validate, pack create, measure versions, measure fix, rollback,
