@@ -52,13 +52,10 @@ def surface_document(store: Path, actor: str = "human") -> dict[str, Any]:
     context = _open(store, actor)
     try:
         catalog = surface.catalog(context, role="cto")
-        names = sorted({entry["workflow"] for entry in catalog["items"]})
-        workflows = []
-        for name in names:
-            try:
-                workflows.append(surface.explain(context, name))
-            except surface.SurfaceError:
-                continue
+        workflows = [
+            surface.explain_workflow(context, name)
+            for name in sorted(context.pack.workflows)
+        ]
         return {
             "ok": True,
             "value": {

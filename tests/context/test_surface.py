@@ -248,6 +248,18 @@ def test_the_cto_objective_is_queue_driven() -> None:
     assert "Plan executable leaf Items and link them" not in _ORDER_OBJECTIVE
 
 
+def test_explain_workflow_wins_when_a_preset_shares_the_name(tmp_path: Path) -> None:
+    _store_path, context = _store(tmp_path)
+
+    preset = surface.explain(context, "sprint")
+    workflow = surface.explain_workflow(context, "sprint")
+
+    assert preset["kind"] == "preset"
+    assert workflow["kind"] == "workflow"
+    assert "transitions" in workflow
+    assert workflow["name"] == "sprint"
+
+
 def test_the_surface_is_deterministic_and_bounded(tmp_path: Path) -> None:
     _store_path, context = _store(tmp_path)
 

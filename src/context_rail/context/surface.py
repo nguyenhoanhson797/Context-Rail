@@ -24,6 +24,7 @@ __all__ = [
     "card",
     "catalog",
     "explain",
+    "explain_workflow",
     "render_card",
     "render_workflows",
     "verbs",
@@ -147,24 +148,7 @@ def explain(
         return _bounded(payload, limit)
     workflow = pack.workflows.get(name)
     if workflow is not None:
-        payload = {
-            "kind": "workflow",
-            "name": workflow.name,
-            "initial": workflow.initial,
-            "states": list(workflow.transitions),
-            "transitions": {
-                source: list(targets)
-                for source, targets in workflow.transitions.items()
-            },
-            "quality": {
-                status: {
-                    "gate": rule.gate,
-                    "checks": list(rule.checks),
-                }
-                for status, rule in workflow.quality.items()
-            },
-        }
-        return _bounded(payload, limit)
+        return explain_workflow(context, name, limit=limit)
     action = pack.actions.get(name)
     if action is not None:
         return _bounded(
@@ -184,6 +168,34 @@ def explain(
         "NOT_FOUND",
         f"{name!r} is neither a preset nor a workflow",
         {"name": name},
+    )
+
+
+def explain_workflow(
+    context: Any, name: str, *, limit: int = EXPLAIN_CHARS
+) -> dict[str, Any]:
+    """One workflow by name, even when a preset shares that name."""
+    workflow = context.pack.workflows.get(name)
+    if workflow is None:
+        raise SurfaceError(
+            "NOT_FOUND", f"no workflow {name!r}", {"name": name}
+        )
+    return _bounded(
+        {
+            "kind": "workflow",
+            "name": workflow.name,
+            "initial": workflow.initial,
+            "states": list(workflow.transitions),
+            "transitions": {
+                source: list(targets)
+                for source, targets in workflow.transitions.items()
+            },
+            "quality": {
+                status: {"gate": rule.gate, "checks": list(rule.checks)}
+                for status, rule in workflow.quality.items()
+            },
+        },
+        limit,
     )
 
 

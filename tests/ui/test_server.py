@@ -260,6 +260,7 @@ def test_the_surface_endpoint_describes_the_new_engine(ui_server) -> None:
     value = payload["value"]
     assert value["pack"]
     assert value["workflows"], value
+    assert all(entry["kind"] == "workflow" for entry in value["workflows"])
     workflow = value["workflows"][0]
     assert {"name", "initial", "states", "transitions", "quality"} <= set(workflow)
     assert isinstance(value["actions"], list)
