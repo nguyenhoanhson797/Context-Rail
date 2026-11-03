@@ -39,7 +39,7 @@ Repository = "https://github.com/nguyenhoanhson797/Context-Rail"
 where = ["src"]
 
 [tool.setuptools.package-data]
-context_rail = ["packs/**/*"]
+context_rail = ["packs/**/*", "ui/static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

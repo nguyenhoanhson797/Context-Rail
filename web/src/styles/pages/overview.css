@@ -1,0 +1,675 @@
+/* ============================================================
+   UNDERSTANDING - Overview, Outcomes, Traceability and Impact (SC-37).
+   Read-only presentation of the project-understanding model and the
+   change-impact reader. Class names are namespaced: .ov-* (Overview),
+   .outcome-* (outcome drill-down), .trace-* (matrix), .impact-* (impact),
+   .src-* (source references). Reused global parts: .panel, .stat, .chip,
+   .btn, .badge, .mono, .tbl, .tbl-wrap, .sp.
+   ============================================================ */
+
+.page.understanding {
+  --ov-gap: 14px;
+}
+
+/* ---------- Overview ---------- */
+.ov-h {
+  font-size: var(--fs);
+  font-weight: 600;
+  margin: 22px 0 4px;
+}
+
+.ov-note {
+  font-size: var(--fs-sm);
+  margin: 0 0 10px;
+}
+
+.ov-vision .panel-b,
+.ov-nongoals .panel-b {
+  padding: 6px 14px 14px;
+}
+
+.ov-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+  list-style: none;
+}
+
+.ov-stats .stat {
+  text-align: left;
+}
+
+.ov-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: var(--ov-gap);
+  align-items: start;
+}
+
+.ov-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ov-card.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ov-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px 6px;
+}
+
+.ov-goal {
+  font-size: var(--fs);
+  font-weight: 600;
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ov-card-nums,
+.ov-card-foot,
+.ov-item-meta,
+.impact-via,
+.impact-rerun,
+.impact-outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ov-card-nums {
+  padding: 0 14px 8px;
+}
+
+.ov-card-items {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--divider);
+}
+
+.ov-card-foot {
+  padding: 8px 14px;
+  border-top: 1px solid var(--divider);
+  margin-top: auto;
+}
+
+.ov-card-gaps {
+  border-top: 1px dashed var(--border-strong);
+  background: var(--surface-2);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  padding: 4px 0;
+}
+
+/* ---------- scope items, checks and work ---------- */
+.ov-item {
+  padding: 9px 14px;
+  border-top: 1px solid var(--divider);
+  min-width: 0;
+}
+
+.ov-item:first-child {
+  border-top: none;
+}
+
+.ov-item-head,
+.outcome-item-head,
+.impact-hit-head,
+.impact-stale-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ov-item-id,
+.ov-item-title {
+  min-width: 0;
+}
+
+.ov-item-id {
+  font-size: 11.5px;
+}
+
+.ov-item-title {
+  font-weight: 500;
+  flex: 1 1 auto;
+}
+
+.ov-item-meta {
+  margin-top: 5px;
+}
+
+.ov-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+
+.ov-check-box {
+  display: inline-flex;
+  color: var(--text-3);
+}
+
+.ov-check-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ov-check-detail {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.checks {
+  margin-top: 5px;
+}
+
+.ov-work {
+  display: flex;
+  flex-direction: column;
+  margin-top: 5px;
+}
+
+.ov-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+
+.ov-task .link {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Upcoming phases and declared relations ---------- */
+.ov-upcoming-list,
+.rel-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ov-upcoming,
+.rel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--divider);
+  min-width: 0;
+}
+
+.ov-upcoming:first-child,
+.rel:first-child {
+  border-top: none;
+}
+
+.ov-upcoming-items,
+.ov-upcoming-deps,
+.ov-upcoming-item,
+.trace-targets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.rel-field {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: var(--fs-xs);
+}
+
+/* ---------- source references ---------- */
+.src-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.src-ref:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.src-id {
+  font-weight: 500;
+}
+
+.src-loc {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  color: var(--text-3);
+}
+
+/* ---------- proof vs work ---------- */
+.proof-line,
+.exec-line {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.exec-label {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- gaps ---------- */
+.gap {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--divider);
+  min-width: 0;
+}
+
+.gap:first-child {
+  border-top: none;
+}
+
+.gap-kind {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--amber, #b7791f);
+  text-transform: lowercase;
+}
+
+.gap-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.gap-id {
+  font-weight: 500;
+}
+
+.gap-why {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.gap-cmd {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- outcome drill-down ---------- */
+.outcome-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-gap);
+}
+
+.outcome-source {
+  margin: 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.outcome-item {
+  padding: 10px 14px;
+  border-top: 1px solid var(--divider);
+  min-width: 0;
+}
+
+.outcome-item:first-child {
+  border-top: none;
+}
+
+.acceptance {
+  margin: 6px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.acceptance ul {
+  margin: 3px 0 0;
+  padding-left: 18px;
+}
+
+.acceptance li {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- traceability matrix ---------- */
+.trace-sum {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 16px;
+}
+
+.trace-tbl {
+  table-layout: auto;
+}
+
+.trace-tbl th,
+.trace-tbl td {
+  vertical-align: top;
+  text-align: left;
+}
+
+.trace-goal th {
+  background: var(--surface-2);
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+}
+
+.trace-goal-t {
+  margin-right: 8px;
+}
+
+.trace-tbl td.trace-c-id,
+.trace-tbl td.trace-c-proof {
+  white-space: nowrap;
+}
+
+.trace-tbl td.trace-c-id {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.trace-tbl .trace-check {
+  min-width: 0;
+}
+
+.trace-on {
+  background: var(--accent-soft);
+}
+
+.trace-goal .src-ref {
+  vertical-align: middle;
+}
+
+.trace-gaps-row td {
+  padding-top: 0;
+}
+
+.trace-c-title,
+.trace-c-acc,
+.trace-c-work,
+.trace-c-checks {
+  overflow-wrap: anywhere;
+  min-width: 140px;
+}
+
+/* ---------- impact ---------- */
+.impact-form {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  padding: 12px 14px;
+  margin-bottom: var(--ov-gap);
+}
+
+.impact-fields {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.impact-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.impact-field label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.impact-field input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.impact-hint {
+  font-size: var(--fs-sm);
+  margin: 8px 0 0;
+}
+
+.impact-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.impact-hit,
+.impact-stale {
+  padding: 9px 14px;
+  border-top: 1px solid var(--divider);
+  min-width: 0;
+}
+
+.impact-hit:first-child,
+.impact-stale:first-child {
+  border-top: none;
+}
+
+.impact-hit-head .link,
+.impact-stale-head .link {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.impact-via,
+.impact-rerun,
+.impact-outcomes,
+.impact-files {
+  margin-top: 6px;
+}
+
+.impact-rerun code,
+.impact-cmd {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+  margin-right: 6px;
+}
+
+.impact-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.file-chip {
+  display: inline-block;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  padding: 1px 7px;
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.impact-why {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.impact-recorded {
+  font-size: var(--fs-xs);
+}
+
+/* ---------- task rows, entry links and disclosure ---------- */
+.ov-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--divider);
+}
+
+.ov-blockers .ov-task,
+.ov-blockers .gap {
+  border-top: 1px solid var(--divider);
+}
+
+.ov-blockers > :first-child {
+  border-top: none;
+}
+
+.ov-task .ov-why {
+  color: var(--amber, #b7791f);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.ov-touched {
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.chip.ov-outcome-link {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.ov-more,
+.ov-gap-more {
+  width: 100%;
+  text-align: left;
+}
+
+.ov-gap-more {
+  padding: 2px 14px 6px;
+}
+
+.ov-details {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  margin-top: var(--ov-gap);
+}
+
+.ov-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.ov-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ov-details[open] > summary {
+  border-bottom: 1px solid var(--divider);
+}
+
+/* ---------- responsive: single-column stacks and wrapping rows ---------- */
+@media (max-width: 900px) {
+  .ov-stats,
+  .trace-sum {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .ov-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .impact-fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .impact-field,
+  .impact-fields .btn {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .ov-card-head,
+  .ov-item-head,
+  .outcome-item-head,
+  .impact-hit-head,
+  .impact-stale-head,
+  .ov-upcoming,
+  .rel,
+  .gap,
+  .ov-task {
+    flex-wrap: wrap;
+  }
+
+  /* A task row is a row of pills (status, outcome, last touched, source) beside the title. Without wrapping, the
+     pills that cannot shrink (the nowrap timestamp, the source pill) push past the pane and the title collapses to
+     one character per line. The row now wraps like the rows above, and the title keeps a readable minimum width. */
+  .ov-task .link {
+    min-width: 12ch;
+  }
+
+  .ov-touched {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 520px) {
+  .ov-stats,
+  .trace-sum {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

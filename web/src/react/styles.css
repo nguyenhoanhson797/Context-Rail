@@ -1,0 +1,183 @@
+/* React changes behavior, not the design. The legacy stylesheet remains authoritative. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "./**/*.{ts,tsx}";
+@import "../styles/index.css";
+
+/* Structural adapters only; palette, typography, controls and page geometry come from legacy CSS. */
+.rail-app { height:100%; }
+:root {
+  --st-not_started: var(--st-todo);
+  --st-active: var(--st-in-progress);
+  --st-dropped: var(--gray);
+}
+.rail-settings-wrap { height:100%; }
+.rail-app .input, .rail-sheet textarea { width:100%; }
+.rail-board { display:flex; flex-direction:column; min-height:0; height:100%; }
+/* The React wrapper sits between .page.flush and .ph; preserve legacy pageBoard inline padding. */
+.rail-board > .ph { padding:16px 20px 0; margin:0; }
+/* Respect legacy control minimum widths; flex children opt in via legacy classes. */
+.rail-panel-header > div:first-child { display:contents; }
+.rail-panel-header > .acts { display:flex; }
+.rail-app .rail-ov-links { display:flex; }
+.rail-ov-grid { --ov-gap:14px; }
+.rail-sheet { color:var(--text); font-family:var(--font); }
+.rail-sheet > header > div { min-width:0; }
+.rail-sheet h2 { font-size:var(--fs); font-weight:600; margin:0; }
+/* The dialog description stays in the accessibility tree (Radix points aria-describedby at it); only its pixels are hidden. */
+.rail-sheet header p { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+.rail-sheet-body { overflow-wrap:anywhere; }
+.rail-sheet input,.rail-sheet textarea,.rail-sheet select { font:inherit; color:var(--text); max-width:100%; }
+.rail-button svg { flex-shrink:0; }
+.rail-card-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.rail-card-actions select { max-width:100%; }
+.rail-board-column-over { border-color:var(--accent-line); }
+.rail-card-dragging { opacity:.35; }
+.rail-lens-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:12px; }
+/* Desktop matches the legacy expanding matrix; mobile keeps its keyboard-accessible bounded list. */
+.rail-trace-work-scroll { overflow:visible; }
+@media (max-width:760px) { .rail-trace-work-scroll { max-height:320px; overflow:auto; } }
+.rail-trace-work-scroll .ov-work { list-style:none; padding:0; }
+.rail-graph { overflow:auto; }
+/* The focus graph is drawn on a 780-unit canvas; below that width it scrolls at full scale instead of shrinking its labels to illegible sizes. */
+.rail-graph-svg { min-width:780px; width:100%; }
+.rail-graph-node { fill:var(--surface); stroke:var(--border); }
+.rail-graph-node-focus { fill:var(--accent-soft); stroke:var(--accent); }
+.rail-graph-label { fill:var(--text); font-size:var(--fs-xs); }
+.rail-graph-edge { stroke:var(--border); fill:none; }
+.rail-swatch { background:var(--c); }
+.rail-swatch-on { outline:2px solid var(--accent); }
+.rail-progress { display:block; height:4px; background:var(--border); overflow:hidden; border-radius:var(--r-full); }
+.rail-progress-fill { display:block; height:100%; background:var(--accent); }
+.rail-progress-label { font-size:var(--fs-2xs); color:var(--text-3); }
+
+/* ---------------------------------------------------------------------------------------------------------------
+   UI review fixes. React layer only: the legacy stylesheet above stays untouched, so every rule is scoped to
+   .rail-app and corrects an overflow, alignment or reading problem the legacy rules leave in the React markup.
+   --------------------------------------------------------------------------------------------------------------- */
+
+/* Shell: the brand tile keeps contrast in the dark theme (the fixed near-black tile vanished on the dark sidebar). */
+.rail-brand-logo { --c:#1d1c1a; }
+:root[data-theme='dark'] .rail-brand-logo { background:var(--text); color:var(--bg); }
+
+/* Panel headers: a long title wraps inside its own column and the actions keep their width (they used to collapse to a
+   column of single letters, and a nowrap title ran past the card edge on a phone). */
+.rail-app .panel-h { flex-wrap:wrap; row-gap:6px; }
+.rail-app .panel-h h2 { flex:1 1 24ch; min-width:0; white-space:normal; overflow-wrap:anywhere; }
+.rail-app .panel-h .acts { flex-shrink:0; }
+
+/* Links are left-aligned wherever their text wraps (buttons centre by default). */
+.rail-app .link { text-align:left; }
+
+/* Task rows: the row wraps at every width, the title keeps a readable basis beside its icon, and the outcome chip is one
+   line with an ellipsis (its fixed height used to paint a wrapped goal sentence over its neighbours). */
+.rail-app .ov-task { flex-wrap:wrap; row-gap:2px; }
+.rail-app .ov-task .link { flex:1 1 28ch; min-width:min(16ch,100%); padding-block:3px; }
+.rail-app .chip.ov-outcome-link { max-width:min(100%,38ch); min-width:0; padding-right:8px; }
+.rail-app .chip.ov-outcome-link > .trunc { display:block; }
+
+/* Item heads: the title wraps instead of shrinking to a few letters beside its badges. */
+.rail-app .ov-item-head, .rail-app .outcome-item-head { flex-wrap:wrap; row-gap:4px; }
+.rail-app .ov-item-title, .rail-app .ov-item-head > .grow.trunc, .rail-app .outcome-item-head > .grow.trunc { flex:1 1 16ch; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }
+
+/* Traceability: the scope-item cell stays a table cell; its flex row lives one level in. */
+.rail-app .trace-tbl td.trace-c-id { display:table-cell; }
+.rail-trace-id { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+
+/* Groups of chips and badges breathe, and notes and disclosures follow the card's inner edge. */
+.rail-app .chips { display:flex; flex-wrap:wrap; gap:6px; }
+.rail-app .panel > .chips, .rail-app .ov-details > .chips { padding:8px 14px 12px; }
+.rail-ov-blocker-counts, .rail-ov-outcome-counts { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 14px; }
+.rail-app .panel > .ov-note, .rail-app .ov-details > .ov-note { padding:0 14px; }
+.rail-app .panel > .ov-details { margin-top:0; border-width:1px 0 0; border-radius:0; border-color:var(--divider); background:transparent; }
+.rail-app .panel > .ov-details:last-child { border-radius:0 0 var(--r-lg) var(--r-lg); }
+
+/* Contrast: the amber badge text on its tint measured 4.33:1 in the light theme. */
+:root[data-theme='light'] .rail-app .badge.amber { color:color-mix(in srgb,var(--amber) 80%,#000); }
+
+/* Targets: the card status select was 22px tall. */
+.rail-card-actions select { min-height:24px; }
+
+/* Impact: the id hugs the left edge and the title follows it (the id used to take half the row). */
+.rail-app .impact-hit-head, .rail-app .impact-stale-head { flex-wrap:wrap; row-gap:4px; }
+.rail-app .impact-hit-head .link, .rail-app .impact-stale-head .link { flex:0 1 auto; }
+.rail-app .impact-hit-head > .grow.trunc, .rail-app .impact-stale-head > .grow.trunc { flex:1 1 16ch; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }
+
+/* Board: four columns share a 1366px window instead of the last one hanging off the edge; narrower windows scroll. */
+.rail-app .board > .bcol:not(.collapsed) { width:auto; flex:1 0 252px; max-width:320px; }
+
+/* Doctor: the search box is a search box, not a full-width bar. */
+.rail-app #doctor-query { width:auto; flex:1 1 240px; max-width:420px; }
+
+/* Scope rows: the trailing claim / proven / checked columns line up row to row. */
+.rail-scope-claim { flex:none; min-width:64px; display:inline-flex; justify-content:flex-end; }
+.rail-scope-checked { flex:none; min-width:86px; text-align:right; }
+@media (max-width:640px) {
+  .rail-scope-row { flex-wrap:wrap; row-gap:2px; }
+  .rail-scope-row > .grow { flex:1 1 60%; }
+  .rail-scope-checked:empty { display:none; }
+}
+
+/* Projects table: long check lists wrap, so the Open button stays inside the table instead of being scrolled out of sight. */
+.rail-app .portfolio-tbl td.rail-pf-checks { white-space:normal; overflow-wrap:anywhere; min-width:180px; }
+.rail-app .portfolio-tbl td:last-child { white-space:nowrap; }
+
+/* A one-line status hint sits clear of the cards beneath it. */
+.rail-app [role='status'].rail-muted { margin:0 0 10px; }
+/* The drawer's current status is a disabled primary button; at the legacy 50% opacity it read as pale text on a pale fill. */
+.rail-app .rail-status-current:disabled, .rail-sheet .rail-status-current:disabled { opacity:1; cursor:default; }
+/* Impact: file chips follow the card's inner edge instead of touching its border. */
+.rail-app .panel > .impact-files { margin-top:0; padding:0 14px 12px; }
+
+/* Targets and sizes the audit measured below the 24px minimum, and text below 12px that carries meaning. */
+.rail-app button.link.rail-link { padding-block:2px; }
+.rail-app .src-ref { min-height:24px; }
+.rail-app .rail-drag-handle { min-width:24px; min-height:24px; display:inline-flex; align-items:center; justify-content:center; }
+.rail-app .kcard .title { min-height:24px; }
+.rail-app .side-label { font-size:var(--fs-xs); }
+.rail-app .g-label { font-size:11.5px; }
+
+/* ---------- Summary: the owner's layer (pages/summary.tsx) ---------- */
+.rail-app .sm-page { display:flex; flex-direction:column; gap:12px; }
+.rail-app .sm-page > .panel { margin:0; }
+.rail-app .sm-section p { margin:0; }
+.rail-app .sm-layers { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:0; overflow:hidden; }
+.rail-app .sm-layer { display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; min-width:0; }
+.rail-app .sm-layer + .sm-layer { border-left:1px solid var(--divider); }
+.rail-app .sm-layer p { margin:0; color:var(--text-2); }
+.rail-app .sm-layer-h { display:inline-flex; align-items:center; gap:6px; }
+.rail-app .sm-layer[data-layer='owner'] .sm-layer-h { color:var(--accent); }
+.rail-app .sm-layers-note { grid-column:1 / -1; margin:0; padding:9px 16px; border-top:1px solid var(--divider); background:var(--surface-2); }
+.rail-app .sm-vision { margin:0; color:var(--text-2); }
+.rail-app .sm-numbers { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:18px; }
+.rail-app .sm-number { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.rail-app .sm-big { font-size:22px; font-weight:600; letter-spacing:-0.01em; font-variant-numeric:tabular-nums; }
+.rail-app .sm-meter { display:block; width:100%; height:6px; border-radius:999px; background:var(--surface-3); overflow:hidden; }
+.rail-app .sm-meter-fill { display:block; height:100%; border-radius:inherit; background:var(--accent); }
+.rail-app .sm-caps { display:flex; flex-direction:column; gap:2px; }
+.rail-app .sm-cap { display:grid; grid-template-columns:minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(80px, 1fr) minmax(0, 1.4fr); align-items:center; gap:12px; width:100%; min-height:32px; padding:4px 8px; border:0; border-radius:6px; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.rail-app .sm-cap:hover, .rail-app .sm-cap:focus-visible { background:var(--surface-2); }
+.rail-app .sm-cap-name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rail-app .sm-cap-n, .rail-app .sm-cap-state { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rail-app .sm-cap[data-state='blocked'] .sm-meter-fill { background:var(--red); }
+.rail-app .sm-cap[data-state='built'] .sm-meter-fill { background:var(--green); }
+.rail-app .sm-finished { margin:0; }
+.rail-app .sm-rows { display:flex; flex-direction:column; gap:6px; }
+.rail-app .sm-row { display:flex; align-items:baseline; gap:8px; min-width:0; flex-wrap:wrap; }
+.rail-app .sm-row .rail-badge { flex:none; }
+.rail-app .sm-need { flex-wrap:nowrap; }
+.rail-app .sm-need .sm-src { flex:1 1 auto; min-width:0; }
+.rail-app .sm-src { text-align:left; overflow-wrap:anywhere; }
+.rail-app .sm-row-meta { font-size:var(--fs-xs, 12px); }
+.rail-app .sm-sub { display:inline-flex; align-items:center; gap:5px; }
+.rail-app .sm-state { margin:0; font-weight:500; }
+.rail-app .sm-queue { margin:0; }
+.rail-app .sm-more > summary { padding:0 16px 10px; cursor:pointer; color:var(--text-3); }
+.rail-app .sm-foot { margin:0 0 18px; }
+@media (max-width:760px) {
+  .rail-app .sm-layers { grid-template-columns:1fr; }
+  .rail-app .sm-layer + .sm-layer { border-left:0; border-top:1px solid var(--divider); }
+  .rail-app .sm-numbers { grid-template-columns:1fr; }
+  .rail-app .sm-cap { grid-template-columns:minmax(0, 1fr) auto; row-gap:4px; }
+  .rail-app .sm-cap .sm-meter, .rail-app .sm-cap-n { grid-column:1 / -1; }
+}
