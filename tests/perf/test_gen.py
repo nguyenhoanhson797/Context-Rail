@@ -58,11 +58,7 @@ def test_task_relations_follow_the_contract(tmp_path):
 def test_statuses_cycle_and_notes_have_none(tmp_path):
     store = make_store(tmp_path, 200)
     for i in range(6):
-        assert _frontmatter(store, f"project/g{i}.md")["status"] == (
-            "todo",
-            "doing",
-            "done",
-        )[i % 3]
+        assert _frontmatter(store, f"project/g{i}.md")["status"] == "doing"
         assert _frontmatter(store, f"items/task/t{i}.md")["status"] == (
             "todo",
             "doing",

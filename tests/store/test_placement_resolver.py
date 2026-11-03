@@ -274,10 +274,5 @@ def test_part_of_cycle_is_reported(tmp_path: Path) -> None:
         store=store,
         actor="cto",
     )
-    assert linked["ok"] is True, linked
-    manifest, pack, index = _graph(store)
-    try:
-        _found, errors = expected_paths(index, manifest, pack)
-    finally:
-        index.close()
-    assert any(error.code == "placement_cycle" for error in errors)
+    assert linked["ok"] is False
+    assert linked["error"]["code"] == "CYCLE_DETECTED"

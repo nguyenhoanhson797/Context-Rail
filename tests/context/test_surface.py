@@ -229,7 +229,8 @@ def test_two_workflows_offer_different_next_states(tmp_path: Path) -> None:
     task = surface.card(context, "a-task")
 
     assert bug["workflow"] == "bugfix"
-    assert bug["next"] == ["reported"]
+    assert bug["state"] == "reported"
+    assert bug["next"] == ["closed", "fixing"]
     assert task["workflow"] == "sprint"
     assert task["next"] == ["fixing"]
 

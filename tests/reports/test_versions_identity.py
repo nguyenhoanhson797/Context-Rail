@@ -106,7 +106,7 @@ def test_a_skill_rename_retargets_links_and_keeps_one_change(
         "link",
         {
             "src": "use-the-skill",
-            "rel": "depends_on",
+            "rel": "about",
             "dst": "test-first",
             "expect": _show(skill_store, "use-the-skill")["doc"]["etag"],
             "key": "ln1",
@@ -162,7 +162,7 @@ def test_a_skill_link_appends_one_versioned_change(skill_store: Path) -> None:
         "link",
         {
             "src": "test-first",
-            "rel": "depends_on",
+            "rel": "about",
             "dst": "needs-the-skill",
             "expect": etag((skill_store / SKILL_REL).read_bytes()),
             "key": "ln2",
