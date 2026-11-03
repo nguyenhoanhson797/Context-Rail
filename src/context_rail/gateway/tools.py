@@ -191,6 +191,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("limit", "int", default=100, help="reports to consider (1-1000)"),
+            Param("report", "str", help="consider exactly one report id"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.reports:triage",

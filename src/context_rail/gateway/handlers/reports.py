@@ -129,7 +129,16 @@ def triage(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     with store_lock(store):
         index = ctx.index
         index.sync()
-        rows = query.untriaged_reports(index, args["limit"])
+        selected = args.get("report")
+        rows = query.untriaged_reports(index, 1000 if selected else args["limit"])
+        if selected:
+            rows = [row for row in rows if row["report"] == selected]
+            if not rows:
+                raise WriteRefused(
+                    "NOT_FOUND",
+                    f"no untriaged report {selected!r}",
+                    {"report": selected},
+                )
         if not rows:
             return value
         facts, members = _facts(rows)

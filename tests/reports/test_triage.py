@@ -48,6 +48,23 @@ def _items(store: Path) -> list[Path]:
     return sorted((store / "items").rglob("*.md"))
 
 
+def test_report_selects_exactly_one_untriaged_report(
+    triage_store_two_reports: SimpleNamespace,
+) -> None:
+    store = triage_store_two_reports.store
+    first, second = triage_store_two_reports.report_ids
+
+    result = invoke("triage", {"report": first}, store=store, actor="cto")
+
+    assert result["ok"], result
+    covered = set(result["value"]["triaged"]) | set(result["value"]["deferred"])
+    assert covered == {first}
+
+    missing = invoke("triage", {"report": "01JNOSUCHREPORT00000000000"}, store=store, actor="cto")
+    assert missing["ok"] is False
+    assert missing["error"]["code"] == "NOT_FOUND"
+
+
 def test_single_weight_one_report_is_deferred(
     triage_store: SimpleNamespace,
 ) -> None:

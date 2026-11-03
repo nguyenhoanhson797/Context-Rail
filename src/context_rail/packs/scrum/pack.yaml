@@ -100,5 +100,5 @@ actions:
     "on": "*"
     from: []
     tool: loop triage
-    args: {limit: 1}
+    args: {report: "{report}"}
     use_when: "one untriaged report needs a decision or a fix"
