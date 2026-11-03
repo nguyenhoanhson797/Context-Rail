@@ -447,6 +447,22 @@ function renderItem() {
     }
   }
   next.appendChild(row);
+  const workflow = (state.surface && state.surface.workflows || []).find(
+    (entry) => entry.name === (doc.workflow || card.workflow)
+  );
+  if (workflow && workflow.quality) {
+    for (const target of targets) {
+      const rule = workflow.quality[target];
+      if (!rule) continue;
+      const line = el("div", "rule");
+      line.appendChild(document.createTextNode("Entering " + target + ": "));
+      line.appendChild(el("code", null, rule.gate));
+      if (rule.checks && rule.checks.length) {
+        line.appendChild(document.createTextNode(" · " + rule.checks.join(", ")));
+      }
+      next.appendChild(line);
+    }
+  }
   panel.appendChild(next);
 
   const proof = el("div", "section");
