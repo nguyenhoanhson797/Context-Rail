@@ -38,6 +38,7 @@ from context_rail.store.frontmatter_edit import (
     split_frontmatter,
 )
 from context_rail.store.lock import store_lock
+from context_rail.store.placement import PlacementError, expected_paths
 from context_rail.store.write import (
     ABSENT,
     Op,
@@ -174,7 +175,7 @@ def _versioned_move(
 
 
 def relocate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Move every mutable document to the path its placement renders now."""
+    """Move every mutable document and record to its derived path."""
     dry_run = bool(args["dry_run"])
     key = args["key"]
     store = ctx.store
@@ -182,25 +183,34 @@ def relocate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         index = ctx.index
         saved = replay(store, key)
         if saved is not None:
-            moves = record_data(index, saved.get("record")).get("moves") or []
-            return {"moves": moves, "dry_run": False}
-        planned = planned_moves(ctx, index)
+            data = record_data(index, saved.get("record"))
+            return {
+                "moves": data.get("moves") or [],
+                "skipped": data.get("skipped") or [],
+                "dry_run": False,
+            }
+        planned, skipped = planned_relocation(ctx, index)
         moves = [{"from": source, "to": target} for source, target in planned]
         if dry_run:
-            return {"moves": moves, "dry_run": True}
+            return {"moves": moves, "skipped": skipped, "dry_run": True}
         if not planned:
-            return {"moves": [], "dry_run": False}
+            return {"moves": [], "skipped": skipped, "dry_run": False}
         ops = _move_ops(store, planned)
         commit(
             store,
             ctx.manifest,
             ops,
-            {"kind": "doc.relocated", "about": [], "data": {"moves": moves}},
+            {
+                "kind": "doc.relocated",
+                "about": [],
+                "data": {"moves": moves, "skipped": skipped},
+            },
             actor=actor,
             key=key,
             index=index,
+            allow_record_relocation=True,
         )
-    return {"moves": moves, "dry_run": False}
+    return {"moves": moves, "skipped": skipped, "dry_run": False}
 
 
 def _canonical(slug: str) -> None:
@@ -340,28 +350,35 @@ def _read_etag(store: Path, path: str | None) -> str | None:
 
 
 def planned_moves(ctx: Context, index: Index) -> list[tuple[str, str]]:
-    """Every mutable document whose path differs from its rendered placement."""
-    moves: list[tuple[str, str]] = []
-    rows = index.conn.execute(
-        "SELECT path, slug, preset FROM docs WHERE broken = 0 "
-        "AND primitive IS NOT NULL AND primitive != 'record' ORDER BY path"
-    ).fetchall()
-    for path, slug, preset_name in rows:
-        if _scoped_skill(path):
-            continue
-        preset = ctx.pack.presets.get(preset_name) if preset_name else None
-        if preset is None:
-            raise WriteRefused(
-                "VALIDATION_FAILED",
-                f"{path!r} has an undeclared preset {preset_name!r}",
-                {"path": path, "preset": preset_name},
-            )
-        target = render_path(
-            ctx.manifest, primitive=preset.primitive, preset=preset.name, slug=slug
+    """Every path that differs from its derived placement, for risk checks."""
+    moves, _skipped = planned_relocation(ctx, index)
+    return moves
+
+
+def planned_relocation(
+    ctx: Context, index: Index
+) -> tuple[list[tuple[str, str]], list[dict[str, Any]]]:
+    """Every document and record whose derived path differs, plus the skips."""
+    found, errors = expected_paths(index, ctx.manifest, ctx.pack)
+    current = {
+        slug: path
+        for slug, path in index.conn.execute(
+            "SELECT slug, path FROM docs WHERE broken = 0 ORDER BY path"
         )
-        if target != path:
-            moves.append((path, target))
-    return sorted(moves)
+    }
+    moves: list[tuple[str, str]] = []
+    for slug, target in found.items():
+        source = current.get(slug)
+        if source is None or source == target:
+            continue
+        if _scoped_skill(source):
+            continue
+        moves.append((source, target))
+    skipped = [
+        {"code": error.code, "message": error.message, "details": error.details}
+        for error in errors
+    ]
+    return sorted(moves), skipped
 
 
 def _scoped_skill(path: str) -> bool:

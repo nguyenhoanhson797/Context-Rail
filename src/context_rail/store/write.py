@@ -199,6 +199,7 @@ def commit(
     index: Index | None = None,
     extra_records: Sequence[dict[str, Any]] = (),
     inventory: tuple[tuple[str, str], ...] | None = None,
+    allow_record_relocation: bool = False,
 ) -> dict[str, Any]:
     """Apply ``ops`` and append the requested records; return what was written.
 
@@ -234,7 +235,9 @@ def commit(
         if index is not None and requests:
             index.sync()
         planned = _build_records(store, manifest, requests, targets, actor, index=index)
-        targets = _record_imports(targets)
+        targets = _record_imports(
+            targets, allow_record_relocation=allow_record_relocation
+        )
         primary = planned[0] if planned else None
         written = [target.display for target in targets]
         if primary is not None and primary.rel.lower().endswith(".md"):
@@ -720,14 +723,27 @@ def _markdown_record(
     )
 
 
-def _record_imports(targets: list[_Target]) -> list[_Target]:
+def _record_imports(
+    targets: list[_Target], *, allow_record_relocation: bool = False
+) -> list[_Target]:
     """Records are append-only: an absent added file is kept, a rewrite refused."""
+    added_bytes = {
+        target.data
+        for target in targets
+        if target.rel.startswith("records/") and target.data is not None
+    }
     kept: list[_Target] = []
     for target in targets:
         if not target.rel.startswith("records/"):
             kept.append(target)
             continue
         if target.data is None:
+            if (
+                allow_record_relocation
+                and target.path.is_file()
+                and target.path.read_bytes() in added_bytes
+            ):
+                continue
             raise WriteRefused(
                 "VALIDATION_FAILED",
                 "records are immutable and cannot be deleted",

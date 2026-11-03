@@ -542,11 +542,34 @@ def expected_paths(
     found: dict[str, str] = {}
     errors: list[PlacementError] = []
     for slug, node in graph.nodes.items():
-        if node.broken or node.primitive not in PRIMITIVES:
+        if node.path is not None and is_scoped_skill(node.path):
+            continue
+        if node.broken:
+            errors.append(
+                PlacementError(
+                    "placement_invalid",
+                    f"{node.path or slug!r} does not parse",
+                    {"slug": slug, "path": node.path},
+                )
+            )
+            continue
+        if node.primitive not in PRIMITIVES:
+            errors.append(
+                PlacementError(
+                    "placement_invalid",
+                    f"{slug!r} has an undeclared primitive {node.primitive!r}",
+                    {"slug": slug, "primitive": node.primitive},
+                )
+            )
             continue
         if node.preset not in pack.presets:
-            continue
-        if node.path is not None and is_scoped_skill(node.path):
+            errors.append(
+                PlacementError(
+                    "placement_unresolved",
+                    f"{slug!r} has an undeclared preset {node.preset!r}",
+                    {"slug": slug, "preset": node.preset},
+                )
+            )
             continue
         override = overrides.get(slug)
         if override is not None:

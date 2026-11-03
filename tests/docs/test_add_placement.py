@@ -111,3 +111,25 @@ def test_add_and_record_use_the_resolver(tmp_path: Path) -> None:
         "records/items/phase/phase-1/sprint-3/frontend/implement-checkout/"
         f"{result['record']}.json"
     )
+
+
+def test_relocate_moves_a_record_without_rewriting_it(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    _manifest(store)
+    _add(store, "phase", "Phase 1")
+    _add(store, "sprint", "Sprint 3", ["part_of=phase-1"])
+    _add(store, "task", "Task", ["part_of=sprint-3"])
+    result = _add(store, "result", "UI", ["about=task"])
+    before = (store / result["path"]).read_bytes()
+
+    path = store / "rail.yaml"
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload["presets"]["result"] = "records/archive/{id}.json"
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    moved = invoke("relocate", {"key": "one"}, store=store, actor="cto")
+
+    assert moved["ok"] is True, moved
+    assert any(item["from"] == result["path"] for item in moved["value"]["moves"])
+    target = f"records/archive/{result['record']}.json"
+    assert (store / target).read_bytes() == before
