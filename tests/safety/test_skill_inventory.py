@@ -55,3 +55,7 @@ def test_the_skills_readme_and_the_router_point_at_it() -> None:
     assert NAME in readme
     router = (SKILLS / "context-rail-v3" / "SKILL.md").read_text(encoding="utf-8")
     assert NAME in router
+    workflows = (SKILLS / "context-rail-v3-workflows" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert NAME in workflows

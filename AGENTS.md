@@ -61,6 +61,9 @@ repository.
   refused, never guessed.
 - Primitive, relation and category names are fixed (see the plan's Global
   Constraints). Engine logic never branches on tag names.
+- Paths are derived: `rail.yaml` plus the work graph decides where a document or
+  record lives. No caller supplies a path, a parent folder or a final title, and
+  nothing but the resolver renders one.
 - `cli.py` imports only stdlib modules and `gateway.tools` at import time; every
   heavier import is lazy.
 - The speed budgets and safety assertions in the plan are fixed. Fix the code,

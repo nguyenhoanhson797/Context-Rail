@@ -113,12 +113,14 @@ rail gate              # doctor issues plus the approval and done gates
 
 ## Skills
 
-Four operator skills under `skills/` in the repository checkout teach an agent
+Five operator skills under `skills/` in the repository checkout teach an agent
 the rail itself, so it does not have to read the engine to answer "what can this
 do?" or "how do we change the workflow?":
 
 - `context-rail-v3` — mental model, quick start, command map
 - `context-rail-v3-workflows` — packs, statuses, transitions, BA/PO steps
+- `context-rail-v3-pack-authoring` — pack creation, required metadata, defaults,
+  declarative placement
 - `context-rail-v3-loop` — dispatch → verify → review → merge, refusals
 - `context-rail-v3-ops` — doctor, reindex, recovery, budgets, test lanes
 
@@ -175,6 +177,65 @@ single-instance lock. It must be the outer session, so it refuses to start when
 - **Control files**: dispatch/tick/merge progress and key bindings live in the
   same local dir, written atomically, so a crash leaves either the old file or
   the new one and never a partial document.
+
+## Placement and metadata
+
+A pack names the document types; `rail.yaml` says **where** each one lives.
+Agents never pass a path, a parent folder or a final title: they pass `--rel`
+and `--set`, and the resolver derives the path from the work graph.
+
+```powershell
+rail change add sprint "Sprint 3" --rel part_of=phase-1
+rail change add task "Implement checkout" --rel part_of=sprint-3 --set area=frontend
+# items/phase/phase-1/sprint-3/frontend/implement-checkout.md
+```
+
+`placement` is keyed by primitive, `presets` by preset and wins over it, and
+`kind:<kind>` places a record by its kind. A pack may ship `layout.yaml` to seed
+these; `rail.yaml` is authoritative after `init`.
+
+| Token | Resolves to | Scope |
+|---|---|---|
+| `{slug}`, `{preset}` | the document's slug or preset | segment |
+| `{id}`, `{yyyy}`, `{yy}`, `{mm}`, `{dd}` | a record id or a timestamp | segment |
+| `{field:name}` | a required or defaulted field, slugified | segment |
+| `{kind}` | the record kind | record only |
+| `{part_of}`, `{about}`, `{verifies}` | the related document's path | graph |
+| `{part_of.slug}`, `{about.title}`, … | just the related slug or title slug | segment |
+| `{nearest:preset}`, `{root:preset}` | the nearest or outermost ancestor preset | prefix |
+| `{item}`, `{item.slug}`, `{item.title}` | the dispatch or run item | `kind:` placement only |
+
+- A primitive placement must start with a literal segment; a preset placement
+  may start with a path token such as `{part_of}` and inherit its parent's
+  folder. Every token-bearing template needs `{slug}` or `{id}`.
+- A record stays under `records/`; a document may not enter it. `{item.*}` is
+  only for a `kind:<kind>` record placement, and `{kind}` is record-only.
+- `skill`, `profile`, `cto` and `actor` are fixed to their `workspace/` shapes.
+- A path segment may not be `..`, a Windows device name, a control character or
+  over 80 characters; the whole path is capped at 200. A field value containing
+  a separator is slugified into one safe segment.
+- Presets may declare `required` fields and `defaults`. `add` merges defaults and
+  refuses a missing value; `update` revalidates the merged document. A default
+  used by `{field:...}` must be a non-empty string.
+
+`rail change repath --dry-run` lists every move the current placement implies
+and every document it had to skip; `rail change repath` applies them in one
+commit. `update` and `link` move an edited document and its descendants in the
+same commit; records move with them but are never rewritten.
+
+| Doctor code | Severity | Meaning |
+|---|---|---|
+| `placement_mismatch` | warning | the path is not what the placement renders |
+| `placement_unresolved` | error | no target for the relation the placement walks |
+| `placement_ambiguous` | error | more than one target for that relation |
+| `placement_cycle` | error | `part_of`/`about`/`verifies` loops |
+| `placement_invalid` | error | an unsafe or unresolvable rendered path |
+| `required_field_missing` / `required_field_invalid` | error | preset metadata is absent or outside its enum |
+| `placement_historical` | warning | an existing record lost its anchor; it is never rewritten |
+| `record_metadata_missing` / `record_metadata_invalid` | warning | an existing record's metadata is stale |
+
+A scoped skill copy under `workspace/<pack>/skills/` is pack-shipped material,
+so it is never moved and never reported as misplaced.
 
 ## Command surface
 

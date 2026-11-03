@@ -99,7 +99,8 @@ policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
   decision rights live in the charter, not the pack.
 - Tags are free text and never drive engine behaviour.
 - New presets need no manifest entry: they render under the primitive's
-  placement, e.g. `items/story/<slug>.md`.
+  placement, e.g. `items/story/<slug>.md`, unless a preset placement overrides
+  it.
 - A pack may also ship `layout.yaml` with initial `placement` and `presets`.
   `init`, onboarding and `migrate` seed `rail.yaml` from it; `rail.yaml` is
   authoritative afterwards, and `pack use` never moves files.
@@ -108,6 +109,88 @@ policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
   only new stores. `pack.yaml` is read live on every command.
 - `pack use` refuses a target that cannot serve the store's manifest, so a
   switch can never leave every later command unable to read `rail.yaml`.
+
+## Placement and required metadata
+
+`rail.yaml` is the authority on where documents live:
+
+```yaml
+placement:                 # by primitive, the fallback
+  item: "items/{preset}/{slug}.md"
+  record: "records/{yyyy}-{mm}/{id}.json"
+presets:                   # by preset, wins over the primitive
+  sprint: "{part_of}/{slug}.md"
+  task: "{part_of}/{field:area}/{slug}.md"
+  result: "records/{about}/{id}.json"
+  "kind:report.filed": "records/reports/{id}.json"
+```
+
+**Agents never pass a path, a parent folder or a final title.** They pass `--rel`
+and `--set`; the resolver reads the work graph and derives the path:
+
+```powershell
+rail change add sprint "Sprint 3" --rel part_of=phase-1
+rail change add task "Implement checkout" --rel part_of=sprint-3 --set area=frontend
+rail change update implement-checkout --set area=backend --expect <etag>
+```
+
+- `{part_of}` nests a document under its parent's path; `{part_of.slug}` takes
+  only the parent's slug as one segment. `{about}` and `{verifies}` do the same
+  for a record and a check. A segment-only token is how you keep a flat layout.
+- `{nearest:preset}` and `{root:preset}` walk `part_of`/`about`/`verifies` to
+  the nearest or outermost ancestor of that preset.
+- `{item}` and `{item.slug}`/`{item.title}` are only legal in a
+  `kind:<kind>` record placement, because only a record knows its item.
+  `{kind}` is record-only and places a record by its kind.
+- A record must stay under `records/`; a document may not enter it. `skill`,
+  `profile`, `cto` and `actor` are fixed to their `workspace/` shapes.
+- A path-affecting edit moves the document and every descendant in one commit;
+  records move with them and are never rewritten.
+
+Presets may also require metadata:
+
+```yaml
+presets:
+  task:
+    required: [area]
+    defaults: {area: general}
+    fields: {area: [frontend, backend, general]}
+```
+
+`add` merges `defaults`, then refuses a missing or empty required field; `update`
+revalidates the merged document. A default used by `{field:...}` must be a
+non-empty string. Adding a required field to a live pack is a breaking change:
+give it a default, or file fix items for the existing documents. Engine-written
+presets (`event`, `check`, `note`, `goal`, `charter`, …) need a default for every
+required field; `pack validate` reports one that does not.
+
+For the full authoring guide, load `context-rail-v3-pack-authoring`.
+
+## Validate and repair
+
+```powershell
+rail ops pack validate --name my-team     # read-only: presets, templates, placement
+rail ops doctor                           # the store: paths and metadata
+rail change repath --dry-run              # every move the placement implies
+rail change repath                        # apply them in one commit
+```
+
+Doctor codes that mean a layout or metadata problem:
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `placement_mismatch` | warning | the file is not where the placement renders |
+| `placement_unresolved` | error | no target for the relation the placement walks |
+| `placement_ambiguous` | error | more than one target for that relation |
+| `placement_cycle` | error | `part_of`/`about`/`verifies` loops |
+| `placement_invalid` | error | an unsafe or unresolvable rendered path |
+| `required_field_missing` / `required_field_invalid` | error | preset metadata is absent or outside its enum |
+| `placement_historical` | warning | an existing record lost its anchor; it is never rewritten |
+| `record_metadata_missing` / `record_metadata_invalid` | warning | an existing record's metadata is stale |
+
+`repath` reports `moves` and `skipped`; a document with no resolvable anchor is
+in `skipped` with its code, not silently ignored. `rename` moves the document
+and retargets links; descendants follow through `repath`.
 
 ## Profiles and skills
 
@@ -172,8 +255,10 @@ rail --actor human ops pack use --name my-team --expect <rail.yaml etag> \
 ```
 
 `ops pack use` is an approval-guarded migration: it rewrites statuses through the
-map and refuses unmapped statuses or presets the target pack lacks. Switching
-does **not** rewrite history.
+map and refuses unmapped statuses, presets the target pack lacks, and a required
+field the existing documents cannot satisfy. Switching does **not** rewrite
+history. For the full authoring loop — presets, required metadata, placement
+recipes and pitfalls — load `context-rail-v3-pack-authoring`.
 
 ## Gotchas
 
@@ -186,4 +271,7 @@ does **not** rewrite history.
 - Transitions are legality, not evidence. For proof before a status, use a
   dependency item or a gate check; a hard per-transition rule is an engine
   change.
+- Migration to a structural layout is refused: a legacy store has no work graph,
+  so `ops migrate` cannot render `{part_of}` or a `kind:` placement. Migrate
+  flat, then add the structure.
 - Pack policy changes and `pack use` are approval-guarded.
