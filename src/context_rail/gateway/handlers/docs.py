@@ -132,7 +132,7 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "title": title,
         }
         if preset.primitive == "item":
-            front["status"] = ctx.pack.initial
+            front["status"] = ctx.pack.workflow_for(preset.name).initial
         front["tags"] = list(dict.fromkeys([*preset.tags, *tags]))
         front["created"] = stamp
         front["updated"] = stamp

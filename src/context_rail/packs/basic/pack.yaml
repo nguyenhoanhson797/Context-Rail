@@ -31,3 +31,22 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, retries: 1}
+actions:
+  start:
+    "on": task
+    from: [todo]
+    tool: change move
+    args: {slug: "{item}", status: doing, expect: "{etag}"}
+    use_when: "a task is ready to start"
+  close:
+    "on": task
+    from: [doing]
+    tool: change move
+    args: {slug: "{item}", status: done, expect: "{etag}"}
+    use_when: "a task's work is finished"
+  next-actions:
+    "on": "*"
+    from: []
+    tool: next
+    args: {}
+    use_when: "the queue is unclear and the next card is needed"

@@ -179,6 +179,7 @@ TOOL_IDS = WORKER_TOOL_IDS
 WORKER_METHODS = ("find", "show", "cto brief", "ledger", "report")
 #: Every method a CTO profile may use; nested ticketing is not one of them.
 CTO_METHODS = WORKER_METHODS + (
+    "do",
     "add",
     "update",
     "move",

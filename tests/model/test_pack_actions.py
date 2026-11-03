@@ -88,7 +88,7 @@ def test_action_version_defaults_and_round_trips(tmp_path: Path) -> None:
         {"tool": "doctor"},
         {"on": "ghost"},
         {"from": ["ghost"]},
-        {"from": []},
+        {"from": "todo"},
         {"use_when": ""},
         {"version": 0},
         {"args": {"path": "x"}},

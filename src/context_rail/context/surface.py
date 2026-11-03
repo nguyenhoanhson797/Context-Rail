@@ -165,6 +165,21 @@ def explain(
             },
         }
         return _bounded(payload, limit)
+    action = pack.actions.get(name)
+    if action is not None:
+        return _bounded(
+            {
+                "kind": "action",
+                "name": action.name,
+                "on": action.on,
+                "from": list(action.from_states),
+                "tool": action.tool,
+                "args": dict(action.args),
+                "use_when": action.use_when,
+                "version": action.version,
+            },
+            limit,
+        )
     raise SurfaceError(
         "NOT_FOUND",
         f"{name!r} is neither a preset nor a workflow",

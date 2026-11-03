@@ -36,3 +36,29 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+actions:
+  start-sprint:
+    "on": sprint
+    from: [todo, ready]
+    tool: change move
+    args: {slug: "{item}", status: doing, expect: "{etag}"}
+    use_when: "a sprint is ready to start"
+  close-sprint:
+    "on": sprint
+    from: [doing, review]
+    tool: change move
+    args: {slug: "{item}", status: done, expect: "{etag}"}
+    requires: {children: true}
+    use_when: "every sprint child is finished and the sprint can close"
+  file-bug:
+    "on": "*"
+    from: []
+    tool: change add
+    args: {preset: bug, title: "{title}", rel: ["part_of={parent}"]}
+    use_when: "a defect needs recording before it is fixed"
+  triage-report:
+    "on": "*"
+    from: []
+    tool: loop triage
+    args: {limit: 1}
+    use_when: "one untriaged report needs a decision or a fix"

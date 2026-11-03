@@ -24,18 +24,24 @@ def do(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     action = ctx.pack.action(name)
     item = (args.get("item") or "").strip()
     params = _params(args["set"], item=item, etag=args.get("etag"))
-    tool_key = _tool_key(name, action.version, item, params, args.get("key"))
-    action_key = "action-" + sha256_hex(tool_key.encode("utf-8"))[:26]
+    from context_rail.gateway.tools import TOOLS
 
-    saved = replay(ctx.store, action_key)
-    if saved is not None:
-        data = record_data(ctx.index, saved.get("record"))
-        return {
-            "action": name,
-            "version": action.version,
-            "result": data.get("result"),
-            "record": saved.get("record"),
-        }
+    spec = next((tool for tool in TOOLS if tool.name == action.tool), None)
+    read_only = spec is not None and spec.permission == "read"
+    tool_key = ""
+    action_key = ""
+    if not read_only:
+        tool_key = _tool_key(name, action.version, item, params, args.get("key"))
+        action_key = "action-" + sha256_hex(tool_key.encode("utf-8"))[:26]
+        saved = replay(ctx.store, action_key)
+        if saved is not None:
+            data = record_data(ctx.index, saved.get("record"))
+            return {
+                "action": name,
+                "version": action.version,
+                "result": data.get("result"),
+                "record": saved.get("record"),
+            }
 
     if action.on != "*":
         doc = _item(ctx, item)
@@ -61,7 +67,8 @@ def do(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             )
     _check_requires(ctx, action, item)
     tool_args = _tool_args(action.args, params)
-    tool_args.setdefault("key", tool_key)
+    if tool_key:
+        tool_args.setdefault("key", tool_key)
 
     from context_rail.gateway.gateway import invoke
 
@@ -74,6 +81,8 @@ def do(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"action": name, **(error.get("details") or {})},
         )
     value = result.get("value")
+    if read_only:
+        return {"action": name, "version": action.version, "result": value, "record": None}
     record = commit(
         ctx.store,
         ctx.manifest,
@@ -142,19 +151,25 @@ def _params(entries: list[str], *, item: str, etag: str | None) -> dict[str, str
 def _tool_args(template: dict[str, Any], params: dict[str, str]) -> dict[str, Any]:
     resolved: dict[str, Any] = {}
     for key, value in template.items():
-        if not isinstance(value, str):
+        if isinstance(value, str):
+            resolved[key] = _render(value, params)
+        elif isinstance(value, (list, tuple)):
+            resolved[key] = [_render(item, params) for item in value]
+        else:
             resolved[key] = value
-            continue
-        text = value
-        for name in _placeholders(text):
-            if name not in params:
-                raise WriteRefused(
-                    "VALIDATION_FAILED",
-                    f"the action needs --set {name}=<value>",
-                    {"argument": name},
-                )
-            text = text.replace("{" + name + "}", params[name])
-        resolved[key] = text
+    return resolved
+
+
+def _render(text: str, params: dict[str, str]) -> str:
+    resolved = text
+    for name in _placeholders(text):
+        if name not in params:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"the action needs --set {name}=<value>",
+                {"argument": name},
+            )
+        resolved = resolved.replace("{" + name + "}", params[name])
     return resolved
 
 

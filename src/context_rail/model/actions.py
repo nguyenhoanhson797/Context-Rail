@@ -22,6 +22,8 @@ REQUIRES_KEYS = ("children", "check", "review", "field")
 WRITE_ALLOWLIST = frozenset(
     {"add", "update", "link", "move", "rename", "check", "triage", "report"}
 )
+READ_ALLOWLIST = frozenset({"next", "status"})
+ALLOWLIST = WRITE_ALLOWLIST | READ_ALLOWLIST
 FORBIDDEN_TOOLS = frozenset(
     {"do", "cto tick", "pack use", "relocate", "merge", "adapters sync"}
 )
@@ -109,7 +111,7 @@ def _action(
     canonical = canonical_tool(tool)
     if canonical in FORBIDDEN_TOOLS:
         _refuse(f"action {name!r} may not call {tool!r}")
-    if canonical not in WRITE_ALLOWLIST:
+    if canonical not in ALLOWLIST:
         _refuse(f"action {name!r} calls a tool outside the allowlist: {tool!r}")
     args = _args(value.get("args", {}), name)
     use_when = value.get("use_when")
@@ -131,8 +133,10 @@ def _action(
 
 
 def _states(raw: Any, statuses: Mapping[str, str], what: str) -> list[str]:
-    if not isinstance(raw, list) or not raw:
-        _refuse(f"{what} must be a non-empty list of statuses")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        _refuse(f"{what} must be a list of statuses")
     values: list[str] = []
     for state in raw:
         if not isinstance(state, str) or state not in statuses:
@@ -180,9 +184,20 @@ def _args(raw: Any, action: str) -> dict[str, Any]:
                     _refuse(
                         f"action {action!r} may not template {placeholder!r}"
                     )
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                if not isinstance(item, str):
+                    _refuse(
+                        f"action {action!r} arg {key!r} lists must hold strings"
+                    )
+                for placeholder in _PLACEHOLDER.findall(item):
+                    if placeholder in RESERVED_ARGS:
+                        _refuse(
+                            f"action {action!r} may not template {placeholder!r}"
+                        )
         elif isinstance(value, (int, float, bool)):
             pass
         else:
-            _refuse(f"action {action!r} arg {key!r} must be a scalar or template")
+            _refuse(f"action {action!r} arg {key!r} must be a scalar, list or template")
         values[key] = value
     return values
