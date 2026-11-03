@@ -115,6 +115,36 @@ def test_a_vanished_preset_refuses_the_switch(tmp_path: Path) -> None:
     )
 
 
+def test_a_workflow_qualified_map_splits_one_source_status(tmp_path: Path) -> None:
+    store = init_pack_store(tmp_path, workflow_pack_document())
+    assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
+    assert invoke("add", {"preset": "bug", "title": "A bug"}, store=store)["ok"]
+
+    target = workflow_pack_document("split")
+    target["workflows"] = {
+        "sprint": {
+            "initial": "todo",
+            "transitions": {"todo": ["doing"], "doing": ["done"], "done": []},
+        },
+        "bugfix": {
+            "initial": "todo",
+            "transitions": {"todo": ["fixing"], "fixing": ["done"], "done": []},
+        },
+    }
+    write_pack(store, "split", target)
+
+    switched = _switch(store, "split", ["sprint:todo=doing", "bugfix:todo=fixing"])
+
+    assert switched["ok"] is True, switched
+    assert switched["value"]["changes"] == [
+        {"slug": "a-bug", "from": "todo", "to": "fixing"},
+        {"slug": "a-task", "from": "todo", "to": "doing"},
+    ]
+    assert switched["value"]["status_map"] == {}
+    assert invoke("show", {"slug": "a-task"}, store=store)["value"]["doc"]["status"] == "doing"
+    assert invoke("show", {"slug": "a-bug"}, store=store)["value"]["doc"]["status"] == "fixing"
+
+
 def test_a_status_outside_the_target_workflow_refuses(tmp_path: Path) -> None:
     store = init_pack_store(tmp_path, workflow_pack_document())
     assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
@@ -146,7 +176,4 @@ def test_a_status_outside_the_target_workflow_refuses(tmp_path: Path) -> None:
 
     assert refused["ok"] is False, refused
     assert refused["error"]["code"] == "VALIDATION_FAILED"
-    assert any(
-        problem["field"] == "workflow"
-        for problem in refused["error"].get("details", {}).get("unsupported", [])
-    ), refused
+    assert ["workflow_status", "a-task"] in refused["error"]["details"]["problems"]

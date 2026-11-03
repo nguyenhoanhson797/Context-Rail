@@ -42,6 +42,71 @@ def parse_map_entries(
     return mapping, tuple(sorted(set(problems)))
 
 
+@dataclass(frozen=True)
+class ItemMapResult:
+    """Per-item target statuses, the flat map, and any item-level problems."""
+
+    statuses: dict[str, str]
+    status_map: dict[str, str]
+    problems: tuple[tuple[str, str], ...]
+
+
+def plan_item_map(
+    source: Pack,
+    target: Pack,
+    items: Sequence[Mapping[str, Any]],
+    explicit: Mapping[str, str],
+) -> ItemMapResult:
+    """Map every item's status and workflow, allowing ``workflow:status`` entries."""
+    qualified: dict[tuple[str, str], str] = {}
+    plain: dict[str, str] = {}
+    for key, value in explicit.items():
+        workflow, separator, status = key.partition(":")
+        if separator and workflow and status:
+            qualified[(workflow, status)] = value
+        else:
+            plain[key] = value
+    unqualified = {
+        row["status"]
+        for row in items
+        if (preset_workflow(source, row["preset"]), row["status"]) not in qualified
+    }
+    base = plan_status_map(source, target, frozenset(unqualified), plain)
+    statuses: dict[str, str] = {}
+    changed: dict[str, str] = {}
+    conflicts: set[str] = set()
+    problems: list[tuple[str, str]] = list(base.problems)
+    for row in items:
+        workflow = preset_workflow(source, row["preset"])
+        new = qualified.get((workflow, row["status"])) or base.mapping.get(
+            row["status"]
+        )
+        if new is None:
+            problems.append(("item_no_target", row["slug"]))
+            continue
+        if new not in target.statuses:
+            problems.append(("item_unknown_target", row["slug"]))
+            continue
+        preset = target.presets.get(row["preset"])
+        if preset is not None:
+            target_workflow = target.workflows.get(preset.workflow)
+            if target_workflow is None or new not in target_workflow.transitions:
+                problems.append(("workflow_status", row["slug"]))
+                continue
+        statuses[row["slug"]] = new
+        seen = changed.setdefault(row["status"], new)
+        if seen != new:
+            conflicts.add(row["status"])
+    status_map = {
+        old: new for old, new in changed.items() if old not in conflicts
+    }
+    return ItemMapResult(
+        statuses=statuses,
+        status_map=status_map,
+        problems=tuple(dict.fromkeys(problems)),
+    )
+
+
 def preset_workflow(pack: Pack, preset: str) -> str:
     """The workflow a preset selects, or ``default`` for an undeclared preset."""
     declared = pack.presets.get(preset)

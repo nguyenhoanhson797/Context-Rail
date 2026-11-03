@@ -17,7 +17,7 @@ from context_rail.gateway.confirmation import (
 )
 from context_rail.kernel.packs import (
     parse_map_entries,
-    plan_status_map,
+    plan_item_map,
     preset_workflow,
 )
 from context_rail.model.errors import ModelError
@@ -230,9 +230,7 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "duplicate or malformed status map entries",
                 {"problems": list(duplicates)},
             )
-        mapping = plan_status_map(
-            current, target, frozenset(row["status"] for row in items), explicit
-        )
+        mapping = plan_item_map(current, target, items, explicit)
         if mapping.problems:
             raise WriteRefused(
                 "VALIDATION_FAILED",
@@ -242,7 +240,7 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                     "items": _affected_items(items, current, mapping.problems),
                 },
             )
-        unsupported = _unsupported_fields(items, current, target, mapping.mapping)
+        unsupported = _unsupported_fields(items, current, target, mapping.statuses)
         if unsupported:
             raise WriteRefused(
                 "VALIDATION_FAILED",
@@ -264,7 +262,7 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         for row in items:
             current_data = (store / row["path"]).read_bytes()
             current_etag = etag(current_data)
-            new_status = mapping.mapping.get(row["status"], row["status"])
+            new_status = mapping.statuses.get(row["slug"], row["status"])
             data = current_data
             if new_status != row["status"]:
                 data = _rewrite_status(current_data, new_status)
@@ -280,7 +278,7 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         value = {
             "from": current.name,
             "to": target.name,
-            "status_map": dict(mapping.mapping),
+            "status_map": dict(mapping.status_map),
             "changes": changes,
             "workflow_changes": workflow_changes,
             "warnings": [],
@@ -298,7 +296,7 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "schema": 1,
                 "from": current.name,
                 "to": target.name,
-                "status_map": dict(mapping.mapping),
+                "status_map": dict(mapping.status_map),
                 "changes": changes,
                 "changed_slugs": [row["slug"] for row in changes],
                 "changed_count": len(changes),
@@ -379,7 +377,7 @@ def _unsupported_fields(
     items: list[dict[str, Any]],
     source: Any,
     target: Any,
-    mapping: dict[str, str],
+    statuses: dict[str, str],
 ) -> list[dict[str, Any]]:
     problems: list[dict[str, Any]] = []
     for row in items:
@@ -403,7 +401,7 @@ def _unsupported_fields(
                 problems.append(
                     {"path": row["path"], "field": name, "value": None}
                 )
-        mapped = mapping.get(row["status"], row["status"])
+        mapped = statuses.get(row["slug"], row["status"])
         workflow = target.workflows.get(target_preset.workflow)
         if workflow is None or mapped not in workflow.transitions:
             problems.append(
@@ -436,11 +434,16 @@ def _affected_items(
     source: Any,
     problems: tuple[tuple[str, str], ...],
 ) -> list[dict[str, str]]:
-    """The items whose status the map could not resolve, named for the human."""
-    bad = {
-        status
-        for code, status in problems
-        if code in {"ambiguous", "no_target", "unknown_source"}
+    """The items the map could not resolve, named with their workflow."""
+    bad_status = {
+        value
+        for code, value in problems
+        if code in {"ambiguous", "no_target", "unknown_source", "cross_category"}
+    }
+    bad_slug = {
+        value
+        for code, value in problems
+        if code in {"item_no_target", "item_unknown_target", "workflow_status"}
     }
     return [
         {
@@ -449,7 +452,7 @@ def _affected_items(
             "status": row["status"],
         }
         for row in items
-        if row["status"] in bad
+        if row["status"] in bad_status or row["slug"] in bad_slug
     ]
 
 
