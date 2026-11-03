@@ -13,7 +13,7 @@ import pytest
 from context_rail.gateway.gateway import invoke
 from context_rail.model.pack import load_pack
 from context_rail.store.index import Index
-from helpers import median_ms
+from helpers import median_ms, set_preset_placement
 from perf.gen import make_store
 
 _REPO_SRC = Path(__file__).resolve().parents[2] / "src"
@@ -75,6 +75,51 @@ def test_single_write_budget(tmp_path):
         assert r["ok"], r
 
     assert median_ms(add, 10) < 200
+
+
+def _structural_store(tmp_path: Path, n: int) -> Path:
+    store = make_store(tmp_path, n)
+    set_preset_placement(store, task="{part_of}/{slug}.md")
+    return store
+
+
+def _structural_add(store: Path, title: str) -> None:
+    result = invoke(
+        "add",
+        {"preset": "task", "title": title, "rel": ["part_of=g0"]},
+        store=store,
+    )
+    assert result["ok"], result
+
+
+@pytest.mark.perf
+def test_a_structural_write_still_meets_the_single_write_budget(tmp_path):
+    store = _structural_store(tmp_path, 1000)
+    warm = Index.open(store, load_pack("basic", store))
+    try:
+        warm.sync()
+    finally:
+        warm.close()
+    titles = iter(f"Structural task {index}" for index in range(10))
+
+    assert median_ms(lambda: _structural_add(store, next(titles)), 10) < 200
+
+
+@pytest.mark.perf
+@pytest.mark.slow
+def test_a_ten_thousand_document_structural_add_stays_under_two_seconds(tmp_path):
+    store = _structural_store(tmp_path, 10000)
+    warm = Index.open(store, load_pack("basic", store))
+    try:
+        warm.sync()
+    finally:
+        warm.close()
+
+    start = time.perf_counter()
+    _structural_add(store, "Slow lane task")
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 2.0, f"structural add took {elapsed:.2f}s"
 
 
 @pytest.mark.perf

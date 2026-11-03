@@ -673,6 +673,104 @@ def write_pack(store: Path, name: str, document: dict[str, Any]) -> Path:
     return path
 
 
+NESTED_LAYOUT: dict[str, str] = {
+    "phase": "items/{preset}/{slug}.md",
+    "sprint": "{part_of}/{slug}.md",
+    "task": "{part_of}/{field:area}/{slug}.md",
+    "result": "records/{about}/{id}.json",
+}
+
+
+def nested_pack_document(
+    name: str = "nested", extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """A pack with phase, sprint, an ``area``-carrying task and a result record."""
+    document: dict[str, Any] = {
+        "name": name,
+        "version": 1,
+        "statuses": {"todo": "not_started", "done": "done"},
+        "initial": "todo",
+        "transitions": {"todo": ["done"], "done": []},
+        "presets": {
+            "phase": {"primitive": "item", "tags": ["phase"]},
+            "sprint": {"primitive": "item", "tags": ["sprint"]},
+            "task": {
+                "primitive": "item",
+                "tags": ["task"],
+                "required": ["area"],
+                "defaults": {"area": "general"},
+                "fields": {"area": ["frontend", "backend", "general"]},
+            },
+            "result": {"primitive": "record", "tags": ["result"]},
+            "decision": {"primitive": "record", "tags": ["decision"]},
+            "event": {"primitive": "record", "tags": ["event"]},
+            "note": {"primitive": "note", "tags": []},
+            "check": {"primitive": "check", "tags": []},
+            "charter": {"primitive": "policy", "tags": []},
+            "goal": {"primitive": "item", "tags": ["goal"]},
+            "scope": {"primitive": "item", "tags": ["scope"]},
+            "vision": {"primitive": "note", "tags": []},
+            "wont": {"primitive": "note", "tags": []},
+            "skill": {"primitive": "note", "tags": []},
+            "cto": {"primitive": "actor", "tags": []},
+            "profile": {"primitive": "actor", "tags": []},
+        },
+        "policy": {"stuck_hours": 24, "retries": 1},
+    }
+    if extra:
+        document["presets"].update(extra)
+    return document
+
+
+def init_nested_store(
+    tmp_path: Path,
+    *,
+    name: str = "nested",
+    layout: dict[str, str] | None = None,
+    extra: dict[str, Any] | None = None,
+) -> Path:
+    """Initialize a store on the nested pack, seeded with a structural layout."""
+    from importlib import resources
+
+    from context_rail.gateway.gateway import invoke
+
+    store = Path(tmp_path) / "context-rail"
+    write_pack(store, name, nested_pack_document(name, extra))
+    templates = store / "packs" / name / "templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    source = resources.files("context_rail").joinpath("packs", "basic", "templates")
+    for item in source.iterdir():
+        if item.name.endswith(".md"):
+            templates.joinpath(item.name).write_text(
+                item.read_text(encoding="utf-8"), encoding="utf-8", newline="\n"
+            )
+    (store / "packs" / name / "layout.yaml").write_text(
+        yaml.safe_dump(
+            {"presets": dict(NESTED_LAYOUT if layout is None else layout)},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    result = invoke(
+        "init",
+        {"dir": str(tmp_path), "pack": name, "scaffold": True},
+        actor="human",
+    )
+    assert result["ok"] is True, result
+    return Path(result["value"]["store"])
+
+
+def set_preset_placement(store: Path, **presets: str) -> None:
+    """Rewrite a store's ``rail.yaml`` preset placement mapping in place."""
+    path = Path(store) / "rail.yaml"
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload["presets"].update(presets)
+    path.write_text(
+        yaml.safe_dump(payload, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+
+
 class InjectedFault(RuntimeError):
     """Raised by ``inject_fault`` in ``raise`` mode."""
 
