@@ -24,6 +24,8 @@ __all__ = [
     "card",
     "catalog",
     "explain",
+    "render_card",
+    "render_workflows",
     "verbs",
 ]
 
@@ -167,6 +169,43 @@ def explain(
         f"{name!r} is neither a preset nor a workflow",
         {"name": name},
     )
+
+
+def render_card(card: Mapping[str, Any], *, limit: int = CARD_CHARS) -> str:
+    """One card as the short block a work order carries."""
+    proof = card.get("proof") or {}
+    checks = ", ".join(proof.get("checks") or ()) or "(none)"
+    lines = [
+        f"workflow: {card['workflow']}",
+        f"state: {card['state']}",
+        f"next: {', '.join(card.get('next') or ()) or '(none)'}",
+        f"gate: {card.get('gate')}",
+        f"proof: checks {checks}"
+        + (", acceptance" if proof.get("acceptance") else "")
+        + (", review" if proof.get("review") else "")
+        + (", human" if proof.get("human") else "")
+        + (f", children {proof['children']}" if proof.get("children") else ""),
+        f"command: {card.get('command')}",
+    ]
+    text = "\n".join(lines)
+    return text if len(text) <= limit else text[: limit - 12] + "\n[truncated]"
+
+
+def render_workflows(context: Any, *, limit: int = 2000) -> str:
+    """The workflow shapes a CTO order needs, without a single item's card."""
+    lines: list[str] = []
+    for name in sorted(context.pack.workflows):
+        workflow = context.pack.workflows[name]
+        gates = ", ".join(
+            f"{status}->{rule.gate}"
+            for status, rule in sorted(workflow.quality.items())
+        ) or "(done uses item_done)"
+        lines.append(
+            f"{name}: {workflow.initial} -> "
+            f"{', '.join(sorted(workflow.transitions))}; gates {gates}"
+        )
+    text = "\n".join(lines)
+    return text if len(text) <= limit else text[: limit - 12] + "\n[truncated]"
 
 
 def verbs(context: Any) -> dict[str, Any]:

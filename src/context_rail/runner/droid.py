@@ -94,6 +94,7 @@ WORK_ORDER_KEYS = (
 )
 WORK_ORDER_SECTIONS = (
     "objective",
+    "workflow",
     "selected scope",
     "conventions",
     "constraints",

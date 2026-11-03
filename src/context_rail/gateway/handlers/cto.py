@@ -66,13 +66,15 @@ CAPTURE_REASON = "the droid output exceeded the 262144-byte cap"
 
 _ORDER_OBJECTIVE = (
     "You are the CTO of this project for one bounded session. Read the brief "
-    "below, then run the loop through `rail` commands only:\n\n"
-    "1. Triage the untriaged reports.\n"
-    "2. Plan executable leaf Items and link them to the approved scope.\n"
-    "3. Dispatch each executable Item to the implementer, then verify, review "
-    "and merge it in that order.\n"
-    "4. Escalate anything a gate blocks instead of working around it.\n"
-    "5. Finish with the digest so the next session starts from observed state.\n\n"
+    "below, then work the queue through `rail` commands only. Every Item's "
+    "card names its workflow, its state, the allowed next moves and the proof "
+    "the gate requires; follow the card instead of assuming one fixed loop.\n\n"
+    "1. Take the next action the queue names: triage a report, plan an Item or "
+    "dispatch one that is executable.\n"
+    "2. Verify the candidate, get a separated review where the workflow asks "
+    "for one, then merge it.\n"
+    "3. Escalate anything a gate blocks instead of working around it.\n"
+    "4. Finish with the digest so the next session starts from observed state.\n\n"
     "You may not author or loosen acceptance Checks, change the goal or the "
     "scope, raise a budget or edit the store by hand. Those are human-only "
     "decisions; propose them and stop. There is no automatic scheduler: this "
@@ -511,6 +513,12 @@ def _role_text(profile: Profile) -> str:
     return text
 
 
+def _workflow_summary(context: Context) -> str:
+    from context_rail.context import surface
+
+    return surface.render_workflows(context)
+
+
 def _order_sections(
     context: Context, profile: Profile, brief: dict[str, Any]
 ) -> dict[str, str]:
@@ -520,6 +528,7 @@ def _order_sections(
     )
     return {
         "objective": f"{_ORDER_OBJECTIVE}\n\n# The brief\n\n{brief['text']}",
+        "workflow": _workflow_summary(context),
         "selected scope": _ORDER_SCOPE,
         "conventions": _ORDER_CONVENTIONS,
         "constraints": _ORDER_CONSTRAINTS.format(

@@ -219,6 +219,34 @@ def test_a_worker_catalog_is_scoped_to_its_item(tmp_path: Path) -> None:
     assert [entry["name"] for entry in scoped["items"]] == ["bug"]
 
 
+def test_two_workflows_offer_different_next_states(tmp_path: Path) -> None:
+    store, context = _store(tmp_path)
+    _add(store, "bug", "A bug")
+    _add(store, "task", "A task")
+    context.index.sync()
+
+    bug = surface.card(context, "a-bug")
+    task = surface.card(context, "a-task")
+
+    assert bug["workflow"] == "bugfix"
+    assert bug["next"] == ["reported"]
+    assert task["workflow"] == "sprint"
+    assert task["next"] == ["fixing"]
+
+
+def test_the_work_order_sections_put_the_workflow_after_the_objective() -> None:
+    from context_rail.runner.droid import WORK_ORDER_SECTIONS
+
+    assert WORK_ORDER_SECTIONS[:2] == ("objective", "workflow")
+
+
+def test_the_cto_objective_is_queue_driven() -> None:
+    from context_rail.gateway.handlers.cto import _ORDER_OBJECTIVE
+
+    assert "card" in _ORDER_OBJECTIVE
+    assert "Plan executable leaf Items and link them" not in _ORDER_OBJECTIVE
+
+
 def test_the_surface_is_deterministic_and_bounded(tmp_path: Path) -> None:
     _store_path, context = _store(tmp_path)
 

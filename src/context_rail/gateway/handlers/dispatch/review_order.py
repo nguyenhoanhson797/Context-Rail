@@ -64,10 +64,20 @@ def _review_sections(
     scope = ", ".join(doc.relations.get("part_of", ())) or "(none)"
     changed = ", ".join(run["data"].get("files_changed") or ()) or "(none captured)"
     methods = ", ".join(profile.allowed_methods)
+    from context_rail.context import surface
+
+    try:
+        card = surface.card(ctx, slug)
+    except surface.SurfaceError:
+        card = None
+    workflow_text = (
+        surface.render_card(card) if card is not None else "(no workflow card)"
+    )
     return {
         "objective": bounded(
             f"Review candidate {candidate} for {title}.\n\n{doc.body}", 6000
         ),
+        "workflow": workflow_text,
         "selected scope": scope,
         "conventions": (
             "Judge the candidate commit against the Item's acceptance and the "

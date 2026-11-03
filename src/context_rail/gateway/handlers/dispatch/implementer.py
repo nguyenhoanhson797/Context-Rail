@@ -255,8 +255,18 @@ def _sections(plan: _Plan, doc: Doc) -> dict[str, str]:
     scope = ", ".join(doc.relations.get("part_of", ())) or "(none)"
     methods = ", ".join(plan.profile.allowed_methods)
     check_lines = "\n".join(f"- {slug}" for slug in plan.checks) or "(none declared)"
+    from context_rail.context import surface
+
+    try:
+        card = surface.card(plan.ctx, plan.slug)
+    except surface.SurfaceError:
+        card = None
+    workflow_text = (
+        surface.render_card(card) if card is not None else "(no workflow card)"
+    )
     return {
         "objective": bounded(f"{title}\n\n{doc.body}", 6000),
+        "workflow": workflow_text,
         "selected scope": scope,
         "conventions": (
             "Follow the repository's own conventions. Write the failing test first, "

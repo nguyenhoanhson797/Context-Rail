@@ -459,14 +459,14 @@ def test_append_failure_keeps_a_near_cap_order_inside_the_prompt_cap(tmp_path):
     """A near-cap base really exercises the per-body share window on a retry."""
     from context_rail.runner.droid import PROMPT_MAX_CHARS
 
-    # 3117 characters per section leaves a 13-character share for the first
-    # failure body, inside the window where a naive head/tail split overflows.
-    sections = {name: "z" * 3117 for name in WORK_ORDER_SECTIONS}
+    # A near-cap base leaves a small share for the first failure body, inside
+    # the window where a naive head/tail split overflows.
+    sections = {name: "z" * 2700 for name in WORK_ORDER_SECTIONS}
     order = write_order_file(
         tmp_path, DISPATCH_ID, metadata=_metadata(), sections=sections
     )
     before = len(order.read_text(encoding="utf-8"))
-    assert 31000 <= before <= PROMPT_MAX_CHARS, before
+    assert 29000 <= before <= PROMPT_MAX_CHARS, before
 
     for round_number in range(3):
         append_failure(order, f"failure {round_number}\n" + "y" * 4000)

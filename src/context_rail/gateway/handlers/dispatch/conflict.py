@@ -222,11 +222,21 @@ def _conflict_sections(
 ) -> dict[str, str]:
     names = ", ".join(conflicts)
     checks = ", ".join(row["slug"] for row in query.check_states(ctx.index, slug))
+    from context_rail.context import surface
+
+    try:
+        card = surface.card(ctx, slug)
+    except surface.SurfaceError:
+        card = None
+    workflow_text = (
+        surface.render_card(card) if card is not None else "(no workflow card)"
+    )
     return {
         "objective": bounded(
             f"Resolve the rebase conflict in {names} against {onto} for {doc.title or slug}.",
             6000,
         ),
+        "workflow": workflow_text,
         "selected scope": ", ".join(doc.relations.get("part_of", ())) or "(none)",
         "conventions": "Keep the candidate's intent and the human commit's intent.",
         "constraints": (
