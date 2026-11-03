@@ -141,6 +141,18 @@ class Workflow:
             return declared["merge"]
         return self.statuses.get(status) not in FINISHED_CATEGORIES
 
+    def gate_for(self, target: str) -> str | None:
+        """The gate this workflow evaluates on entering ``target``, if any."""
+        rule = self.quality.get(target)
+        return None if rule is None else rule.gate
+
+    def checks_for(self, target: str) -> tuple[str, ...] | None:
+        """The checks this workflow selects for ``target``, or None for all."""
+        rule = self.quality.get(target)
+        if rule is None or not rule.checks:
+            return None
+        return rule.checks
+
 
 @dataclass(frozen=True)
 class Preset:

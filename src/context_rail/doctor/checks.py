@@ -85,6 +85,7 @@ SEVERITIES: dict[str, str] = {
     "container_unset": "warning",
     "container_inconsistent": "warning",
     "quality_gate_unknown": "error",
+    "quality_legacy": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
@@ -166,6 +167,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
         issues.extend(_approval_issues(context))
         issues.extend(_gate_issues(context, policy))
         issues.extend(_quality_gate_issues(pack, policy))
+        issues.extend(_quality_legacy_issues(rows, pack, policy))
     issues.extend(_check_issues(context, ix))
     issues.extend(_review_issues(ix, policy))
     issues.extend(_report_issues(ix))
@@ -205,6 +207,31 @@ def _quality_gate_issues(pack: Pack, policy: Any) -> list[dict[str, Any]]:
         _issue("quality_gate_unknown", "pack.yaml", message)
         for message in quality_problems(pack, policy)
     ]
+
+
+def _quality_legacy_issues(
+    rows: list[_Row], pack: Pack, policy: Any
+) -> list[dict[str, Any]]:
+    """A done gate still chosen by the legacy scope-slug rule, not the workflow."""
+    scope = set(policy.project.get("scope") or ())
+    issues: list[dict[str, Any]] = []
+    for row in rows:
+        if row.primitive != "item" or row.preset not in pack.presets:
+            continue
+        if row.slug not in scope or row.category != "done":
+            continue
+        workflow = pack.workflow_for(row.preset)
+        if not workflow.quality or workflow.gate_for(row.status or "") is not None:
+            continue
+        issues.append(
+            _issue(
+                "quality_legacy",
+                row.path,
+                "the done gate still comes from the scope-slug rule; give the "
+                f"{workflow.name!r} workflow a quality rule for {row.status!r}",
+            )
+        )
+    return issues
 
 
 def _policy(context: Any) -> tuple[list[dict[str, Any]], Any]:

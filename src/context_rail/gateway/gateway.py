@@ -75,6 +75,7 @@ class Context:
     manifest: Manifest
     pack: Pack
     actor: str
+    actor_named: bool = True
     _index: Index | None = field(default=None, repr=False)
 
     @property
@@ -171,7 +172,7 @@ def invoke(
         else:
             params = _parameters(tool, args)
         if tool.name not in {"init", "migrate"}:
-            context = _open_context(store, resolved_actor)
+            context = _open_context(store, resolved_actor, actor_named)
         refusal = _authorize(
             tool, params, context, resolved_actor, actor_env, actor_named
         )
@@ -478,14 +479,20 @@ def _coerce(tool: Tool, param: Param, raw: Any) -> Any:
     return raw
 
 
-def _open_context(store: Path | str | None, actor: str) -> Context:
+def _open_context(store: Path | str | None, actor: str, actor_named: bool = True) -> Context:
     """The store the call runs against, with its validated manifest and pack."""
     found = Path(store) if store is not None else find_store(Path.cwd())
     if found is None or not (found / "rail.yaml").is_file():
         raise WriteRefused("NOT_FOUND", "no store found")
     manifest = load_manifest(found)
     pack = load_pack(manifest.pack, found)
-    return Context(store=found, manifest=manifest, pack=pack, actor=actor)
+    return Context(
+        store=found,
+        manifest=manifest,
+        pack=pack,
+        actor=actor,
+        actor_named=actor_named,
+    )
 
 
 def _handler(spec: str) -> Handler:

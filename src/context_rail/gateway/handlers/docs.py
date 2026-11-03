@@ -531,8 +531,7 @@ def move(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             raise WriteRefused(
                 "VALIDATION_FAILED", "a resolution must be non-empty text", {"path": rel}
             )
-        if category_of(ctx.pack, target) == "done":
-            _require_done_gate(ctx, doc, actor)
+        _require_gate(ctx, doc, target, actor)
         front = doc_frontmatter(doc)
         front["status"] = target
         if resolution is not None:
@@ -757,31 +756,78 @@ def _response(store: Path, index: Index, result: dict[str, Any]) -> dict[str, An
     }
 
 
-def _require_done_gate(ctx: Context, doc: Doc, actor: str) -> None:
-    """Refuse a done move when the charter gate has no current proof for it.
+def _require_gate(ctx: Context, doc: Doc, target: str, actor: str) -> None:
+    """Refuse a move the workflow's gate, or the done default, does not allow.
 
     The newest separated review of the Item supplies the candidate commit the
-    gate binds its Checks to; without one the gate stays shut, so an approval
-    can never be implied by the transition itself.
+    gate binds its Checks to; without a review the newest Check's candidate is
+    used, so an approval is never implied by the transition itself.
     """
     policy = ctx.policy
     if policy is None:
         return
-    name = "scope_done" if doc.slug in policy.project.get("scope", ()) else "item_done"
+    workflow = ctx.pack.workflow_for(doc.preset or "")
+    name = workflow.gate_for(target)
+    if name is None:
+        if category_of(ctx.pack, target) != "done":
+            return
+        name = (
+            "scope_done"
+            if doc.slug in policy.project.get("scope", ())
+            else "item_done"
+        )
+    required = workflow.checks_for(target)
+    rows = query.check_states(ctx.index, doc.slug)
+    missing: list[str] = []
+    if required is None:
+        selected = rows
+    else:
+        by_slug = {row["slug"]: row for row in rows}
+        selected = [by_slug[slug] for slug in required if slug in by_slug]
+        missing = [slug for slug in required if slug not in by_slug]
+    states = [check_gate_state(ctx, row) for row in selected]
     review = review_gate_state(query.review_for_item(ctx.index, doc.slug))
+    candidate = review.candidate if review is not None else next(
+        (state.candidate for state in states if state.candidate), None
+    )
     decision = gates.evaluate_gate(
         policy,
         name,
         doc.slug,
-        [check_gate_state(ctx, row) for row in query.check_states(ctx.index, doc.slug)],
+        states,
         review,
-        actor == "human",
-        review.candidate if review is not None else None,
+        actor == "human" and ctx.actor_named,
+        candidate,
     )
-    if decision.allowed:
+    if decision.allowed and not missing:
         return
+    reasons = list(decision.reasons)
+    if missing:
+        reasons.append("required check(s) are not declared: " + ", ".join(missing))
+    stale = [
+        state.slug
+        for state in states
+        if state.freshness != "fresh" or not state.passed
+    ]
     raise WriteRefused(
         "BUSINESS_RULE_VIOLATED",
         f"the {name} gate is not satisfied",
-        {"gate": name, "path": doc.path, "reasons": list(decision.reasons)},
+        {
+            "gate": name,
+            "path": doc.path,
+            "candidate": candidate,
+            "missing": [*missing, *stale],
+            "reasons": reasons,
+            "command": _gate_command(doc.slug, missing),
+        },
     )
+
+
+def _gate_command(slug: str, missing: list[str]) -> str:
+    """The one command that produces the proof a gate named as missing."""
+    if missing:
+        return (
+            f"rail check {missing[0]} --target {slug} "
+            f"--spec-file <file> --expect absent"
+        )
+    return f"rail verify {slug}"
