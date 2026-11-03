@@ -100,6 +100,7 @@ Exact flags: `references/commands.md` in this skill.
 | You need | Load |
 |---|---|
 | Custom document types, statuses, transitions, BA/PO steps, pack switching | `context-rail-v3-workflows` |
+| Create a pack, add document types, require metadata, change placement | `context-rail-v3-pack-authoring` |
 | Run or supervise the agent loop: dispatch → verify → review → merge | `context-rail-v3-loop` |
 | Doctor, reindex, recovery, git sync, budgets, test lanes | `context-rail-v3-ops` |
 | Every flag for every command | `references/commands.md` |
