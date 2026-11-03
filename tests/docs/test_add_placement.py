@@ -112,6 +112,27 @@ def test_add_and_record_use_the_resolver(tmp_path: Path) -> None:
         f"{result['record']}.json"
     )
 
+    updated = invoke(
+        "update",
+        {
+            "slug": "implement-checkout",
+            "set": ["area=backend"],
+            "expect": task["etag"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert updated["ok"] is True, updated
+    assert updated["value"]["path"] == (
+        "items/phase/phase-1/sprint-3/backend/implement-checkout.md"
+    )
+    assert not (store / task["path"]).exists()
+    moved_record = store / (
+        "records/items/phase/phase-1/sprint-3/backend/implement-checkout/"
+        f"{result['record']}.json"
+    )
+    assert moved_record.is_file()
+
 
 def test_relocate_moves_a_record_without_rewriting_it(tmp_path: Path) -> None:
     store = _store(tmp_path)

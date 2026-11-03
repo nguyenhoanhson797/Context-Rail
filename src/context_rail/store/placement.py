@@ -491,7 +491,12 @@ def _render_simple_request(manifest: Manifest, request: PlacementRequest) -> str
         ) from None
 
 
-def expected_path(context: PlacementContext, request: PlacementRequest) -> str:
+def expected_path(
+    context: PlacementContext,
+    request: PlacementRequest,
+    *,
+    allow_existing: bool = False,
+) -> str:
     """The one path a new document or record must use."""
     if request.primitive not in PRIMITIVES:
         raise PlacementError(
@@ -508,7 +513,7 @@ def expected_path(context: PlacementContext, request: PlacementRequest) -> str:
     ):
         return _render_simple_request(context.manifest, request)
     graph = PlacementGraph(context)
-    if request.slug in graph.nodes:
+    if not allow_existing and request.slug in graph.nodes:
         raise PlacementError(
             "placement_ambiguous",
             f"slug {request.slug!r} already exists",

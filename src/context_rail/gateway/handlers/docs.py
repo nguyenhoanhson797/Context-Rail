@@ -45,6 +45,8 @@ from context_rail.store.placement import (
     PlacementError,
     PlacementRequest,
     expected_path,
+    expected_paths,
+    is_scoped_skill,
 )
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay, resolve_unique
 
@@ -233,6 +235,63 @@ def _add_record(
     return commit(store, ctx.manifest, [], request, actor=actor, key=key, index=index)
 
 
+def _placement_ops(
+    ctx: Context,
+    index: Index,
+    preset: Preset,
+    doc: Doc,
+    rel: str,
+    actual: str,
+    after: bytes,
+    fields: dict[str, Any],
+    relations: dict[str, tuple[str, ...]],
+) -> tuple[list[Op], str, bool]:
+    """The edited bytes and every descendant move, or one op when unchanged."""
+    try:
+        target = expected_path(
+            PlacementContext(manifest=ctx.manifest, pack=ctx.pack, index=index),
+            PlacementRequest(
+                primitive=preset.primitive,
+                preset=preset.name,
+                slug=doc.slug,
+                created=doc.created,
+                fields=fields,
+                relations=relations,
+            ),
+            allow_existing=True,
+        )
+    except PlacementError as error:
+        raise WriteRefused(error.write_code, error.message, error.details) from None
+    if target == rel:
+        return [Op(rel, after, actual)], rel, False
+    store = ctx.store
+    found, _errors = expected_paths(
+        index,
+        ctx.manifest,
+        ctx.pack,
+        overrides={doc.slug: target},
+    )
+    current = {
+        slug: path
+        for slug, path in index.conn.execute(
+            "SELECT slug, path FROM docs WHERE broken = 0 ORDER BY path"
+        )
+    }
+    ops = [Op(target, after, ABSENT), Op(rel, None, actual)]
+    records = False
+    for slug, path in found.items():
+        if slug == doc.slug:
+            continue
+        source = current.get(slug)
+        if source is None or source == path or is_scoped_skill(source):
+            continue
+        data = (store / source).read_bytes()
+        ops.append(Op(source, None, etag(data)))
+        ops.append(Op(path, data, ABSENT))
+        records = records or source.startswith("records/")
+    return ops, target, records
+
+
 def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Change fields, tags or body; never status, identity or a record."""
     values = parse_set_values(args["set"])
@@ -318,19 +377,36 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 after_etag=etag(after),
                 slug=doc.slug,
             )
+        if preset is None:
+            ops = [Op(rel, after, actual)]
+            records = False
+            target = rel
+        else:
+            ops, target, records = _placement_ops(
+                ctx,
+                index,
+                preset,
+                doc,
+                rel,
+                actual,
+                after,
+                merged,
+                doc.relations,
+            )
         result = commit(
             store,
             ctx.manifest,
-            [Op(rel, after, actual)],
+            ops,
             record
             or {
                 "kind": "doc.updated",
                 "about": [doc.slug],
-                "data": {"path": rel},
+                "data": {"path": target},
             },
             actor=actor,
             key=key,
             index=index,
+            allow_record_relocation=records,
         )
     return _response(store, index, result)
 
@@ -565,10 +641,32 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             )
         if decision is not None:
             extra.append(decision)
+        preset = ctx.pack.presets.get(doc.preset or "")
+        relations_after = dict(doc.relations)
+        if targets:
+            relations_after[name] = tuple(targets)
+        else:
+            relations_after.pop(name, None)
+        if preset is None:
+            ops = [Op(rel, after, actual)]
+            records = False
+            target_path = rel
+        else:
+            ops, target_path, records = _placement_ops(
+                ctx,
+                index,
+                preset,
+                doc,
+                rel,
+                actual,
+                after,
+                doc.fields,
+                relations_after,
+            )
         result = commit(
             store,
             ctx.manifest,
-            [Op(rel, after, actual)],
+            ops,
             {
                 "kind": "relation.changed",
                 "about": [doc.slug],
@@ -578,6 +676,7 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             key=key,
             index=index,
             extra_records=tuple(extra),
+            allow_record_relocation=records,
         )
     return {
         **_response(store, index, result),
