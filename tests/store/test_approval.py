@@ -23,6 +23,7 @@ from context_rail.store.approval import (
 from helpers import touch_doc
 
 PACK_KEY = "@pack/basic/policy"
+PACK_DIGEST = "@pack/basic"
 MUST = "project/send-invoice.md"
 PROTECTED_PATHS = (
     "charter.md",
@@ -77,7 +78,7 @@ def test_approve_records_semantic_hashes_of_the_protected_set(
     assert data["confirmation"] == "APPROVE charter"
 
     hashes = data["protected_hashes"]
-    assert set(hashes) == {*PROTECTED_PATHS, PACK_KEY}
+    assert set(hashes) == {*PROTECTED_PATHS, PACK_KEY, PACK_DIGEST}
     for rel in PROTECTED_PATHS:
         data_bytes = (approved_store / rel).read_bytes()
         expected = semantic_hash(
@@ -480,3 +481,26 @@ def test_execution_tools_parse_the_charter_before_running(
         result = invoke(tool, args, store=approved_store, actor="cto")
         assert result["ok"] is False, (tool, result)
         assert result["error"]["code"] in {"VALIDATION_FAILED", "FORBIDDEN"}, result
+
+
+def test_a_pack_change_flips_the_charter_approval(approved_store: Path) -> None:
+    from importlib import resources
+
+    store = approved_store
+    source = resources.files("context_rail").joinpath("packs", "basic", "pack.yaml")
+    text = source.read_text(encoding="utf-8").replace(
+        "todo: [doing, dropped]",
+        "todo: [doing, blocked, dropped]",
+    )
+    local = store / "packs" / "basic" / "pack.yaml"
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text(text, encoding="utf-8", newline="\n")
+
+    context = Context(
+        store=store,
+        manifest=load_manifest(store),
+        pack=load_pack("basic", store),
+        actor="human",
+    )
+
+    assert approval_state(context, "charter")["state"] == "mismatch"

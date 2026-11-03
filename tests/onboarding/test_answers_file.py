@@ -210,6 +210,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
     assert implementer["auto"] == "medium"
     assert implementer["tools"] == seven
     assert implementer["allowed_methods"] == [
+        "do",
         "find",
         "show",
         "cto brief",
@@ -329,11 +330,11 @@ def test_unknown_answer_key_writes_nothing(tmp_path: Path, answers_with_extra_ke
     assert not (tmp_path / STORE).exists()
 
 
-def test_fifth_gate_and_missing_release_are_refused(
+def test_an_unsafe_gate_and_missing_release_are_refused(
     tmp_path: Path, picture_answers: dict[str, Any]
 ) -> None:
     extra_gate = copy.deepcopy(picture_answers)
-    extra_gate["charter"]["gates"]["deploy"] = {
+    extra_gate["charter"]["gates"]["Deploy"] = {
         "require_checks": True,
         "require_acceptance": True,
         "require_review": True,

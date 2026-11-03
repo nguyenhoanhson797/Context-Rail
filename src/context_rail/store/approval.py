@@ -36,6 +36,7 @@ __all__ = [
     "APPROVAL_SCHEMA",
     "LIFECYCLE_KEYS",
     "PACK_POLICY_KEY",
+    "PACK_DIGEST_KEY",
     "STATES",
     "approval_state",
     "charter_document",
@@ -51,6 +52,7 @@ APPROVAL_KIND = "approval.recorded"
 LIFECYCLE_KEYS = ("status", "resolution", "updated")
 STATES = ("missing", "mismatch", "approved")
 PACK_POLICY_KEY = "@pack/{name}/policy"
+PACK_DIGEST_KEY = "@pack/{name}"
 MANIFEST_PATH = "rail.yaml"
 _CHARTER_PRESET = "charter"
 _POLICY_PRIMITIVE = "policy"
@@ -183,6 +185,10 @@ def protected_snapshot(
             else None
         )
     hashes[PACK_POLICY_KEY.format(name=name)] = _policy_hash(context, name)
+    pack = context.pack if name == context.pack.name else load_pack(name, context.store)
+    from context_rail.store.index import pack_hash
+
+    hashes[PACK_DIGEST_KEY.format(name=name)] = pack_hash(pack)
     return hashes
 
 
