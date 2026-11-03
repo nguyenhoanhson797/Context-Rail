@@ -27,6 +27,7 @@ from context_rail.gateway.handlers.common import (
     slug_of_path,
     template_body,
     unique_slug,
+    validate_relation_targets,
     versioned_change_record,
     versioned_kind,
 )
@@ -84,6 +85,7 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         for targets in relations.values():
             for target in targets:
                 resolve_unique(index, target)
+        validate_relation_targets(index, slugify(title), preset.primitive, relations)
         if preset.primitive == "record":
             result = _add_record(
                 ctx, index, preset, title, relations, fields, tags, body, key, actor
@@ -592,6 +594,13 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 {"path": rel, "expected": expect, "actual": actual},
             )
         resolve_unique(index, dst)
+        if not remove:
+            validate_relation_targets(
+                index,
+                doc.slug,
+                doc.primitive,
+                {name: [*doc.relations.get(name, ()), dst]},
+            )
         before = list(doc.relations.get(name, ()))
         targets = list(before)
         if remove:

@@ -73,6 +73,7 @@ STAGE1A_CODES = {
     "quality_gate_unknown",
     "quality_legacy",
     "constitution_drift",
+    "relation_type",
     "unknown_preset",
     "preset_field_hint",
 }

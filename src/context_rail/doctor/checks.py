@@ -87,6 +87,7 @@ SEVERITIES: dict[str, str] = {
     "quality_gate_unknown": "error",
     "quality_legacy": "warning",
     "constitution_drift": "warning",
+    "relation_type": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
@@ -161,6 +162,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
             )
         )
     issues.extend(_duplicate_issues(slugs))
+    issues.extend(_relation_type_issues(rows, relations))
     issues.extend(_intent_issues(store))
     policy_issues, policy = _policy(context)
     issues.extend(policy_issues)
@@ -627,6 +629,36 @@ def _tampered(store: Path, path: str) -> bool:
     if not isinstance(payload, dict):
         return False
     return payload.get("digest") != record_digest(payload)
+
+
+def _relation_type_issues(
+    rows: list[_Row], relations: dict[str, list[tuple[str, str]]]
+) -> list[dict[str, Any]]:
+    """Typed edges whose endpoints do not match, reported as legacy warnings."""
+    from context_rail.kernel.relations import endpoint_problem
+
+    by_path = {row.path: row for row in rows}
+    primitive = {row.slug: row.primitive for row in rows}
+    issues: list[dict[str, Any]] = []
+    for path, edges in relations.items():
+        source = by_path.get(path)
+        if source is None or source.primitive is None:
+            continue
+        for relation, target in edges:
+            if target not in primitive:
+                continue
+            problem = endpoint_problem(
+                relation,
+                source.primitive,
+                primitive.get(target),
+                source_slug=source.slug,
+                target_slug=target,
+            )
+            if problem is not None:
+                issues.append(
+                    _issue("relation_type", path, problem)
+                )
+    return issues
 
 
 def _duplicate_issues(slugs: dict[str, list[str]]) -> list[dict[str, Any]]:

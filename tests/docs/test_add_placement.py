@@ -107,7 +107,7 @@ def test_rename_moves_a_structural_document_and_rewrites_its_links(
     _add(store, "sprint", "Sprint 3", ["part_of=phase-1"])
     task = _add(store, "task", "Task", ["part_of=sprint-3"])
     child = _add(store, "task", "Child", ["part_of=task"])
-    note = _add(store, "note", "About child", ["part_of=child"])
+    note = _add(store, "note", "About child", ["about=child"])
     result = _add(store, "result", "UI", ["about=child"])
 
     renamed = invoke(

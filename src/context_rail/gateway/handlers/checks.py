@@ -22,6 +22,7 @@ from context_rail.gateway.handlers.common import (
     prepare_document_fields,
     preset_for,
     template_body,
+    validate_relation_targets,
 )
 from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import Check, parse_check, parse_verdict
@@ -98,6 +99,7 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         preset = preset_for(ctx.pack, "check")
         target = _trimmed(args.get("target"))
         relations = {"verifies": (target,)} if target else {}
+        validate_relation_targets(index, slug, "check", relations)
         try:
             rel = expected_path(
                 PlacementContext(

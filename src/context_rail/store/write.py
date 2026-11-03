@@ -40,6 +40,7 @@ from context_rail.model.manifest import Manifest
 from context_rail.model.metadata import prepare_fields
 from context_rail.model.pack import load_pack
 from context_rail.model.primitives import PRIMITIVES, RECORD_STAMPED_KEYS, RELATIONS
+from context_rail.kernel.relations import endpoint_problem
 from context_rail.store.adapters import ADAPTER_PREFIX, project_root, resolve_adapter
 from context_rail.store.doc import etag, parse_doc, record_digest
 from context_rail.store.index import Index
@@ -539,6 +540,7 @@ def _build_records(
     seen: set[str] = set()
     planned: list[_Record] = []
     for request in requests:
+        _check_record_relations(index, request)
         record = _build_record(store, manifest, request, actor, context)
         identity = _identity(record.path)
         if record.rel in op_rels or identity in op_paths:
@@ -556,6 +558,32 @@ def _build_records(
         seen.add(identity)
         planned.append(record)
     return tuple(planned)
+
+
+def _check_record_relations(index: Index | None, request: _RecordRequest) -> None:
+    """Typed record edges must match the target primitive when the index is open."""
+    if index is None or not request.relations:
+        return
+    for relation, targets in request.relations.items():
+        for target in targets:
+            row = index.conn.execute(
+                "SELECT primitive FROM docs WHERE slug = ? ORDER BY path LIMIT 1",
+                (target,),
+            ).fetchone()
+            primitive = row[0] if row is not None else None
+            problem = endpoint_problem(
+                relation,
+                request.primitive,
+                primitive,
+                source_slug=request.slug,
+                target_slug=target,
+            )
+            if problem is not None:
+                raise WriteRefused(
+                    "VALIDATION_FAILED",
+                    problem,
+                    {"relation": relation, "target": target},
+                )
 
 
 def _pending_documents(targets: Sequence[_Target]) -> tuple[PendingDocument, ...]:

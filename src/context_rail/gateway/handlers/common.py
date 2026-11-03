@@ -12,6 +12,7 @@ import yaml
 
 from context_rail.core.util import dump_frontmatter, load_yaml, slugify
 from context_rail.kernel import gates, rights
+from context_rail.kernel.relations import endpoint_problem, reachable
 from context_rail.model.cto import Profile, parse_profile, parse_report
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import render_path
@@ -29,6 +30,63 @@ from context_rail.store.write import WriteRefused, commit, resolve_unique
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
+
+
+def validate_relation_targets(
+    index: Index,
+    source_slug: str,
+    source_primitive: str | None,
+    relations: dict[str, list[str] | tuple[str, ...]],
+) -> None:
+    """Refuse a typed edge whose endpoints are wrong or that closes a cycle."""
+    edges = _part_of_edges(index)
+    for relation, targets in relations.items():
+        for target in targets:
+            path = resolve_unique(index, target)
+            row = index.conn.execute(
+                "SELECT primitive FROM docs WHERE path = ?", (path,)
+            ).fetchone()
+            primitive = row[0] if row is not None else None
+            problem = endpoint_problem(
+                relation,
+                source_primitive,
+                primitive,
+                source_slug=source_slug,
+                target_slug=target,
+            )
+            if problem is not None:
+                raise WriteRefused(
+                    "VALIDATION_FAILED",
+                    problem,
+                    {
+                        "relation": relation,
+                        "source": source_slug,
+                        "target": target,
+                        "source_primitive": source_primitive,
+                        "target_primitive": primitive,
+                    },
+                )
+            if relation == "part_of":
+                edges.setdefault(source_slug, []).append(target)
+                if reachable(edges, target, source_slug):
+                    raise WriteRefused(
+                        "CYCLE_DETECTED",
+                        f"part_of from {source_slug!r} to {target!r} closes a cycle",
+                        {
+                            "relation": relation,
+                            "source": source_slug,
+                            "target": target,
+                        },
+                    )
+
+
+def _part_of_edges(index: Index) -> dict[str, list[str]]:
+    edges: dict[str, list[str]] = {}
+    for source, target in index.conn.execute(
+        "SELECT src, dst FROM relations WHERE rel = 'part_of'"
+    ):
+        edges.setdefault(source, []).append(target)
+    return edges
 
 
 def validate_field_values(fields: dict[str, Any]) -> None:

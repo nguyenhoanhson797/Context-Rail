@@ -62,7 +62,7 @@ def test_a_nested_pack_survives_placement_metadata_rename_and_the_guards(
         ["area=frontend"],
     )
     result = _add(store, "result", "Screenshots", [f"about={task['slug']}"])
-    note = _add(store, "note", "About the task", [f"part_of={task['slug']}"])
+    note = _add(store, "note", "About the task", [f"about={task['slug']}"])
 
     assert phase["path"] == "items/phase/phase-1.md"
     assert sprint["path"] == "items/phase/phase-1/sprint-3.md"
