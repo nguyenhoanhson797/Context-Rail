@@ -13,7 +13,7 @@ from typing import Any
 
 from context_rail.core.util import dump_frontmatter, slugify
 from context_rail.model.errors import ModelError
-from context_rail.model.manifest import Manifest, render_path
+from context_rail.model.manifest import Manifest, manifest_needs_graph, render_path
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import RELATIONS
 from context_rail.store.doc import record_digest
@@ -89,6 +89,12 @@ def plan_migration(
     at: str,
 ) -> MigrationPlan:
     """Map every legacy document and event into v3 bytes."""
+    if manifest_needs_graph(manifest):
+        raise ModelError(
+            "VALIDATION_FAILED",
+            "migration cannot build a legacy store's work graph; "
+            "use a placement without structural tokens",
+        )
     warnings: list[str] = list(legacy.warnings)
     slugs = _slugs(legacy.documents)
     documents: list[MigrationDocument] = []

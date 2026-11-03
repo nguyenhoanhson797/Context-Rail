@@ -18,6 +18,7 @@ from context_rail.gateway.confirmation import (
 from context_rail.kernel.packs import parse_map_entries, plan_status_map
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import initial_manifest, manifest_from_mapping
+from context_rail.model.metadata import ENGINE_PRESETS
 from context_rail.model.pack import (
     REQUIRED_PRESETS,
     check_pack_name,
@@ -118,6 +119,7 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
                         "message": f"pack {name!r} declares no required preset {preset!r}",
                     }
                 )
+        problems.extend(_engine_metadata_problems(pack, name))
         templates = {f"templates/{template}.md" for template in _TEMPLATES}
         templates.update(
             preset.template.replace("{primitive}", preset.primitive)
@@ -238,6 +240,13 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "VALIDATION_FAILED",
                 "the store uses presets or fields the target pack does not declare",
                 {"unsupported": unsupported},
+            )
+        engine_metadata = _engine_metadata_problems(target, target.name)
+        if engine_metadata:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "the target pack needs defaults on engine-created presets",
+                {"unsupported": engine_metadata},
             )
 
         ops = []
@@ -369,6 +378,35 @@ def _unsupported_fields(items: list[dict[str, Any]], source: Any, target: Any) -
                 problems.append(
                     {"path": row["path"], "field": key, "value": row["fields"][key]}
                 )
+        for name in target_preset.required:
+            if name in target_preset.defaults:
+                continue
+            if name not in row["fields"] or row["fields"][name] in ("", [], {}, None):
+                problems.append(
+                    {"path": row["path"], "field": name, "value": None}
+                )
+    return problems
+
+
+def _engine_metadata_problems(pack: Any, name: str) -> list[dict[str, str]]:
+    """Engine-written presets need a default for every required field."""
+    problems: list[dict[str, str]] = []
+    for preset_name in sorted(ENGINE_PRESETS):
+        preset = pack.presets.get(preset_name)
+        if preset is None:
+            continue
+        missing = [field for field in preset.required if field not in preset.defaults]
+        if missing:
+            problems.append(
+                {
+                    "path": f"presets.{preset_name}",
+                    "message": (
+                        f"pack {name!r} requires "
+                        + ", ".join(missing)
+                        + " on an engine-created preset; give it a default"
+                    ),
+                }
+            )
     return problems
 
 
