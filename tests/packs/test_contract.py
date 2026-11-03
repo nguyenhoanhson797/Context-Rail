@@ -77,6 +77,50 @@ def test_pack_validate_accepts_a_named_workflow(tmp_path: Path) -> None:
     assert result["value"] == {"valid": True, "problems": []}
 
 
+def test_pack_validate_reports_a_gate_the_charter_does_not_declare(
+    tmp_path: Path,
+) -> None:
+    from context_rail.core.util import dump_frontmatter
+
+    store = init_store(tmp_path)
+    document = _basic_document()
+    document["name"] = "gated"
+    document["workflows"] = {
+        "bugfix": {
+            "initial": "todo",
+            "transitions": {"todo": ["done"], "done": []},
+            "quality": {"done": {"gate": "bug_done", "checks": ["repro-check"]}},
+        }
+    }
+    document["presets"]["bug"]["workflow"] = "bugfix"
+    write_pack(store, "gated", document)
+    copy_pack_templates(store, "gated")
+    charter = {
+        "primitive": "policy",
+        "preset": "charter",
+        "title": "Charter",
+        "tags": [],
+        "created": "2026-10-28T00:00:00Z",
+        "updated": "2026-10-28T00:00:00Z",
+        "schema": 1,
+        "project": {"goal": "ship", "vision": "v", "scope": [], "wont": []},
+        "protected_files": [],
+        "default_branch": "main",
+    }
+    (store / "charter.md").write_text(
+        "---\n" + dump_frontmatter(charter) + "---\n# Charter\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = invoke("pack validate", {"name": "gated"}, store=store, actor="human")
+
+    assert result["ok"] is True
+    assert result["value"]["valid"] is False
+    messages = " ".join(problem["message"] for problem in result["value"]["problems"])
+    assert "bug_done" in messages
+
+
 def test_pack_validate_refuses_a_preset_template_that_does_not_exist(
     tmp_path: Path,
 ) -> None:

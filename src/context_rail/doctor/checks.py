@@ -84,6 +84,7 @@ SEVERITIES: dict[str, str] = {
     "record_metadata_invalid": "warning",
     "container_unset": "warning",
     "container_inconsistent": "warning",
+    "quality_gate_unknown": "error",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
@@ -164,6 +165,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     if policy is not None:
         issues.extend(_approval_issues(context))
         issues.extend(_gate_issues(context, policy))
+        issues.extend(_quality_gate_issues(pack, policy))
     issues.extend(_check_issues(context, ix))
     issues.extend(_review_issues(ix, policy))
     issues.extend(_report_issues(ix))
@@ -193,6 +195,16 @@ def gate_report(
 def _context(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> Any:
     """The read-only slice of a gateway context the doctor's checks need."""
     return SimpleNamespace(store=Path(store), manifest=manifest, pack=pack, index=ix)
+
+
+def _quality_gate_issues(pack: Pack, policy: Any) -> list[dict[str, Any]]:
+    """Every workflow rule that names a gate the charter does not declare."""
+    from context_rail.model.policy import quality_problems
+
+    return [
+        _issue("quality_gate_unknown", "pack.yaml", message)
+        for message in quality_problems(pack, policy)
+    ]
 
 
 def _policy(context: Any) -> tuple[list[dict[str, Any]], Any]:

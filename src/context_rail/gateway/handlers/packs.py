@@ -124,6 +124,7 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
                     }
                 )
         problems.extend(_engine_metadata_problems(pack, name))
+        problems.extend(_quality_problems(ctx, pack))
         templates = {f"templates/{template}.md" for template in _TEMPLATES}
         templates.update(
             preset.template.replace("{primitive}", preset.primitive)
@@ -472,6 +473,25 @@ def _engine_metadata_problems(pack: Any, name: str) -> list[dict[str, str]]:
                 }
             )
     return problems
+
+
+def _quality_problems(ctx: Context, pack: Any) -> list[dict[str, str]]:
+    """A workflow gate must be declared by the store's charter."""
+    from context_rail.model.policy import parse_charter, quality_problems
+    from context_rail.store.approval import charter_document
+
+    found = charter_document(ctx)
+    if found is None:
+        return []
+    try:
+        charter = parse_charter(found[1])
+    except ModelError:
+        # The doctor owns the invalid-charter report; validation stays read-only.
+        return []
+    return [
+        {"path": "pack.yaml", "message": message}
+        for message in quality_problems(pack, charter)
+    ]
 
 
 def _rewrite_status(data: bytes, status: str) -> bytes:

@@ -18,6 +18,7 @@ from context_rail.model.policy import (
     parse_answers,
     parse_charter,
     parse_project,
+    quality_problems,
 )
 from context_rail.model.primitives import CHARTER_KEYS, PACK_POLICY_KEYS, POLICY_KEYS
 
@@ -116,15 +117,53 @@ def test_unknown_charter_schema_is_unsupported() -> None:
     assert excinfo.value.code == "SCHEMA_UNSUPPORTED"
 
 
-def test_gate_set_is_exact() -> None:
+def test_a_safe_named_gate_is_additive() -> None:
     extra = charter_fields()
-    extra["gates"]["deploy"] = dict(extra["gates"]["release"])
-    with pytest.raises(ModelError):
-        parse_charter(extra)
+    extra["gates"]["bug_done"] = dict(extra["gates"]["release"])
+    charter = parse_charter(extra)
+
+    assert charter.gates["bug_done"] == Gate(True, True, True, True)
+    assert set(GATES) <= set(charter.gates)
+
     missing = charter_fields()
     missing["gates"].pop("release")
     with pytest.raises(ModelError):
         parse_charter(missing)
+
+
+@pytest.mark.parametrize("name", ["bug/done", "bug:done", "Bug_done", "bug done", ""])
+def test_an_unsafe_gate_name_is_refused(name: str) -> None:
+    extra = charter_fields()
+    extra["gates"][name] = dict(extra["gates"]["release"])
+    with pytest.raises(ModelError):
+        parse_charter(extra)
+
+
+def test_quality_problems_name_every_unknown_gate() -> None:
+    from types import SimpleNamespace
+
+    from context_rail.model.pack import QualityRule, Workflow
+
+    pack = SimpleNamespace(
+        workflows={
+            "bugfix": Workflow(
+                name="bugfix",
+                initial="todo",
+                transitions={},
+                execution={},
+                quality={"done": QualityRule("bug_done", ("repro",))},
+            )
+        }
+    )
+    charter = parse_charter(minimal_charter())
+
+    assert quality_problems(pack, charter) == [
+        "workflow 'bugfix' status 'done' names unknown gate 'bug_done'"
+    ]
+
+    charter = parse_charter(charter_fields())
+    charter.gates["bug_done"] = charter.gates["release"]
+    assert quality_problems(pack, charter) == []
 
 
 def test_gates_default_to_the_pinned_set() -> None:

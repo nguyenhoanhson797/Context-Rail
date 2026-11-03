@@ -16,7 +16,13 @@ from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import load_manifest
 from context_rail.store.doc import etag
 from context_rail.store.location import local_dir
-from helpers import init_pack_store, nested_pack_document, run_cli, touch_doc
+from helpers import (
+    init_pack_store,
+    nested_pack_document,
+    run_cli,
+    touch_doc,
+    workflow_pack_document,
+)
 
 STAMP = "2026-10-28T00:00:00Z"
 INTENT_ID = "01J0000000000000000000000A"
@@ -589,7 +595,9 @@ def test_doctor_repair_completes_a_pending_intent(store_factory) -> None:
 
 def _container_store(tmp_path: Path, container: bool | None) -> Path:
     document = nested_pack_document("nested")
-    if container is not None:
+    if container is None:
+        document["presets"]["task"].pop("container", None)
+    else:
         document["presets"]["task"]["container"] = container
     return init_pack_store(tmp_path, document)
 
@@ -605,6 +613,43 @@ def _container_pair(store: Path, parent_status: str) -> None:
         "items/task/child.md",
         _task("child", part_of=["[[parent]]"], area="general"),
     )
+
+
+def test_a_workflow_gate_missing_from_the_charter_is_an_error(tmp_path: Path) -> None:
+    document = workflow_pack_document("gated")
+    document["workflows"]["bugfix"]["quality"] = {
+        "fixing": {"gate": "bug_done", "checks": ["repro-check"]}
+    }
+    store = init_pack_store(tmp_path, document)
+    _write(
+        store,
+        "charter.md",
+        {
+            "primitive": "policy",
+            "preset": "charter",
+            "title": "Charter",
+            "tags": [],
+            "created": STAMP,
+            "updated": STAMP,
+            "schema": 1,
+            "project": {
+                "goal": "ship",
+                "vision": "v",
+                "scope": [],
+                "wont": [],
+            },
+            "protected_files": [],
+            "default_branch": "main",
+        },
+    )
+
+    report = _doctor(store)
+    issue = next(
+        item for item in report["issues"] if item["code"] == "quality_gate_unknown"
+    )
+
+    assert issue["severity"] == "error"
+    assert "bug_done" in issue["message"]
 
 
 def test_container_unset_is_a_warning_when_a_preset_has_children(

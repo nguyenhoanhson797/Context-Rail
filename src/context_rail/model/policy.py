@@ -7,6 +7,7 @@ human-only floor or a finite-number threshold that is not finite is refused.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -40,12 +41,14 @@ __all__ = [
     "parse_answers",
     "parse_charter",
     "parse_project",
+    "quality_problems",
 ]
 
 CHARTER_SCHEMA = 1
 ANSWERS_SCHEMA = 1
 GATES = ("item_done", "scope_done", "merge", "release")
 GATE_KEYS = ("require_checks", "require_acceptance", "require_review", "require_human")
+_GATE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 DECISION_RIGHTS: dict[str, tuple[str, ...]] = {
     "cto-alone": (
@@ -233,17 +236,34 @@ def _gates(raw: Any) -> dict[str, Gate]:
             for name in GATES
         }
     data = mapping(raw, "charter.gates")
-    no_unknown(data, GATES, "charter.gates")
+    for name in data:
+        if name not in GATES and not _GATE_NAME.fullmatch(name):
+            refuse(
+                f"charter.gates has a malformed gate name {name!r}"
+            )
     require(data, GATES, "charter.gates")
     gates: dict[str, Gate] = {}
-    for name in GATES:
-        entry = mapping(data[name], f"charter.gates.{name}")
+    for name, value in data.items():
+        entry = mapping(value, f"charter.gates.{name}")
         no_unknown(entry, GATE_KEYS, f"charter.gates.{name}")
         require(entry, GATE_KEYS, f"charter.gates.{name}")
         gates[name] = Gate(
             *(boolean(entry[key], f"charter.gates.{name}.{key}") for key in GATE_KEYS)
         )
     return gates
+
+
+def quality_problems(pack: Any, charter: Charter) -> list[str]:
+    """Every workflow quality rule that names a gate the charter does not declare."""
+    problems: list[str] = []
+    for workflow in pack.workflows.values():
+        for status, rule in workflow.quality.items():
+            if rule.gate not in charter.gates:
+                problems.append(
+                    f"workflow {workflow.name!r} status {status!r} names "
+                    f"unknown gate {rule.gate!r}"
+                )
+    return problems
 
 
 def _decision_rights(raw: Any) -> dict[str, tuple[str, ...]]:

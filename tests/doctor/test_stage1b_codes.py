@@ -70,6 +70,7 @@ STAGE1A_CODES = {
     "record_metadata_invalid",
     "container_unset",
     "container_inconsistent",
+    "quality_gate_unknown",
     "unknown_preset",
     "preset_field_hint",
 }
