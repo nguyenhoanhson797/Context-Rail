@@ -7,8 +7,12 @@ import pytest
 from context_rail.kernel.structure import ItemRow, Score, blocked, executable, rollup, stuck
 
 
-def row(slug, category="not_started", part_of=(), depends_on=(), last=None):
-    return ItemRow(slug, category, tuple(part_of), tuple(depends_on), last)
+def row(
+    slug, category="not_started", part_of=(), depends_on=(), last=None, container=None
+):
+    return ItemRow(
+        slug, category, tuple(part_of), tuple(depends_on), last, container=container
+    )
 
 
 def test_executable_excludes_parents_blocked_and_done():
@@ -107,6 +111,26 @@ def test_rollup_cycle_behind_a_leaf_is_refused():
 
 def test_part_of_a_missing_item_does_not_raise():
     assert rollup([row("a", part_of=("ghost",))], {}, {}) == {"a": Score(0, 0)}
+
+
+def test_container_true_excludes_even_without_children():
+    assert executable([row("sprint", container=True)]) == []
+    assert executable([row("task", container=False)]) == ["task"]
+
+
+def test_container_false_with_a_child_stays_executable():
+    items = [row("task", container=False), row("check", part_of=("task",))]
+    assert executable(items) == ["check", "task"]
+
+
+def test_container_none_with_a_child_keeps_the_legacy_exclusion():
+    items = [row("goal"), row("task", part_of=("goal",))]
+    assert executable(items) == ["task"]
+
+
+def test_container_true_with_children_is_not_executable():
+    items = [row("sprint", container=True), row("task", part_of=("sprint",))]
+    assert executable(items) == ["task"]
 
 
 def test_category_and_role_vocabulary_comes_from_the_model() -> None:

@@ -9,14 +9,14 @@ transitions:
   done: [doing]
   dropped: [todo]
 presets:
-  goal:       {primitive: item,   tags: [goal]}
-  scope:      {primitive: item,   tags: [scope], fields: {priority: [must, should, could, wont]}}
-  task:       {primitive: item,   tags: [task]}
-  milestone:  {primitive: item,   tags: [milestone]}
-  risk:       {primitive: item,   tags: [risk], fields: {severity: [low, medium, high, critical]}}
-  question:   {primitive: item,   tags: [question]}
-  bug:        {primitive: item,   tags: [bug]}
-  idea:       {primitive: item,   tags: [idea]}
+  goal:       {primitive: item,   tags: [goal], container: true}
+  scope:      {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
+  task:       {primitive: item,   tags: [task], container: false}
+  milestone:  {primitive: item,   tags: [milestone], container: true}
+  risk:       {primitive: item,   tags: [risk], container: false, fields: {severity: [low, medium, high, critical]}}
+  question:   {primitive: item,   tags: [question], container: false}
+  bug:        {primitive: item,   tags: [bug], container: false}
+  idea:       {primitive: item,   tags: [idea], container: false}
   note:       {primitive: note,   tags: []}
   convention: {primitive: note,   tags: [convention]}
   code:       {primitive: note,   tags: [code], fields: {kind: [file, module, class, function, method]}, template: templates/code.md}
@@ -29,5 +29,5 @@ presets:
   skill:      {primitive: note,   tags: []}
   cto:        {primitive: actor,  tags: []}
   profile:    {primitive: actor,  tags: []}
-  fix:        {primitive: item,   tags: []}
+  fix:        {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, retries: 1}

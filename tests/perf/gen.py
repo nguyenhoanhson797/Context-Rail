@@ -37,7 +37,7 @@ def make_store(root: Path, n: int, seed: int = 0) -> Path:
             seed,
             "goal",
             i,
-            status=STATUSES[i % 3],
+            status="doing",
             tags=["goal"],
         )
     for i in range(notes):

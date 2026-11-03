@@ -473,7 +473,11 @@ def test_every_builtin_pack_loads_with_one_default_workflow(
 
     assert set(pack.workflows) == {"default"}
     assert all(preset.workflow == "default" for preset in pack.presets.values())
-    assert all(preset.container is None for preset in pack.presets.values())
+    assert all(
+        preset.container is not None
+        for preset in pack.presets.values()
+        if preset.primitive == "item"
+    )
 
 
 def test_a_workflow_change_changes_the_pack_hash(tmp_path: Path) -> None:

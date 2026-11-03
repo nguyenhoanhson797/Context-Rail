@@ -35,6 +35,7 @@ class ItemRow:
     dispatchable: bool = True
     preset: str | None = None
     workflow: str = "default"
+    container: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -54,13 +55,19 @@ def executable(items: list[ItemRow], held: dict[str, str] | None = None) -> list
     if held is None:
         held = blocked(items)
     parents = {parent for item in items for parent in item.part_of}
+
+    def is_container(item: ItemRow) -> bool:
+        if item.container is not None:
+            return item.container
+        return item.slug in parents
+
     return sorted(
         item.slug
         for item in items
         if item.category in WORKABLE_CATEGORIES
         and item.dispatchable
         and item.slug not in held
-        and item.slug not in parents
+        and not is_container(item)
     )
 
 

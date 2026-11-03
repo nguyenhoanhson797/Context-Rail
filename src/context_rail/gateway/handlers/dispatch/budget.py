@@ -121,6 +121,7 @@ def _item_rows(ctx: Context) -> list[structure.ItemRow]:
                 dispatchable=workflow.dispatchable(status or ""),
                 preset=preset or None,
                 workflow=workflow.name,
+                container=declared.container if declared is not None else None,
             )
         )
     return result

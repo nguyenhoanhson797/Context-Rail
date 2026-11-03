@@ -16,7 +16,7 @@ from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import load_manifest
 from context_rail.store.doc import etag
 from context_rail.store.location import local_dir
-from helpers import run_cli, touch_doc
+from helpers import init_pack_store, nested_pack_document, run_cli, touch_doc
 
 STAMP = "2026-10-28T00:00:00Z"
 INTENT_ID = "01J0000000000000000000000A"
@@ -585,3 +585,65 @@ def test_doctor_repair_completes_a_pending_intent(store_factory) -> None:
     found = invoke("find", {"preset": "task"}, store=store, actor="human")
     assert is_ok(found), found
     assert any(item["title"] == "Task 1 repaired" for item in found["value"]["items"])
+
+
+def _container_store(tmp_path: Path, container: bool | None) -> Path:
+    document = nested_pack_document("nested")
+    if container is not None:
+        document["presets"]["task"]["container"] = container
+    return init_pack_store(tmp_path, document)
+
+
+def _container_pair(store: Path, parent_status: str) -> None:
+    _write(
+        store,
+        "items/task/parent.md",
+        _task("parent", status=parent_status, area="general"),
+    )
+    _write(
+        store,
+        "items/task/child.md",
+        _task("child", part_of=["[[parent]]"], area="general"),
+    )
+
+
+def test_container_unset_is_a_warning_when_a_preset_has_children(
+    tmp_path: Path,
+) -> None:
+    store = _container_store(tmp_path, None)
+    _container_pair(store, "todo")
+
+    report = _doctor(store)
+    issue = next(
+        item for item in report["issues"] if item["code"] == "container_unset"
+    )
+
+    assert issue["severity"] == "warning"
+    assert issue["path"] == "items/task/parent.md"
+
+
+def test_container_inconsistent_warns_when_a_finished_container_has_open_children(
+    tmp_path: Path,
+) -> None:
+    store = _container_store(tmp_path, True)
+    _container_pair(store, "done")
+
+    report = _doctor(store)
+    issue = next(
+        item for item in report["issues"] if item["code"] == "container_inconsistent"
+    )
+
+    assert issue["severity"] == "warning"
+    assert "child" in issue["message"]
+
+
+def test_a_finished_container_with_finished_children_is_clean(tmp_path: Path) -> None:
+    store = _container_store(tmp_path, True)
+    _container_pair(store, "done")
+    _write(
+        store,
+        "items/task/child.md",
+        _task("child", status="done", part_of=["[[parent]]"], area="general"),
+    )
+
+    assert "container_inconsistent" not in _codes(store)

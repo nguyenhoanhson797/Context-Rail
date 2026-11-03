@@ -27,7 +27,7 @@ from typing import Any
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest
 from context_rail.model.pack import Pack, Preset
-from context_rail.model.primitives import PRIMITIVES
+from context_rail.model.primitives import FINISHED_CATEGORIES, PRIMITIVES
 from context_rail.store.placement import (
     PlacementError,
     expected_paths,
@@ -82,6 +82,8 @@ SEVERITIES: dict[str, str] = {
     "required_field_invalid": "error",
     "record_metadata_missing": "warning",
     "record_metadata_invalid": "warning",
+    "container_unset": "warning",
+    "container_inconsistent": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
@@ -123,6 +125,15 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     known = set(slugs)
     expected, placement_errors = expected_paths(ix, manifest, pack)
     by_slug = {row.slug: row for row in rows}
+    categories = {row.slug: row.category for row in rows}
+    children: dict[str, set[str]] = {}
+    by_path = {row.path: row.slug for row in rows}
+    for src_path, dst in ix.conn.execute(
+        "SELECT src_path, dst FROM relations WHERE rel = 'part_of'"
+    ):
+        source = by_path.get(src_path)
+        if source is not None and source != dst:
+            children.setdefault(dst, set()).add(source)
     errors_by_slug = {
         by_slug[error.details["slug"]].slug: error
         for error in placement_errors
@@ -142,6 +153,8 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
                 fields,
                 expected.get(row.slug),
                 errors_by_slug.get(row.slug),
+                children,
+                categories,
             )
         )
     issues.extend(_duplicate_issues(slugs))
@@ -269,6 +282,8 @@ def _doc_issues(
     fields: dict[str, dict[str, Any]],
     expected: str | None,
     placement_error: PlacementError | None,
+    children: dict[str, set[str]],
+    categories: dict[str, str | None],
 ) -> list[dict[str, Any]]:
     """The issues one document has; a broken document stops at its problem.
 
@@ -352,7 +367,47 @@ def _doc_issues(
     if preset is not None:
         issues.extend(_field_hints(row, preset, fields))
         issues.extend(_metadata_issues(row, preset, fields))
+        issues.extend(_container_issues(row, preset, children, categories))
     return issues
+
+
+def _container_issues(
+    row: _Row,
+    preset: Preset,
+    children: dict[str, set[str]],
+    categories: dict[str, str | None],
+) -> list[dict[str, Any]]:
+    """A container declaration the document needs, or contradicts."""
+    if row.primitive != "item":
+        return []
+    mine = children.get(row.slug) or set()
+    if preset.container is None:
+        if not mine:
+            return []
+        return [
+            _issue(
+                "container_unset",
+                row.path,
+                f"preset {preset.name!r} has children but declares no container; "
+                "set container: true or false in the pack",
+            )
+        ]
+    if preset.container and row.category in FINISHED_CATEGORIES:
+        open_children = sorted(
+            child
+            for child in mine
+            if categories.get(child) not in FINISHED_CATEGORIES
+        )
+        if open_children:
+            return [
+                _issue(
+                    "container_inconsistent",
+                    row.path,
+                    "the container is finished while child item(s) are open: "
+                    + ", ".join(open_children),
+                )
+            ]
+    return []
 
 
 def _metadata_issues(
