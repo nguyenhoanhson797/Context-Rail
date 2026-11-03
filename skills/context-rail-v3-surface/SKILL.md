@@ -50,6 +50,7 @@ The pack may ship verbs so the usual path is one call:
 rail do start-sprint --item sprint-3 --etag <etag>
 rail do close-sprint --item sprint-3 --etag <etag>
 rail do file-bug --set title="Checkout crash" --set parent=sprint-3
+rail do triage-report --set report=01JREPORT0000000000000001
 ```
 
 A verb runs one allowlisted gateway tool as you; it cannot change the actor, a

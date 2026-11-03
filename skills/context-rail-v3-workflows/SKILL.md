@@ -256,9 +256,12 @@ rail --actor human ops pack use --name my-team --expect <rail.yaml etag> \
 
 `ops pack use` is an approval-guarded migration: it rewrites statuses through the
 map and refuses unmapped statuses, presets the target pack lacks, and a required
-field the existing documents cannot satisfy. Switching does **not** rewrite
-history. For the full authoring loop — presets, required metadata, placement
-recipes and pitfalls — load `context-rail-v3-pack-authoring`.
+field the existing documents cannot satisfy. When two workflows share a status
+name but need different targets, qualify the map entry with the source workflow:
+`--map sprint:todo=doing --map bugfix:todo=fixing`; a plain entry still applies
+to every item. Switching does **not** rewrite history. For the full authoring
+loop — presets, required metadata, placement recipes and pitfalls — load
+`context-rail-v3-pack-authoring`.
 
 ## Gotchas
 

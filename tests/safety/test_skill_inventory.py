@@ -59,3 +59,39 @@ def test_the_skills_readme_and_the_router_point_at_it() -> None:
         encoding="utf-8"
     )
     assert NAME in workflows
+
+
+SURFACE = SKILLS / "context-rail-v3-surface" / "SKILL.md"
+SURFACE_NAME = "context-rail-v3-surface"
+
+
+def test_the_surface_skill_exists_with_a_surface_description() -> None:
+    assert SURFACE.is_file()
+    front = _frontmatter(SURFACE)
+    assert front["name"] == SURFACE_NAME
+    description = str(front["description"]).lower()
+    assert any(word in description for word in ("workflow", "surface", "state"))
+    assert "pack.yaml" in description
+
+
+def test_the_surface_skill_names_every_command_and_recovery_step() -> None:
+    text = SURFACE.read_text(encoding="utf-8")
+    for needle in (
+        "rail types",
+        "rail next",
+        "rail show",
+        "rail why",
+        "rail explain",
+        "rail do",
+        "details.command",
+        "workflow:",
+        "gate:",
+    ):
+        assert needle in text, f"the surface skill never names {needle!r}"
+
+
+def test_the_surface_skill_is_listed_in_the_readme_and_router() -> None:
+    readme = (SKILLS / "README.md").read_text(encoding="utf-8")
+    assert SURFACE_NAME in readme
+    router = (SKILLS / "context-rail-v3" / "SKILL.md").read_text(encoding="utf-8")
+    assert SURFACE_NAME in router
