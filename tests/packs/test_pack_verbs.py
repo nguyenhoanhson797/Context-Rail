@@ -32,6 +32,15 @@ def test_basic_ships_start_close_and_next() -> None:
     assert set(pack.actions) == {"start", "close", "next-actions"}
 
 
+def test_triage_report_names_exactly_one_report() -> None:
+    pack = load_pack("scrum", Path("."))
+
+    action = pack.action("triage-report")
+
+    assert action.tool == "triage"
+    assert action.args == {"report": "{report}"}
+
+
 def test_the_catalog_lists_the_actions(tmp_path: Path) -> None:
     store = init_store(tmp_path, "scrum")
 
