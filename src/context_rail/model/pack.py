@@ -20,6 +20,7 @@ import yaml
 from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.cache import cached_model
+from context_rail.model.actions import Action, parse_actions
 from context_rail.model.errors import ModelError
 from context_rail.model.fields import relative_path, reserved_fields
 from context_rail.model.primitives import (
@@ -62,6 +63,7 @@ PACK_KEYS = (
     "policy",
     "execution",
     "workflows",
+    "actions",
 )
 REQUIRED_PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
 PRESET_KEYS = (
@@ -182,6 +184,7 @@ class Pack:
     policy: dict[str, Any]
     execution: dict[str, dict[str, bool]]
     workflows: dict[str, Workflow]
+    actions: dict[str, Action] = field(default_factory=dict)
 
     def workflow(self, name: str) -> Workflow:
         """The workflow called ``name``, refusing an unknown one."""
@@ -196,6 +199,13 @@ class Pack:
         if declared is None:
             _refuse(f"unknown preset {preset!r}")
         return self.workflow(declared.workflow)
+
+    def action(self, name: str) -> Action:
+        """The action called ``name``, refusing an unknown verb."""
+        action = self.actions.get(name)
+        if action is None:
+            _refuse(f"unknown action {name!r}")
+        return action
 
 
 def load_pack(name: str, store: Path) -> Pack:
@@ -323,6 +333,7 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
     )
     presets = _presets(data["presets"], workflows)
     policy = _policy(data["policy"])
+    actions = parse_actions(data.get("actions", {}), statuses, presets, workflows)
 
     return Pack(
         name=name,
@@ -334,6 +345,7 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
         policy=policy,
         execution=execution,
         workflows=workflows,
+        actions=actions,
     )
 
 
