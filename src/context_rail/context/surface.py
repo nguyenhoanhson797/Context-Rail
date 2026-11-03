@@ -27,6 +27,7 @@ __all__ = [
     "render_card",
     "render_workflows",
     "verbs",
+    "why",
 ]
 
 CATALOG_CHARS = 4000
@@ -206,6 +207,22 @@ def render_workflows(context: Any, *, limit: int = 2000) -> str:
         )
     text = "\n".join(lines)
     return text if len(text) <= limit else text[: limit - 12] + "\n[truncated]"
+
+
+def why(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
+    """The missing proof for one item, with the command that produces it."""
+    view = card(context, slug, limit=limit)
+    rows = query.check_states(context.index, slug)
+    missing = [row["slug"] for row in rows if not row.get("passed")]
+    return {
+        "slug": view["slug"],
+        "workflow": view["workflow"],
+        "state": view["state"],
+        "gate": view["gate"],
+        "proof": view["proof"],
+        "missing": missing,
+        "command": view["command"],
+    }
 
 
 def verbs(context: Any) -> dict[str, Any]:

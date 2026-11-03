@@ -479,13 +479,49 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="show",
-        summary="Show one document with its relations and body.",
+        summary="Show one document with its relations, body and workflow card.",
         permission="read",
         params=(
             Param("slug", "str", required=True, positional=True, help="document slug"),
             Param("body_chars", "int", default=4000, help="body characters to return"),
         ),
         handler="context_rail.gateway.handlers.views:show",
+    ),
+    Tool(
+        name="types",
+        summary="What kinds of work this pack declares, compiled for an agent.",
+        permission="read",
+        params=(
+            Param("item", "str", help="scope a worker catalog to one item"),
+            Param("limit", "int", default=4000, help="character budget"),
+        ),
+        handler="context_rail.gateway.handlers.surface:types",
+    ),
+    Tool(
+        name="next",
+        summary="The executable queue, or one worker's next card.",
+        permission="read",
+        params=(Param("item", "str", help="the item a worker is working on"),),
+        handler="context_rail.gateway.handlers.surface:next",
+    ),
+    Tool(
+        name="explain",
+        summary="The full definition of a preset, workflow or action.",
+        permission="read",
+        params=(
+            Param("name", "str", required=True, positional=True, help="preset, workflow or action"),
+            Param("limit", "int", default=8000, help="character budget"),
+        ),
+        handler="context_rail.gateway.handlers.surface:explain",
+    ),
+    Tool(
+        name="why",
+        summary="The proof an item still needs, and the command that produces it.",
+        permission="read",
+        params=(
+            Param("slug", "str", required=True, positional=True, help="item slug"),
+        ),
+        handler="context_rail.gateway.handlers.surface:why",
     ),
     Tool(
         name="status",

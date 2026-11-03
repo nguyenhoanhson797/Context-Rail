@@ -53,6 +53,13 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         # A document can vanish between the index sync and the body read.
         raise LookupError("not_found") from None
     doc = shown["doc"]
+    if doc["primitive"] == "item":
+        from context_rail.context import surface
+
+        try:
+            shown["card"] = surface.card(ctx, doc["slug"])
+        except surface.SurfaceError:
+            pass
     if doc["primitive"] == "check":
         shown["freshness"] = recipes.freshness(
             ctx, query.check_state(index, doc["slug"])

@@ -83,6 +83,10 @@ VISIBLE_PATHS: frozenset[str] = frozenset(VISIBLE_ALIASES) | {
     "init",
     "approve",
     "sync driver",
+    "types",
+    "next",
+    "explain",
+    "why",
 }
 
 #: Flat names accepted for continuity and where they move in the grouped surface.
