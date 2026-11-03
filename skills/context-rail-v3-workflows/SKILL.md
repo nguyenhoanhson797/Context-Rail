@@ -227,22 +227,40 @@ rail read status
 
 When the BA item reaches `done`, the story becomes executable automatically.
 
-**2. Transitions (vocabulary).** `intake → ba_review → po_review → ready →
-doing → review → done`. `move` refuses anything else:
+**2. Workflows (vocabulary).** The example pack declares three named lifecycles
+over one status dictionary: a story runs `intake → ba_review → po_review →
+ready → doing → review → done`, the BA pack runs `intake → ba_review →
+po_review → done`, and a bug runs `reported → fixing → verifying → closed`.
+`move` refuses anything the item's own workflow does not allow:
 
 ```text
-transition 'intake' -> 'doing' is not allowed; allowed: ba_review, dropped
+transition 'po_review' -> 'doing' is not allowed in workflow 'story';
+allowed: ready, ba_review, dropped
+```
+
+The pack also ships verbs for the common path, so the flow is one call each:
+
+```powershell
+rail do send-to-ba  --item checkout-story --etag <etag>
+rail do send-to-po  --item checkout-story --etag <etag>
+rail do accept-po   --item checkout-story --etag <etag>
+rail do start-story --item checkout-story --etag <etag>
 ```
 
 **3. Evidence (charter gates).** A `check` with mode `human` is the PO
 acceptance; `require_acceptance` / `require_human` on `item_done` means a story
-cannot close on an empty, stale or unknown proof. A gate never passes on an
-empty proof set.
+cannot close on an empty, stale or unknown proof. The example's `ba` workflow
+selects `po-acceptance` when it closes, and its `bugfix` workflow selects
+`repro-check`; a missing check refuses and names the command that declares it.
 
 **4. Prompt (soft).** The BA/PO profile prompts and skills shape how the agents
 behave; they are guidance, not enforcement.
 
-A full tested pack is in `references/ba-po-pack.yaml`.
+A full tested v4 pack is in `references/ba-po-pack.yaml`: three workflows,
+explicit `container` on every item preset, per-workflow quality rules and six
+declarative verbs. `rail ops pack validate --name scrum-ba` reports it valid, and
+`rail types` / `rail explain story` / `rail explain accept-po` show it to an
+agent without opening the YAML.
 
 ## Create, validate, switch
 

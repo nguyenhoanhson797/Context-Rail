@@ -15,7 +15,8 @@ reading the engine source.
 
 Each `SKILL.md` is short and routes to `references/` only when needed:
 `context-rail-v3/references/commands.md` for exact flags,
-`context-rail-v3-workflows/references/ba-po-pack.yaml` for a tested pack.
+`context-rail-v3-workflows/references/ba-po-pack.yaml` for a complete tested v4
+pack (three workflows, per-workflow quality, verbs).
 
 Do not confuse these with the pack skills under
 `src/context_rail/packs/*/skills/` (`test-first`, `review-checklist`). Those
