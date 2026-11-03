@@ -64,6 +64,14 @@ repository.
 - Paths are derived: `rail.yaml` plus the work graph decides where a document or
   record lives. No caller supplies a path, a parent folder or a final title, and
   nothing but the resolver renders one.
+- A pack is one project type with many named workflows; `statuses` is pack-wide
+  and a preset selects exactly one workflow. Transitions and execution flags are
+  read through the workflow, never the pack.
+- Quality belongs to the workflow: a status may name a charter gate and the
+  checks it selects. The engine never branches on a gate name.
+- Agents read the compiled surface (`types`, `next`, `show`, `explain`, `why`),
+  never `pack.yaml`. Pack actions are declarative and run as the caller through
+  the gateway; no agent-defined executable tools.
 - `cli.py` imports only stdlib modules and `gateway.tools` at import time; every
   heavier import is lazy.
 - The speed budgets and safety assertions in the plan are fixed. Fix the code,

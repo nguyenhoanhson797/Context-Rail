@@ -9,6 +9,7 @@ reading the engine source.
 | `context-rail-v3` | First contact with a `context-rail/` store; quick start and command map |
 | `context-rail-v3-workflows` | Custom document types, statuses, transitions, BA/PO steps, pack switching |
 | `context-rail-v3-pack-authoring` | Creating or adjusting a pack: presets, required metadata, defaults, declarative placement |
+| `context-rail-v3-surface` | Working from `types`, `next`, `show`, `explain` and `why` without reading the pack |
 | `context-rail-v3-loop` | Launching or supervising dispatch → verify → review → merge |
 | `context-rail-v3-ops` | Doctor, reindex, recovery, git sync, budgets, test lanes |
 

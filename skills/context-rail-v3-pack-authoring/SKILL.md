@@ -78,6 +78,66 @@ Every preset's `template` must exist in the pack or `add` refuses. Every pack
 must declare `charter`, `cto`, `decision`, `goal`, `note`, `profile`, `scope`,
 `skill`, `vision` and `wont`; the engine reads them by name.
 
+## Workflows, quality and verbs
+
+A pack may declare named workflows; a preset selects one with `workflow: <name>`.
+
+```yaml
+workflows:
+  sprint:
+    initial: todo
+    transitions: {todo: [doing], doing: [review, done], review: [done], done: []}
+    execution: {review: {dispatch: false}}
+    quality:
+      done: {gate: item_done}
+  bugfix:
+    initial: reported
+    transitions: {reported: [fixing], fixing: [verifying], verifying: [closed], closed: []}
+    quality:
+      closed: {gate: bug_done, checks: [repro-check]}
+
+presets:
+  sprint: {primitive: item, tags: [sprint], container: true, workflow: sprint}
+  bug: {primitive: item, tags: [bug], container: false, workflow: bugfix}
+```
+
+- `statuses` stays pack-wide: one name, one category. Top-level
+  `initial`/`transitions`/`execution` are the `default` workflow; `workflows`
+  may not declare `default`.
+- `container: true` for a phase, sprint, epic, goal or scope (not a unit of
+  work); `container: false` for a task, bug, story or fix; `null` keeps the old
+  "has a child" inference.
+- A workflow quality rule names a charter gate and optionally the checks it
+  selects. Moving into that status evaluates it; a missing check refuses and
+  names the command that produces it.
+- Add a gate to the charter when a workflow names one; `pack validate` and
+  `doctor` report an unknown gate.
+
+Actions are declarative verbs over the pack:
+
+```yaml
+actions:
+  start-sprint:
+    on: sprint
+    from: [todo, ready]
+    tool: change move
+    args: {slug: "{item}", status: doing, expect: "{etag}"}
+    use_when: "a sprint is ready to start"
+  close-sprint:
+    on: sprint
+    from: [doing, review]
+    tool: change move
+    args: {slug: "{item}", status: done, expect: "{etag}"}
+    requires: {children: true}
+    use_when: "every sprint child is finished"
+```
+
+One action is one allowlisted gateway tool: `add`, `update`, `link`, `move`,
+`rename`, `check`, `triage`, `report` (write) or `next`/`status` (read). It may
+not set `path`, `actor`, `key`, `profile` or `store`, call `do`, `cto tick`,
+`pack use`, `relocate`, `merge` or `adapters sync`, and it runs with the caller's
+permissions. `do` records one `action.executed`; read-only actions write nothing.
+
 ## Placement contract
 
 `rail.yaml` holds two mappings:

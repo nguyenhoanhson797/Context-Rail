@@ -113,14 +113,16 @@ rail gate              # doctor issues plus the approval and done gates
 
 ## Skills
 
-Five operator skills under `skills/` in the repository checkout teach an agent
+Six operator skills under `skills/` in the repository checkout teach an agent
 the rail itself, so it does not have to read the engine to answer "what can this
 do?" or "how do we change the workflow?":
 
 - `context-rail-v3` — mental model, quick start, command map
 - `context-rail-v3-workflows` — packs, statuses, transitions, BA/PO steps
 - `context-rail-v3-pack-authoring` — pack creation, required metadata, defaults,
-  declarative placement
+  declarative placement, workflows, quality and verbs
+- `context-rail-v3-surface` — `types`, `next`, `show`, `explain`, `why`, and
+  recovering from a refusal
 - `context-rail-v3-loop` — dispatch → verify → review → merge, refusals
 - `context-rail-v3-ops` — doctor, reindex, recovery, budgets, test lanes
 
@@ -237,6 +239,34 @@ same commit; records move with them but are never rewritten.
 A scoped skill copy under `workspace/<pack>/skills/` is pack-shipped material,
 so it is never moved and never reported as misplaced.
 
+## Workflows and the agent surface
+
+A pack is one project type with many named workflows over a shared status
+dictionary. `scrum` ships `sprint`, `bugfix` and `scope`: a task starts at
+`todo`, a bug at `reported`, and neither can use the other's moves. Every
+preset selects one workflow; `container: true` marks a phase, sprint, epic, goal
+or scope as work that is not executable.
+
+A workflow also carries the quality bar. A status may name a charter gate and
+the checks the gate selects, so two workflows can share a status name and still
+require different proof. A missing or stale check refuses the move and names the
+command that produces it.
+
+Agents never read `pack.yaml`. The pack is compiled into five read-only views:
+
+| Command | Answers |
+|---|---|
+| `rail types` | every document type, its workflow and use line |
+| `rail next` | the executable queue, or one worker's card |
+| `rail show <slug>` | the item plus its workflow card |
+| `rail why <slug>` | the missing proof and the command |
+| `rail explain <name>` | a preset, workflow or action in full |
+
+`rail do <action> --item <slug> --etag <etag>` runs a pack-declared verb (for
+example `start-sprint`, `close-sprint`, `file-bug`) through the gateway as the
+caller. A verb cannot change the actor, a path, an etag or a profile, and every
+write leaves one `action.executed` record.
+
 ## Command surface
 
 Start with `rail overview`; it is the bounded daily page. The rest is grouped by
@@ -244,7 +274,7 @@ what you are doing:
 
 | Group | Commands |
 |---|---|
-| **Daily** | `init`, `approve`, `overview`, `read status\|digest\|find\|show\|ledger`, `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop dispatch\|review\|merge\|report\|triage\|tick`, `gate` |
+| **Daily** | `init`, `approve`, `overview`, `read status\|digest\|find\|show\|ledger`, `types`, `next`, `explain`, `why`, `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop dispatch\|review\|merge\|report\|triage\|tick`, `do <action>`, `gate` |
 | **Operations** | `ops doctor\|reindex\|migrate\|rollback`, `ops pack list\|show\|validate\|create\|use`, `ops sync`, `ops sync install`, `ops adapters render`, `ops measure versions\|fix` |
 | **Transports** | `serve mcp`, `serve ui` |
 
