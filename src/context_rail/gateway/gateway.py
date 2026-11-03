@@ -164,6 +164,8 @@ def invoke(
     actor_env = _actor_env()
     named_token = ACTOR_NAMED.set(actor_named)
     context: Context | None = None
+    requested = name
+    params: dict[str, Any] | None = None
     try:
         tool = _tool(name)
         defaults = alias_defaults(name) if isinstance(name, str) else {}
@@ -177,11 +179,11 @@ def invoke(
             tool, params, context, resolved_actor, actor_env, actor_named
         )
         if refusal is not None:
-            return refusal
+            return _with_command(refusal, tool.name, params)
         handler = _handler(tool.handler)
         return ok(handler(context, params, resolved_actor))
     except Exception as exc:  # the boundary converts every fault into a Result
-        return _failure(exc)
+        return _with_command(_failure(exc), requested, params)
     finally:
         if context is not None:
             context.close()
@@ -503,6 +505,48 @@ def _handler(spec: str) -> Handler:
     if not callable(handler):
         raise RuntimeError(f"handler {spec!r} is not callable")
     return handler
+
+
+def _with_command(
+    result: dict[str, Any], name: str, params: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Name the command that unblocks a refused verb, without guessing an etag.
+
+    Those verbs always need current state the caller may not have: an etag, a
+    run id or the action's definition. A refusal that already names its own
+    command keeps it; an approval refusal names the approval instead, and
+    otherwise the caller is pointed at the read command that shows the fresh
+    state.
+    """
+    if result.get("ok") or not isinstance(params, dict):
+        return result
+    error = result.get("error")
+    if not isinstance(error, dict):
+        return result
+    details = error.get("details")
+    if not isinstance(details, dict):
+        details = {}
+    if details.get("command"):
+        return result
+    if details.get("reason") == "approval_missing":
+        details["command"] = 'rail approve charter --confirm "APPROVE charter"'
+        error["details"] = details
+        return result
+    canonical = canonical_tool(name) if isinstance(name, str) else ""
+    if canonical == "move" and params.get("slug"):
+        details["command"] = f"rail show {params['slug']}"
+    elif canonical in {"dispatch", "merge"} and params.get("item"):
+        details["command"] = f"rail show {params['item']}"
+    elif canonical == "do":
+        details["command"] = (
+            f"rail explain {params['action']}"
+            if params.get("action")
+            else "rail types"
+        )
+    else:
+        return result
+    error["details"] = details
+    return result
 
 
 def _failure(exc: Exception) -> dict[str, Any]:
