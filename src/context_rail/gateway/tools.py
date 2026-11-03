@@ -582,7 +582,7 @@ for _tool in TOOLS:
 del _tool, _param
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
-_SURFACE_LEAVES = {"init", "approve"}
+_SURFACE_LEAVES = {"init", "approve", "types", "next", "explain", "why", "do"}
 
 
 def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:
