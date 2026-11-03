@@ -122,6 +122,7 @@ def _item_rows(ctx: Context) -> list[structure.ItemRow]:
                 preset=preset or None,
                 workflow=workflow.name,
                 container=declared.container if declared is not None else None,
+                status=status,
             )
         )
     return result

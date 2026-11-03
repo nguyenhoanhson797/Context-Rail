@@ -14,12 +14,13 @@ import pytest
 from context_rail.context import recipes
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import run_cli
+from helpers import init_pack_store, run_cli, workflow_pack_document
 
 SECTIONS = (
     "Approval",
     "Goal",
     "Charter",
+    "Workflows",
     "Reports",
     "Executable",
     "Active",
@@ -282,3 +283,23 @@ def test_fit_matches_the_naive_trim_byte_for_byte() -> None:
     expected = naive(copy.deepcopy(sections), 120)
 
     assert got == expected
+
+
+def test_the_brief_groups_items_by_workflow_and_status(tmp_path: Path) -> None:
+    store = init_pack_store(tmp_path, workflow_pack_document())
+    assert is_ok(
+        invoke("add", {"preset": "task", "title": "A task"}, store=store, actor="cto")
+    )
+    assert is_ok(
+        invoke("add", {"preset": "bug", "title": "A bug"}, store=store, actor="cto")
+    )
+
+    value = _brief(store)
+    text = value["text"]
+
+    assert "## Workflows and their next actions" in text
+    assert "bugfix: 1 open (todo 1)" in text
+    assert "sprint: 1 open (todo 1)" in text
+    assert "- a-bug [bugfix/todo]" in text
+    assert "- a-task [sprint/todo]" in text
+    assert value["omitted"]["workflows"] == 0

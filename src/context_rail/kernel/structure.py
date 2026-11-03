@@ -36,6 +36,7 @@ class ItemRow:
     preset: str | None = None
     workflow: str = "default"
     container: bool | None = None
+    status: str | None = None
 
 
 @dataclass(frozen=True)

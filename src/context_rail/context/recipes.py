@@ -38,6 +38,7 @@ SECTION_KEYS = (
     "approval",
     "goal",
     "charter",
+    "workflows",
     "reports",
     "executable",
     "active",
@@ -49,6 +50,7 @@ _SECTION_TITLES = {
     "approval": "Approval and human waits",
     "goal": "Goal and scope",
     "charter": "Charter gates, rights and budgets",
+    "workflows": "Workflows and their next actions",
     "reports": "Reports to triage",
     "executable": "Executable items and dependencies",
     "active": "Active, stuck and too-long items",
@@ -111,6 +113,7 @@ def item_rows(ix: Any, pack: Pack) -> list[structure.ItemRow]:
                 preset=preset or None,
                 workflow=workflow.name,
                 container=declared.container if declared is not None else None,
+                status=status,
             )
         )
     return result
@@ -342,6 +345,45 @@ def brief(
     }
 
 
+def _workflow_lines(
+    context: Context, items: Sequence[structure.ItemRow], limit: int
+) -> tuple[list[str], int]:
+    """Per-workflow counts plus the next action and proof for the top items."""
+    from context_rail.context import surface
+
+    open_items = [
+        item
+        for item in items
+        if item.category not in structure.FINISHED_CATEGORIES
+    ]
+    groups: dict[str, dict[str, int]] = {}
+    for item in open_items:
+        counts = groups.setdefault(item.workflow, {})
+        state = item.status or "unknown"
+        counts[state] = counts.get(state, 0) + 1
+    lines: list[str] = []
+    for name in sorted(groups):
+        counts = groups[name]
+        summary = ", ".join(f"{state} {count}" for state, count in sorted(counts.items()))
+        lines.append(f"{name}: {sum(counts.values())} open ({summary})")
+    shown = 0
+    for item in sorted(open_items, key=lambda row: row.slug)[:limit]:
+        try:
+            view = surface.card(context, item.slug)
+        except surface.SurfaceError:
+            continue
+        target = view["next"][0] if view["next"] else "none"
+        proof = view["gate"]
+        if view["proof"]["checks"]:
+            proof += " (" + ", ".join(view["proof"]["checks"]) + ")"
+        lines.append(
+            f"- {item.slug} [{view['workflow']}/{view['state']}] "
+            f"next {target}; proof {proof}"
+        )
+        shown += 1
+    return lines, max(len(open_items) - shown, 0)
+
+
 def _brief_sections(
     context: Context,
     *,
@@ -391,6 +433,11 @@ def _brief_sections(
     charter_section.fixed.extend(_charter_lines(context))
     if context.policy is None:
         charter_section.entries.append("no charter document yet")
+
+    workflow_section = by_key["workflows"]
+    workflow_lines, workflow_omitted = _workflow_lines(context, items, limit)
+    workflow_section.entries.extend(workflow_lines)
+    omitted["workflows"] = workflow_omitted
 
     report_section = by_key["reports"]
     report_counts = counts["reports"]
@@ -741,6 +788,8 @@ _TRIM_ORDER = (
     ("quality", "fixed"),
     ("active", "entries"),
     ("active", "fixed"),
+    ("workflows", "entries"),
+    ("workflows", "fixed"),
     ("executable", "entries"),
     ("executable", "fixed"),
     ("reports", "entries"),
@@ -757,6 +806,7 @@ _DROP_ORDER = (
     "conventions",
     "reversible",
     "quality",
+    "workflows",
     "active",
     "executable",
     "reports",
