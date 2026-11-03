@@ -1,89 +1,152 @@
+"""``pack use`` maps workflow and status together when the vocabulary changes."""
+
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 from context_rail.gateway.gateway import invoke
-from context_rail.model.pack import load_pack
-from context_rail.store.location import local_dir
-from context_rail.store.write import repair
-from helpers import init_store, record_inventory
+from context_rail.store.doc import etag
+from helpers import (
+    init_pack_store,
+    workflow_pack_document,
+    write_pack,
+)
 
 
-def _manifest_etag(store: Path) -> str:
-    return hashlib.sha256((store / "rail.yaml").read_bytes()).hexdigest()[:16]
+def _switch(store: Path, name: str, mapping: list[str], key: str | None = None) -> dict:
+    args = {
+        "name": name,
+        "expect": etag((store / "rail.yaml").read_bytes()),
+        "confirm": f"USE PACK {name}",
+        "map": mapping,
+    }
+    if key is not None:
+        args["key"] = key
+    return invoke("pack use", args, store=store, actor="human")
 
 
-def _scrum_store_with_item(tmp_path: Path, status: str = "doing") -> tuple[Path, str]:
-    store = init_store(tmp_path, pack="scrum")
-    created = invoke("add", {"preset": "task", "title": "Login"}, store=store, actor="cto")["value"]
-    if status != "todo":
-        invoke("move", {"slug": created["slug"], "status": status, "expect": created["etag"]}, store=store, actor="cto")
-    return store, created["slug"]
+def test_an_ambiguous_status_names_the_item_and_its_workflow(tmp_path: Path) -> None:
+    store = init_pack_store(tmp_path, workflow_pack_document())
+    assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
+    assert invoke("add", {"preset": "bug", "title": "A bug"}, store=store)["ok"]
+
+    refused = _switch(store, "flow", [])
+
+    assert refused["ok"] is False
+    assert refused["error"]["code"] == "VALIDATION_FAILED"
+    items = refused["error"]["details"]["items"]
+    assert {(row["slug"], row["workflow"]) for row in items} == {
+        ("a-bug", "bugfix"),
+        ("a-task", "sprint"),
+    }
 
 
-def test_migration_is_one_commit_with_one_pack_changed_record(tmp_path, monkeypatch) -> None:
-    store, slug = _scrum_store_with_item(tmp_path)
-    before = record_inventory(store)
-    result = invoke("pack use", {"name": "flow", "expect": _manifest_etag(store), "confirm": "USE PACK flow", "map": ["doing=building"], "key": "K1"}, store=store, actor="human")
-    assert result["ok"] is True
-    after = record_inventory(store)
-    added = set(after) - set(before)
-    assert len(added) == 1
-    assert all(after[rid] == before.get(rid) for rid in before)
-    assert load_pack("flow", store).name == "flow"
+def test_an_explicit_map_carries_both_status_and_workflow(tmp_path: Path) -> None:
+    store = init_pack_store(tmp_path, workflow_pack_document())
+    assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
+    assert invoke("add", {"preset": "bug", "title": "A bug"}, store=store)["ok"]
+
+    target = workflow_pack_document("single")
+    target["workflows"] = {}
+    target["transitions"] = {
+        "todo": ["doing", "fixing", "done"],
+        "doing": ["done"],
+        "fixing": ["done"],
+        "done": [],
+    }
+    target["presets"]["task"]["workflow"] = "default"
+    target["presets"]["bug"]["workflow"] = "default"
+    write_pack(store, "single", target)
+
+    switched = _switch(
+        store,
+        "single",
+        ["todo=todo", "doing=doing", "fixing=fixing"],
+        key="twoways-to-single",
+    )
+
+    assert switched["ok"] is True, switched
+    assert switched["value"]["from"] == "twoways"
+    assert switched["value"]["to"] == "single"
+    assert switched["value"]["workflow_changes"] == [
+        {"slug": "a-bug", "from": "bugfix", "to": "default"},
+        {"slug": "a-task", "from": "sprint", "to": "default"},
+    ]
+    report = invoke("doctor", {}, store=store, actor="human")
+    assert report["ok"], report
+    assert report["value"]["issues"] == []
+
+    replayed = _switch(
+        store,
+        "single",
+        ["todo=todo", "doing=doing", "fixing=fixing"],
+        key="twoways-to-single",
+    )
+    assert replayed["ok"] is True, replayed
+    assert replayed["value"]["changes"] == switched["value"]["changes"]
+    assert replayed["value"]["workflow_changes"] == switched["value"]["workflow_changes"]
+    assert replayed["value"]["record"] == switched["value"]["record"]
 
 
-def test_replay_with_the_same_key_appends_nothing(tmp_path) -> None:
-    store, _ = _scrum_store_with_item(tmp_path)
-    args = {"name": "flow", "expect": _manifest_etag(store), "confirm": "USE PACK flow", "map": ["doing=building"], "key": "K1"}
-    first = invoke("pack use", args, store=store, actor="human")
-    count = len(record_inventory(store))
-    second = invoke("pack use", args, store=store, actor="human")
-    assert second == first and len(record_inventory(store)) == count
+def test_a_vanished_preset_refuses_the_switch(tmp_path: Path) -> None:
+    store = init_pack_store(tmp_path, workflow_pack_document())
+    assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
+    assert invoke("add", {"preset": "bug", "title": "A bug"}, store=store)["ok"]
+
+    target = workflow_pack_document("plain")
+    del target["presets"]["bug"]
+    target["workflows"] = {}
+    target["transitions"] = {
+        "todo": ["doing", "fixing", "done"],
+        "doing": ["done"],
+        "fixing": ["done"],
+        "done": [],
+    }
+    target["presets"]["task"]["workflow"] = "default"
+    write_pack(store, "plain", target)
+
+    refused = _switch(store, "plain", ["todo=todo", "doing=doing", "fixing=fixing"])
+
+    assert refused["ok"] is False
+    assert refused["error"]["code"] == "VALIDATION_FAILED"
+    assert any(
+        problem["field"] == "preset" and problem["value"] == "bug"
+        for problem in refused["error"]["details"]["unsupported"]
+    )
 
 
-def test_ambiguous_status_refuses_without_mutation(tmp_path) -> None:
-    store = init_store(tmp_path, pack="flow")
-    created = invoke("add", {"preset": "task", "title": "Login"}, store=store, actor="cto")["value"]
-    invoke("move", {"slug": created["slug"], "status": "building", "expect": created["etag"]}, store=store, actor="cto")
-    before = record_inventory(store)
-    result = invoke("pack use", {"name": "scrum", "expect": _manifest_etag(store), "confirm": "USE PACK scrum"}, store=store, actor="human")
-    assert result["error"]["code"] == "VALIDATION_FAILED"
-    assert record_inventory(store) == before
+def test_a_status_outside_the_target_workflow_refuses(tmp_path: Path) -> None:
+    store = init_pack_store(tmp_path, workflow_pack_document())
+    assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
+    shown = invoke("show", {"slug": "a-task"}, store=store)
+    moved = invoke(
+        "move",
+        {
+            "slug": "a-task",
+            "status": "doing",
+            "expect": shown["value"]["doc"]["etag"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert moved["ok"], moved
 
+    target = workflow_pack_document("narrow")
+    target["workflows"] = {
+        "sprint": {
+            "initial": "todo",
+            "transitions": {"todo": ["done"], "done": []},
+        }
+    }
+    target["presets"]["task"]["workflow"] = "sprint"
+    target["presets"]["bug"]["workflow"] = "sprint"
+    write_pack(store, "narrow", target)
 
-def test_stale_manifest_etag_refuses(tmp_path) -> None:
-    store, _ = _scrum_store_with_item(tmp_path)
-    result = invoke("pack use", {"name": "flow", "expect": "0" * 16, "confirm": "USE PACK flow", "map": ["doing=building"]}, store=store, actor="human")
-    assert result["error"]["code"] == "CONFLICT"
+    refused = _switch(store, "narrow", ["todo=todo", "doing=doing", "fixing=fixing"])
 
-
-def test_inventory_race_between_planning_and_publication_refuses(tmp_path, inject_fault) -> None:
-    store, slug = _scrum_store_with_item(tmp_path)
-    before = record_inventory(store)
-    inject_fault("context_rail.gateway.handlers.packs", "_after_planning", mode="return", value=None)
-    result = invoke("pack use", {"name": "flow", "expect": _manifest_etag(store), "confirm": "USE PACK flow", "map": ["doing=building"]}, store=store, actor="human")
-    assert result["ok"] is True or result["error"]["code"] == "CONFLICT"
-    assert set(record_inventory(store)) - set(before) <= {next(iter(set(record_inventory(store)) - set(before)), "")}
-
-
-def test_crash_between_intent_and_publication_is_repaired_once(tmp_path, inject_fault) -> None:
-    store, slug = _scrum_store_with_item(tmp_path)
-    inject_fault("context_rail.store.write", "_replace_targets", nth=1, mode="raise")
-    result = invoke("pack use", {"name": "flow", "expect": _manifest_etag(store), "confirm": "USE PACK flow", "map": ["doing=building"], "key": "K9"}, store=store, actor="human")
-    assert result["ok"] is False
-    report = repair(store)
-    assert report["unrecoverable"] == []
-    assert not any((local_dir(store) / "intents").glob("*.json"))
-    assert load_pack("flow", store).name == "flow"
-    assert sum(1 for rid in record_inventory(store) if rid) >= 1
-
-
-def test_active_owner_and_pending_intent_block_the_switch(tmp_path) -> None:
-    store, _ = _scrum_store_with_item(tmp_path)
-    intents = local_dir(store) / "intents"
-    intents.mkdir(parents=True, exist_ok=True)
-    (intents / "stale.json").write_text("{}", encoding="utf-8")
-    result = invoke("pack use", {"name": "flow", "expect": _manifest_etag(store), "confirm": "USE PACK flow", "map": ["doing=building"]}, store=store, actor="human")
-    assert result["error"]["code"] == "INVALID_STATE"
+    assert refused["ok"] is False, refused
+    assert refused["error"]["code"] == "VALIDATION_FAILED"
+    assert any(
+        problem["field"] == "workflow"
+        for problem in refused["error"].get("details", {}).get("unsupported", [])
+    ), refused

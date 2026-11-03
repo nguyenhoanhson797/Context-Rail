@@ -42,6 +42,12 @@ def parse_map_entries(
     return mapping, tuple(sorted(set(problems)))
 
 
+def preset_workflow(pack: Pack, preset: str) -> str:
+    """The workflow a preset selects, or ``default`` for an undeclared preset."""
+    declared = pack.presets.get(preset)
+    return declared.workflow if declared is not None else "default"
+
+
 def plan_status_map(
     source: Pack,
     target: Pack,

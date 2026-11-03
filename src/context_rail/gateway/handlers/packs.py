@@ -15,7 +15,11 @@ from context_rail.gateway.confirmation import (
     confirmation_phrase,
     validate_confirmation,
 )
-from context_rail.kernel.packs import parse_map_entries, plan_status_map
+from context_rail.kernel.packs import (
+    parse_map_entries,
+    plan_status_map,
+    preset_workflow,
+)
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import initial_manifest, manifest_from_mapping
 from context_rail.model.metadata import ENGINE_PRESETS
@@ -232,15 +236,20 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             raise WriteRefused(
                 "VALIDATION_FAILED",
                 "the store's statuses cannot be mapped into the target pack",
-                {"problems": [list(problem) for problem in mapping.problems]},
+                {
+                    "problems": [list(problem) for problem in mapping.problems],
+                    "items": _affected_items(items, current, mapping.problems),
+                },
             )
-        unsupported = _unsupported_fields(items, current, target)
+        unsupported = _unsupported_fields(items, current, target, mapping.mapping)
         if unsupported:
             raise WriteRefused(
                 "VALIDATION_FAILED",
-                "the store uses presets or fields the target pack does not declare",
+                "the store uses presets, fields or statuses the target pack "
+                "does not declare",
                 {"unsupported": unsupported},
             )
+        workflow_changes = _workflow_changes(items, current, target)
         engine_metadata = _engine_metadata_problems(target, target.name)
         if engine_metadata:
             raise WriteRefused(
@@ -272,6 +281,7 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "to": target.name,
             "status_map": dict(mapping.mapping),
             "changes": changes,
+            "workflow_changes": workflow_changes,
             "warnings": [],
             "manifest_etag": etag(manifest_bytes),
             "record": None,
@@ -288,8 +298,10 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "from": current.name,
                 "to": target.name,
                 "status_map": dict(mapping.mapping),
+                "changes": changes,
                 "changed_slugs": [row["slug"] for row in changes],
                 "changed_count": len(changes),
+                "workflow_changes": workflow_changes,
                 "approval_target": f"pack:{target.name}",
                 "candidate_snapshot": candidate,
                 "candidate_digest": snapshot_digest(candidate),
@@ -362,7 +374,12 @@ def _known(store: Path, name: str) -> str:
     return resolved
 
 
-def _unsupported_fields(items: list[dict[str, Any]], source: Any, target: Any) -> list[dict[str, Any]]:
+def _unsupported_fields(
+    items: list[dict[str, Any]],
+    source: Any,
+    target: Any,
+    mapping: dict[str, str],
+) -> list[dict[str, Any]]:
     problems: list[dict[str, Any]] = []
     for row in items:
         source_preset = source.presets.get(row["preset"])
@@ -385,7 +402,54 @@ def _unsupported_fields(items: list[dict[str, Any]], source: Any, target: Any) -
                 problems.append(
                     {"path": row["path"], "field": name, "value": None}
                 )
+        mapped = mapping.get(row["status"], row["status"])
+        workflow = target.workflows.get(target_preset.workflow)
+        if workflow is None or mapped not in workflow.transitions:
+            problems.append(
+                {
+                    "path": row["path"],
+                    "field": "workflow",
+                    "value": target_preset.workflow,
+                    "status": mapped,
+                }
+            )
     return problems
+
+
+def _workflow_changes(
+    items: list[dict[str, Any]], source: Any, target: Any
+) -> list[dict[str, str]]:
+    """Every item whose preset moves from one workflow to another."""
+    changes: list[dict[str, str]] = []
+    for row in items:
+        before = preset_workflow(source, row["preset"])
+        after_preset = target.presets.get(row["preset"])
+        after = after_preset.workflow if after_preset is not None else before
+        if before != after:
+            changes.append({"slug": row["slug"], "from": before, "to": after})
+    return sorted(changes, key=lambda row: row["slug"])
+
+
+def _affected_items(
+    items: list[dict[str, Any]],
+    source: Any,
+    problems: tuple[tuple[str, str], ...],
+) -> list[dict[str, str]]:
+    """The items whose status the map could not resolve, named for the human."""
+    bad = {
+        status
+        for code, status in problems
+        if code in {"ambiguous", "no_target", "unknown_source"}
+    }
+    return [
+        {
+            "slug": row["slug"],
+            "workflow": preset_workflow(source, row["preset"]),
+            "status": row["status"],
+        }
+        for row in items
+        if row["status"] in bad
+    ]
 
 
 def _engine_metadata_problems(pack: Any, name: str) -> list[dict[str, str]]:
@@ -512,7 +576,10 @@ def _replay_value(ctx: Context, saved: dict[str, Any]) -> dict[str, Any]:
         row["slug"]: row["status"] for row in query.items_for_migration(ctx.index)
     }
     changes = []
-    for slug in data.get("changed_slugs") or []:
+    stored = data.get("changes")
+    if isinstance(stored, list) and all(isinstance(row, dict) for row in stored):
+        changes = stored
+    for slug in ([] if changes else data.get("changed_slugs") or []):
         current = statuses.get(slug)
         changes.append(
             {"slug": slug, "from": reverse.get(current, current), "to": current}
@@ -522,6 +589,7 @@ def _replay_value(ctx: Context, saved: dict[str, Any]) -> dict[str, Any]:
         "to": data.get("to"),
         "status_map": dict(mapping),
         "changes": changes,
+        "workflow_changes": list(data.get("workflow_changes") or []),
         "warnings": [],
         "manifest_etag": etag((ctx.store / "rail.yaml").read_bytes()),
         "record": record_id,
