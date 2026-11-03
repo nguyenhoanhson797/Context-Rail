@@ -1,4 +1,9 @@
-"""A loopback-only HTTP surface over ``ui.api`` and therefore over ``invoke``."""
+"""A loopback-only HTTP surface: the legacy React bundle plus the engine's JSON.
+
+The page is the copied context-rail-link SPA built into ``ui/static``. It reads
+one snapshot, one health document, named reads and the tool table, all backed by
+``ui.api`` and therefore by the current engine.
+"""
 
 from __future__ import annotations
 
@@ -15,18 +20,29 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from context_rail.store.write import WriteRefused
 from context_rail.ui import api
-from context_rail.ui.page import PAGE
 
 __all__ = ["MAX_BODY", "create_server", "serve"]
 
 MAX_BODY = 2 * 1024 * 1024
 REQUEST_TIMEOUT_S = 30.0
 _COOKIE = "rail_ui_token"
-_HEADER = "X-Rail-Token"
+_HEADERS = ("X-Rail-Token", "X-Context-Rail-Token")
 _CSP = (
-    "default-src 'none'; style-src 'unsafe-inline'; "
-    "script-src 'unsafe-inline'; connect-src 'self'"
+    "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+    "base-uri 'none'; form-action 'none'"
 )
+_STATIC = Path(__file__).with_name("static")
+_MIME = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".json": "application/json; charset=utf-8",
+    ".woff2": "font/woff2",
+    ".png": "image/png",
+    ".map": "application/json; charset=utf-8",
+}
 
 
 def create_server(
@@ -60,33 +76,54 @@ def create_server(
                 )
                 return
             path = parts.path
-            if method == "GET" and path == "/":
-                self._html(HTTPStatus.OK, PAGE)
+            if method == "GET" and path in ("/", "/index.html"):
+                self._page()
+                return
+            if method == "GET" and (path.startswith("/assets/") or path == "/favicon.svg"):
+                self._asset(path)
+                return
+            if method != "GET" and method != "POST":
+                self._error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "unknown route")
                 return
             if method == "GET" and path == "/api/context":
-                self._json_result(api.context_document(store, actor))
+                self._safe(api.context_document, store, actor)
                 return
-            if method == "GET" and path == "/api/tools":
-                self._json_result(api.tool_catalog())
-                return
-            if method == "GET" and path == "/api/surface":
-                self._json_result(api.surface_document(store, actor))
+            if method == "GET" and path == "/api/snapshot":
+                self._safe(api.context_document, store, actor)
                 return
             if method == "GET" and path == "/api/health":
-                self._json_result(api.health_document(store, actor))
+                self._safe(api.health_document, store, actor)
                 return
-            if method == "GET" and path.startswith("/api/why/"):
-                slug = unquote(path[len("/api/why/") :])
-                self._json_result(api.reason_document(store, slug, actor))
+            if method == "GET" and path == "/api/tools":
+                self._safe(api.tools_document)
+                return
+            if method == "GET" and path == "/api/projects":
+                self._safe(api.projects_document, store)
+                return
+            if method == "GET" and path == "/api/portfolio":
+                self._safe(api.portfolio_document, store, actor)
                 return
             if method == "GET" and path.startswith("/api/doc/"):
-                slug = unquote(path[len("/api/doc/") :])
-                self._json_result(api.show_document(store, slug, actor))
+                self._safe(api.doc_document, store, unquote(path[len("/api/doc/") :]), actor)
+                return
+            if method == "GET" and path.startswith("/api/read/"):
+                self._safe(
+                    api.read_document,
+                    store,
+                    unquote(path[len("/api/read/") :]),
+                    actor,
+                )
                 return
             if method == "POST" and path.startswith("/api/tool/"):
-                self._call(path[len("/api/tool/") :])
+                self._call(unquote(path[len("/api/tool/") :]))
                 return
             self._error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "unknown route")
+
+        def _safe(self, function: Any, *args: Any) -> None:
+            try:
+                self._json(HTTPStatus.OK, function(*args))
+            except Exception as error:  # a read refusal is an envelope, not a crash
+                self._refusal(error)
 
         def _call(self, name: str) -> None:
             length = self.headers.get("Content-Length")
@@ -111,7 +148,7 @@ def create_server(
                 return
             raw = self.rfile.read(size) if size else b""
             try:
-                arguments = json.loads(raw.decode("utf-8")) if raw else {}
+                body = json.loads(raw.decode("utf-8")) if raw else {}
             except (UnicodeDecodeError, ValueError):
                 self._error(
                     HTTPStatus.BAD_REQUEST,
@@ -119,35 +156,44 @@ def create_server(
                     "the body must be a JSON object",
                 )
                 return
-            if not isinstance(arguments, dict):
+            if not isinstance(body, dict):
                 self._error(
                     HTTPStatus.BAD_REQUEST,
                     "VALIDATION_FAILED",
                     "the body must be a JSON object",
                 )
                 return
+            arguments = body.get("args") if isinstance(body.get("args"), dict) else {}
             try:
-                result = api.call_tool(store, unquote(name), arguments, actor)
-            except Exception as error:  # the gateway's own refusal shapes
-                code = getattr(error, "code", "INTERNAL")
+                result = api.call_tool(store, name, arguments, actor)
+            except WriteRefused as error:
                 status = (
-                    HTTPStatus.NOT_FOUND
-                    if code == "NOT_FOUND"
-                    else HTTPStatus.FORBIDDEN
-                    if code == "FORBIDDEN"
-                    else HTTPStatus.BAD_REQUEST
+                    HTTPStatus.FORBIDDEN
+                    if error.code == "FORBIDDEN"
+                    else HTTPStatus.OK
                 )
-                self._error(status, code, str(error))
+                self._json(
+                    status,
+                    {"status": "error", "code": error.code, "error": error.message},
+                )
                 return
-            self._json_result(result)
+            except Exception as error:
+                self._json(
+                    HTTPStatus.OK,
+                    {"status": "error", "error": str(error) or error.__class__.__name__},
+                )
+                return
+            self._json(HTTPStatus.OK, result)
+
+        def _refusal(self, error: Exception) -> None:
+            code = getattr(error, "code", "INTERNAL")
+            self._json(
+                HTTPStatus.OK,
+                {"status": "error", "code": code, "error": str(error)},
+            )
 
         def _host_allowed(self) -> bool:
-            """Accept the IPv4 loopback names this server actually binds.
-
-            The socket is IPv4-only, so ``[::1]`` is deliberately not accepted:
-            a Host or Origin that names an address the server never listens on
-            is a cross-origin request, not this page's own fetch.
-            """
+            """Accept the IPv4 loopback names this server actually binds."""
             host = (self.headers.get("Host") or "").strip().lower()
             port = self.server.server_address[1]
             allowed = {f"127.0.0.1:{port}", f"localhost:{port}"}
@@ -162,7 +208,10 @@ def create_server(
         def _token_ok(self, query: str) -> bool:
             supplied = parse_qs(query).get("token", [""])[0]
             if not supplied:
-                supplied = self.headers.get(_HEADER) or ""
+                for header in _HEADERS:
+                    supplied = self.headers.get(header) or ""
+                    if supplied:
+                        break
             if not supplied:
                 cookie = self.headers.get("Cookie") or ""
                 for part in cookie.split(";"):
@@ -176,9 +225,46 @@ def create_server(
                 supplied.encode("utf-8"), token.encode("ascii")
             )
 
-        def _json_result(self, result: dict[str, Any]) -> None:
-            status = HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST
-            self._json(status, result)
+        def _page(self) -> None:
+            index = _STATIC / "index.html"
+            if not index.is_file():
+                self._error(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "INTERNAL",
+                    "the UI bundle is not built; run npm --prefix web run build",
+                )
+                return
+            html = index.read_text(encoding="utf-8").replace(
+                "__CTX_RAIL_TOKEN__", token
+            )
+            data = html.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", _MIME[".html"])
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header(
+                "Set-Cookie",
+                f"{_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict",
+            )
+            self._security_headers()
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _asset(self, path: str) -> None:
+            relative = "favicon.svg" if path == "/favicon.svg" else path[len("/") :]
+            target = (_STATIC / relative).resolve()
+            root = _STATIC.resolve()
+            if root not in target.parents or not target.is_file():
+                self._error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "unknown asset")
+                return
+            data = target.read_bytes()
+            self.send_response(HTTPStatus.OK)
+            self.send_header(
+                "Content-Type", _MIME.get(target.suffix, "application/octet-stream")
+            )
+            self.send_header("Content-Length", str(len(data)))
+            self._security_headers()
+            self.end_headers()
+            self.wfile.write(data)
 
         def _json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -189,17 +275,8 @@ def create_server(
             self.end_headers()
             self.wfile.write(data)
 
-        def _html(self, status: HTTPStatus, text: str) -> None:
-            data = text.encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self._security_headers()
-            self.end_headers()
-            self.wfile.write(data)
-
         def _error(self, status: HTTPStatus, code: str, message: str) -> None:
-            self._json(status, {"ok": False, "error": {"code": code, "message": message}})
+            self._json(status, {"status": "error", "code": code, "error": message})
 
         def _security_headers(self) -> None:
             self.send_header("Content-Security-Policy", _CSP)

@@ -282,11 +282,18 @@ The loop gates stay separate on purpose: `dispatch` launches an implementer,
 `review` is a different actor, and `merge` fast-forwards only an approved
 candidate. `gate` is a read-only governance check; it never runs a Check.
 
-`rail serve ui` opens a loopback, token-gated page over the same tool table. It
-shows the compiled pack: every workflow with its states and quality gates, items
-grouped by the workflow they follow, the pack's verbs, and one item card with
-its legal next moves, gate and proof. Store checks run only when you ask; a
-collapsed runner can call any non-serve tool.
+`rail serve ui` opens the loopback, token-gated project UI. It is the
+context-rail-link React shell and design system, served from
+`src/context_rail/ui/static`; the pages read one pack-aware snapshot, so the
+board columns are the pack's statuses and the roadmap is built from the pack's
+containers (`root/container: true`). The screens in this phase are Summary, Now,
+Board, Roadmap, Scope, Decisions, Doctor and Settings, with the document drawer
+and command palette.
+
+Build the shell with `npm --prefix web install` once, then
+`npm --prefix web run build`; the bundle lands in the Python package and is
+served by `rail serve ui`. The legacy reads a screen does not yet have are
+explicit refusals, so a deferred screen is hidden rather than shown empty.
 
 Every former flat command name remains accepted, including `status`, `dispatch`,
 `review`, `merge`, `check`, `verify`, `relocate`, `ci`, `pack`, `sync`,

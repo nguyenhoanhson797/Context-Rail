@@ -54,26 +54,24 @@ def test_a_legacy_store_survives_migration_ui_adapters_and_reindex(
         status, context, headers = ui_call(ui.base, "/api/context", token=ui.token)
         assert status == 200, context
         assert "default-src 'none'" in headers["content-security-policy"]
-        assert {item["slug"] for item in context["value"]["items"]} >= {
-            "login",
-            "req-1",
-        }
+        assert {item["id"] for item in context["tasks"]} >= {"login", "req-1"}
 
         status, catalog, _ = ui_call(ui.base, "/api/tools", token=ui.token)
         assert status == 200
-        names = {tool["name"] for tool in catalog["value"]}
-        assert {"read find", "ops migrate", "serve ui"} <= names
+        names = {tool["name"] for tool in catalog["tools"]}
+        assert {"find", "migrate", "doctor"} <= names
 
         status, posted, _ = ui_call(
             ui.base,
             "/api/tool/find",
             token=ui.token,
             method="POST",
-            body={"limit": 50},
+            body={"args": {"limit": 50}},
         )
         assert status == 200, posted
 
-    assert posted == invoke("find", {"limit": 50}, store=store, actor="human")
+    found = invoke("find", {"limit": 50}, store=store, actor="human")
+    assert posted["items"] == found["value"]["items"]
 
     synced = invoke(
         "adapters sync",

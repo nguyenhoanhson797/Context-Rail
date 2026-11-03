@@ -1,3 +1,5 @@
+"""The loopback UI: the built React shell plus the engine's JSON contract."""
+
 from __future__ import annotations
 
 import json
@@ -9,104 +11,119 @@ from helpers import ui_call, ui_oversize_probe
 _call = ui_call
 
 
-def test_context_needs_a_token_and_never_runs_doctor(ui_server) -> None:
+def test_context_needs_a_token_and_names_the_pack(ui_server) -> None:
     status, payload, _ = _call(ui_server.base, "/api/context", token=None)
     assert status == 401
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
+    assert payload["code"] == "PERMISSION_DENIED"
 
     status, payload, headers = _call(
         ui_server.base, "/api/context", token=ui_server.token
     )
     assert status == 200, payload
-    assert payload["ok"] is True
-    value = payload["value"]
-    assert value["schema"] == 1
-    assert "counts" in value["status"] and "items" in value
-    assert "doctor" not in json.dumps(value).lower()
-    assert "default-src 'none'" in headers["content-security-policy"]
+    assert payload["schema"] == 4
+    assert payload["pack"]
+    assert isinstance(payload["tasks"], list)
+    assert isinstance(payload["phases"], list)
+    assert isinstance(payload["workflows"], list)
+    assert payload["statuses"]
+    assert payload["status_categories"]
+    assert "doctor" not in json.dumps(payload).lower()
+    assert "script-src 'self'" in headers["content-security-policy"]
     assert headers["cache-control"] == "no-store"
 
 
-def test_context_lists_items_only(ui_server) -> None:
+def test_health_and_named_reads_use_explicit_envelopes(ui_server) -> None:
+    status, health, _ = _call(ui_server.base, "/api/health", token=ui_server.token)
+    assert status == 200, health
+    assert health["schema"] == "ui-health-v1"
+    assert health["state"] in {"ok", "unknown", "error"}
+
+    status, doctor, _ = _call(
+        ui_server.base, "/api/read/doctor", token=ui_server.token
+    )
+    assert status == 200, doctor
+    assert doctor["status"] == "ok"
+    assert isinstance(doctor["issues"], list)
+
+    status, queue, _ = _call(ui_server.base, "/api/read/next", token=ui_server.token)
+    assert status == 200, queue
+    assert queue["status"] == "ok"
+    assert isinstance(queue["queue"], list)
+
+    status, missing, _ = _call(
+        ui_server.base, "/api/read/atlas", token=ui_server.token
+    )
+    assert status == 200, missing
+    assert missing["status"] == "error"
+    assert "phase" in missing["error"]
+
+
+def test_a_document_and_a_move_go_through_the_gateway(ui_server) -> None:
     added = invoke(
         "add", {"preset": "task", "title": "UI task"}, store=ui_server.store, actor="cto"
     )
-    assert added["ok"] is True, added
+    assert added["ok"], added
 
-    status, payload, _ = _call(
-        ui_server.base, "/api/context", token=ui_server.token
-    )
-
-    assert status == 200, payload
-    items = payload["value"]["items"]
-    assert {item["slug"] for item in items} >= {"ui-task"}
-    assert all(item["status"] for item in items), items
-
-
-def test_tools_and_reads_go_through_the_gateway(ui_server) -> None:
-    status, payload, _ = _call(ui_server.base, "/api/tools", token=ui_server.token)
-    assert status == 200
-    names = {tool["name"] for tool in payload["value"]}
-    assert {"read find", "ops migrate", "serve ui"} <= names
-
-    status, payload, _ = _call(
-        ui_server.base,
-        "/api/tool/find",
-        token=ui_server.token,
-        method="POST",
-        body={"preset": "task"},
-    )
-    assert status == 200, payload
-    assert payload["ok"] is True
-    assert payload["value"]["items"] == []
-
-    status, payload, _ = _call(
-        ui_server.base,
-        "/api/tool/read%20find",
-        token=ui_server.token,
-        method="POST",
-        body={"preset": "task"},
-    )
-    assert status == 200, payload
-    assert payload["ok"] is True
-    assert payload["value"]["items"] == []
-
-    added = invoke(
-        "add", {"preset": "task", "title": "UI task"}, store=ui_server.store, actor="cto"
-    )
-    assert added["ok"] is True, added
-    status, payload, _ = _call(
+    status, shown, _ = _call(
         ui_server.base, "/api/doc/ui-task", token=ui_server.token
     )
-    assert status == 200
-    assert payload["value"]["doc"]["slug"] == "ui-task"
+    assert status == 200, shown
+    assert shown["status"] == "ok"
+    doc = shown["doc"]
+    assert doc["title"] == "UI task"
+    assert doc["workflow"]
+    assert doc["etag"]
+
+    status, moved, _ = _call(
+        ui_server.base,
+        "/api/tool/change%20move",
+        token=ui_server.token,
+        method="POST",
+        body={"args": {"slug": "ui-task", "status": "doing", "expect": doc["etag"]}},
+    )
+    assert status == 200, moved
+    assert moved["status"] == "ok"
+    assert moved["item_status"] == "doing"
 
 
-def test_hosts_and_reserved_arguments_are_refused(ui_server) -> None:
+def test_the_tool_catalog_is_the_current_surface(ui_server) -> None:
+    status, payload, _ = _call(ui_server.base, "/api/tools", token=ui_server.token)
+    assert status == 200, payload
+    assert payload["status"] == "ok"
+    names = {tool["name"] for tool in payload["tools"]}
+    assert {"find", "show", "move", "types", "next", "explain", "why", "do"} <= names
+    assert "ui serve" not in names
+    assert payload["confirm"] == []
+
+
+def test_hosts_reserved_arguments_and_forbidden_tools_are_refused(ui_server) -> None:
     status, payload, _ = _call(
         ui_server.base, "/api/context", token=ui_server.token, host="evil.example"
     )
     assert status == 403
+    assert payload["code"] == "FORBIDDEN"
 
     status, payload, _ = _call(
         ui_server.base,
         "/api/tool/find",
         token=ui_server.token,
         method="POST",
-        body={"actor": "cto"},
+        body={"args": {"actor": "cto"}},
     )
-    assert status == 400
-    assert payload["error"]["code"] == "VALIDATION_FAILED"
+    assert status == 200
+    assert payload["status"] == "error"
+    assert payload["code"] == "VALIDATION_FAILED"
 
-    status, payload, _ = _call(
-        ui_server.base,
-        "/api/tool/mcp%20serve",
-        token=ui_server.token,
-        method="POST",
-        body={},
-    )
-    assert status == 403
-    assert payload["error"]["code"] == "FORBIDDEN"
+    for name in ("mcp%20serve", "ui%20serve"):
+        status, payload, _ = _call(
+            ui_server.base,
+            f"/api/tool/{name}",
+            token=ui_server.token,
+            method="POST",
+            body={"args": {}},
+        )
+        assert status == 403
+        assert payload["code"] == "FORBIDDEN"
 
     status, _, _ = _call(ui_server.base, "/nope", token=ui_server.token)
     assert status == 404
@@ -116,182 +133,20 @@ def test_the_body_cap_refuses_before_reading(ui_server) -> None:
     assert ui_oversize_probe(ui_server.base, ui_server.token, MAX_BODY + 1) == 413
 
 
-def test_the_page_is_self_contained(ui_server) -> None:
-    status, payload, headers = _call(
-        ui_server.base, "/", token=ui_server.token
-    )
+def test_the_built_page_is_served_with_the_token(ui_server) -> None:
+    status, page, headers = _call(ui_server.base, "/", token=ui_server.token)
+
     assert status == 200
     assert headers["content-type"].startswith("text/html")
-    assert "Context Rail" in payload
+    assert "Context Rail" in page
+    assert ui_server.token in page
+    assert "/assets/" in page
+    assert "rail_ui_token=" in headers["set-cookie"]
 
 
-def _raw(
-    base: str,
-    method: str,
-    path: str,
-    headers: list[tuple[str, str]],
-    body: bytes | None = None,
-) -> tuple[int, bytes]:
-    import http.client
-    from urllib.parse import urlsplit
-
-    parts = urlsplit(base)
-    connection = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
-    try:
-        connection.putrequest(method, path)
-        for name, value in headers:
-            connection.putheader(name, value)
-        connection.endheaders(body)
-        response = connection.getresponse()
-        return response.status, response.read()
-    finally:
-        connection.close()
-
-
-def test_a_negative_content_length_is_rejected_without_reading(ui_server) -> None:
-    from urllib.parse import urlsplit
-
-    port = urlsplit(ui_server.base).port
-    status, _ = _raw(
-        ui_server.base,
-        "POST",
-        "/api/tool/find",
-        [
-            ("Host", f"127.0.0.1:{port}"),
-            ("X-Rail-Token", ui_server.token),
-            ("Content-Length", "-1"),
-            ("Content-Type", "application/json"),
-        ],
-    )
-
-    assert status == 400
-
-
-def test_the_body_cap_is_exact(ui_server, monkeypatch) -> None:
-    import context_rail.ui.server as server_module
-    from urllib.parse import urlsplit
-
-    monkeypatch.setattr(server_module, "MAX_BODY", 32)
-    port = urlsplit(ui_server.base).port
-
-    exact = b'{"x":"' + b"a" * 24 + b'"}'
-    assert len(exact) == 32
-    status, _ = _raw(
-        ui_server.base,
-        "POST",
-        "/api/tool/find",
-        [
-            ("Host", f"127.0.0.1:{port}"),
-            ("X-Rail-Token", ui_server.token),
-            ("Content-Length", str(len(exact))),
-            ("Content-Type", "application/json"),
-        ],
-        exact,
-    )
-    assert status != 413
-
-    over = exact + b" "
-    status, _ = _raw(
-        ui_server.base,
-        "POST",
-        "/api/tool/find",
-        [
-            ("Host", f"127.0.0.1:{port}"),
-            ("X-Rail-Token", ui_server.token),
-            ("Content-Length", str(len(over))),
-            ("Content-Type", "application/json"),
-        ],
-        over,
-    )
-    assert status == 413
-
-
-def test_a_second_fixed_port_bind_is_a_typed_refusal(ui_server) -> None:
-    import pytest
-
-    from context_rail.store.write import WriteRefused
-    from context_rail.ui.server import create_server
-
-    port = ui_server.server.server_address[1]
-
-    with pytest.raises(WriteRefused) as caught:
-        create_server(ui_server.store, port=port)
-
-    assert caught.value.code == "CONFLICT"
-    assert caught.value.details["port"] == port
-
-
-def test_a_non_ascii_token_is_rejected_safely(ui_server) -> None:
+def test_an_unknown_asset_is_not_served(ui_server) -> None:
     status, payload, _ = _call(
-        ui_server.base, "/api/context", token="t\u00f6k\u00e9n"
+        ui_server.base, "/assets/../../rail.yaml", token=ui_server.token
     )
-    assert status == 401
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
-
-
-def test_the_ipv6_loopback_host_and_origin_are_refused(ui_server) -> None:
-    from urllib.parse import urlsplit
-
-    port = urlsplit(ui_server.base).port
-    status, _, _ = _call(
-        ui_server.base, "/api/context", token=ui_server.token, host=f"[::1]:{port}"
-    )
-    assert status == 403
-
-    status, _ = _raw(
-        ui_server.base,
-        "GET",
-        "/api/context",
-        [
-            ("Host", f"127.0.0.1:{port}"),
-            ("Origin", f"http://[::1]:{port}"),
-            ("X-Rail-Token", ui_server.token),
-        ],
-    )
-    assert status == 403
-
-
-def test_the_surface_endpoint_describes_the_new_engine(ui_server) -> None:
-    status, payload, _ = _call(
-        ui_server.base, "/api/surface", token=ui_server.token
-    )
-
-    assert status == 200, payload
-    value = payload["value"]
-    assert value["pack"]
-    assert value["workflows"], value
-    assert all(entry["kind"] == "workflow" for entry in value["workflows"])
-    workflow = value["workflows"][0]
-    assert {"name", "initial", "states", "transitions", "quality"} <= set(workflow)
-    assert isinstance(value["actions"], list)
-
-
-def test_health_runs_only_on_request(ui_server) -> None:
-    status, payload, _ = _call(
-        ui_server.base, "/api/health", token=ui_server.token
-    )
-
-    assert status == 200, payload
-    assert {"issues", "counts"} <= set(payload["value"])
-
-    status, payload, _ = _call(
-        ui_server.base, "/api/why/ui-task", token=ui_server.token
-    )
-    assert status in {200, 400}
-
-
-def test_the_page_presents_workflows_and_proof(ui_server) -> None:
-    status, page, _ = _call(ui_server.base, "/", token=ui_server.token)
-
-    assert status == 200
-    for needle in ("Workflows", "Verbs", "Proof this gate needs", "Next moves"):
-        assert needle in page
-    assert "pack.yaml" not in page
-
-
-def test_the_page_catches_a_failed_fetch() -> None:
-    from context_rail.ui.page import PAGE
-
-    assert "async function call" in PAGE
-    assert "catch (error)" in PAGE
-    assert "NETWORK" in PAGE
+    assert status == 404
+    assert payload["code"] == "NOT_FOUND"

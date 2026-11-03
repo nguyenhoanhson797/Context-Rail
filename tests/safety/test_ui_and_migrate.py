@@ -82,7 +82,7 @@ def test_the_ui_binds_loopback_and_refuses_a_second_transport(tmp_path: Path) ->
 
         status, payload, _ = ui_call(ui.base, "/api/context", token=None)
         assert status == 401
-        assert payload["error"]["code"] == "PERMISSION_DENIED"
+        assert payload["code"] == "PERMISSION_DENIED"
 
         for name in ("mcp%20serve", "ui%20serve"):
             status, payload, _ = ui_call(
@@ -90,9 +90,9 @@ def test_the_ui_binds_loopback_and_refuses_a_second_transport(tmp_path: Path) ->
                 f"/api/tool/{name}",
                 token=ui.token,
                 method="POST",
-                body={},
+                body={"args": {}},
             )
             assert status == 403
-            assert payload["error"]["code"] == "FORBIDDEN"
+            assert payload["code"] == "FORBIDDEN"
 
         assert ui_oversize_probe(ui.base, ui.token, MAX_BODY + 1) == 413
