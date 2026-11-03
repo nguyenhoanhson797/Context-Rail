@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import now_iso
 from context_rail.gateway.handlers.init import GITIGNORE, pinned_folders
 from context_rail.gateway.handlers.onboarding import agent_ops
@@ -52,7 +53,10 @@ def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, 
             "a store already exists at the migration target",
             {"path": str(target / "rail.yaml")},
         )
-    pack = load_pack(args["pack"], target)
+    pack_name = args["pack"]
+    if isinstance(pack_name, str):
+        pack_name = pack_name.strip() or DEFAULT_PACK
+    pack = load_pack(pack_name, target)
     legacy = read_legacy(source)
     manifest, manifest_data = initial_manifest(pack.name, target)
     plan = plan_migration(
