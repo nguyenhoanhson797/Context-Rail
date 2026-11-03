@@ -33,6 +33,8 @@ class ItemRow:
     depends_on: tuple[str, ...]
     last_activity_ms: int | None
     dispatchable: bool = True
+    preset: str | None = None
+    workflow: str = "default"
 
 
 @dataclass(frozen=True)

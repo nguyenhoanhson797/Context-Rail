@@ -135,7 +135,7 @@ def test_open_creates_a_wal_database_without_parsing_documents(store_factory):
     store = store_factory(docs=50)
     index = Index.open(store, load_pack("basic", store))
     try:
-        assert INDEX_SCHEMA == 3
+        assert INDEX_SCHEMA == 4
         assert index_path(store).is_file()
         assert index.conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         assert count(index, "SELECT count(*) FROM docs") == 0

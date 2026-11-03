@@ -14,7 +14,7 @@ from context_rail.core.result import is_ok
 from context_rail.core.util import dump_frontmatter, load_yaml
 from context_rail.gateway.gateway import invoke
 from context_rail.store.doc import record_digest
-from helpers import init_pack_store, nested_pack_document, touch_doc
+from helpers import init_pack_store, touch_doc, workflow_pack_document
 
 STAMP = "2026-10-28T00:00:00Z"
 RECORD_KEYS = {"id", "primitive", "preset", "kind", "at", "actor", "about", "data", "digest"}
@@ -566,32 +566,7 @@ def test_move_refuses_a_preset_with_no_workflow(tmp_path):
 
 
 def test_move_uses_the_preset_workflow(tmp_path):
-    document = nested_pack_document("twoways")
-    document["statuses"] = {
-        "todo": "not_started",
-        "doing": "active",
-        "fixing": "active",
-        "done": "done",
-    }
-    document["initial"] = "todo"
-    document["transitions"] = {"todo": ["done"], "done": []}
-    document["workflows"] = {
-        "sprint": {
-            "initial": "todo",
-            "transitions": {"todo": ["doing"], "doing": ["done"], "done": []},
-        },
-        "bugfix": {
-            "initial": "todo",
-            "transitions": {"todo": ["fixing"], "fixing": ["done"], "done": []},
-        },
-    }
-    document["presets"]["task"]["workflow"] = "sprint"
-    document["presets"]["bug"] = {
-        "primitive": "item",
-        "tags": ["bug"],
-        "workflow": "bugfix",
-    }
-    store = init_pack_store(tmp_path, document)
+    store = init_pack_store(tmp_path, workflow_pack_document())
     assert is_ok(invoke("add", {"preset": "task", "title": "A task"}, store=store))
     assert is_ok(invoke("add", {"preset": "bug", "title": "A bug"}, store=store))
 
@@ -636,7 +611,12 @@ def test_move_records_status_changed(tmp_path):
     payload = _new_record(store, before)
     assert payload["kind"] == "status.changed"
     assert payload["about"] == ["login-page"]
-    assert payload["data"] == {"from": "todo", "to": "doing", "resolution": None}
+    assert payload["data"] == {
+        "from": "todo",
+        "to": "doing",
+        "resolution": None,
+        "workflow": "default",
+    }
 
     before = _files(store, "records")
     second = invoke(
@@ -652,7 +632,12 @@ def test_move_records_status_changed(tmp_path):
     )
     assert is_ok(second), second
     payload = _new_record(store, before)
-    assert payload["data"] == {"from": "doing", "to": "done", "resolution": "mitigated"}
+    assert payload["data"] == {
+        "from": "doing",
+        "to": "done",
+        "resolution": "mitigated",
+        "workflow": "default",
+    }
 
 
 def test_move_checks_expect_before_lifecycle(tmp_path):
@@ -776,6 +761,7 @@ def test_find_filters_and_orders(tmp_path):
         "title",
         "primitive",
         "preset",
+        "workflow",
         "status",
         "path",
     }

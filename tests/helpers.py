@@ -736,6 +736,36 @@ def copy_pack_templates(store: Path, name: str) -> None:
             )
 
 
+def workflow_pack_document(name: str = "twoways") -> dict[str, Any]:
+    """A pack with a ``sprint`` and a ``bugfix`` workflow over one status map."""
+    document = nested_pack_document(name)
+    document["statuses"] = {
+        "todo": "not_started",
+        "doing": "active",
+        "fixing": "active",
+        "done": "done",
+    }
+    document["initial"] = "todo"
+    document["transitions"] = {"todo": ["done"], "done": []}
+    document["workflows"] = {
+        "sprint": {
+            "initial": "todo",
+            "transitions": {"todo": ["doing"], "doing": ["done"], "done": []},
+        },
+        "bugfix": {
+            "initial": "todo",
+            "transitions": {"todo": ["fixing"], "fixing": ["done"], "done": []},
+        },
+    }
+    document["presets"]["task"]["workflow"] = "sprint"
+    document["presets"]["bug"] = {
+        "primitive": "item",
+        "tags": ["bug"],
+        "workflow": "bugfix",
+    }
+    return document
+
+
 def init_pack_store(
     tmp_path: Path,
     document: dict[str, Any],

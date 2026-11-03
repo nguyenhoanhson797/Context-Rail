@@ -11,12 +11,20 @@ from pathlib import Path
 
 import pytest
 
+from context_rail.gateway.gateway import invoke
 from context_rail.model.pack import load_pack
 from context_rail.store.doc import record_digest
 from context_rail.store.index import INDEX_SCHEMA, Index
 from context_rail.store.location import index_path
 from context_rail.store.query import ledger, untriaged_reports
-from helpers import run_cli, run_git, write_record
+from helpers import (
+    init_pack_store,
+    run_cli,
+    run_git,
+    workflow_pack_document,
+    write_pack,
+    write_record,
+)
 from perf.gen import make_store
 
 REQUIRED_TABLES = {
@@ -36,8 +44,8 @@ TRIAGE_ID = "01JTRIAGE00000000000000001"
 
 
 @contextlib.contextmanager
-def opened(store: Path) -> Iterator[Index]:
-    index = Index.open(store, load_pack("basic", store))
+def opened(store: Path, name: str = "basic") -> Iterator[Index]:
+    index = Index.open(store, load_pack(name, store))
     try:
         yield index
     finally:
@@ -78,8 +86,8 @@ def truth_files(store: Path) -> dict[Path, bytes]:
     }
 
 
-def test_index_schema_three_keeps_the_base_tables_and_fts():
-    assert INDEX_SCHEMA == 3
+def test_index_schema_four_keeps_the_base_tables_and_fts():
+    assert INDEX_SCHEMA == 4
 
 
 def test_open_creates_the_typed_tables(store_factory):
@@ -92,9 +100,9 @@ def test_open_creates_the_typed_tables(store_factory):
             index.conn.execute(
                 "SELECT value FROM meta WHERE key = 'schema'"
             ).fetchone()[0]
-            == "3"
+            == "4"
         )
-        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 4
 
 
 def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
@@ -115,6 +123,70 @@ def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
     finally:
         ix.close()
     assert truth_files(store) == before
+
+
+def test_a_document_row_carries_its_preset_workflow(tmp_path: Path) -> None:
+    store = init_pack_store(tmp_path, workflow_pack_document())
+    assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
+    assert invoke("add", {"preset": "bug", "title": "A bug"}, store=store)["ok"]
+
+    with opened(store, "twoways") as ix:
+        ix.sync()
+        rows = ix.conn.execute(
+            "SELECT slug, status, category, workflow FROM docs "
+            "WHERE primitive = 'item' ORDER BY slug"
+        ).fetchall()
+
+    assert rows == [
+        ("a-bug", "todo", "not_started", "bugfix"),
+        ("a-task", "todo", "not_started", "sprint"),
+    ]
+
+
+def test_a_pack_change_reprojects_the_workflow(tmp_path: Path) -> None:
+    document = workflow_pack_document()
+    store = init_pack_store(tmp_path, document)
+    assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
+
+    with opened(store, "twoways") as ix:
+        ix.sync()
+        workflow = ix.conn.execute(
+            "SELECT workflow FROM docs WHERE slug = 'a-task'"
+        ).fetchone()[0]
+    assert workflow == "sprint"
+
+    document["presets"]["task"]["workflow"] = "bugfix"
+    write_pack(store, "twoways", document)
+
+    with opened(store, "twoways") as ix:
+        ix.sync()
+        workflow = ix.conn.execute(
+            "SELECT workflow FROM docs WHERE slug = 'a-task'"
+        ).fetchone()[0]
+    assert workflow == "bugfix"
+
+
+def test_a_moved_item_records_its_workflow(tmp_path: Path) -> None:
+    store = init_pack_store(tmp_path, workflow_pack_document())
+    assert invoke("add", {"preset": "bug", "title": "A bug"}, store=store)["ok"]
+    shown = invoke("show", {"slug": "a-bug"}, store=store)
+    assert shown["ok"], shown
+    etag = shown["value"]["doc"]["etag"]
+
+    moved = invoke(
+        "move",
+        {"slug": "a-bug", "status": "fixing", "expect": etag},
+        store=store,
+        actor="cto",
+    )
+
+    assert moved["ok"], moved
+    records = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (store / "records").rglob("*.json")
+    ]
+    changed = [row for row in records if row.get("kind") == "status.changed"]
+    assert changed[-1]["data"]["workflow"] == "bugfix"
 
 
 def test_a_cache_built_before_a_seek_index_gains_it_on_open(tmp_path):

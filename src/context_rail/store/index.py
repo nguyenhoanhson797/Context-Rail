@@ -55,7 +55,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 3
+INDEX_SCHEMA = 4
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -90,6 +90,7 @@ _SCHEMA = (
         path TEXT PRIMARY KEY,
         primitive TEXT,
         preset TEXT,
+        workflow TEXT,
         title TEXT,
         status TEXT,
         category TEXT,
@@ -402,8 +403,8 @@ _REVIEW_VERDICTS = ("approve", "reject")
 
 
 _COLUMNS = (
-    "slug, path, primitive, preset, title, status, category, etag, mtime_ns, "
-    "size, created, updated, excerpt, problems, digest, record_at, broken"
+    "slug, path, primitive, preset, workflow, title, status, category, etag, "
+    "mtime_ns, size, created, updated, excerpt, problems, digest, record_at, broken"
 )
 
 _UPDATE_SET = ", ".join(
@@ -623,6 +624,8 @@ class Index:
     ) -> None:
         broken = bool(_BROKEN_PROBLEMS.intersection(doc.problems))
         category = self.pack.statuses.get(doc.status) if doc.status else None
+        declared = self.pack.presets.get(doc.preset or "")
+        workflow = declared.workflow if declared is not None else "default"
         record_at = _record_at(doc)
         projected: list[tuple[str, tuple[Any, ...]]] = []
         refresh: set[str] = set()
@@ -637,6 +640,7 @@ class Index:
             doc.path,
             doc.primitive,
             doc.preset,
+            workflow,
             doc.title,
             doc.status,
             category,

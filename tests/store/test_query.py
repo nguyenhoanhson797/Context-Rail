@@ -110,7 +110,15 @@ def test_find_returns_pinned_shape_sorted_and_paged(indexed_store):
     assert len(result["items"]) == 50
     assert result["omitted"] == 90
     for item in result["items"]:
-        assert set(item) == {"slug", "title", "primitive", "preset", "status", "path"}
+        assert set(item) == {
+            "slug",
+            "title",
+            "primitive",
+            "preset",
+            "workflow",
+            "status",
+            "path",
+        }
 
     slugs = [item["slug"] for item in result["items"]]
     assert slugs[:4] == ["t0", "t1", "t10", "t100"]
@@ -120,6 +128,7 @@ def test_find_returns_pinned_shape_sorted_and_paged(indexed_store):
         "title": "Task 0",
         "primitive": "item",
         "preset": "task",
+        "workflow": "default",
         "status": "todo",
         "path": "items/task/t0.md",
     }

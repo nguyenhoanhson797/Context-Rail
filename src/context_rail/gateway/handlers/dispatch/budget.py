@@ -119,6 +119,8 @@ def _item_rows(ctx: Context) -> list[structure.ItemRow]:
                 depends_on=tuple(sorted(edges.get(name, {}).get("depends_on", ()))),
                 last_activity_ms=None,
                 dispatchable=workflow.dispatchable(status or ""),
+                preset=preset or None,
+                workflow=workflow.name,
             )
         )
     return result

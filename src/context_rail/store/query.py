@@ -62,11 +62,11 @@ FEED_LIMIT_BOUNDS = (1, 100)
 
 _SQLITE_ERROR = getattr(sqlite3, "SQLITE_ERROR", 1)
 
-_ITEM_COLUMNS = "d.slug, d.title, d.primitive, d.preset, d.status, d.path"
+_ITEM_COLUMNS = "d.slug, d.title, d.primitive, d.preset, d.workflow, d.status, d.path"
 
 _DOC_COLUMNS = (
-    "slug, path, primitive, preset, title, status, category, created, updated, "
-    "etag, digest, problems"
+    "slug, path, primitive, preset, workflow, title, status, category, created, "
+    "updated, etag, digest, problems"
 )
 
 
@@ -157,10 +157,11 @@ def find(
             "title": title,
             "primitive": kind,
             "preset": preset_name,
+            "workflow": workflow,
             "status": state,
             "path": path,
         }
-        for slug, title, kind, preset_name, state, path in rows
+        for slug, title, kind, preset_name, workflow, state, path in rows
     ]
     return {"items": items, "total": total, "omitted": total - len(items)}
 
@@ -197,6 +198,7 @@ def show(ix: Index, slug: str, *, body_chars: int = DEFAULT_BODY_CHARS) -> dict:
         found_path,
         primitive,
         preset,
+        workflow,
         title,
         status,
         category,
@@ -243,6 +245,7 @@ def show(ix: Index, slug: str, *, body_chars: int = DEFAULT_BODY_CHARS) -> dict:
             "path": found_path,
             "primitive": primitive,
             "preset": preset,
+            "workflow": workflow,
             "title": title,
             "status": status,
             "category": category,
@@ -832,11 +835,11 @@ def review_for_item(ix: Index, item: str) -> dict[str, Any] | None:
 def items_for_migration(ix: Index) -> list[dict[str, Any]]:
     """Every indexed Item with its preset, status and frontmatter fields."""
     rows = ix.conn.execute(
-        "SELECT path, slug, preset, status FROM docs "
+        "SELECT path, slug, preset, workflow, status FROM docs "
         "WHERE primitive = 'item' AND broken = 0 ORDER BY path"
     ).fetchall()
     items: list[dict[str, Any]] = []
-    for path, slug, preset, status in rows:
+    for path, slug, preset, workflow, status in rows:
         fields: dict[str, Any] = {}
         for key, value_json in ix.conn.execute(
             "SELECT key, value_json FROM fields WHERE path = ? ORDER BY rowid",
@@ -847,7 +850,14 @@ def items_for_migration(ix: Index) -> list[dict[str, Any]]:
             except (TypeError, ValueError):
                 continue
         items.append(
-            {"path": path, "slug": slug, "preset": preset, "status": status, "fields": fields}
+            {
+                "path": path,
+                "slug": slug,
+                "preset": preset,
+                "workflow": workflow,
+                "status": status,
+                "fields": fields,
+            }
         )
     return items
 
