@@ -584,17 +584,22 @@ def expected_paths(
         try:
             found[slug] = graph.resolve(slug)
         except PlacementError as error:
+            # Anchor the error on the document that cannot be placed, even when
+            # the graph failed while looking up the related target.
+            details = {**error.details, "slug": slug, "path": node.path}
             if error.code == "placement_unresolved" and node.primitive == "record":
                 errors.append(
                     PlacementError(
                         "placement_historical",
                         error.message,
-                        error.details,
+                        details,
                         historical=True,
                     )
                 )
             else:
-                errors.append(error)
+                errors.append(
+                    PlacementError(error.code, error.message, details)
+                )
     return found, errors
 
 
