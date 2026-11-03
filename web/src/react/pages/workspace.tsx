@@ -775,7 +775,6 @@ const CURSOR_SECTIONS: [string, string, ReactNode][] = [
 ];
 
 export function NowPage({ snapshot, project, read, request, openDoc, navigate, busy }: PageProps) {
-  const [workspace, setWorkspace] = useState<Data | null>(null);
   const next = useQuery({ queryKey: readKey(project, 'next'), queryFn: ({ signal }) => read('next', {}, signal), retry: false, enabled: !busy });
   const tasks = snapshot.tasks;
   const cursor = object(snapshot.cursor);
@@ -859,9 +858,9 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
                     <button
                       type="button"
                       className="ibtn ibtn-sm"
-                      aria-label={'Open the task workspace for ' + titleOf(entry)}
-                      title="Task workspace"
-                      onClick={(event) => { event.stopPropagation(); setWorkspace(entry); }}
+                      aria-label={'Open ' + titleOf(entry)}
+                      title="Open the document"
+                      onClick={(event) => { event.stopPropagation(); openDoc(idOf(entry)); }}
                     >
                       <ListChecks size={14} strokeWidth={1.8} aria-hidden="true" />
                     </button>
@@ -896,9 +895,9 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
                   <button
                     type="button"
                     className="ibtn ibtn-sm"
-                    aria-label={'Open the task workspace for ' + text(claim.task)}
-                    title="Task workspace"
-                    onClick={(event) => { event.stopPropagation(); setWorkspace({ id: text(claim.task), title: text(claim.task), type: 'task', path: '', status: 'in-progress' }); }}
+                    aria-label={'Open ' + text(claim.task)}
+                    title="Open the document"
+                    onClick={(event) => { event.stopPropagation(); openDoc(text(claim.task)); }}
                   >
                     <ListChecks size={14} strokeWidth={1.8} aria-hidden="true" />
                   </button>
@@ -910,17 +909,6 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
           </section>
         </div>
       </div>
-      {workspace !== null ? (
-        <TaskWorkspaceDrawer
-          task={workspace}
-          project={project}
-          read={read}
-          request={request}
-          busy={busy}
-          openDoc={openDoc}
-          onClose={() => setWorkspace(null)}
-        />
-      ) : null}
     </div>
   );
 }

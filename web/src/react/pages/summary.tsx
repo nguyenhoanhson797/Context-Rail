@@ -245,7 +245,7 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
         <button type="button" className="stat" onClick={() => go('roadmap')}>
           <span className="k"><RouteGlyph size={14} aria-hidden="true" />Roadmap</span>
           <span className="v">{snapshot.phases.length}</span>
-          <span className="d">{phaseDone} of {snapshot.phases.length} containers done</span>
+          <span className="d">{phaseDone} of {snapshot.phases.length} container{snapshot.phases.length === 1 ? '' : 's'} done</span>
         </button>
       </div>
       <div className="grid2">
