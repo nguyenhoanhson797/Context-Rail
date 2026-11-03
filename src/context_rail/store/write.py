@@ -35,13 +35,24 @@ from context_rail.core.util import (
     sha256_hex,
     write_bytes_atomic,
 )
-from context_rail.model.manifest import Manifest, render_path
-from context_rail.model.primitives import RECORD_STAMPED_KEYS, RELATIONS
+from context_rail.model.errors import ModelError
+from context_rail.model.manifest import Manifest
+from context_rail.model.metadata import prepare_fields
+from context_rail.model.pack import load_pack
+from context_rail.model.primitives import PRIMITIVES, RECORD_STAMPED_KEYS, RELATIONS
 from context_rail.store.adapters import ADAPTER_PREFIX, project_root, resolve_adapter
 from context_rail.store.doc import etag, parse_doc, record_digest
 from context_rail.store.index import Index
 from context_rail.store.location import PathEscape, confine, local_dir
 from context_rail.store.lock import store_lock
+from context_rail.store.placement import (
+    PendingDocument,
+    PlacementContext,
+    PlacementError,
+    PlacementRequest,
+    expected_path,
+    template_for,
+)
 
 __all__ = [
     "ABSENT",
@@ -73,6 +84,7 @@ _RECORD_REQUEST_KEYS = frozenset(
         "tags",
         "fields",
         "relations",
+        "item",
     }
 )
 #: Keys a record request may never set: commit stamps identity and the digest.
@@ -151,6 +163,7 @@ class _RecordRequest:
     tags: tuple[str, ...] = ()
     fields: dict[str, Any] = field(default_factory=dict)
     relations: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    item: str | None = None
 
     @property
     def presentation(self) -> bool:
@@ -218,7 +231,9 @@ def commit(
         _check_etags(targets)
         if inventory is not None:
             _check_inventory(store, inventory)
-        planned = _build_records(store, manifest, requests, targets, actor)
+        if index is not None and requests:
+            index.sync()
+        planned = _build_records(store, manifest, requests, targets, actor, index=index)
         targets = _record_imports(targets)
         primary = planned[0] if planned else None
         written = [target.display for target in targets]
@@ -413,6 +428,9 @@ def _record_request(record: dict[str, Any] | None) -> _RecordRequest | None:
         data = {}
     if not isinstance(data, dict):
         raise WriteRefused("VALIDATION_FAILED", "record data must be a mapping")
+    item = record.get("item")
+    if item is not None and (not isinstance(item, str) or not item.strip()):
+        raise WriteRefused("VALIDATION_FAILED", "record item must be a slug")
     return _RecordRequest(
         kind=kind,
         preset=preset,
@@ -424,6 +442,7 @@ def _record_request(record: dict[str, Any] | None) -> _RecordRequest | None:
         tags=_record_tags(record.get("tags")),
         fields=_record_fields(record.get("fields")),
         relations=_record_relations(record.get("relations")),
+        item=item,
     )
 
 
@@ -497,6 +516,8 @@ def _build_records(
     requests: Sequence[_RecordRequest],
     targets: list[_Target],
     actor: str,
+    *,
+    index: Index | None = None,
 ) -> tuple[_Record, ...]:
     """Stamp, confine and preflight every record the commit will create.
 
@@ -505,10 +526,17 @@ def _build_records(
     """
     op_paths = {_identity(target.path) for target in targets}
     op_rels = {target.rel for target in targets}
+    pending = _pending_documents(targets)
+    context = PlacementContext(
+        manifest=manifest,
+        pack=load_pack(manifest.pack, store),
+        index=index,
+        pending=pending,
+    )
     seen: set[str] = set()
     planned: list[_Record] = []
     for request in requests:
-        record = _build_record(store, manifest, request, actor)
+        record = _build_record(store, manifest, request, actor, context)
         identity = _identity(record.path)
         if record.rel in op_rels or identity in op_paths:
             raise WriteRefused(
@@ -527,6 +555,28 @@ def _build_records(
     return tuple(planned)
 
 
+def _pending_documents(targets: Sequence[_Target]) -> tuple[PendingDocument, ...]:
+    pending: list[PendingDocument] = []
+    for target in targets:
+        if target.data is None:
+            continue
+        doc = parse_doc(target.rel, target.data)
+        if doc.primitive not in PRIMITIVES or doc.preset is None or doc.problems:
+            continue
+        pending.append(
+            PendingDocument(
+                slug=doc.slug,
+                primitive=doc.primitive,
+                preset=doc.preset,
+                path=target.rel,
+                created=doc.created,
+                fields=dict(doc.fields),
+                relations=dict(doc.relations),
+            )
+        )
+    return tuple(pending)
+
+
 def _identity(path: Path) -> str:
     """The filesystem identity of a path, so case variants collide on Windows."""
     return os.path.normcase(os.fspath(path))
@@ -537,20 +587,58 @@ def _build_record(
     manifest: Manifest,
     request: _RecordRequest,
     actor: str,
+    context: PlacementContext,
 ) -> _Record:
     """Stamp identity on one request and render where it may land."""
     record_id = new_ulid()
     at = now_iso()
-    rel = _normalize(
-        render_path(
-            manifest,
-            primitive="record",
-            preset=request.preset,
-            slug=request.slug or record_id,
-            record_id=record_id,
-            at=at,
+    preset = context.pack.presets.get(request.preset)
+    try:
+        template = template_for(manifest, "record", request.preset, request.kind)
+    except PlacementError as error:
+        raise WriteRefused(
+            error.write_code, error.message, error.details
+        ) from None
+    markdown = template.lower().endswith(".md")
+    data = dict(request.data)
+    fields = dict(request.fields)
+    if preset is not None and (preset.required or preset.defaults):
+        target = fields if markdown else data
+        try:
+            prepared = prepare_fields(preset, target)
+        except ModelError as error:
+            raise WriteRefused(
+                error.code, error.message, error.details
+            ) from None
+        if markdown:
+            fields = prepared
+        else:
+            data = prepared
+    item = request.item or (request.about[0] if len(request.about) == 1 else None)
+    try:
+        rel = _normalize(
+            expected_path(
+                context,
+                PlacementRequest(
+                    primitive="record",
+                    preset=request.preset,
+                    slug=request.slug or record_id,
+                    kind=request.kind,
+                    record_id=record_id,
+                    at=at,
+                    fields=fields if markdown else data,
+                    relations={
+                        **request.relations,
+                        "about": tuple(request.about),
+                    },
+                    item=item,
+                ),
+            )
         )
-    )
+    except PlacementError as error:
+        raise WriteRefused(
+            error.write_code, error.message, error.details
+        ) from None
     markdown = rel.lower().endswith(".md")
     if not markdown and not rel.lower().endswith(".json"):
         raise WriteRefused(
@@ -589,10 +677,10 @@ def _build_record(
         "at": at,
         "actor": actor,
         "about": request.about,
-        "data": request.data,
+        "data": data,
     }
     if markdown:
-        return _markdown_record(path, rel, payload, request)
+        return _markdown_record(path, rel, payload, request, fields)
     payload["digest"] = record_digest(payload)
     ordered = {key: payload[key] for key in _RECORD_PAYLOAD_ORDER}
     text = json.dumps(ordered, indent=2, ensure_ascii=False) + "\n"
@@ -600,7 +688,11 @@ def _build_record(
 
 
 def _markdown_record(
-    path: Path, rel: str, payload: dict[str, Any], request: _RecordRequest
+    path: Path,
+    rel: str,
+    payload: dict[str, Any],
+    request: _RecordRequest,
+    fields: dict[str, Any],
 ) -> _Record:
     """Serialize a markdown record: frontmatter plus the requested body."""
     body = request.body or ""
@@ -617,7 +709,7 @@ def _markdown_record(
     front["data"] = payload["data"]
     for name, targets in request.relations.items():
         front[name] = [f"[[{target}]]" for target in targets]
-    front.update(request.fields)
+    front.update(fields)
     front["digest"] = digest
     text = "---\n" + dump_frontmatter(front) + "---\n" + body
     return _Record(

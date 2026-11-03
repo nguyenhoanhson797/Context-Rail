@@ -15,7 +15,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from context_rail.core.util import sha256_hex
+from context_rail.core.util import now_iso, sha256_hex
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import (
     compose_doc,
@@ -43,6 +43,12 @@ from context_rail.store.git_index import (
 )
 from context_rail.store.location import local_dir, worktree_git_dir
 from context_rail.store.lock import store_lock
+from context_rail.store.placement import (
+    PlacementContext,
+    PlacementError,
+    PlacementRequest,
+    expected_path,
+)
 from context_rail.store.write import (
     ABSENT,
     Op,
@@ -90,9 +96,25 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         spec = parse_check(_read_spec(args["spec_file"]))
         _validate_definition(spec)
         preset = preset_for(ctx.pack, "check")
-        rel = render_path(
-            ctx.manifest, primitive=preset.primitive, preset=preset.name, slug=slug
-        )
+        target = _trimmed(args.get("target"))
+        relations = {"verifies": (target,)} if target else {}
+        try:
+            rel = expected_path(
+                PlacementContext(
+                    manifest=ctx.manifest, pack=ctx.pack, index=index
+                ),
+                PlacementRequest(
+                    primitive=preset.primitive,
+                    preset=preset.name,
+                    slug=slug,
+                    created=now_iso(),
+                    relations=relations,
+                ),
+            )
+        except PlacementError as error:
+            raise WriteRefused(
+                error.write_code, error.message, error.details
+            ) from None
         path = store / rel
         exists = path.is_file()
         used = [
@@ -108,7 +130,6 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 f"the slug {slug!r} is already used by another document",
                 {"paths": used},
             )
-        target = _trimmed(args.get("target"))
         if expect == ABSENT:
             if exists:
                 raise WriteRefused(
@@ -603,7 +624,7 @@ def _commit_verdict(
         ctx.store,
         ctx.manifest,
         [],
-        {"kind": "check.verdict", "about": about, "data": payload},
+        {"kind": "check.verdict", "about": about, "item": item, "data": payload},
         actor=actor,
         key=None if key is None else f"{key}:{row['slug']}",
         index=ctx.index,

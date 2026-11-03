@@ -38,6 +38,12 @@ from context_rail.model.cto import REPORT_KEYS, Report, parse_report
 from context_rail.model.manifest import render_path
 from context_rail.model.policy import DEFAULT_THRESHOLDS
 from context_rail.store import query
+from context_rail.store.placement import (
+    PlacementContext,
+    PlacementError,
+    PlacementRequest,
+    expected_path,
+)
 from context_rail.store.approval import protected_paths
 from context_rail.store.doc import etag
 from context_rail.store.lock import store_lock
@@ -447,7 +453,24 @@ def _fix_document(
         f"- observed: {rows[0]['data'].get('observed') or '(none)'}\n"
     )
     front = prepare_document_fields(preset, front)
-    rel = render_path(ctx.manifest, primitive="item", preset="fix", slug=slug)
+    try:
+        rel = expected_path(
+            PlacementContext(manifest=ctx.manifest, pack=ctx.pack, index=ctx.index),
+            PlacementRequest(
+                primitive="item",
+                preset="fix",
+                slug=slug,
+                created=stamp,
+                fields=front,
+                relations={
+                    name: tuple(front[name])
+                    for name in ("because_of", "resolves")
+                    if name in front
+                },
+            ),
+        )
+    except PlacementError as error:
+        raise WriteRefused(error.write_code, error.message, error.details) from None
     return rel, compose_doc(front, body)
 
 
@@ -485,7 +508,24 @@ def _proposal_document(
         f"reports are {', '.join(decision.reports)}.\n"
     )
     front = prepare_document_fields(ctx.pack.presets["note"], front)
-    rel = render_path(ctx.manifest, primitive="note", preset="note", slug=slug)
+    try:
+        rel = expected_path(
+            PlacementContext(manifest=ctx.manifest, pack=ctx.pack, index=ctx.index),
+            PlacementRequest(
+                primitive="note",
+                preset="note",
+                slug=slug,
+                created=stamp,
+                fields=front,
+                relations={
+                    name: tuple(front[name])
+                    for name in ("because_of",)
+                    if name in front
+                },
+            ),
+        )
+    except PlacementError as error:
+        raise WriteRefused(error.write_code, error.message, error.details) from None
     return rel, compose_doc(front, body)
 
 

@@ -40,6 +40,12 @@ from context_rail.store import query
 from context_rail.store.doc import Doc, etag
 from context_rail.store.index import Index
 from context_rail.store.lock import store_lock
+from context_rail.store.placement import (
+    PlacementContext,
+    PlacementError,
+    PlacementRequest,
+    expected_path,
+)
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay, resolve_unique
 
 if TYPE_CHECKING:
@@ -84,9 +90,27 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         slug = unique_slug(index, slugify(title))
         if preset.name == "skill":
             _skill_identity(fields, slug)
-        rel = render_path(
-            ctx.manifest, primitive=preset.primitive, preset=preset.name, slug=slug
-        )
+        stamp = now_iso()
+        try:
+            rel = expected_path(
+                PlacementContext(
+                    manifest=ctx.manifest,
+                    pack=ctx.pack,
+                    index=index,
+                ),
+                PlacementRequest(
+                    primitive=preset.primitive,
+                    preset=preset.name,
+                    slug=slug,
+                    created=stamp,
+                    fields=fields,
+                    relations=relations,
+                ),
+            )
+        except PlacementError as error:
+            raise WriteRefused(
+                error.write_code, error.message, error.details
+            ) from None
         if (store / rel).exists():
             raise WriteRefused("CONFLICT", f"{rel!r} already exists", {"path": rel})
         if preset.primitive == "check" and fields.get("acceptance") is True:
@@ -100,7 +124,6 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                         "confirm": confirmation_phrase("approve", slug),
                     },
                 )
-        stamp = now_iso()
         front: dict[str, Any] = {
             "primitive": preset.primitive,
             "preset": preset.name,
@@ -144,14 +167,22 @@ def _add_record(
     """One record-preset add: exactly one immutable record, no mutable document."""
     store = ctx.store
     fields = prepare_document_fields(preset, fields)
-    preview = render_path(
-        ctx.manifest,
-        primitive="record",
-        preset=preset.name,
-        slug=slugify(title),
-        record_id="0" * 26,
-        at=now_iso(),
-    )
+    try:
+        preview = expected_path(
+            PlacementContext(manifest=ctx.manifest, pack=ctx.pack, index=index),
+            PlacementRequest(
+                primitive="record",
+                preset=preset.name,
+                slug=slugify(title),
+                kind=preset.name,
+                record_id="0" * 26,
+                at=now_iso(),
+                fields=fields,
+                relations=relations,
+            ),
+        )
+    except PlacementError as error:
+        raise WriteRefused(error.write_code, error.message, error.details) from None
     if not preview.lower().endswith(".md"):
         extra = sorted(name for name in relations if name != "about")
         if tags:

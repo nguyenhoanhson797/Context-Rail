@@ -41,6 +41,7 @@ from context_rail.model.manifest import (
     Manifest,
     initial_manifest,
     load_manifest,
+    manifest_needs_graph,
     render_path,
 )
 from context_rail.model.pack import Pack, canonical_pack_name, load_pack
@@ -51,6 +52,12 @@ from context_rail.store.approval import (
     protected_paths,
     protected_snapshot,
     snapshot_digest,
+)
+from context_rail.store.placement import (
+    PlacementContext,
+    PlacementError,
+    PlacementRequest,
+    expected_path,
 )
 from context_rail.store.lock import store_lock
 from context_rail.store.location import confine
@@ -338,6 +345,27 @@ def default_branch(project_root: Path) -> tuple[str | None, str]:
     return None, "unborn HEAD"
 
 
+def _picture_path(
+    context: Any, primitive: str, preset: str, slug: str
+) -> str:
+    try:
+        return expected_path(
+            PlacementContext(
+                manifest=context.manifest,
+                pack=context.pack,
+                index=context.index if manifest_needs_graph(context.manifest) else None,
+            ),
+            PlacementRequest(
+                primitive=primitive,
+                preset=preset,
+                slug=slug,
+                created=now_iso(),
+            ),
+        )
+    except PlacementError as error:
+        raise WriteRefused(error.write_code, error.message, error.details) from None
+
+
 def picture_ops(
     context: Context,
     answers: dict[str, Any],
@@ -355,19 +383,15 @@ def picture_ops(
         answers["vision"]["title"],
         [entry["title"] for entry in answers["scope"]],
     )
-    goal_path = render_path(manifest, primitive="item", preset="goal", slug=slugs["goal"])
-    vision_path = render_path(
-        manifest, primitive="note", preset="vision", slug=slugs["vision"]
-    )
-    wont_path = render_path(manifest, primitive="note", preset="wont", slug=slugs["wont"])
-    charter_path = render_path(
-        manifest, primitive="policy", preset="charter", slug=CHARTER_TARGET
-    )
+    goal_path = _picture_path(context, "item", "goal", slugs["goal"])
+    vision_path = _picture_path(context, "note", "vision", slugs["vision"])
+    wont_path = _picture_path(context, "note", "wont", slugs["wont"])
+    charter_path = _picture_path(context, "policy", "charter", CHARTER_TARGET)
     scope_paths = [
         (
             slug,
             entry["priority"],
-            render_path(manifest, primitive="item", preset="scope", slug=slug),
+            _picture_path(context, "item", "scope", slug),
         )
         for slug, entry in zip(slugs["scope"], answers["scope"], strict=True)
     ]

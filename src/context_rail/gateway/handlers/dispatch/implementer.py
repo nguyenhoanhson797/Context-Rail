@@ -29,6 +29,12 @@ from context_rail.kernel.budgets import launch_refusal
 from context_rail.model.cto import aggregate_usage, parse_report, parse_run
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, render_path
+from context_rail.store.placement import (
+    PlacementContext,
+    PlacementError,
+    PlacementRequest,
+    expected_path,
+)
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner import git as git_runner
 from context_rail.runner.droid import (
@@ -476,6 +482,9 @@ def _code_map_changes(
     worktree: Path,
     store_paths: tuple[str, ...],
     changes: dict[str, Any],
+    *,
+    ctx: Any = None,
+    item: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Split a candidate's store changes into code-map files/records and the rest.
 
@@ -490,9 +499,26 @@ def _code_map_changes(
         return [], store_changed
     store_roots = [prefix for prefix in store_paths if prefix not in ADAPTER_PATHS]
     store_prefix = "" if len(store_roots) > 1 else (store_roots[0] if store_roots else "")
-    note_prefix = render_path(
-        manifest, primitive="note", preset="code", slug="x"
-    ).rsplit("/", 1)[0]
+    if ctx is not None and item is not None:
+        try:
+            note_prefix = expected_path(
+                PlacementContext(
+                    manifest=manifest, pack=ctx.pack, index=ctx.index
+                ),
+                PlacementRequest(
+                    primitive="note",
+                    preset="code",
+                    slug="x",
+                    created=now_iso(),
+                    relations={"part_of": (item,)},
+                ),
+            ).rsplit("/", 1)[0]
+        except PlacementError:
+            return [], store_changed
+    else:
+        note_prefix = render_path(
+            manifest, primitive="note", preset="code", slug="x"
+        ).rsplit("/", 1)[0]
     record_roots = {
         render_path(
             manifest,
@@ -601,7 +627,12 @@ def _judge(
         store_paths=plan.store_paths,
     )
     _allowed, refused = _code_map_changes(
-        plan.ctx.manifest, plan.paths.worktree, plan.store_paths, changes
+        plan.ctx.manifest,
+        plan.paths.worktree,
+        plan.store_paths,
+        changes,
+        ctx=plan.ctx,
+        item=plan.slug,
     )
     if refused:
         reasons.append(
