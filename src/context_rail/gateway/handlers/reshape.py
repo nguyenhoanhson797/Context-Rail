@@ -28,7 +28,6 @@ from context_rail.gateway.handlers.common import (
     versioned_change_record,
     versioned_kind,
 )
-from context_rail.model.manifest import render_path
 from context_rail.model.primitives import RELATIONS
 from context_rail.store.doc import BAD_ENCODING, PARSE_ERROR, Doc, etag, parse_doc
 from context_rail.store.frontmatter_edit import (
@@ -38,7 +37,13 @@ from context_rail.store.frontmatter_edit import (
     split_frontmatter,
 )
 from context_rail.store.lock import store_lock
-from context_rail.store.placement import PlacementError, expected_paths
+from context_rail.store.placement import (
+    PlacementContext,
+    PlacementError,
+    PlacementRequest,
+    expected_path,
+    expected_paths,
+)
 from context_rail.store.write import (
     ABSENT,
     Op,
@@ -85,12 +90,22 @@ def rename(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         data, doc = read_doc(store, source)
         _mutable(doc, source)
         preset = preset_for(ctx.pack, doc.preset or "")
-        target = render_path(
-            ctx.manifest,
-            primitive=preset.primitive,
-            preset=preset.name,
-            slug=new,
-        )
+        try:
+            target = expected_path(
+                PlacementContext(manifest=ctx.manifest, pack=ctx.pack, index=index),
+                PlacementRequest(
+                    primitive=preset.primitive,
+                    preset=preset.name,
+                    slug=new,
+                    created=doc.created,
+                    fields=doc.fields,
+                    relations=doc.relations,
+                ),
+            )
+        except PlacementError as error:
+            raise WriteRefused(
+                error.write_code, error.message, error.details
+            ) from None
         _free(index, store, new, target)
         kind = versioned_kind(doc, source)
         change = None
