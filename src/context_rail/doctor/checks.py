@@ -20,14 +20,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 from context_rail.model.errors import ModelError
-from context_rail.model.manifest import Manifest, render_path
+from context_rail.model.manifest import Manifest
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import PRIMITIVES
+from context_rail.store.placement import (
+    PlacementError,
+    expected_paths,
+    is_scoped_skill,
+)
 from context_rail.doctor import stage2
 from context_rail.store.doc import (
     BAD_ENCODING,
@@ -68,6 +73,15 @@ SEVERITIES: dict[str, str] = {
     "adapter_modified": "warning",
     "gate_bypassed": "error",
     "placement_mismatch": "warning",
+    "placement_unresolved": "error",
+    "placement_ambiguous": "error",
+    "placement_cycle": "error",
+    "placement_invalid": "error",
+    "placement_historical": "warning",
+    "required_field_missing": "error",
+    "required_field_invalid": "error",
+    "record_metadata_missing": "warning",
+    "record_metadata_invalid": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
@@ -107,10 +121,29 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     relations = _relations(ix)
     fields = _fields(ix)
     known = set(slugs)
+    expected, placement_errors = expected_paths(ix, manifest, pack)
+    by_slug = {row.slug: row for row in rows}
+    errors_by_slug = {
+        by_slug[error.details["slug"]].slug: error
+        for error in placement_errors
+        if error.details.get("slug") in by_slug
+    }
 
     issues: list[dict[str, Any]] = []
     for row in rows:
-        issues.extend(_doc_issues(store, manifest, pack, row, known, relations, fields))
+        issues.extend(
+            _doc_issues(
+                store,
+                manifest,
+                pack,
+                row,
+                known,
+                relations,
+                fields,
+                expected.get(row.slug),
+                errors_by_slug.get(row.slug),
+            )
+        )
     issues.extend(_duplicate_issues(slugs))
     issues.extend(_intent_issues(store))
     policy_issues, policy = _policy(context)
@@ -123,7 +156,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_report_issues(ix))
     issues.extend(_run_issues(ix))
     issues.extend(_profile_issues(context, rows))
-    issues.extend(_adapter_issues(store))
+    issues.extend(_adapter_issues(store, ix))
     issues.extend(stage2.issues(store, manifest, pack, ix))
     issues.sort(key=lambda issue: (issue["path"], issue["code"]))
 
@@ -234,6 +267,8 @@ def _doc_issues(
     known: set[str],
     relations: dict[str, list[tuple[str, str]]],
     fields: dict[str, dict[str, Any]],
+    expected: str | None,
+    placement_error: PlacementError | None,
 ) -> list[dict[str, Any]]:
     """The issues one document has; a broken document stops at its problem.
 
@@ -291,6 +326,10 @@ def _doc_issues(
             )
         if INVALID_PAYLOAD in row.problems:
             issues.append(_invalid_payload(row))
+            return issues
+        issues.extend(_placement(row, expected, placement_error))
+        if preset is not None:
+            issues.extend(_metadata_issues(row, preset, fields))
         return issues
 
     if primitive_known and INVALID_PAYLOAD in row.problems:
@@ -308,10 +347,58 @@ def _doc_issues(
                 )
             )
         issues.extend(_broken_relations(row, known, relations))
-        issues.extend(_placement(manifest, row))
+        issues.extend(_placement(row, expected, placement_error))
 
     if preset is not None:
         issues.extend(_field_hints(row, preset, fields))
+        issues.extend(_metadata_issues(row, preset, fields))
+    return issues
+
+
+def _metadata_issues(
+    row: _Row, preset: Preset, fields: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Required and enum metadata the document does not satisfy."""
+    if is_scoped_skill(row.path):
+        return []
+    values = fields.get(row.path, {})
+    if row.primitive == "record" and isinstance(values.get("data"), dict):
+        values = values["data"]
+    record = row.primitive == "record"
+    missing_code = "record_metadata_missing" if record else "required_field_missing"
+    invalid_code = "record_metadata_invalid" if record else "required_field_invalid"
+    issues: list[dict[str, Any]] = []
+    for name in preset.required:
+        value = values.get(name, preset.defaults.get(name))
+        if value is None or value == "" or value == [] or value == {}:
+            issues.append(
+                _issue(
+                    missing_code,
+                    row.path,
+                    f"field {name!r} is required by preset {preset.name!r}",
+                    fix=(
+                        None
+                        if record
+                        else f"rail change update {row.slug} --set {name}=<value> --expect <etag>"
+                    ),
+                )
+            )
+    for name, allowed in preset.fields.items():
+        if name not in preset.required or name not in values:
+            continue
+        if values[name] not in allowed:
+            issues.append(
+                _issue(
+                    invalid_code,
+                    row.path,
+                    f"field {name!r} must be one of: " + ", ".join(allowed),
+                    fix=(
+                        None
+                        if record
+                        else f"rail change update {row.slug} --set {name}=<value> --expect <etag>"
+                    ),
+                )
+            )
     return issues
 
 
@@ -359,19 +446,19 @@ def _broken_relations(
     return issues
 
 
-def _placement(manifest: Manifest, row: _Row) -> list[dict[str, Any]]:
-    """A path that its placement does not render, as the relocate would write it."""
+def _placement(
+    row: _Row,
+    expected: str | None,
+    error: PlacementError | None,
+) -> list[dict[str, Any]]:
+    """A path that the resolver cannot render, or renders somewhere else."""
     if row.preset is None or row.primitive is None:
         return []
-    if _scoped_skill(row.path):
+    if is_scoped_skill(row.path):
         return []
-    try:
-        expected = render_path(
-            manifest, primitive=row.primitive, preset=row.preset, slug=row.slug
-        )
-    except ModelError:
-        return []
-    if expected == row.path:
+    if error is not None:
+        return [_issue(error.code, row.path, error.message)]
+    if expected is None or expected == row.path:
         return []
     return [
         _issue(
@@ -428,7 +515,7 @@ def _duplicate_issues(slugs: dict[str, list[str]]) -> list[dict[str, Any]]:
     """
     issues: list[dict[str, Any]] = []
     for slug, paths in sorted(slugs.items()):
-        sources = [path for path in paths if not _scoped_skill(path)]
+        sources = [path for path in paths if not is_scoped_skill(path)]
         if len(sources) <= 1:
             continue
         issues.append(
@@ -440,11 +527,6 @@ def _duplicate_issues(slugs: dict[str, list[str]]) -> list[dict[str, Any]]:
             )
         )
     return issues
-
-
-def _scoped_skill(path: str) -> bool:
-    parts = PurePosixPath(path).parts
-    return len(parts) > 3 and parts[0] == "workspace" and parts[-2] == "skills"
 
 
 def _intent_issues(store: Path) -> list[dict[str, Any]]:
@@ -777,7 +859,7 @@ def _run_issues(ix: Index) -> list[dict[str, Any]]:
     return issues
 
 
-def _adapter_issues(store: Path) -> list[dict[str, Any]]:
+def _adapter_issues(store: Path, ix: Index) -> list[dict[str, Any]]:
     """One issue per generated adapter file whose owned payload no longer matches.
 
     Only the payloads the latest ``adapters.synced`` Record declares are hashed;
@@ -786,7 +868,7 @@ def _adapter_issues(store: Path) -> list[dict[str, Any]]:
     from context_rail.store import adapters
     from context_rail.store.location import PathEscape
 
-    record = _latest_record(store, "adapters.synced")
+    record = _latest_record(store, "adapters.synced", ix)
     if record is None:
         return []
     data = record.get("data")
@@ -823,18 +905,20 @@ def _adapter_issues(store: Path) -> list[dict[str, Any]]:
     return issues
 
 
-def _latest_record(store: Path, kind: str) -> dict[str, Any] | None:
-    """The newest Record of ``kind``, read newest-first from the records tree."""
-    folder = Path(store) / "records"
-    if not folder.is_dir():
-        return None
-    for path in sorted(folder.rglob("*.json"), reverse=True):
+def _latest_record(store: Path, kind: str, ix: Index) -> dict[str, Any] | None:
+    """The newest Record of ``kind`` by indexed record time, then slug."""
+    rows = ix.conn.execute(
+        "SELECT path FROM docs WHERE primitive = 'record' "
+        "AND record_at IS NOT NULL ORDER BY record_at DESC, slug DESC"
+    ).fetchall()
+    for (path,) in rows:
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            data = (Path(store) / path).read_bytes()
+        except OSError:
             continue
-        if isinstance(payload, dict) and payload.get("kind") == kind:
-            return payload
+        doc = parse_doc(path, data)
+        if doc.fields.get("kind") == kind:
+            return dict(doc.fields)
     return None
 
 

@@ -258,13 +258,17 @@ def test_unknown_status_reported_alone(store_factory) -> None:
     assert report["issues"][0]["path"] == "items/task/s.md"
 
 
-def test_duplicate_slug_reported_alone(store_with_duplicate: Path) -> None:
+def test_duplicate_slug_reports_the_duplicate_and_its_ambiguity(
+    store_with_duplicate: Path,
+) -> None:
     store = store_with_duplicate
 
     report = _doctor(store)
 
-    assert [issue["code"] for issue in report["issues"]] == ["duplicate_slug"]
-    issue = report["issues"][0]
+    codes = [issue["code"] for issue in report["issues"]]
+    assert codes.count("duplicate_slug") == 1
+    assert codes.count("placement_ambiguous") == 2
+    issue = next(item for item in report["issues"] if item["code"] == "duplicate_slug")
     assert issue["severity"] == "error"
     assert issue["path"] == "items/task/x.md"
     assert "items/task/x.md" in issue["message"]
@@ -337,15 +341,21 @@ def test_placement_mismatch_reported_alone(store_factory) -> None:
     assert "rail change repath" in issue["fix"]
 
 
-def test_unknown_preset_reported_alone(store_factory) -> None:
+def test_unknown_preset_reports_its_unresolved_placement(store_factory) -> None:
     store = store_factory()
     _write(store, "items/widget/w.md", _task("w", preset="widget"))
 
     report = _doctor(store)
 
-    assert [issue["code"] for issue in report["issues"]] == ["unknown_preset"]
-    assert report["issues"][0]["severity"] == "warning"
-    assert report["issues"][0]["path"] == "items/widget/w.md"
+    assert [issue["code"] for issue in report["issues"]] == [
+        "placement_unresolved",
+        "unknown_preset",
+    ]
+    issue = next(
+        item for item in report["issues"] if item["code"] == "unknown_preset"
+    )
+    assert issue["severity"] == "warning"
+    assert issue["path"] == "items/widget/w.md"
 
 
 def test_preset_field_hint_reported_alone(store_factory) -> None:
@@ -448,11 +458,11 @@ def test_unknown_primitive_suppresses_placement_check(store_factory) -> None:
     assert _codes(store) == ["unknown_primitive"]
 
 
-def test_unknown_preset_keeps_a_valid_placement_check(store_factory) -> None:
+def test_unknown_preset_keeps_an_unresolved_placement_check(store_factory) -> None:
     store = store_factory()
     _write(store, "items/misc/w.md", _task("w", preset="widget"))
 
-    assert _codes(store) == ["placement_mismatch", "unknown_preset"]
+    assert _codes(store) == ["placement_unresolved", "unknown_preset"]
 
 
 # ── records, noise and hand edits ─────────────────────────────────────────
