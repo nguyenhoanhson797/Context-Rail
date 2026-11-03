@@ -282,6 +282,12 @@ The loop gates stay separate on purpose: `dispatch` launches an implementer,
 `review` is a different actor, and `merge` fast-forwards only an approved
 candidate. `gate` is a read-only governance check; it never runs a Check.
 
+`rail serve ui` opens a loopback, token-gated page over the same tool table. It
+shows the compiled pack: every workflow with its states and quality gates, items
+grouped by the workflow they follow, the pack's verbs, and one item card with
+its legal next moves, gate and proof. Store checks run only when you ask; a
+collapsed runner can call any non-serve tool.
+
 Every former flat command name remains accepted, including `status`, `dispatch`,
 `review`, `merge`, `check`, `verify`, `relocate`, `ci`, `pack`, `sync`,
 `adapters sync`, `cto brief`, `cto tick`, `mcp serve` and `ui serve`. The

@@ -251,6 +251,43 @@ def test_the_ipv6_loopback_host_and_origin_are_refused(ui_server) -> None:
     assert status == 403
 
 
+def test_the_surface_endpoint_describes_the_new_engine(ui_server) -> None:
+    status, payload, _ = _call(
+        ui_server.base, "/api/surface", token=ui_server.token
+    )
+
+    assert status == 200, payload
+    value = payload["value"]
+    assert value["pack"]
+    assert value["workflows"], value
+    workflow = value["workflows"][0]
+    assert {"name", "initial", "states", "transitions", "quality"} <= set(workflow)
+    assert isinstance(value["actions"], list)
+
+
+def test_health_runs_only_on_request(ui_server) -> None:
+    status, payload, _ = _call(
+        ui_server.base, "/api/health", token=ui_server.token
+    )
+
+    assert status == 200, payload
+    assert {"issues", "counts"} <= set(payload["value"])
+
+    status, payload, _ = _call(
+        ui_server.base, "/api/why/ui-task", token=ui_server.token
+    )
+    assert status in {200, 400}
+
+
+def test_the_page_presents_workflows_and_proof(ui_server) -> None:
+    status, page, _ = _call(ui_server.base, "/", token=ui_server.token)
+
+    assert status == 200
+    for needle in ("Workflows", "Verbs", "Proof this gate needs", "Next moves"):
+        assert needle in page
+    assert "pack.yaml" not in page
+
+
 def test_the_page_catches_a_failed_fetch() -> None:
     from context_rail.ui.page import PAGE
 

@@ -69,6 +69,16 @@ def create_server(
             if method == "GET" and path == "/api/tools":
                 self._json_result(api.tool_catalog())
                 return
+            if method == "GET" and path == "/api/surface":
+                self._json_result(api.surface_document(store, actor))
+                return
+            if method == "GET" and path == "/api/health":
+                self._json_result(api.health_document(store, actor))
+                return
+            if method == "GET" and path.startswith("/api/why/"):
+                slug = unquote(path[len("/api/why/") :])
+                self._json_result(api.reason_document(store, slug, actor))
+                return
             if method == "GET" and path.startswith("/api/doc/"):
                 slug = unquote(path[len("/api/doc/") :])
                 self._json_result(api.show_document(store, slug, actor))

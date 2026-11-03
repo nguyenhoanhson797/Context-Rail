@@ -5,14 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from context_rail.context import surface
 from context_rail.core.util import now_iso
-from context_rail.gateway.gateway import invoke
+from context_rail.gateway.gateway import Context, invoke
 from context_rail.gateway.tools import SURFACE_TOOLS, TOOLS, canonical_tool
+from context_rail.model.manifest import load_manifest
+from context_rail.model.pack import load_pack
 
 __all__ = [
     "call_tool",
     "context_document",
+    "health_document",
+    "reason_document",
     "show_document",
+    "surface_document",
     "tool_catalog",
 ]
 
@@ -39,6 +45,42 @@ def context_document(store: Path, actor: str = "human") -> dict[str, Any]:
             "generated_at": now_iso(),
         },
     }
+
+
+def surface_document(store: Path, actor: str = "human") -> dict[str, Any]:
+    """The compiled pack: document types, workflows and declarative verbs."""
+    context = _open(store, actor)
+    try:
+        catalog = surface.catalog(context, role="cto")
+        names = sorted({entry["workflow"] for entry in catalog["items"]})
+        workflows = []
+        for name in names:
+            try:
+                workflows.append(surface.explain(context, name))
+            except surface.SurfaceError:
+                continue
+        return {
+            "ok": True,
+            "value": {
+                "schema": 1,
+                "pack": context.pack.name,
+                "presets": catalog["items"],
+                "workflows": workflows,
+                "actions": surface.verbs(context)["items"],
+            },
+        }
+    finally:
+        context.close()
+
+
+def health_document(store: Path, actor: str = "human") -> dict[str, Any]:
+    """The doctor's report, run only when the human asks for it."""
+    return invoke("doctor", {}, store=store, actor=actor)
+
+
+def reason_document(store: Path, slug: str, actor: str = "human") -> dict[str, Any]:
+    """The proof one item still needs, with the command that produces it."""
+    return invoke("why", {"slug": slug}, store=store, actor=actor)
 
 
 def show_document(store: Path, slug: str, actor: str = "human") -> dict[str, Any]:
@@ -92,3 +134,10 @@ def call_tool(
             {"arguments": reserved},
         )
     return invoke(name, arguments, store=store, actor=actor)
+
+
+def _open(store: Path, actor: str) -> Context:
+    """One short-lived context for the read-only surface views."""
+    manifest = load_manifest(store)
+    pack = load_pack(manifest.pack, store)
+    return Context(store=store, manifest=manifest, pack=pack, actor=actor)
