@@ -40,6 +40,7 @@ __all__ = [
     "STATES",
     "approval_state",
     "charter_document",
+    "constitution_state",
     "is_acceptance_path",
     "protected_paths",
     "protected_snapshot",
@@ -197,6 +198,8 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
     if not isinstance(target, str) or not target.strip():
         raise ModelError("VALIDATION_FAILED", "an approval needs a non-empty target")
     target = target.strip()
+    if target == "constitution":
+        return constitution_state(context)
     pack_name = target[len("pack:") :] if target.startswith("pack:") else None
     hashes = protected_snapshot(context, pack_name=pack_name)
     latest = query.approval_for(context.index, target)
@@ -222,6 +225,44 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
         "latest_record": latest["record_id"] if latest is not None else None,
         "protected_hashes": hashes,
         "snapshot_digest": snapshot_digest(hashes),
+    }
+
+
+def constitution_state(context: Context, pack_name: str | None = None) -> dict[str, Any]:
+    """Newest approval per protected path across scopes, and what still drifted."""
+    hashes = protected_snapshot(context, pack_name=pack_name)
+    records = query.approval_records(context.index)
+    approved: dict[str, tuple[str, str | None]] = {}
+    for record in records:
+        data = record["data"] if isinstance(record.get("data"), dict) else {}
+        files = data.get("files")
+        stored = data.get("protected_hashes")
+        if not isinstance(files, list) or not isinstance(stored, dict):
+            continue
+        for path in files:
+            if isinstance(path, str) and path not in approved:
+                approved[path] = (record["record_id"], stored.get(path))
+    drift = [
+        {
+            "path": path,
+            "state": "unapproved" if path not in approved else "changed",
+        }
+        for path, digest in hashes.items()
+        if approved.get(path, (None, None))[1] != digest
+    ]
+    if not records:
+        state = "missing"
+    elif drift:
+        state = "mismatch"
+    else:
+        state = "approved"
+    return {
+        "target": "constitution",
+        "state": state,
+        "latest_record": records[0]["record_id"] if records else None,
+        "protected_hashes": hashes,
+        "snapshot_digest": snapshot_digest(hashes),
+        "drift": drift,
     }
 
 

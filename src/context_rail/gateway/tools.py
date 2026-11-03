@@ -102,6 +102,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("confirm", "str", required=True, help="the typed phrase APPROVE <target>"),
             Param("confirmer", "str", required=True, help="who approved it"),
             Param("expect", "str", help="the snapshot_digest the human saw"),
+            Param("scope", "str", help="charter, constitution, manifest, pack, checks or workflow:<name>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.onboarding:approve",

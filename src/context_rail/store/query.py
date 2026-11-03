@@ -879,6 +879,26 @@ def pack_change_for(ix: Index, target: str) -> dict[str, Any] | None:
     return None
 
 
+def approval_records(ix: Index, limit: int = 200) -> list[dict[str, Any]]:
+    """Every approval record, newest first, with its stored data."""
+    rows = ix.conn.execute(
+        "SELECT record_id, target, at, path FROM approvals "
+        "ORDER BY at DESC, record_id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    found: list[dict[str, Any]] = []
+    for record_id, target, at, path in rows:
+        found.append(
+            {
+                "record_id": record_id,
+                "target": target,
+                "at": at,
+                "data": record_data(ix, path),
+            }
+        )
+    return found
+
+
 def approval_for(ix: Index, target: str) -> dict[str, Any] | None:
     """The newest approval for ``target``, by ``(at, id)``; never an older one."""
     target = _text(target, "target")

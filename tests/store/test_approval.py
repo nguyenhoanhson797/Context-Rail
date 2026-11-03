@@ -71,7 +71,19 @@ def test_approve_records_semantic_hashes_of_the_protected_set(
     assert record["actor"] == "human"
     assert record["about"] == ["charter"]
     data = record["data"]
-    assert set(data) == {"schema", "target", "protected_hashes", "confirmer", "confirmation"}
+    assert set(data) == {
+        "schema",
+        "target",
+        "scope",
+        "files",
+        "protected_hashes",
+        "snapshot",
+        "diff",
+        "diff_omitted",
+        "confirmer",
+        "confirmation",
+    }
+    assert data["scope"] == "charter"
     assert data["schema"] == 1
     assert data["target"] == "charter"
     assert data["confirmer"] == "validator"
@@ -112,8 +124,9 @@ def test_approve_result_names_the_record_target_and_hashes(
 
     assert is_ok(result), result
     value = result["value"]
-    assert set(value) == {"approval", "target", "hashes"}
+    assert set(value) == {"approval", "target", "scope", "hashes", "diff"}
     assert value["target"] == "charter"
+    assert value["scope"] == "charter"
     assert value["hashes"] == _approval_records(store)[0]["data"]["protected_hashes"]
     assert value["approval"] == _approval_records(store)[0]["id"]
 
@@ -481,6 +494,63 @@ def test_execution_tools_parse_the_charter_before_running(
         result = invoke(tool, args, store=approved_store, actor="cto")
         assert result["ok"] is False, (tool, result)
         assert result["error"]["code"] in {"VALIDATION_FAILED", "FORBIDDEN"}, result
+
+
+def test_a_scoped_pack_approval_covers_only_the_pack(approved_store: Path) -> None:
+    from importlib import resources
+
+    store = approved_store
+    source = resources.files("context_rail").joinpath("packs", "basic", "pack.yaml")
+    text = source.read_text(encoding="utf-8").replace(
+        "todo: [doing, dropped]",
+        "todo: [doing, blocked, dropped]",
+    )
+    local = store / "packs" / "basic" / "pack.yaml"
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text(text, encoding="utf-8", newline="\n")
+
+    approved = invoke(
+        "approve",
+        {
+            "target": "charter",
+            "confirm": "APPROVE charter",
+            "confirmer": "validator",
+            "scope": "pack",
+            "key": "pack-scope",
+        },
+        store=store,
+        actor="human",
+    )
+
+    assert approved["ok"], approved
+    assert approved["value"]["scope"] == "pack"
+    assert any(
+        row["path"].startswith("@pack/") for row in approved["value"]["diff"]
+    )
+    context = Context(
+        store=store,
+        manifest=load_manifest(store),
+        pack=load_pack("basic", store),
+        actor="human",
+    )
+    state = approval_state(context, "constitution")
+    assert state["state"] == "approved", state["drift"]
+
+    charter = store / "charter.md"
+    charter.write_text(
+        charter.read_text(encoding="utf-8") + "\nA changed meaning.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    context = Context(
+        store=store,
+        manifest=load_manifest(store),
+        pack=load_pack("basic", store),
+        actor="human",
+    )
+    drifted = approval_state(context, "constitution")
+    assert drifted["state"] == "mismatch"
+    assert any(row["path"] == "charter.md" for row in drifted["drift"])
 
 
 def test_a_pack_change_flips_the_charter_approval(approved_store: Path) -> None:

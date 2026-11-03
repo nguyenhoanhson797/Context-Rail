@@ -206,7 +206,9 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             return {
                 "approval": saved.get("record"),
                 "target": data.get("target"),
+                "scope": data.get("scope") or "charter",
                 "hashes": data.get("protected_hashes", {}),
+                "diff": data.get("diff") or [],
             }
         target = (args["target"] or "").strip()
         confirmer = (args["confirmer"] or "").strip()
@@ -232,6 +234,10 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "the protected picture is incomplete",
                 {"paths": missing},
             )
+        scope = (args.get("scope") or "charter").strip()
+        files = _scope_files(ctx, scope, hashes)
+        scoped = {path: hashes[path] for path in files}
+        diff, omitted = _approval_diff(ctx, files, scoped)
         digest = snapshot_digest(hashes)
         expect = args["expect"]
         if expect is not None and expect != digest:
@@ -251,7 +257,12 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "data": {
                     "schema": APPROVAL_SCHEMA,
                     "target": target,
-                    "protected_hashes": hashes,
+                    "scope": scope,
+                    "files": files,
+                    "protected_hashes": scoped,
+                    "snapshot": hashes,
+                    "diff": diff,
+                    "diff_omitted": omitted,
                     "confirmer": confirmer,
                     "confirmation": confirmation_phrase("approve", target),
                 },
@@ -260,7 +271,13 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             key=args["key"],
             index=index,
         )
-    return {"approval": result.get("record"), "target": target, "hashes": hashes}
+    return {
+        "approval": result.get("record"),
+        "target": target,
+        "scope": scope,
+        "hashes": scoped,
+        "diff": diff,
+    }
 
 
 def _approval_target(ctx: Context, target: str) -> str | None:
@@ -283,6 +300,74 @@ def _approval_target(ctx: Context, target: str) -> str | None:
             {"target": target},
         )
     return None
+
+
+def _scope_files(
+    ctx: Context, scope: str, hashes: dict[str, str | None]
+) -> list[str]:
+    """The protected paths one approval scope covers."""
+    if scope in ("charter", "constitution"):
+        return sorted(hashes)
+    if scope == "manifest":
+        return ["rail.yaml"] if "rail.yaml" in hashes else []
+    if scope == "pack":
+        return sorted(
+            path
+            for path in hashes
+            if path.startswith("@pack/") or path.startswith("packs/")
+        )
+    if scope == "checks":
+        from context_rail.store import query
+
+        paths = {
+            path
+            for (path,) in ctx.index.conn.execute(
+                "SELECT path FROM docs WHERE primitive = 'check' AND broken = 0"
+            )
+        }
+        return sorted(path for path in hashes if path in paths)
+    if scope.startswith("workflow:"):
+        name = scope[len("workflow:") :].strip()
+        if name not in ctx.pack.workflows:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"unknown workflow {name!r}",
+                {"scope": scope},
+            )
+        return sorted(
+            path
+            for path in hashes
+            if path.startswith("@pack/") or path.startswith("packs/")
+        )
+    raise WriteRefused(
+        "VALIDATION_FAILED",
+        "scope must be charter, constitution, manifest, pack, checks or workflow:<name>",
+        {"scope": scope},
+    )
+
+
+def _approval_diff(
+    ctx: Context, files: list[str], hashes: dict[str, str | None]
+) -> tuple[list[dict[str, str | None]], int]:
+    """The bounded list of protected paths this approval changes."""
+    from context_rail.store import query
+
+    previous = query.approval_records(ctx.index)
+    before: dict[str, str | None] = {}
+    for record in previous:
+        data = record["data"] if isinstance(record.get("data"), dict) else {}
+        stored = data.get("protected_hashes")
+        if not isinstance(stored, dict):
+            continue
+        for path in files:
+            if path not in before and path in stored:
+                before[path] = stored.get(path)
+    changed = [
+        {"path": path, "before": before.get(path), "after": hashes.get(path)}
+        for path in files
+        if before.get(path) != hashes.get(path)
+    ]
+    return changed[:100], max(len(changed) - 100, 0)
 
 
 def read_answers(path: Path) -> dict[str, Any]:

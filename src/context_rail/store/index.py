@@ -384,7 +384,19 @@ _PROJECTED_KINDS = frozenset(
 _EVALUATION_KEYS = ("schema", "run", "candidate_commit", "accepted", "check_verdicts", "review", "at")
 _TRIAGE_KEYS = ("schema", "reports", "cluster", "weight", "action", "outputs")
 _TRIAGE_ACTIONS = ("deferred", "acknowledged", "fix", "proposal", "export")
-_APPROVAL_KEYS = ("schema", "target", "protected_hashes", "confirmer", "confirmation")
+_APPROVAL_KEYS = (
+    "schema",
+    "target",
+    "protected_hashes",
+    "confirmer",
+    "confirmation",
+    "scope",
+    "files",
+    "snapshot",
+    "diff",
+    "diff_omitted",
+)
+_APPROVAL_REQUIRED = ("target", "protected_hashes", "confirmer", "confirmation")
 _REVIEW_KEYS = (
     "schema",
     "item",
@@ -974,7 +986,7 @@ def _triage_rows(record_id: str, data: dict[str, Any]) -> list[tuple[str, tuple[
 
 
 def _approval_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[str, tuple[Any, ...]]]:
-    payload = _strict(data, _APPROVAL_KEYS, "approval", _APPROVAL_KEYS[1:])
+    payload = _strict(data, _APPROVAL_KEYS, "approval", _APPROVAL_REQUIRED)
     target = string(payload["target"], "approval.target")
     hashes = mapping(payload["protected_hashes"], "approval.protected_hashes")
     for path, digest in hashes.items():

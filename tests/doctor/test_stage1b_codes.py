@@ -72,6 +72,7 @@ STAGE1A_CODES = {
     "container_inconsistent",
     "quality_gate_unknown",
     "quality_legacy",
+    "constitution_drift",
     "unknown_preset",
     "preset_field_hint",
 }

@@ -86,6 +86,7 @@ SEVERITIES: dict[str, str] = {
     "container_inconsistent": "warning",
     "quality_gate_unknown": "error",
     "quality_legacy": "warning",
+    "constitution_drift": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
@@ -165,6 +166,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(policy_issues)
     if policy is not None:
         issues.extend(_approval_issues(context))
+        issues.extend(_constitution_issues(context))
         issues.extend(_gate_issues(context, policy))
         issues.extend(_quality_gate_issues(pack, policy))
         issues.extend(_quality_legacy_issues(rows, pack, policy))
@@ -197,6 +199,33 @@ def gate_report(
 def _context(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> Any:
     """The read-only slice of a gateway context the doctor's checks need."""
     return SimpleNamespace(store=Path(store), manifest=manifest, pack=pack, index=ix)
+
+
+def _constitution_issues(context: Any) -> list[dict[str, Any]]:
+    """Protected paths whose newest scoped approval no longer matches."""
+    from context_rail.store import query
+    from context_rail.store.approval import constitution_state
+
+    records = query.approval_records(context.index)
+    scoped = any(
+        isinstance(record.get("data"), dict)
+        and (record["data"].get("scope") or "charter") != "charter"
+        for record in records
+    )
+    if not scoped:
+        return []
+    state = constitution_state(context)
+    if state["state"] != "mismatch":
+        return []
+    return [
+        _issue(
+            "constitution_drift",
+            row["path"],
+            f"the protected path is {row['state']} since its newest approval",
+            fix=_APPROVE,
+        )
+        for row in state["drift"]
+    ]
 
 
 def _quality_gate_issues(pack: Pack, policy: Any) -> list[dict[str, Any]]:
