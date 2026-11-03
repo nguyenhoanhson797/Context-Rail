@@ -27,6 +27,22 @@ def test_context_needs_a_token_and_never_runs_doctor(ui_server) -> None:
     assert headers["cache-control"] == "no-store"
 
 
+def test_context_lists_items_only(ui_server) -> None:
+    added = invoke(
+        "add", {"preset": "task", "title": "UI task"}, store=ui_server.store, actor="cto"
+    )
+    assert added["ok"] is True, added
+
+    status, payload, _ = _call(
+        ui_server.base, "/api/context", token=ui_server.token
+    )
+
+    assert status == 200, payload
+    items = payload["value"]["items"]
+    assert {item["slug"] for item in items} >= {"ui-task"}
+    assert all(item["status"] for item in items), items
+
+
 def test_tools_and_reads_go_through_the_gateway(ui_server) -> None:
     status, payload, _ = _call(ui_server.base, "/api/tools", token=ui_server.token)
     assert status == 200

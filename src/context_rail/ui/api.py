@@ -25,7 +25,7 @@ def context_document(store: Path, actor: str = "human") -> dict[str, Any]:
     status = invoke("status", {}, store=store, actor=actor)
     if not status.get("ok"):
         return status
-    found = invoke("find", {"limit": 50}, store=store, actor=actor)
+    found = invoke("find", {"primitive": "item", "limit": 50}, store=store, actor=actor)
     if not found.get("ok"):
         return found
     return {
