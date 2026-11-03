@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Menu, RotateCcw, Search, PanelLeft, LayoutDashboard, Target, GitBranch, Route as RouteIcon, House, SquareKanban, Stethoscope, Settings, Sun, FileText, TriangleAlert } from './icons';
+import { Menu, RotateCcw, Search, PanelLeft, LayoutDashboard, Target, GitBranch, Route as RouteIcon, House, SquareKanban, Stethoscope, Settings, Sun, FileText, TriangleAlert, Folders } from './icons';
 import { RailClient, docValid, projectValid, refusal } from './transport';
 import { RefreshGeneration, projectKey, readKey, refreshProject } from './refresh';
 import { ACTIVE_STATUSES, object, rows, text, type Data, type PageProps, type Route } from './contracts';

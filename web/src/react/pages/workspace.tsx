@@ -260,29 +260,33 @@ const RISK_SEVERITY_CLASS: Record<string, string> = { critical: 'red', high: 're
 /* The legacy status glyph (web/src/ui/helpers.js stIcon): a 14-unit ring with a
    slice set by the status's place in the enum, a bar for blocked and a filled tick for
    the last status. Kept as inline SVG so the board matches the legacy markup exactly. */
-function StatusGlyph({ status, statuses = [] }: { status: string; statuses?: string[] }) {
-  const color = `var(--st-${status.replace(/[^a-z0-9-]/gi, '')}, var(--st-todo))`;
+function StatusGlyph({ status, statuses = [], category }: { status: string; statuses?: string[]; category?: string }) {
+  const key = category || status;
+  const color = `var(--st-${key.replace(/[^a-z0-9-]/gi, '')}, var(--st-todo))`;
   const ring = <circle cx="7" cy="7" r={5.4} fill="none" stroke={color} strokeWidth={1.5} />;
   const idx = statuses.indexOf(status);
   const last = statuses.length - 1;
   let inner: ReactNode;
-  if (status === 'done' || (idx === last && idx > 0)) {
+  const done = category ? category === 'done' : status === 'done' || (idx === last && idx > 0);
+  const blocked = category ? category === 'blocked' : status === 'blocked';
+  const active = category ? category === 'active' : idx * 2 >= last;
+  if (done) {
     inner = (
       <>
         <circle cx="7" cy="7" r={6.2} fill={color} />
         <path d="M4.4 7.2 6.2 9 9.7 5.3" fill="none" stroke="var(--surface)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
       </>
     );
-  } else if (status === 'blocked') {
+  } else if (blocked) {
     inner = (
       <>
         {ring}
         <path d="M4.6 7h4.8" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
       </>
     );
-  } else if (idx <= 0) {
+  } else if (idx <= 0 && !category) {
     inner = ring;
-  } else if (idx * 2 >= last) {
+  } else if (active) {
     inner = (
       <>
         {ring}
