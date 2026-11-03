@@ -247,7 +247,7 @@ def _placement_ops(
     after: bytes,
     fields: dict[str, Any],
     relations: dict[str, tuple[str, ...]],
-) -> tuple[list[Op], str, bool]:
+) -> tuple[list[Op], str, bool, list[dict[str, str]]]:
     """The edited bytes and every descendant move, or one op when unchanged."""
     try:
         target = expected_path(
@@ -265,8 +265,9 @@ def _placement_ops(
     except PlacementError as error:
         raise WriteRefused(error.write_code, error.message, error.details) from None
     if target == rel:
-        return [Op(rel, after, actual)], rel, False
+        return [Op(rel, after, actual)], rel, False, []
     store = ctx.store
+    moves = [{"from": rel, "to": target}]
     found, _errors = expected_paths(
         index,
         ctx.manifest,
@@ -290,8 +291,9 @@ def _placement_ops(
         data = (store / source).read_bytes()
         ops.append(Op(source, None, etag(data)))
         ops.append(Op(path, data, ABSENT))
+        moves.append({"from": source, "to": path})
         records = records or source.startswith("records/")
-    return ops, target, records
+    return ops, target, records, moves
 
 
 def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -383,8 +385,9 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             ops = [Op(rel, after, actual)]
             records = False
             target = rel
+            moves: list[dict[str, str]] = []
         else:
-            ops, target, records = _placement_ops(
+            ops, target, records, moves = _placement_ops(
                 ctx,
                 index,
                 preset,
@@ -395,6 +398,9 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 merged,
                 doc.relations,
             )
+        extra = (
+            [_relocation_record(ctx, doc, moves)] if moves else []
+        )
         result = commit(
             store,
             ctx.manifest,
@@ -408,6 +414,7 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             actor=actor,
             key=key,
             index=index,
+            extra_records=tuple(extra),
             allow_record_relocation=records,
         )
     return _response(store, index, result)
@@ -665,8 +672,9 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             ops = [Op(rel, after, actual)]
             records = False
             target_path = rel
+            moves: list[dict[str, str]] = []
         else:
-            ops, target_path, records = _placement_ops(
+            ops, target_path, records, moves = _placement_ops(
                 ctx,
                 index,
                 preset,
@@ -677,6 +685,8 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 doc.fields,
                 relations_after,
             )
+        if moves:
+            extra.append(_relocation_record(ctx, doc, moves))
         result = commit(
             store,
             ctx.manifest,
@@ -697,6 +707,25 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "rel": name,
         "dst": dst,
         "removed": remove,
+    }
+
+
+def _relocation_record(
+    ctx: Context, doc: Doc, moves: list[dict[str, str]]
+) -> dict[str, Any]:
+    """The one audit record for a move, naming every old and new path once."""
+    workflow = "default"
+    preset = ctx.pack.presets.get(doc.preset or "")
+    if preset is not None:
+        workflow = preset.workflow
+    return {
+        "kind": "doc.relocated",
+        "about": [doc.slug],
+        "data": {
+            "schema": 1,
+            "workflow": workflow,
+            "moves": sorted(moves, key=lambda row: row["from"]),
+        },
     }
 
 

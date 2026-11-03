@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,26 @@ def test_add_and_record_use_the_resolver(tmp_path: Path) -> None:
         f"{result['record']}.json"
     )
     assert moved_record.is_file()
+    relocations = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (store / "records").rglob("*.json")
+        if '"doc.relocated"' in path.read_text(encoding="utf-8")
+    ]
+    assert len(relocations) == 1
+    assert relocations[0]["data"]["workflow"] == "default"
+    assert relocations[0]["data"]["moves"] == [
+        {
+            "from": "items/phase/phase-1/sprint-3/frontend/implement-checkout.md",
+            "to": "items/phase/phase-1/sprint-3/backend/implement-checkout.md",
+        },
+        {
+            "from": result["path"],
+            "to": (
+                "records/items/phase/phase-1/sprint-3/backend/implement-checkout/"
+                f"{result['record']}.json"
+            ),
+        },
+    ]
 
 
 def test_a_decision_record_uses_its_own_about_placement(tmp_path: Path) -> None:

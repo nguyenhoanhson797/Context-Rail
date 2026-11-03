@@ -74,6 +74,7 @@ STAGE1A_CODES = {
     "quality_legacy",
     "constitution_drift",
     "relation_type",
+    "protected_file_moved",
     "unknown_preset",
     "preset_field_hint",
 }

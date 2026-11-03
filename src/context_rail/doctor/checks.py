@@ -88,6 +88,7 @@ SEVERITIES: dict[str, str] = {
     "quality_legacy": "warning",
     "constitution_drift": "warning",
     "relation_type": "warning",
+    "protected_file_moved": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
 }
@@ -169,6 +170,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     if policy is not None:
         issues.extend(_approval_issues(context))
         issues.extend(_constitution_issues(context))
+        issues.extend(_protected_moved_issues(context, policy))
         issues.extend(_gate_issues(context, policy))
         issues.extend(_quality_gate_issues(pack, policy))
         issues.extend(_quality_legacy_issues(rows, pack, policy))
@@ -201,6 +203,36 @@ def gate_report(
 def _context(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> Any:
     """The read-only slice of a gateway context the doctor's checks need."""
     return SimpleNamespace(store=Path(store), manifest=manifest, pack=pack, index=ix)
+
+
+def _protected_moved_issues(context: Any, policy: Any) -> list[dict[str, Any]]:
+    """A relocated document still listed by its old protected path."""
+    protected = set(policy.protected_files)
+    from context_rail.store import query
+
+    issues: list[dict[str, Any]] = []
+    rows = context.index.conn.execute(
+        "SELECT d.path FROM docs d JOIN fields k ON k.path = d.path "
+        "AND k.key = 'kind' WHERE k.value_json = ? "
+        "ORDER BY d.record_at DESC LIMIT 50",
+        ('"doc.relocated"',),
+    ).fetchall()
+    for (path,) in rows:
+        data = query.record_data(context.index, path)
+        for move in data.get("moves") or ():
+            if not isinstance(move, dict):
+                continue
+            source, target = move.get("from"), move.get("to")
+            if source in protected and target not in protected:
+                issues.append(
+                    _issue(
+                        "protected_file_moved",
+                        str(target),
+                        f"the protected path {source!r} moved to {target!r}; "
+                        "a human must update the charter",
+                    )
+                )
+    return issues
 
 
 def _constitution_issues(context: Any) -> list[dict[str, Any]]:
