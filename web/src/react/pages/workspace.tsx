@@ -667,7 +667,7 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
               </button>
             </>
           ) : (
-            <span className="num">{`${openCount(all)} open, ${all.length - openCount(all)} done in ${phases.length} containers`}</span>
+            <span className="num">{`${openCount(all)} open, ${all.length - openCount(all)} done in ${phases.length} container${phases.length === 1 ? '' : 's'}`}</span>
           )}
         </span>
         {busy ? <span className="faint">Working...</span> : null}

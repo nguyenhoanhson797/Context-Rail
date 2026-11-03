@@ -305,7 +305,7 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
                   <button type="button" className="link rail-link" onClick={() => go('board', { workflow: text(workflow.name) })}>
                     {text(workflow.name)}
                   </button>
-                  <span className="faint sm-row-meta">{workflowCount(text(workflow.name))} items · {Object.keys(object(workflow.quality)).length} gates</span>
+                  <span className="faint sm-row-meta">{workflowCount(text(workflow.name))} items · {Object.keys(object(workflow.quality)).length} gate{Object.keys(object(workflow.quality)).length === 1 ? '' : 's'}</span>
                 </div>
               )) : <p className="faint">This pack declares no workflows.</p>}
             </div>
