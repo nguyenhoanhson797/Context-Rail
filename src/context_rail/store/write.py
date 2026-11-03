@@ -732,6 +732,11 @@ def _record_imports(
         for target in targets
         if target.rel.startswith("records/") and target.data is not None
     }
+    added_rels = {
+        target.rel
+        for target in targets
+        if target.rel.startswith("records/") and target.data is not None
+    }
     kept: list[_Target] = []
     for target in targets:
         if not target.rel.startswith("records/"):
@@ -740,9 +745,13 @@ def _record_imports(
         if target.data is None:
             if (
                 allow_record_relocation
+                and target.rel not in added_rels
                 and target.path.is_file()
                 and target.path.read_bytes() in added_bytes
             ):
+                # The same bytes are re-added elsewhere in this commit, so the
+                # old path is a move source: remove it, never rewrite it.
+                kept.append(target)
                 continue
             raise WriteRefused(
                 "VALIDATION_FAILED",
