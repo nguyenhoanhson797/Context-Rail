@@ -462,6 +462,7 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
     assert implementer.auto == "medium"
     assert implementer.tools == WORKER_TOOL_IDS
     assert implementer.allowed_methods == (
+        "do",
         "find",
         "show",
         "cto brief",

@@ -40,13 +40,16 @@ def endpoint_problem(
     if allowed is None:
         return f"{relation!r} is not a declared relation"
     sources, targets = allowed
-    if source_primitive not in sources:
+    if relation == "depends_on" and source_primitive == target_primitive:
+        # Code-map notes depend on other notes; the edge keeps one primitive.
+        pass
+    elif source_primitive not in sources:
         return (
             f"{relation!r} must start at a "
             + " or ".join(sorted(sources))
             + f", not a {source_primitive!r}"
         )
-    if target_primitive not in targets:
+    elif target_primitive not in targets:
         return (
             f"{relation!r} must point at a "
             + " or ".join(sorted(targets))

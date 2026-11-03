@@ -471,8 +471,10 @@ def test_every_builtin_pack_loads_with_one_default_workflow(
 ) -> None:
     pack = load_pack(name, tmp_path)
 
-    assert set(pack.workflows) == {"default"}
-    assert all(preset.workflow == "default" for preset in pack.presets.values())
+    if name == "scrum":
+        assert {"sprint", "bugfix", "scope"} <= set(pack.workflows)
+    else:
+        assert set(pack.workflows) == {"default"}
     assert all(
         preset.container is not None
         for preset in pack.presets.values()

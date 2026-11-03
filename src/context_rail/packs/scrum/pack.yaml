@@ -1,6 +1,6 @@
 name: scrum
 version: 1
-statuses: {todo: not_started, ready: not_started, doing: active, review: active, blocked: blocked, done: done, dropped: dropped}
+statuses: {todo: not_started, ready: not_started, doing: active, review: active, blocked: blocked, done: done, dropped: dropped, reported: not_started, fixing: active, verifying: active, closed: done}
 initial: todo
 transitions:
   todo: [ready, doing, dropped]
@@ -10,16 +10,56 @@ transitions:
   blocked: [doing, review, dropped]
   done: [doing]
   dropped: [todo]
+  reported: [fixing, closed]
+  fixing: [verifying, reported, blocked]
+  verifying: [closed, fixing]
+  closed: [fixing]
 execution:
   review: {dispatch: false}
+workflows:
+  sprint:
+    initial: todo
+    transitions:
+      todo: [ready, doing, dropped]
+      ready: [doing, todo, dropped]
+      doing: [review, blocked, done, todo, dropped]
+      review: [doing, blocked, done, dropped]
+      blocked: [doing, review, dropped]
+      done: [doing]
+      dropped: [todo]
+    execution:
+      review: {dispatch: false}
+    quality:
+      done: {gate: item_done}
+  bugfix:
+    initial: reported
+    transitions:
+      reported: [fixing, closed]
+      fixing: [verifying, reported, blocked]
+      verifying: [closed, fixing]
+      blocked: [fixing]
+      closed: [fixing]
+    execution:
+      verifying: {dispatch: false}
+    quality:
+      closed: {gate: item_done, checks: [repro-check, acceptance]}
+  scope:
+    initial: todo
+    transitions:
+      todo: [doing, dropped]
+      doing: [done, dropped]
+      done: []
+      dropped: [todo]
+    quality:
+      done: {gate: scope_done}
 presets:
   goal:       {primitive: item,   tags: [goal], container: true}
-  scope:      {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
-  epic:       {primitive: item,   tags: [epic], container: true}
-  sprint:     {primitive: item,   tags: [sprint], container: true}
-  story:      {primitive: item,   tags: [story], container: false}
-  task:       {primitive: item,   tags: [task], container: false}
-  bug:        {primitive: item,   tags: [bug], container: false}
+  scope:      {primitive: item,   tags: [scope], container: true, workflow: scope, fields: {priority: [must, should, could, wont]}}
+  epic:       {primitive: item,   tags: [epic], container: true, workflow: sprint}
+  sprint:     {primitive: item,   tags: [sprint], container: true, workflow: sprint}
+  story:      {primitive: item,   tags: [story], container: false, workflow: sprint}
+  task:       {primitive: item,   tags: [task], container: false, workflow: sprint}
+  bug:        {primitive: item,   tags: [bug], container: false, workflow: bugfix}
   risk:       {primitive: item,   tags: [risk], container: false, fields: {severity: [low, medium, high, critical]}}
   question:   {primitive: item,   tags: [question], container: false}
   note:       {primitive: note,   tags: []}
@@ -34,7 +74,7 @@ presets:
   skill:      {primitive: note,   tags: []}
   cto:        {primitive: actor,  tags: []}
   profile:    {primitive: actor,  tags: []}
-  fix:        {primitive: item,   tags: [], container: false}
+  fix:        {primitive: item,   tags: [], container: false, workflow: bugfix}
 policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
 actions:
   start-sprint:
