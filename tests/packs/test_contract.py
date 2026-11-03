@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from context_rail.gateway.gateway import invoke
-from helpers import init_store, record_inventory, write_pack
+from helpers import copy_pack_templates, init_store, record_inventory, write_pack
 
 
 def _basic_document() -> dict:
@@ -33,6 +33,48 @@ def test_pack_validate_refuses_a_missing_required_preset(tmp_path: Path) -> None
     assert result["value"]["valid"] is False
     messages = " ".join(problem["message"] for problem in result["value"]["problems"])
     assert "decision" in messages
+
+
+def test_pack_validate_reports_an_invalid_workflow(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    document = _basic_document()
+    document["name"] = "broken"
+    document["workflows"] = {
+        "sprint": {"initial": "ghost", "transitions": {}},
+    }
+    write_pack(store, "broken", document)
+
+    result = invoke("pack validate", {"name": "broken"}, store=store, actor="human")
+
+    assert result["ok"] is True
+    assert result["value"]["valid"] is False
+    messages = " ".join(problem["message"] for problem in result["value"]["problems"])
+    assert "ghost" in messages
+
+
+def test_pack_validate_accepts_a_named_workflow(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    document = _basic_document()
+    document["name"] = "twoways"
+    document["workflows"] = {
+        "bugfix": {
+            "initial": "todo",
+            "transitions": {"todo": ["done"], "done": ["todo"]},
+            "quality": {"done": {"gate": "item_done", "checks": ["acceptance"]}},
+        }
+    }
+    document["presets"]["bug"] = {
+        "primitive": "item",
+        "tags": ["bug"],
+        "workflow": "bugfix",
+    }
+    write_pack(store, "twoways", document)
+    copy_pack_templates(store, "twoways")
+
+    result = invoke("pack validate", {"name": "twoways"}, store=store, actor="human")
+
+    assert result["ok"] is True
+    assert result["value"] == {"valid": True, "problems": []}
 
 
 def test_pack_validate_refuses_a_preset_template_that_does_not_exist(

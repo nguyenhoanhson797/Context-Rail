@@ -722,6 +722,20 @@ def nested_pack_document(
     return document
 
 
+def copy_pack_templates(store: Path, name: str) -> None:
+    """Copy the built-in Markdown templates into a store-local pack."""
+    from importlib import resources
+
+    templates = Path(store) / "packs" / name / "templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    source = resources.files("context_rail").joinpath("packs", "basic", "templates")
+    for item in source.iterdir():
+        if item.name.endswith(".md"):
+            templates.joinpath(item.name).write_text(
+                item.read_text(encoding="utf-8"), encoding="utf-8", newline="\n"
+            )
+
+
 def init_nested_store(
     tmp_path: Path,
     *,
@@ -730,20 +744,11 @@ def init_nested_store(
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Initialize a store on the nested pack, seeded with a structural layout."""
-    from importlib import resources
-
     from context_rail.gateway.gateway import invoke
 
     store = Path(tmp_path) / "context-rail"
     write_pack(store, name, nested_pack_document(name, extra))
-    templates = store / "packs" / name / "templates"
-    templates.mkdir(parents=True, exist_ok=True)
-    source = resources.files("context_rail").joinpath("packs", "basic", "templates")
-    for item in source.iterdir():
-        if item.name.endswith(".md"):
-            templates.joinpath(item.name).write_text(
-                item.read_text(encoding="utf-8"), encoding="utf-8", newline="\n"
-            )
+    copy_pack_templates(store, name)
     (store / "packs" / name / "layout.yaml").write_text(
         yaml.safe_dump(
             {"presets": dict(NESTED_LAYOUT if layout is None else layout)},

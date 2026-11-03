@@ -39,6 +39,8 @@ __all__ = [
     "PACK_VERSION",
     "Pack",
     "Preset",
+    "QualityRule",
+    "Workflow",
     "ModelError",
     "REQUIRED_PRESETS",
     "canonical_pack_name",
@@ -50,10 +52,31 @@ __all__ = [
     "pack_policy_digest",
 ]
 
-PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy", "execution")
+PACK_KEYS = (
+    "name",
+    "version",
+    "statuses",
+    "initial",
+    "transitions",
+    "presets",
+    "policy",
+    "execution",
+    "workflows",
+)
 REQUIRED_PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
-PRESET_KEYS = ("primitive", "tags", "fields", "template", "required", "defaults")
+PRESET_KEYS = (
+    "primitive",
+    "tags",
+    "fields",
+    "template",
+    "required",
+    "defaults",
+    "workflow",
+    "container",
+)
 EXECUTION_KEYS = ("dispatch", "merge")
+WORKFLOW_KEYS = ("initial", "transitions", "execution", "quality")
+QUALITY_KEYS = ("gate", "checks")
 LAYOUT_FILE = "layout.yaml"
 LAYOUT_KEYS = ("placement", "presets")
 PACK_VERSION = 1
@@ -61,6 +84,8 @@ DEFAULT_TEMPLATE = "templates/{primitive}.md"
 DEFAULT_MEASUREMENT_MIN_RUNS = 10
 _PACK_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 _FIELD_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+_WORKFLOW_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_GATE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # The engine reads these presets by name (the charter and skill documents, the
 # manifest's placed presets and the legacy migration fallback), so every pack
@@ -84,6 +109,25 @@ DEPRECATED_PACK_ALIASES = {"small": "basic", "indie": "flow"}
 
 
 @dataclass(frozen=True)
+class QualityRule:
+    """The gate a workflow evaluates on entering one status, and its checks."""
+
+    gate: str
+    checks: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Workflow:
+    """One named lifecycle: an initial status, its moves and its quality bar."""
+
+    name: str
+    initial: str
+    transitions: dict[str, tuple[str, ...]]
+    execution: dict[str, dict[str, bool]]
+    quality: dict[str, QualityRule]
+
+
+@dataclass(frozen=True)
 class Preset:
     """One preset: a primitive, its tags, enum fields and body template."""
 
@@ -94,6 +138,8 @@ class Preset:
     template: str
     required: tuple[str, ...] = ()
     defaults: dict[str, Any] = field(default_factory=dict)
+    workflow: str = "default"
+    container: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +154,7 @@ class Pack:
     presets: dict[str, Preset]
     policy: dict[str, Any]
     execution: dict[str, dict[str, bool]]
+    workflows: dict[str, Workflow]
 
     def dispatchable(self, status: str) -> bool:
         """Whether an Item in ``status`` may be dispatched."""
@@ -122,6 +169,20 @@ class Pack:
         if "merge" in declared:
             return declared["merge"]
         return self.statuses.get(status) not in FINISHED_CATEGORIES
+
+    def workflow(self, name: str) -> Workflow:
+        """The workflow called ``name``, refusing an unknown one."""
+        workflow = self.workflows.get(name)
+        if workflow is None:
+            _refuse(f"unknown workflow {name!r}")
+        return workflow
+
+    def workflow_for(self, preset: str) -> Workflow:
+        """The workflow a preset selects, refusing an unknown preset."""
+        declared = self.presets.get(preset)
+        if declared is None:
+            _refuse(f"unknown preset {preset!r}")
+        return self.workflow(declared.workflow)
 
 
 def load_pack(name: str, store: Path) -> Pack:
@@ -243,9 +304,12 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
     if not isinstance(initial, str) or initial not in statuses:
         _refuse(f"initial status {initial!r} is not a declared status")
     transitions = _transitions(data["transitions"], statuses)
-    presets = _presets(data["presets"])
-    policy = _policy(data["policy"])
     execution = _execution(data.get("execution", {}), statuses)
+    workflows = _workflows(
+        data.get("workflows", {}), statuses, initial, transitions, execution
+    )
+    presets = _presets(data["presets"], workflows)
+    policy = _policy(data["policy"])
 
     return Pack(
         name=name,
@@ -256,6 +320,7 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
         presets=presets,
         policy=policy,
         execution=execution,
+        workflows=workflows,
     )
 
 
@@ -290,9 +355,81 @@ def _transitions(raw: Any, statuses: dict[str, str]) -> dict[str, tuple[str, ...
     return result
 
 
-def _presets(raw: Any) -> dict[str, Preset]:
+def _presets(raw: Any, workflows: dict[str, Workflow]) -> dict[str, Preset]:
     presets = _mapping(raw, "presets")
-    return {name: _preset(name, entry) for name, entry in presets.items()}
+    return {
+        name: _preset(name, entry, workflows) for name, entry in presets.items()
+    }
+
+
+def _workflows(
+    raw: Any,
+    statuses: dict[str, str],
+    initial: str,
+    transitions: dict[str, tuple[str, ...]],
+    execution: dict[str, dict[str, bool]],
+) -> dict[str, Workflow]:
+    """The default workflow from the top level, then every declared workflow."""
+    workflows = {
+        "default": Workflow(
+            name="default",
+            initial=initial,
+            transitions=transitions,
+            execution=execution,
+            quality={},
+        )
+    }
+    declared = _mapping(raw, "workflows")
+    for name, entry in declared.items():
+        if name == "default":
+            _refuse("workflows may not declare 'default'")
+        if not _WORKFLOW_NAME.fullmatch(name):
+            _refuse(f"invalid workflow name {name!r}")
+        where = f"workflows.{name}"
+        body = _mapping(entry, where)
+        unknown = sorted(set(body) - set(WORKFLOW_KEYS))
+        if unknown:
+            _refuse(f"{where} has unknown key(s): " + ", ".join(unknown))
+        missing = [key for key in ("initial", "transitions") if key not in body]
+        if missing:
+            _refuse(f"{where} is missing " + ", ".join(missing))
+        workflow_initial = body["initial"]
+        if not isinstance(workflow_initial, str) or workflow_initial not in statuses:
+            _refuse(f"{where} initial status {workflow_initial!r} is not declared")
+        workflow_transitions = _transitions(body["transitions"], statuses)
+        workflow_execution = _execution(body.get("execution", {}), statuses)
+        workflow_quality = _quality(body.get("quality", {}), statuses)
+        workflows[name] = Workflow(
+            name=name,
+            initial=workflow_initial,
+            transitions=workflow_transitions,
+            execution=workflow_execution,
+            quality=workflow_quality,
+        )
+    return workflows
+
+
+def _quality(raw: Any, statuses: dict[str, str]) -> dict[str, QualityRule]:
+    quality = _mapping(raw, "quality")
+    result: dict[str, QualityRule] = {}
+    for status, raw_rule in quality.items():
+        if status not in statuses:
+            _refuse(f"quality names undeclared status {status!r}")
+        where = f"quality.{status}"
+        rule = _mapping(raw_rule, where)
+        unknown = sorted(set(rule) - set(QUALITY_KEYS))
+        if unknown:
+            _refuse(f"{where} has unknown key(s): " + ", ".join(unknown))
+        gate = rule.get("gate")
+        if not isinstance(gate, str) or not _GATE_NAME.fullmatch(gate):
+            _refuse(f"{where} gate must be a safe gate name")
+        checks = rule.get("checks", [])
+        if not isinstance(checks, list) or not all(
+            isinstance(check, str) and check for check in checks
+        ):
+            _refuse(f"{where} checks must be a list of non-empty names")
+        result[status] = QualityRule(gate=gate, checks=tuple(checks))
+    return result
 
 
 def _execution(raw: Any, statuses: dict[str, str]) -> dict[str, dict[str, bool]]:
@@ -314,7 +451,9 @@ def _execution(raw: Any, statuses: dict[str, str]) -> dict[str, dict[str, bool]]
     return result
 
 
-def _preset(name: str, raw: Any) -> Preset:
+def _preset(
+    name: str, raw: Any, workflows: dict[str, Workflow]
+) -> Preset:
     entry = _mapping(raw, f"preset {name!r}")
     unknown = sorted(set(entry) - set(PRESET_KEYS))
     if unknown:
@@ -324,6 +463,14 @@ def _preset(name: str, raw: Any) -> Preset:
     primitive = entry["primitive"]
     if not isinstance(primitive, str) or primitive not in PRIMITIVES:
         _refuse(f"preset {name!r} has unknown primitive {primitive!r}")
+    workflow = entry.get("workflow", "default")
+    if not isinstance(workflow, str) or workflow not in workflows:
+        _refuse(f"preset {name!r} names unknown workflow {workflow!r}")
+    container = entry.get("container")
+    if container is not None and not isinstance(container, bool):
+        _refuse(f"preset {name!r} container must be true, false or null")
+    if container is not None and primitive != "item":
+        _refuse(f"preset {name!r} container is only valid on an item preset")
     tags = _string_list(entry.get("tags", []), f"preset {name!r} tags")
     fields = _fields(entry.get("fields", {}), name)
     required = _required(entry.get("required", []), name, primitive)
@@ -340,6 +487,8 @@ def _preset(name: str, raw: Any) -> Preset:
         template=template,
         required=required,
         defaults=defaults,
+        workflow=workflow,
+        container=container,
     )
 
 
