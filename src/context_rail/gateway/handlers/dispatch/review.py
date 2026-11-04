@@ -15,10 +15,10 @@ from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner.droid import (
     DroidProfile,
     droid_profile,
-    run_droid,
     write_order_file,
     write_role_file,
 )
+from context_rail.runner.protocol import run_worker
 from context_rail.store import query
 from context_rail.store.write import WriteRefused
 
@@ -222,9 +222,9 @@ def _review_candidate(
         local_dispatch.write_review_progress(
             store, review_id, state="running", phase="running"
         )
-        ran = run_droid(
+        ran = run_worker(
             context=ctx,
-            profile=droid,
+            profile=profile,
             worktree=paths.worktree,
             confine_to=paths.worktree,
             role_file=role_file,

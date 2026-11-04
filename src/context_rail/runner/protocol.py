@@ -23,6 +23,8 @@ __all__ = [
     "Runner",
     "get_runner",
     "runner_for_profile",
+    "run_runner",
+    "run_worker",
 ]
 
 
@@ -190,6 +192,7 @@ class _Adapter:
 
 _ADAPTERS: dict[str, _Adapter] = {}
 _SESSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$")
+_FAILURE_PROMPT_MAX_CHARS = 4000
 
 
 def get_runner(name: str) -> _Adapter:
@@ -260,3 +263,59 @@ def run_runner(
         runner=runner,
         failure=failure,
     )
+
+
+def run_worker(
+    *,
+    context: Any,
+    profile: Profile,
+    worktree: Path,
+    confine_to: Path,
+    role_file: Path,
+    order_file: Path,
+    timeout: float,
+    session_id: str | None = None,
+    failure_text: str | None = None,
+) -> Any:
+    """Launch one bounded worker run: the profile's runner, droid by default.
+
+    The default is byte-identical to the pre-protocol path: the same pinned
+    argv, the same environment and the same result type. Any other adapter
+    returns a ``RunnerResult`` with the same fields, so dispatch and review
+    judge the run without branching on the runner.
+    """
+    runner = getattr(profile, "runner", "droid") or "droid"
+    if runner == "droid":
+        from context_rail.runner.droid import droid_profile, run_droid
+
+        return run_droid(
+            context=context,
+            profile=droid_profile(profile),
+            worktree=Path(worktree),
+            confine_to=Path(confine_to),
+            role_file=Path(role_file),
+            order_file=Path(order_file),
+            timeout=timeout,
+            session_id=session_id,
+            failure_text=failure_text,
+        )
+    if failure_text:
+        _append_failure(Path(order_file), failure_text)
+    return run_runner(
+        profile=profile,
+        worktree=Path(worktree),
+        confine_to=Path(confine_to),
+        role_file=Path(role_file),
+        order_file=Path(order_file),
+        timeout=timeout,
+        session_id=session_id,
+    )
+
+
+def _append_failure(order_file: Path, failure_text: str) -> None:
+    text = failure_text if len(failure_text) <= _FAILURE_PROMPT_MAX_CHARS else failure_text[-_FAILURE_PROMPT_MAX_CHARS:]
+    with order_file.open("a", encoding="utf-8") as handle:
+        handle.write("\n[previous failure]\n")
+        handle.write(text)
+        if not text.endswith("\n"):
+            handle.write("\n")

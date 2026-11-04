@@ -40,10 +40,10 @@ from context_rail.runner import git as git_runner
 from context_rail.runner.droid import (
     droid_profile,
     extract_block,
-    run_droid,
     write_order_file,
     write_role_file,
 )
+from context_rail.runner.protocol import run_worker
 from context_rail.store import query
 from context_rail.store.doc import Doc, etag, parse_doc
 from context_rail.store.write import WriteRefused, commit, resolve_unique
@@ -125,6 +125,7 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"item": slug, "reason": refusal},
         )
     _require_executable(ctx, slug)
+    _guard_focus(ctx, slug, allow_all=bool(args.get("all")))
 
     root, _git_dir = checkout(ctx, action="a dispatch")
     branch_now = _current_branch(root)
@@ -347,9 +348,9 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
             phase="running",
             attempts=len(attempts) + 1,
         )
-        ran = run_droid(
+        ran = run_worker(
             context=plan.ctx,
-            profile=plan.droid,
+            profile=plan.profile,
             worktree=plan.paths.worktree,
             confine_to=plan.paths.worktree,
             role_file=role_file,
@@ -684,6 +685,30 @@ def _judge(
 
 def _verify(plan: _Plan) -> dict[str, Any]:
     return _verify_worktree(plan.ctx, plan.slug, plan.paths.worktree, plan.actor)
+
+
+def _guard_focus(ctx: Context, slug: str, *, allow_all: bool) -> None:
+    """Refuse a dispatch outside the focus unless the caller passed ``--all``."""
+    if allow_all:
+        return
+    from context_rail.context import operating
+
+    try:
+        focus = operating.outside_focus(ctx, ctx.model, slug)
+    except operating.OperatingError as error:
+        raise WriteRefused(error.code, error.message, error.details) from None
+    if focus is None:
+        return
+    raise WriteRefused(
+        "INVALID_STATE",
+        f"{slug!r} is outside the operating focus {focus!r}",
+        {
+            "item": slug,
+            "focus": focus,
+            "reason": "out_of_focus",
+            "command": f"rail loop dispatch {slug} --all --expect <etag> --key <key>",
+        },
+    )
 
 
 def _replayed(

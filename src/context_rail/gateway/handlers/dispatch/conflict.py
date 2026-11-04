@@ -15,10 +15,10 @@ from context_rail.runner import git as git_runner
 from context_rail.runner.droid import (
     droid_profile,
     extract_block,
-    run_droid,
     write_order_file,
     write_role_file,
 )
+from context_rail.runner.protocol import run_worker
 from context_rail.store import query
 from context_rail.store.doc import Doc, etag
 from context_rail.store.write import commit
@@ -85,9 +85,9 @@ def _continue_conflict(
             ctx, doc=doc, slug=slug, onto=onto, conflicts=conflicts, profile=profile
         ),
     )
-    ran = run_droid(
+    ran = run_worker(
         context=ctx,
-        profile=droid,
+        profile=profile,
         worktree=worktree,
         confine_to=worktree,
         role_file=role_file,
