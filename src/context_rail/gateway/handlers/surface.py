@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 __all__ = ["explain", "model", "next", "types", "why"]
 
 _QUEUE_CARDS = 10
+_HIERARCHY_CAP = 20
 
 
 def types(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -74,9 +75,7 @@ def model(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "model": compiled.as_dict(),
         "unit": None if unit is None else unit.as_dict(),
         "focus": focus,
-        "hierarchy": [
-            group.as_dict() for group in operating.resolve_hierarchy(ctx, compiled)
-        ],
+        "hierarchy": _hierarchy_page(ctx, compiled),
         "digests": {
             "semantic": compiled.semantic_digest,
             "presentation": compiled.presentation_digest,
@@ -84,6 +83,16 @@ def model(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         },
         "neutral": ctx.pack.operating is None,
     }
+
+
+def _hierarchy_page(ctx: Context, model: Any) -> list[dict[str, Any]]:
+    page: list[dict[str, Any]] = []
+    for group in operating.resolve_hierarchy(ctx, model):
+        value = group.as_dict()
+        value["omitted"] = max(len(group.items) - _HIERARCHY_CAP, 0)
+        value["items"] = value["items"][:_HIERARCHY_CAP]
+        page.append(value)
+    return page
 
 
 def explain(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

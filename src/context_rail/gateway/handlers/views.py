@@ -114,6 +114,12 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     focus = _focus(ctx, model)
     groups, groups_omitted = _groups(ctx, model)
     progress = operating.resolve_progress(ctx, model)
+    progress_data = progress.as_dict()
+    progress_children = list(progress_data.get("children") or ())
+    progress_data["children"] = progress_children[:LIST_CAP]
+    progress_data["omitted"] = int(progress_data.get("omitted") or 0) + max(
+        len(progress_children) - LIST_CAP, 0
+    )
     queue = _queue(ctx, model)
     return {
         "counts": counts,
@@ -127,7 +133,7 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "unit": None if unit is None else unit.as_dict(),
         "focus": focus,
         "groups": groups,
-        "progress": progress.as_dict(),
+        "progress": progress_data,
         "queue": queue,
         "labels": {
             name: {"one": operating.label(model, name), "many": operating.label(model, name, plural=True)}

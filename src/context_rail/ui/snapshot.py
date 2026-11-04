@@ -339,6 +339,11 @@ def _operating(context: Any, model: Any) -> dict[str, Any]:
     except operating.OperatingError as error:
         queue = {"items": [], "omitted": 0, "scope": "project", "error": error.code}
     progress = operating.resolve_progress(context, model).as_dict()
+    children = list(progress.get("children") or ())
+    progress["children"] = children[:_QUEUE_CAP]
+    progress["omitted"] = int(progress.get("omitted") or 0) + max(
+        len(children) - _QUEUE_CAP, 0
+    )
     presentation = model.presentation
     queue_policy = model.operating.queue
     return {
