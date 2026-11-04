@@ -69,6 +69,13 @@ def _priority(preset: Any) -> bool:
     return "priority" in (preset.fields if preset is not None else {})
 
 
+def _states(pack: Pack, workflow: str | None, status: str | None) -> list[str]:
+    """The current state plus the transitions the workflow allows from it."""
+    definition = pack.workflows.get(workflow or "default") or pack.workflow("default")
+    moves = definition.transitions.get(status or "", ())
+    return list(dict.fromkeys([status, *moves])) if status else list(moves)
+
+
 def _workflows(pack: Pack) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for name in sorted(pack.workflows):
@@ -126,8 +133,15 @@ def _project(context: Any, docs: list[dict[str, Any]], counts: dict[str, int]) -
 
     state = approval_state(context, "charter")
     goal = next((doc for doc in docs if doc["preset"] == "goal"), None)
-    summary = ", ".join(
-        f"{name} {count}" for name, count in counts.items() if count
+    labels = (
+        ("not_started", "not started"),
+        ("active", "in motion"),
+        ("blocked", "blocked"),
+        ("done", "done"),
+        ("dropped", "dropped"),
+    )
+    summary = " · ".join(
+        f"{counts[key]} {label}" for key, label in labels if counts.get(key)
     ) or "No items yet"
     name = Path(context.store).name
     if name == "context-rail":
@@ -199,12 +213,7 @@ def build(context: Any) -> dict[str, Any]:
             "fields": values,
             "relations": relations.get(path, {}),
             "priority": values.get("priority"),
-            "states": list(
-                (
-                    pack.workflows.get(workflow or "default")
-                    or pack.workflow("default")
-                ).transitions
-            ),
+            "states": _states(pack, workflow, status),
         }
         for key, value in values.items():
             doc.setdefault(key, value)
@@ -250,12 +259,12 @@ def build(context: Any) -> dict[str, Any]:
         scope_items = by_preset.get("scope", [])
 
     counts: dict[str, int] = {}
-    for doc in items:
+    for doc in tasks:
         name = doc["category"] or "unknown"
         counts[name] = counts.get(name, 0) + 1
 
     def titles(predicate: Any) -> str:
-        found = [doc["title"] for doc in items if predicate(doc)]
+        found = [doc["title"] for doc in tasks if predicate(doc)]
         return " · ".join(found[:8])
 
     cursor = {

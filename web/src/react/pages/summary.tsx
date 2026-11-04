@@ -186,7 +186,7 @@ export function OwnerCounts({ owner, loading, error, navigate }: {
     : 'Required closeout: ' + countWord(summary.closeout, 'task')
       + (summary.closeoutTruncated && summary.closeoutTotal !== null && summary.closeout > 0 ? ' (the read lists only the first one)' : '');
   return (
-    <div className="sm-rows" data-owner-summary={summary.state}>
+    <div className="panel-b sm-rows" data-owner-summary={summary.state}>
       <p data-review="corrections" data-count={summary.corrections === null ? undefined : summary.corrections}>
         {corrections}
         {summary.corrections ? <> <button type="button" className="link rail-link" onClick={() => navigate('rules')}>Review them</button></> : null}
@@ -207,12 +207,12 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
   const idOf = (doc: Data) => text(doc.id);
   const tasks = snapshot.tasks;
   const workflows = rows(snapshot.workflows);
-  const counts = object(snapshot.counts);
   const open = tasks.filter((task) => !['done', 'dropped'].includes(text(task.category)));
   const active = tasks.filter((task) => text(task.category) === 'active');
   const blocked = tasks.filter((task) => text(task.category) === 'blocked');
   const queue = rows(object(next.data).queue);
   const approval = text(snapshot.project.state, 'missing');
+  const needs = blocked.length + (approval === 'approved' ? 0 : 1);
   const goal = text(snapshot.project.goal);
   const phaseDone = snapshot.phases.filter((phase) => text(phase.state) === 'done').length;
   const recent = [...tasks].sort((a, b) => text(b.updated).localeCompare(text(a.updated))).slice(0, 5);
@@ -230,7 +230,7 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
         <div className="stat">
           <span className="k"><Terminal size={14} aria-hidden="true" />Open</span>
           <span className="v">{open.length}</span>
-          <span className="d">{tasks.length - open.length} of {tasks.length} items closed</span>
+          <span className="d">{tasks.length - open.length} of {plural(tasks.length, 'item')} closed</span>
         </div>
         <div className="stat">
           <span className="k"><Loader size={14} aria-hidden="true" />In motion</span>
@@ -251,7 +251,7 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
       <div className="grid2">
         <div className="stack">
           <Section name="where" icon={<Flag size={15} aria-hidden="true" />} title="Where we are">
-            <div className="sm-rows">
+            <div className="panel-b sm-rows">
               <p>{goal || 'No goal document yet.'}</p>
               <p className="faint">
                 Pack <b>{text(snapshot.pack)}</b> · approval <b>{approval}</b>
@@ -259,8 +259,8 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
               </p>
             </div>
           </Section>
-          <Section name="needs" icon={<TriangleAlert size={15} aria-hidden="true" />} title="What needs you" count={blocked.length ? plural(blocked.length, 'item') : 'none'}>
-            <div className="sm-rows">
+          <Section name="needs" icon={<TriangleAlert size={15} aria-hidden="true" />} title="What needs you" count={needs ? plural(needs, 'item') : 'none'}>
+            <div className="panel-b sm-rows">
               {blocked.length ? blocked.map((task) => (
                 <div className="sm-row sm-need" key={idOf(task)} data-need-kind="blocked_task">
                   <Badge tone="danger">Blocked</Badge>
@@ -275,49 +275,70 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
               ) : null}
             </div>
           </Section>
-          <Section name="work" icon={<Loader size={15} aria-hidden="true" />} title="Work in motion" count={active.length ? plural(active.length, 'item') : undefined}>
-            <div className="sm-rows">
-              {active.length ? active.slice(0, INFLIGHT_PREVIEW).map((task) => (
-                <div className="sm-row" key={idOf(task)} data-task-id={idOf(task)}>
-                  <SourceLink id={idOf(task)} openDoc={openDoc}>{text(task.title)}</SourceLink>
-                  <span className="faint sm-row-meta">{text(task.workflow)} · {text(task.status)}</span>
-                </div>
-              )) : <p className="faint">Nothing is in progress.</p>}
-            </div>
-          </Section>
-        </div>
-        <div className="stack">
-          <Section name="next" icon={<RouteGlyph size={15} aria-hidden="true" />} title="What comes next" count={queue.length ? plural(queue.length, 'item') : undefined}>
-            <div className="sm-rows">
-              {next.isError ? <p className="faint">{next.error.message}</p> : null}
-              {queue.length ? queue.slice(0, 5).map((entry) => (
-                <div className="sm-row" key={idOf(entry)} data-task-id={idOf(entry)}>
-                  <SourceLink id={idOf(entry)} openDoc={openDoc}>{text(entry.title, idOf(entry))}</SourceLink>
-                  <span className="faint sm-row-meta">{text(entry.workflow)} · {text(entry.status)}</span>
-                </div>
-              )) : !next.isPending ? <p className="faint">Nothing is executable right now.</p> : null}
-            </div>
-          </Section>
-          <Section name="workflows" icon={<Users size={15} aria-hidden="true" />} title="Workflows">
-            <div className="sm-rows">
-              {workflows.length ? workflows.map((workflow) => (
-                <div className="sm-row" key={text(workflow.name)}>
-                  <button type="button" className="link rail-link" onClick={() => go('board', { workflow: text(workflow.name) })}>
-                    {text(workflow.name)}
-                  </button>
-                  <span className="faint sm-row-meta">{workflowCount(text(workflow.name))} items · {Object.keys(object(workflow.quality)).length} gate{Object.keys(object(workflow.quality)).length === 1 ? '' : 's'}</span>
-                </div>
-              )) : <p className="faint">This pack declares no workflows.</p>}
-            </div>
-          </Section>
           <Section name="changed" icon={<History size={15} aria-hidden="true" />} title="Recently updated">
-            <div className="sm-rows">
+            <div className="panel-b sm-rows">
               {recent.length ? recent.map((task) => (
                 <div className="sm-row" key={idOf(task)} data-task-id={idOf(task)}>
                   <SourceLink id={idOf(task)} openDoc={openDoc}>{text(task.title)}</SourceLink>
                   <span className="faint sm-row-meta">{text(task.updated).slice(0, 10)}</span>
                 </div>
               )) : <p className="faint">No items yet.</p>}
+            </div>
+          </Section>
+        </div>
+        <div className="stack">
+          <Section name="next" icon={<RouteGlyph size={15} aria-hidden="true" />} title="What comes next" count={queue.length ? plural(queue.length, 'item') : undefined}>
+            <div className="panel-b sm-rows">
+              {next.isError ? (
+                <p className="faint">{next.error.message}</p>
+              ) : next.isPending ? (
+                <p className="faint">Reading the queue…</p>
+              ) : queue.length ? (
+                queue.slice(0, 5).map((entry) => (
+                  <div className="sm-row" key={idOf(entry)} data-task-id={idOf(entry)}>
+                    <SourceLink id={idOf(entry)} openDoc={openDoc}>{text(entry.title, idOf(entry))}</SourceLink>
+                    <span className="faint sm-row-meta">{text(entry.workflow)} · {text(entry.status)}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="faint">Nothing is executable right now.</p>
+              )}
+              {queue.length > 5 ? (
+                <div className="sm-row">
+                  <button type="button" className="link rail-link" onClick={() => go('board')}>
+                    {`+${queue.length - 5} more in the queue`}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </Section>
+          <Section name="work" icon={<Loader size={15} aria-hidden="true" />} title="Work in motion" count={active.length ? plural(active.length, 'item') : undefined}>
+            <div className="panel-b sm-rows">
+              {active.length ? active.slice(0, INFLIGHT_PREVIEW).map((task) => (
+                <div className="sm-row" key={idOf(task)} data-task-id={idOf(task)}>
+                  <SourceLink id={idOf(task)} openDoc={openDoc}>{text(task.title)}</SourceLink>
+                  <span className="faint sm-row-meta">{text(task.workflow)} · {text(task.status)}</span>
+                </div>
+              )) : <p className="faint">Nothing is in progress.</p>}
+              {active.length > INFLIGHT_PREVIEW ? (
+                <div className="sm-row">
+                  <button type="button" className="link rail-link" onClick={() => go('board')}>
+                    {`+${active.length - INFLIGHT_PREVIEW} more on the board`}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </Section>
+          <Section name="workflows" icon={<Users size={15} aria-hidden="true" />} title="Workflows">
+            <div className="panel-b sm-rows">
+              {workflows.length ? workflows.map((workflow) => (
+                <div className="sm-row" key={text(workflow.name)}>
+                  <button type="button" className="link rail-link" onClick={() => go('board', { workflow: text(workflow.name) })}>
+                    {text(workflow.name)}
+                  </button>
+                  <span className="faint sm-row-meta">{plural(workflowCount(text(workflow.name)), 'item')} · {plural(Object.keys(object(workflow.quality)).length, 'gate')}</span>
+                </div>
+              )) : <p className="faint">This pack declares no workflows.</p>}
             </div>
           </Section>
         </div>

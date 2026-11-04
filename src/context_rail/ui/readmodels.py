@@ -49,6 +49,7 @@ def _next(context: Any) -> dict[str, Any]:
             "title": titles.get(slug, slug),
             "workflow": by_slug[slug].workflow,
             "status": by_slug[slug].status,
+            "category": by_slug[slug].category,
             "why": f"{by_slug[slug].workflow} · {by_slug[slug].status}",
         }
         for slug in runnable

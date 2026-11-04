@@ -207,14 +207,13 @@ export default function App() {
      absent, still-loading or failed read says so instead of showing zeroes. */
   const healthState=health.isPending?'loading':health.isError?'error':(health.data?.state??'unknown');
   const healthDoctor=object(health.data?.doctor);
-  const healthAsOf=health.data?.as_of??'';
   const healthReason=health.data?.reasons?.[0]??'';
   /* A failed /api/context read is an explicit error line here, not a silent
      downgrade: the legacy read may keep the page usable, but the band names it. */
   const contextFailure=contextRead.isError?text(contextRead.error?.message,'the context read failed'):'';
   const healthLabel=contextFailure?'Project context unavailable: '+contextFailure+' (showing the legacy full read)'
     :healthState==='loading'?'Checking health…'
-    :healthState==='ok'?`${text(object(healthDoctor.by_severity).error,'0')} errors, ${text(object(healthDoctor.by_severity).warning,'0')} warnings${healthAsOf?' · as of '+new Date(healthAsOf).toLocaleTimeString().replace(/\u202f/g,' '):''}`
+    :healthState==='ok'?`${text(object(healthDoctor.by_severity).error,'0')} errors, ${text(object(healthDoctor.by_severity).warning,'0')} warnings`
     :healthState==='error'?`Health unavailable: ${health.isError?health.error.message:text(health.data?.error,'the health read failed')}`
     :`Health unknown${healthReason?' — '+healthReason:''}`;
   const navItem=(r:Route)=>{const Icon=routeIcons[r]??FileText;return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{labels[r]}</span></button>;};

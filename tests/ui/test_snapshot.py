@@ -66,15 +66,8 @@ def test_containers_are_phases_and_work_is_a_task(tmp_path: Path) -> None:
     assert tasks["wire-checkout"]["workflow"] == "sprint"
     assert tasks["checkout-crash"]["workflow"] == "bugfix"
     assert tasks["wire-checkout"]["phase"] == "sprint-4"
-    assert tasks["wire-checkout"]["states"] == [
-        "todo",
-        "ready",
-        "doing",
-        "review",
-        "blocked",
-        "done",
-        "dropped",
-    ]
+    assert tasks["wire-checkout"]["states"] == ["todo", "ready", "doing", "dropped"]
+    assert tasks["checkout-crash"]["states"] == ["reported", "fixing", "closed"]
     assert tasks["wire-checkout"]["etag"]
 
 
@@ -110,5 +103,6 @@ def test_the_cursor_and_counts_follow_categories(tmp_path: Path) -> None:
 
     assert value["counts"]["active"] == 1
     assert value["counts"]["not_started"] == 1
+    assert value["project"]["status_summary"] == "1 not started · 1 in motion"
     assert "Started" in value["cursor"]["in_progress"]
     assert "Waiting" in value["cursor"]["next"]

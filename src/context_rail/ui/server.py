@@ -60,10 +60,17 @@ def create_server(
             return
 
         def do_GET(self) -> None:
-            self._dispatch("GET")
+            try:
+                self._dispatch("GET")
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                # A reload or navigation closed the socket; there is no client to answer.
+                return
 
         def do_POST(self) -> None:
-            self._dispatch("POST")
+            try:
+                self._dispatch("POST")
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                return
 
         def _dispatch(self, method: str) -> None:
             parts = urlsplit(self.path)

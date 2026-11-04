@@ -75,7 +75,6 @@ import {
   Route as RouteGlyph,
   ShieldAlert,
   ShieldCheck,
-  Stethoscope,
   Sun,
   Target,
   Terminal,
@@ -596,7 +595,7 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
     [move, tasks],
   );
   const phaseOption = (p: Data) => {
-    const list = all.filter((task) => phaseRef(task) === idOf(p));
+    const list = scoped.filter((task) => phaseRef(task) === idOf(p));
     const open = openCount(list);
     return (
       <option key={idOf(p)} value={idOf(p)}>
@@ -626,34 +625,36 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
       ) : null}
       <div className="board-bar">
         {workflows.length > 1 ? (
-          <>
+          <div className="row" style={{ gap: 8 }}>
             <label className="faint" htmlFor="board-workflow">Workflow</label>
             <select className="select" id="board-workflow" value={workflowName} onChange={(event) => setWorkflow(event.target.value)} disabled={busy}>
-              <option value="">{`All workflows · ${all.length} items`}</option>
+              <option value="">{`All workflows · ${plural(all.length, 'item')}`}</option>
               {workflows.map((entry) => (
                 <option key={text(entry.name)} value={text(entry.name)}>
-                  {`${text(entry.name)} · ${all.filter((task) => text(task.workflow) === text(entry.name)).length} items`}
+                  {`${text(entry.name)} · ${plural(all.filter((task) => text(task.workflow) === text(entry.name)).length, 'item')}`}
                 </option>
               ))}
             </select>
-          </>
+          </div>
         ) : null}
-        <label className="faint" htmlFor="board-phase">
-          Container
-        </label>
-        <select className="select" id="board-phase" value={phase} onChange={(event) => setPhase(event.target.value)} disabled={busy}>
-          <option value="">{`All containers · ${openCount(all)} open`}</option>
-          {phases.filter((p) => openCount(all.filter((task) => phaseRef(task) === idOf(p))) > 0).length ? (
-            <optgroup label="With open work">
-              {phases.filter((p) => openCount(all.filter((task) => phaseRef(task) === idOf(p))) > 0).map(phaseOption)}
-            </optgroup>
-          ) : null}
-          {phases.filter((p) => openCount(all.filter((task) => phaseRef(task) === idOf(p))) === 0).length ? (
-            <optgroup label="Finished">
-              {phases.filter((p) => openCount(all.filter((task) => phaseRef(task) === idOf(p))) === 0).map(phaseOption)}
-            </optgroup>
-          ) : null}
-        </select>
+        <div className="row" style={{ gap: 8 }}>
+          <label className="faint" htmlFor="board-phase">
+            Container
+          </label>
+          <select className="select" id="board-phase" value={phase} onChange={(event) => setPhase(event.target.value)} disabled={busy}>
+            <option value="">{`All containers · ${openCount(scoped)} open`}</option>
+            {phases.filter((p) => openCount(scoped.filter((task) => phaseRef(task) === idOf(p))) > 0).length ? (
+              <optgroup label="With open work">
+                {phases.filter((p) => openCount(scoped.filter((task) => phaseRef(task) === idOf(p))) > 0).map(phaseOption)}
+              </optgroup>
+            ) : null}
+            {phases.filter((p) => openCount(scoped.filter((task) => phaseRef(task) === idOf(p))) === 0).length ? (
+              <optgroup label="Finished">
+                {phases.filter((p) => openCount(scoped.filter((task) => phaseRef(task) === idOf(p))) === 0).map(phaseOption)}
+              </optgroup>
+            ) : null}
+          </select>
+        </div>
         <span className="scope">
           {selectedPhase ? (
             <>
@@ -667,7 +668,7 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
               </button>
             </>
           ) : (
-            <span className="num">{`${openCount(all)} open, ${all.length - openCount(all)} done in ${phases.length} container${phases.length === 1 ? '' : 's'}`}</span>
+            <span className="num">{`${openCount(scoped)} open, ${doneCount(scoped)} done in ${phases.length} container${phases.length === 1 ? '' : 's'}`}</span>
           )}
         </span>
         {busy ? <span className="faint">Working...</span> : null}
@@ -761,16 +762,18 @@ function CursorSection({ title, text: body, icon }: { title: string; text: unkno
     <section className="panel">
       <div className="panel-h"><h2>{title}</h2></div>
       <div style={{ padding: '4px 14px 12px' }}>
-        {prose ? <Markdown>{prose}</Markdown> : <span className="faint" style={{ fontSize: 13 }}>{icon}{' '}Nothing here.</span>}
+        {prose ? <Markdown>{prose}</Markdown> : <span className="faint rail-inline-note">{icon}Nothing here.</span>}
       </div>
     </section>
   );
 }
 
-const CURSOR_SECTIONS: [string, string, ReactNode][] = [
+const CURSOR_LEFT: [string, string, ReactNode][] = [
   ['In progress', 'in_progress', <Loader key="in" size={13} aria-hidden="true" />],
   ['Blocked', 'blocked', <Ban key="blocked" size={13} aria-hidden="true" />],
   ['Next', 'next', <ArrowRight key="next" size={13} aria-hidden="true" />],
+];
+const CURSOR_RIGHT: [string, string, ReactNode][] = [
   ['Completed', 'completed', <CircleCheck key="completed" size={13} aria-hidden="true" />],
 ];
 
@@ -779,14 +782,8 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
   const tasks = snapshot.tasks;
   const cursor = object(snapshot.cursor);
   const claims = rows(snapshot.claims);
-  const doctor = object(snapshot.doctor_summary);
-  const bySeverity = object(doctor.by_severity);
-  /* The gate now reads /api/context, which deliberately omits doctor_summary:
-     an absent summary is rendered as unknown, never as a clean zero. */
-  const doctorKnown = doctor.total !== undefined && doctor.total !== null && doctor.total !== '';
   const count = (category: string) => tasks.filter((task) => text(task.category) === category).length;
   const queue = rows(object(next.data).queue);
-  const risky = !!Number(bySeverity.error ?? 0);
   /* The outcome each queued task serves: the parent context the reader needs
      before they act, read once and shared with the drawer. */
   const outcomes = useOutcomes(project, read, busy);
@@ -809,27 +806,27 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
         <div className="stat">
           <span className="k"><CircleDashed size={14} aria-hidden="true" />To do</span>
           <span className="v">{count('not_started')}</span>
-          <span className="d">{count('done')} of {tasks.length} tasks done</span>
+          <span className="d">{count('done')} of {tasks.length} items done</span>
         </div>
         <div className="stat">
           <span className="k"><Loader size={14} aria-hidden="true" />In progress</span>
           <span className="v">{count('active')}</span>
-          <span className="d">{claims.length} claimed</span>
+          <span className="d">{count('active') ? 'work is in flight' : 'nothing is started'}</span>
         </div>
         <div className="stat">
           <span className="k"><Ban size={14} aria-hidden="true" />Blocked</span>
           <span className="v" style={count('blocked') ? { color: 'var(--red)' } : undefined}>{count('blocked')}</span>
           <span className="d">{count('blocked') ? 'waiting to be unblocked' : 'nothing is stuck'}</span>
         </div>
-        <button type="button" className="stat" onClick={() => navigate('doctor')}>
-          <span className="k"><Stethoscope size={14} aria-hidden="true" />Doctor</span>
-          <span className="v" style={risky ? { color: 'var(--red)' } : undefined}>{doctorKnown ? text(doctor.total) : '—'}</span>
-          <span className={cn('d', risky && 'bad')}>{doctorKnown ? <>{text(bySeverity.error, '0')} errors, {text(bySeverity.warning, '0')} warnings</> : 'health not computed'}</span>
+        <button type="button" className="stat" onClick={() => navigate('roadmap')}>
+          <span className="k"><CircleCheck size={14} aria-hidden="true" />Completed</span>
+          <span className="v">{count('done')}</span>
+          <span className="d">{count('done') ? 'items are closed' : 'nothing finished yet'}</span>
         </button>
       </div>
       <div className="grid2">
         <div className="stack">
-          {CURSOR_SECTIONS.map(([label, key, icon]) => (
+          {CURSOR_LEFT.map(([label, key, icon]) => (
             <CursorSection key={key} title={label} text={cursor[key]} icon={icon} />
           ))}
         </div>
@@ -845,7 +842,7 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
                 const outcome = outcomeOf(idOf(entry));
                 return (
                   <div className="mini" key={idOf(entry)} role="button" tabIndex={0} onClick={() => openDoc(idOf(entry))}>
-                    <StatusGlyph status="todo" />
+                    <StatusGlyph status={text(entry.status)} statuses={statusesOf(snapshot)} category={text(entry.category)} />
                     <div className="grow">
                       <div className="trunc" style={{ fontWeight: 500 }} title={titleOf(entry)}>{titleOf(entry)}</div>
                       <div className="faint trunc" style={{ fontSize: 12 }} title={text(entry.why)}>{text(entry.why)}</div>
@@ -907,6 +904,9 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
               <div style={{ padding: '12px 14px' }} className="faint">No task is claimed.</div>
             )}
           </section>
+          {CURSOR_RIGHT.map(([label, key, icon]) => (
+            <CursorSection key={key} title={label} text={cursor[key]} icon={icon} />
+          ))}
         </div>
       </div>
     </div>
@@ -1049,11 +1049,9 @@ export function ScopePage({ snapshot, project, read, openDoc, busy }: PageProps)
                     <div className="trunc" style={{ fontWeight: 500 }} title={titleOf(item)}>{titleOf(item)}</div>
                   </div>
                   <span className="rail-scope-claim">{text(item.claim) ? chip('gray', text(item.claim)) : null}</span>
-                  {itemProven !== null ? (
-                    <span className="num faint" style={{ fontSize: 12, minWidth: 96, textAlign: 'right' }}>{EVIDENCE.proven.word + ' ' + String(itemProven) + '%'}</span>
-                  ) : (
-                    <span className="faint" style={{ fontSize: 12, minWidth: 96, textAlign: 'right' }}>{EVIDENCE.proven.word + ' ' + EVIDENCE.not_assessed.word}</span>
-                  )}
+                  <span className="num faint rail-scope-proven">
+                    {itemProven !== null ? EVIDENCE.proven.word + ' ' + String(itemProven) + '%' : EVIDENCE.proven.word + ' ' + EVIDENCE.not_assessed.word}
+                  </span>
                   <span className="faint rail-scope-checked" style={{ fontSize: 12 }} title={itemChecked !== null && itemChecked !== itemProven ? 'Ticked checks, proven or not' + (notProven.length ? ': ' + String(notProven.length) + ' not proven' : '') : undefined}>
                     {itemChecked !== null && itemChecked !== itemProven ? EVIDENCE.checked.word + ' ' + String(itemChecked) + '%' : ''}
                   </span>
@@ -1075,8 +1073,9 @@ export function DecisionsPage({ snapshot, openDoc }: PageProps) {
   const decisions = snapshot.decisions;
   const risks = snapshot.risks;
   const questions = snapshot.questions;
-  const openRisks = risks.filter((risk) => text(risk.status) === 'open').length;
-  const openQuestions = questions.filter((question) => text(question.status) === 'open').length;
+  const isOpen = (doc: Data) => !['done', 'dropped'].includes(text(doc.category));
+  const openRisks = risks.filter(isOpen).length;
+  const openQuestions = questions.filter(isOpen).length;
   /* The legacy Decisions page (pages/core.js pageDecisions): one decisions panel, then the
      risks/questions pair in a two-column grid, every row a legacy .mini. */
   return (
@@ -1103,7 +1102,7 @@ export function DecisionsPage({ snapshot, openDoc }: PageProps) {
           <div style={{ padding: '12px 14px' }} className="faint">None.</div>
         )}
       </section>
-      <div className="grid2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+      <div className="grid2 decisions-grid">
         <section className="panel">
           <div className="panel-h"><h2>Risks</h2></div>
           {risks.length ? (
@@ -1111,7 +1110,7 @@ export function DecisionsPage({ snapshot, openDoc }: PageProps) {
               <div className="mini" key={idOf(risk)} role="button" tabIndex={0} onClick={() => openDoc(idOf(risk))}>
                 <span className="grow trunc" title={titleOf(risk)}>{titleOf(risk)}</span>
                 {chip(RISK_SEVERITY_CLASS[text(risk.severity)] ?? 'gray', text(risk.severity))}
-                {chip(text(risk.status) === 'open' ? 'amber' : 'green', text(risk.status))}
+                {chip(isOpen(risk) ? 'amber' : 'green', isOpen(risk) ? 'open' : 'closed')}
               </div>
             ))
           ) : (
@@ -1124,7 +1123,7 @@ export function DecisionsPage({ snapshot, openDoc }: PageProps) {
             questions.map((question) => (
               <div className="mini" key={idOf(question)} role="button" tabIndex={0} onClick={() => openDoc(idOf(question))}>
                 <span className="grow trunc" title={text(question.question, titleOf(question))}>{text(question.question, titleOf(question))}</span>
-                {chip(text(question.status) === 'open' ? 'amber' : 'green', text(question.status))}
+                {chip(isOpen(question) ? 'amber' : 'green', isOpen(question) ? 'open' : 'closed')}
               </div>
             ))
           ) : (
@@ -2019,25 +2018,29 @@ export function DoctorPage({ snapshot, project, read, openDoc, busy, refresh }: 
       body = (
         <>
           <div className="row" style={{flexWrap:'wrap',gap:8,marginBottom:12}}>
-            <label htmlFor="doctor-query">Search findings</label>
-            <input
-              id="doctor-query"
-              className="input rail-search"
-              type="search"
-              maxLength={MAX_SEARCH}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Check, message, source or guidance"
-            />
-            <label htmlFor="doctor-severity">Severity</label>
-            <select id="doctor-severity" className="select" value={severity} onChange={(event) => setSeverity(event.target.value)}>
-              <option value="">All severities</option>
-              {SEVERITIES.map((entry) => (
-                <option key={entry} value={entry}>
-                  {entry}
-                </option>
-              ))}
-            </select>
+            <div className="row" style={{gap:8,minWidth:0}}>
+              <label htmlFor="doctor-query">Search findings</label>
+              <input
+                id="doctor-query"
+                className="input rail-search"
+                type="search"
+                maxLength={MAX_SEARCH}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Check, message, source or guidance"
+              />
+            </div>
+            <div className="row" style={{gap:8,flex:'none'}}>
+              <label htmlFor="doctor-severity">Severity</label>
+              <select id="doctor-severity" className="select" value={severity} onChange={(event) => setSeverity(event.target.value)}>
+                <option value="">All severities</option>
+                {SEVERITIES.map((entry) => (
+                  <option key={entry} value={entry}>
+                    {entry}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Button
               variant="secondary"
               onClick={() => {

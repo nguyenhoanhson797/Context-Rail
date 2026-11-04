@@ -108,14 +108,24 @@
 
 /* Doctor: the search box is a search box, not a full-width bar. */
 .rail-app #doctor-query { width:auto; flex:1 1 240px; max-width:420px; }
+.rail-app #doctor-severity { width:auto; flex:0 0 auto; min-width:150px; }
+/* Filter and toolbar labels keep their words on one line instead of shrinking and wrapping. */
+.rail-app label[for='doctor-query'], .rail-app label[for='doctor-severity'], .rail-app .board-bar label { flex:none; white-space:nowrap; }
 
 /* Scope rows: the trailing claim / proven / checked columns line up row to row. */
 .rail-scope-claim { flex:none; min-width:64px; display:inline-flex; justify-content:flex-end; }
 .rail-scope-checked { flex:none; min-width:86px; text-align:right; }
+.rail-app .rail-scope-proven { font-size:12px; text-align:right; flex:none; min-width:96px; }
 @media (max-width:640px) {
-  .rail-scope-row { flex-wrap:wrap; row-gap:2px; }
-  .rail-scope-row > .grow { flex:1 1 60%; }
-  .rail-scope-checked:empty { display:none; }
+  /* A narrow scope row stacks: id and claim, then the title, then proof and ticks. */
+  .rail-app .rail-scope-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; row-gap:4px; padding:10px 14px; }
+  .rail-app .rail-scope-row > .mono { grid-column:1; grid-row:1; }
+  .rail-app .rail-scope-row > .grow { grid-column:1 / -1; grid-row:2; }
+  .rail-app .rail-scope-row > .rail-scope-claim { grid-column:2; grid-row:1; justify-content:flex-end; }
+  .rail-app .rail-scope-claim:empty { display:none; }
+  .rail-app .rail-scope-proven { grid-column:1; grid-row:3; text-align:left; min-width:0; }
+  .rail-app .rail-scope-row > .rail-scope-checked { grid-column:2; grid-row:3; min-width:0; }
+  .rail-app .rail-scope-checked:empty { display:none; }
 }
 
 /* Projects table: long check lists wrap, so the Open button stays inside the table instead of being scrolled out of sight. */
@@ -123,7 +133,7 @@
 .rail-app .portfolio-tbl td:last-child { white-space:nowrap; }
 
 /* A one-line status hint sits clear of the cards beneath it. */
-.rail-app [role='status'].rail-muted { margin:0 0 10px; }
+.rail-app [role='status'].rail-muted { margin:0 0 10px; border-left:0; padding-left:0; }
 /* The drawer's current status is a disabled primary button; at the legacy 50% opacity it read as pale text on a pale fill. */
 .rail-app .rail-status-current:disabled, .rail-sheet .rail-status-current:disabled { opacity:1; cursor:default; }
 /* Impact: file chips follow the card's inner edge instead of touching its border. */
@@ -169,6 +179,13 @@
 .rail-app .sm-need .sm-src { flex:1 1 auto; min-width:0; }
 .rail-app .sm-src { text-align:left; overflow-wrap:anywhere; }
 .rail-app .sm-row-meta { font-size:var(--fs-xs, 12px); }
+/* Summary rows: trailing metadata sits on the panel's right edge, so dates and states line up. */
+.rail-app .sm-section .sm-row-meta { margin-left:auto; text-align:right; font-variant-numeric:tabular-nums; }
+/* An empty cursor section keeps its glyph on the text's baseline instead of stacking it above. */
+.rail-app .rail-inline-note { display:inline-flex; align-items:center; gap:6px; font-size:13px; line-height:1.4; }
+/* Risks and questions share the row; they stack once the page is narrow. */
+.rail-app .decisions-grid { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width:1100px) { .rail-app .decisions-grid { grid-template-columns:minmax(0, 1fr); } }
 .rail-app .sm-sub { display:inline-flex; align-items:center; gap:5px; }
 .rail-app .sm-state { margin:0; font-weight:500; }
 .rail-app .sm-queue { margin:0; }
