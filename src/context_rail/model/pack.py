@@ -52,7 +52,7 @@ __all__ = [
     "load_pack",
     "pack_layout",
     "pack_layout_source",
-    "pack_policy_digest",
+    "pack_policy_digest", "pack_source",
 ]
 
 PACK_KEYS = (
@@ -67,6 +67,7 @@ PACK_KEYS = (
     "workflows",
     "actions",
     "operating",
+    "extends",
 )
 REQUIRED_PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
 PRESET_KEYS = (
@@ -190,6 +191,7 @@ class Pack:
     workflows: dict[str, Workflow]
     actions: dict[str, Action] = field(default_factory=dict)
     operating: OperatingSpec | None = None
+    extends: str | None = None
 
     def workflow(self, name: str) -> Workflow:
         """The workflow called ``name``, refusing an unknown one."""
@@ -213,27 +215,100 @@ class Pack:
         return action
 
 
+def pack_source(name: str, store: Path) -> Any | None:
+    """The resolved ``pack.yaml`` source for ``name`` in ``store`` (local, then built-in)."""
+    _check_name(name)
+    local = Path(store) / "packs" / name / "pack.yaml"
+    if local.is_file():
+        return local
+    canonical = canonical_pack_name(name)
+    local = Path(store) / "packs" / canonical / "pack.yaml"
+    if local.is_file():
+        return local
+    builtin = _builtin_pack(canonical)
+    return builtin
+
+
 def load_pack(name: str, store: Path) -> Pack:
     """Load ``<store>/packs/<name>/pack.yaml``, else the built-in pack of that name.
 
     A deprecated alias resolves to the pack that replaced it, but the returned
     :class:`Pack` keeps the requested name: approvals bind to the manifest's
     pack name, which an existing store still spells the old way.
+
+    When a pack declares ``extends: <base>``, the base pack is loaded and
+    merged underneath it before validation: statuses and workflows are united
+    (a base status re-mapped to a different category is refused, never
+    guessed), presets and actions override by name, and ``operating`` is
+    replaced when the child declares one. The merge stays fail-closed: an
+    unknown ``extends``, a cycle, or a child preset naming an unknown
+    workflow or status is refused at load time.
     """
+    return _load_pack(name, store, seen=())
+
+
+def _load_pack(name: str, store: Path, *, seen: tuple[str, ...]) -> Pack:
     _check_name(name)
+    if name in seen:
+        _refuse("pack extends cycle: " + " -> ".join([*seen, name]))
     local = Path(store) / "packs" / name / "pack.yaml"
     if local.is_file():
-        return cached_model(local, lambda: _parse_pack(_read_text(local), name))
+        pack = cached_model(local, lambda: _parse_pack(_read_text(local), name))
+        return _resolve_extends(pack, store, seen=( *seen, name))
     canonical = canonical_pack_name(name)
     local = Path(store) / "packs" / canonical / "pack.yaml"
     if local.is_file():
         pack = cached_model(local, lambda: _parse_pack(_read_text(local), canonical))
-        return replace(pack, name=name)
+        resolved = _resolve_extends(pack, store, seen=( *seen, name))
+        return replace(resolved, name=name)
     builtin = _builtin_pack(canonical)
     if builtin is None:
         _refuse(f"unknown pack {name!r}")
     pack = cached_model(builtin, lambda: _parse_pack(_read_text(builtin), canonical))
-    return replace(pack, name=name)
+    resolved = _resolve_extends(pack, store, seen=( *seen, name))
+    return replace(resolved, name=name)
+
+
+def _resolve_extends(pack: Pack, store: Path, *, seen: tuple[str, ...]) -> Pack:
+    """Merge ``pack.extends`` underneath ``pack`` (every layer validated)."""
+    if pack.extends is None:
+        return pack
+    extends = pack.extends
+    if not isinstance(extends, str) or not extends.strip():
+        _refuse(f"pack {pack.name!r} extends must be a pack name")
+    if extends == pack.name:
+        _refuse(f"pack {pack.name!r} cannot extend itself")
+    base = _load_pack(extends, store, seen=seen)
+    merged_statuses = dict(base.statuses)
+    for status, category in pack.statuses.items():
+        existing = merged_statuses.get(status)
+        if existing is not None and existing != category:
+            _refuse(f"pack {pack.name!r} remaps status {status!r} from {existing!r} to {category!r}")
+        merged_statuses[status] = category
+    merged_workflows = dict(base.workflows)
+    for workflow_name, workflow in pack.workflows.items():
+        if workflow_name == "default":
+            continue
+        merged_workflows[workflow_name] = workflow
+    merged_presets = dict(base.presets)
+    merged_presets.update(pack.presets)
+    merged_actions = dict(base.actions)
+    merged_actions.update(pack.actions)
+    merged_policy = dict(base.policy)
+    merged_policy.update(pack.policy)
+    # Every child preset's workflow and every child action source must resolve
+    # against the merged registries (child presets may select base workflows).
+    for preset in merged_presets.values():
+        if preset.workflow not in merged_workflows:
+            _refuse(f"pack {pack.name!r} preset {preset.name!r} names unknown workflow {preset.workflow!r}")
+    return replace(
+        pack,
+        statuses=merged_statuses,
+        workflows=merged_workflows,
+        presets=merged_presets,
+        actions=merged_actions,
+        policy=merged_policy,
+    )
 
 
 def pack_layout_source(name: str, store: Path) -> Any | None:
@@ -328,6 +403,15 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
     if name != requested_name:
         _refuse(f"pack.yaml is named {name!r} but {requested_name!r} was requested")
 
+    extends_raw = data.get("extends")
+    extends: str | None = None
+    if extends_raw is not None:
+        if not isinstance(extends_raw, str) or not extends_raw.strip():
+            _refuse("extends must be a pack name")
+        extends = extends_raw.strip()
+        if not _PACK_NAME.fullmatch(extends):
+            _refuse(f"invalid pack name {extends!r}")
+
     statuses = _statuses(data["statuses"])
     initial = data["initial"]
     if not isinstance(initial, str) or initial not in statuses:
@@ -352,6 +436,7 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
         execution=execution,
         workflows=workflows,
         actions=actions,
+        extends=extends,
     )
     if "operating" not in data:
         return pack
