@@ -91,6 +91,15 @@ SEVERITIES: dict[str, str] = {
     "protected_file_moved": "warning",
     "unknown_preset": "warning",
     "preset_field_hint": "warning",
+    "focus_missing": "warning",
+    "focus_ambiguous": "warning",
+    "orphan_unit": "warning",
+    "empty_container": "warning",
+    "hierarchy_placement": "error",
+    "surface_invalid": "warning",
+    "progress_invalid": "error",
+    "execution_failed": "warning",
+    "execution_missing": "warning",
 }
 
 SEVERITIES.update(stage2.SEVERITY)
@@ -178,6 +187,9 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_review_issues(ix, policy))
     issues.extend(_report_issues(ix))
     issues.extend(_run_issues(ix))
+    issues.extend(
+        _operating_issues(store, manifest, pack, rows, relations, children)
+    )
     issues.extend(_profile_issues(context, rows))
     issues.extend(_adapter_issues(store, ix))
     issues.extend(stage2.issues(store, manifest, pack, ix))
@@ -1107,6 +1119,211 @@ def _latest_record(store: Path, kind: str, ix: Index) -> dict[str, Any] | None:
         if doc.fields.get("kind") == kind:
             return dict(doc.fields)
     return None
+
+
+def _operating_issues(
+    store: Path,
+    manifest: Manifest,
+    pack: Pack,
+    rows: list[_Row],
+    relations: dict[str, list[tuple[str, str]]],
+    children: dict[str, set[str]],
+) -> list[dict[str, Any]]:
+    """Store-level facts about the compiled operating model.
+
+    The compiler already refuses a broken pack, so an invalid operating block
+    never reaches this function; a bad ``surface.yaml`` is reported here and
+    does not stop the focus checks.
+    """
+    from context_rail.model.compiler import compile_project
+    from context_rail.model.errors import ModelError
+    from context_rail.model.manifest import render_path
+    from context_rail.model.presentation import load_presentation
+
+    issues: list[dict[str, Any]] = []
+    presentation = None
+    try:
+        presentation = load_presentation(pack.name, store, pack)
+    except ModelError as error:
+        issues.append(
+            _issue(
+                "surface_invalid",
+                f"packs/{pack.name}/surface.yaml",
+                error.message,
+                f"fix packs/{pack.name}/surface.yaml",
+            )
+        )
+    model = compile_project(pack, pack.operating, presentation)
+    operating = model.operating
+    slug_by_path = {row.path: row.slug for row in rows}
+    by_slug = {row.slug: row for row in rows}
+    parents: dict[str, list[str]] = {}
+    for path, edges in relations.items():
+        source = slug_by_path.get(path)
+        if source is None:
+            continue
+        for rel, dst in edges:
+            if rel == "part_of":
+                parents.setdefault(source, []).append(dst)
+
+    policy = operating.focus
+    if policy is not None and policy.resolve != "none":
+        candidates = [
+            row
+            for row in rows
+            if row.preset == policy.preset and row.category == policy.category
+        ]
+        path = f"items/{policy.preset}"
+        if not candidates:
+            issues.append(
+                _issue(
+                    "focus_missing",
+                    path,
+                    f"no {policy.preset!r} is in the {policy.category!r} category",
+                    "rail next --all, or start one with the pack's start action",
+                )
+            )
+        elif len(candidates) > 1:
+            names = ", ".join(sorted(row.slug for row in candidates))
+            issues.append(
+                _issue(
+                    "focus_ambiguous",
+                    path,
+                    f"{len(candidates)} {policy.preset!r} containers are "
+                    f"{policy.category!r}: {names}",
+                    "rail next --into <id>, or finish one container",
+                )
+            )
+
+    required = [
+        level.preset for level in operating.hierarchy if level.required
+    ]
+    unit = operating.unit
+    if unit is not None and required:
+        for row in rows:
+            if row.preset != unit or row.category in FINISHED_CATEGORIES:
+                continue
+            if not _ancestor_of_any(row.slug, parents, by_slug, set(required)):
+                issues.append(
+                    _issue(
+                        "orphan_unit",
+                        row.path,
+                        f"{row.slug!r} has no parent "
+                        f"{' or '.join(sorted(required))!r}",
+                        f"rail change link {row.slug} part_of <container> "
+                        "--expect <etag> --reason <why>",
+                    )
+                )
+
+    if unit is not None:
+        required_levels = [
+            level.preset for level in operating.hierarchy if level.required
+        ]
+        for level in operating.hierarchy:
+            if level.preset not in required_levels:
+                continue
+            for row in rows:
+                if row.preset != level.preset:
+                    continue
+                if not _has_descendant(row.slug, children, by_slug, unit):
+                    issues.append(
+                        _issue(
+                            "empty_container",
+                            row.path,
+                            f"{row.slug!r} has no {unit!r} beneath it",
+                            f"add a {unit}, or drop the empty container",
+                        )
+                    )
+
+    for level in operating.hierarchy:
+        try:
+            render_path(
+                manifest,
+                primitive="item",
+                preset=level.preset,
+                slug="probe",
+            )
+        except ModelError as error:
+            issues.append(
+                _issue(
+                    "hierarchy_placement",
+                    f"packs/{pack.name}/pack.yaml",
+                    f"hierarchy preset {level.preset!r} has no placement: "
+                    f"{error.message}",
+                    "rail change repath, or fix rail.yaml",
+                )
+            )
+
+    progress = operating.progress
+    if not progress.of:
+        issues.append(
+            _issue(
+                "progress_invalid",
+                f"packs/{pack.name}/pack.yaml",
+                "operating.progress declares no population",
+                "add operating.progress.of",
+            )
+        )
+    else:
+        for preset in progress.of:
+            workflow = pack.workflow_for(preset)
+            states = progress.complete.presets.get(
+                preset, progress.complete.states
+            )
+            for state in states:
+                if state not in workflow.transitions or workflow.statuses.get(
+                    state
+                ) != "done":
+                    issues.append(
+                        _issue(
+                            "progress_invalid",
+                            f"packs/{pack.name}/pack.yaml",
+                            f"completion state {state!r} is not a done-category "
+                            f"state of the {workflow.name!r} workflow",
+                            "fix operating.progress.complete",
+                        )
+                    )
+    return issues
+
+
+def _ancestor_of_any(
+    slug: str,
+    parents: dict[str, list[str]],
+    by_slug: dict[str, _Row],
+    presets: set[str],
+) -> bool:
+    seen: set[str] = set()
+    queue = list(parents.get(slug, ()))
+    while queue:
+        current = queue.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        row = by_slug.get(current)
+        if row is not None and row.preset in presets:
+            return True
+        queue.extend(parents.get(current, ()))
+    return False
+
+
+def _has_descendant(
+    slug: str,
+    children: dict[str, set[str]],
+    by_slug: dict[str, _Row],
+    preset: str,
+) -> bool:
+    seen: set[str] = set()
+    queue = list(children.get(slug, ()))
+    while queue:
+        current = queue.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        row = by_slug.get(current)
+        if row is not None and row.preset == preset and row.category not in FINISHED_CATEGORIES:
+            return True
+        queue.extend(children.get(current, ()))
+    return False
 
 
 def _issue(code: str, path: str, message: str, fix: str | None = None) -> dict[str, Any]:

@@ -441,9 +441,25 @@ def test_the_pinned_codes_have_the_pinned_severities() -> None:
     assert {code: SEVERITIES[code] for code in STAGE1B_CODES} == STAGE1B_CODES
 
 
+OPERATING_SEVERITIES = {
+    "focus_missing": "warning",
+    "focus_ambiguous": "warning",
+    "orphan_unit": "warning",
+    "empty_container": "warning",
+    "hierarchy_placement": "error",
+    "surface_invalid": "warning",
+    "progress_invalid": "error",
+    "execution_failed": "warning",
+    "execution_missing": "warning",
+}
+
+
 def test_the_doctor_emits_no_other_stage1b_prefix_code() -> None:
     assert set(SEVERITIES) == (
-        set(STAGE1B_CODES) | STAGE1A_CODES | set(STAGE2_SEVERITIES)
+        set(STAGE1B_CODES)
+        | STAGE1A_CODES
+        | set(STAGE2_SEVERITIES)
+        | set(OPERATING_SEVERITIES)
     )
 
 
