@@ -139,12 +139,15 @@ def parse_presentation(raw: Any, pack: Pack) -> Presentation:
     labels = _labels(data.get("labels", {}), pack)
     screens = _screens(data.get("screens"))
     fields = _fields(data.get("fields", {}), pack)
+    defaults = default_presentation(pack)
     if screens is None:
-        screens = default_presentation(pack).screens
-    if not labels:
-        labels = default_presentation(pack).labels
+        screens = defaults.screens
+    merged = dict(defaults.labels)
+    merged.update(labels)
+    complete_fields = {role: () for role in FIELD_ROLES}
+    complete_fields.update(fields)
     return Presentation(
-        version=version, labels=labels, screens=screens, fields=fields
+        version=version, labels=merged, screens=screens, fields=complete_fields
     )
 
 
@@ -242,9 +245,9 @@ def _screens(raw: Any) -> tuple[Screen, ...] | None:
 def _fields(raw: Any, pack: Pack) -> dict[str, tuple[str, ...]]:
     declared = mapping(raw, f"{PRESENTATION_FILE} fields")
     no_unknown(declared, FIELD_ROLES, f"{PRESENTATION_FILE} fields")
-    allowed = _allowed_fields(pack)
     result: dict[str, tuple[str, ...]] = {}
     for role, values in declared.items():
+        allowed = _allowed_fields(pack, role)
         if not isinstance(values, list):
             refuse(f"{PRESENTATION_FILE} fields.{role} must be a list of names")
         names: list[str] = []
@@ -261,11 +264,12 @@ def _fields(raw: Any, pack: Pack) -> dict[str, tuple[str, ...]]:
     return result
 
 
-def _allowed_fields(pack: Pack) -> set[str]:
+def _allowed_fields(pack: Pack, role: str) -> set[str]:
     allowed = set(_UNIVERSAL_FIELDS)
     for preset in pack.presets.values():
         allowed.update(preset.fields)
-    allowed.update(pack.presets)
+    if role == "filters":
+        allowed.update(pack.presets)
     return allowed
 
 

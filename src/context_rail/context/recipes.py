@@ -394,6 +394,16 @@ def _headline(state: dict[str, Any]) -> str:
     return f"Focus: none (project-wide) — {counted}"
 
 
+def _digest_focus(state: dict[str, Any]) -> str:
+    focus = state.get("focus") or {}
+    if focus.get("state") == "resolved" and focus.get("focus"):
+        chosen = focus["focus"]
+        return f"; focus {chosen.get('title') or chosen.get('slug')}"
+    if focus.get("state") == "ambiguous":
+        return "; focus ambiguous"
+    return "; focus none"
+
+
 def _workflow_lines(
     context: Context, items: Sequence[structure.ItemRow], limit: int
 ) -> tuple[list[str], int]:
@@ -602,7 +612,9 @@ def digest(
     return {
         "summary": {
             "text": _clip(
-                _summary_text(approval, counts, runnable, stuck, long_items), chars
+                _summary_text(approval, counts, runnable, stuck, long_items)
+                + _digest_focus(operating_state),
+                chars,
             ),
             "counts": {
                 "items": len(items),

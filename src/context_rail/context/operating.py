@@ -60,6 +60,7 @@ class ItemRow:
     created: str
     path: str
     etag: str
+    updated: str = ""
     fields: dict[str, Any] = field(default_factory=dict)
 
     def as_ref(self) -> dict[str, Any]:
@@ -338,7 +339,7 @@ def resolve_queue(
     model: ProjectModel,
     actor: str,
     *,
-    all_items: bool = False,
+    all: bool = False,
     into: str | None = None,
     focus_only: bool = False,
 ) -> QueueView:
@@ -346,7 +347,7 @@ def resolve_queue(
     focus = resolve_focus(ctx, model, into=into)
     focus_slug = None if focus.focus is None else focus.focus.slug
     presets = model.operating.queue.presets
-    if all_items:
+    if all:
         presets = tuple(
             preset
             for preset in sorted(ctx.pack.presets)
@@ -356,14 +357,18 @@ def resolve_queue(
     parents = _parents(ctx)
     grouped = _group_order(ctx, model)
     by_slug = {row.slug: row for row in rows}
-    scope = "all" if all_items else ("focus" if focus_slug else "project")
-    if focus_only and focus_slug is not None:
-        rows = [
-            row
-            for row in rows
-            if focus_slug in _ancestors(row.slug, parents)
-            or row.slug == focus_slug
-        ]
+    scope = "all" if all else ("focus" if focus_slug else "project")
+    if focus_only:
+        rows = (
+            []
+            if focus_slug is None
+            else [
+                row
+                for row in rows
+                if focus_slug in _ancestors(row.slug, parents)
+                or row.slug == focus_slug
+            ]
+        )
     eligible: list[QueueItem] = []
     omitted = 0
     for row in rows:
@@ -410,14 +415,19 @@ def applicable_actions(
     ctx: Context, model: ProjectModel, row: ItemRow, actor: str
 ) -> tuple[str, ...]:
     """Every declared action that applies to this row's preset, state and actor."""
+    from context_rail.core.tool_names import canonical_methods
     from context_rail.gateway.tools import TOOLS
 
     specs = {tool.name: tool for tool in TOOLS}
+    profile = getattr(ctx, "profile", None)
+    methods = canonical_methods(profile.allowed_methods) if profile is not None else None
     names: list[str] = []
     for action in ctx.pack.actions.values():
         if action.on != "*" and action.on != row.preset:
             continue
         if action.from_states and row.status not in action.from_states:
+            continue
+        if methods is not None and action.tool not in methods:
             continue
         spec = specs.get(action.tool)
         if spec is not None and rights.allowed(spec.permission, actor) is not None:
@@ -442,20 +452,15 @@ def resolve_progress(
             complete += 1
     group_preset = group or policy.group
     children: list[dict[str, Any]] = []
-    omitted = 0
     if group_preset is not None:
         containers = _rows(ctx, (group_preset,))
         containers.sort(key=lambda row: _order_key(row, _group_order_field(model, group_preset)))
         parents = _parents(ctx)
         members: dict[str, list[ItemRow]] = {row.slug: [] for row in containers}
-        loose = 0
         for row in rows:
             parent = _nearest_ancestor(row.slug, parents, members)
-            if parent is None:
-                loose += 1
-            else:
+            if parent is not None:
                 members[parent].append(row)
-        omitted = loose
         for container in containers:
             bucket = members[container.slug]
             children.append(
@@ -474,7 +479,7 @@ def resolve_progress(
         complete=complete,
         by_category=counts,
         children=tuple(children),
-        omitted=omitted,
+        omitted=0,
     )
 
 
@@ -589,14 +594,14 @@ def _rows(
         params.append(slug)
     rows = index.conn.execute(
         "SELECT d.slug, d.title, d.preset, d.workflow, d.status, d.category, "
-        "d.created, d.path, d.etag FROM docs d WHERE "
+        "d.created, d.updated, d.path, d.etag FROM docs d WHERE "
         + " AND ".join(where)
         + " ORDER BY d.slug",
         params,
     ).fetchall()
     if not rows:
         return []
-    paths = [row[7] for row in rows]
+    paths = [row[8] for row in rows]
     fields: dict[str, dict[str, Any]] = {path: {} for path in paths}
     for path, key, value in index.conn.execute(
         "SELECT path, key, value_json FROM fields WHERE path IN "
@@ -613,9 +618,10 @@ def _rows(
             status=row[4] or "",
             category=row[5] or "not_started",
             created=row[6] or "",
-            path=row[7],
-            etag=row[8],
-            fields=fields.get(row[7], {}),
+            updated=row[7] or "",
+            path=row[8],
+            etag=row[9],
+            fields=fields.get(row[8], {}),
         )
         for row in rows
     ]
@@ -631,7 +637,18 @@ def _parents(ctx: Context) -> dict[str, tuple[str, ...]]:
 
 
 def _order_key(row: ItemRow, order: str | None) -> tuple[Any, ...]:
-    raw = None if order is None else row.fields.get(order)
+    if order == "title":
+        raw: Any = row.title
+    elif order == "slug":
+        raw = row.slug
+    elif order == "created":
+        raw = row.created
+    elif order == "updated":
+        raw = row.updated
+    elif order is None:
+        raw = None
+    else:
+        raw = row.fields.get(order)
     return (_sortable(raw), row.created or "", row.slug)
 
 

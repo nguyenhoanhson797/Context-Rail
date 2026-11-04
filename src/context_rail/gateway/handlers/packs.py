@@ -151,15 +151,23 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
             has_layout = pack_layout(name, ctx.store) is not None
             if has_layout:
                 initial_manifest(name, ctx.store)
-            _compiled(ctx.store, name, pack)
         except ModelError as error:
             problems.append(
                 {
-                    "path": "surface.yaml"
-                    if "surface.yaml" in error.message
-                    else "layout.yaml",
+                    "path": "layout.yaml",
                     "message": error.message,
-                    "fix": _fix_for_path(error.message),
+                    "fix": _fix_for_path("layout.yaml " + error.message),
+                }
+            )
+        try:
+            _compiled(ctx.store, name, pack)
+        except ModelError as error:
+            path = "surface.yaml" if "surface.yaml" in error.message else "pack.yaml"
+            problems.append(
+                {
+                    "path": path,
+                    "message": error.message,
+                    "fix": _fix_for_path(path + " " + error.message),
                 }
             )
     except ModelError as error:

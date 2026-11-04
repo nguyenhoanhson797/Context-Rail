@@ -39,7 +39,7 @@ def next(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             ctx,
             ctx.model,
             ctx.actor,
-            all_items=bool(args.get("all")),
+            all=bool(args.get("all")),
             into=args.get("into"),
             focus_only=bool(args.get("focus_only")),
         )

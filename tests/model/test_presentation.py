@@ -174,6 +174,23 @@ def test_the_presentation_hash_is_canonical(tmp_path: Path) -> None:
     )
 
 
+def test_a_partial_surface_keeps_neutral_defaults_for_the_rest(
+    tmp_path: Path,
+) -> None:
+    pack = _pack(tmp_path)
+    _write_surface(tmp_path, {"version": 1, "labels": {"shot": {"one": "Take", "many": "Takes"}}})
+
+    presentation = load_presentation("studio", tmp_path, pack)
+
+    assert presentation.labels["shot"].one == "Take"
+    assert presentation.labels["shot"].many == "Takes"
+    assert presentation.labels["scene"].many == "Scenes"
+    assert presentation.fields["card"] == ()
+    assert presentation.fields["filters"] == ()
+    assert presentation.fields["columns"] == ()
+    assert {screen.kind for screen in presentation.screens} >= {"summary", "board"}
+
+
 def test_the_built_in_pack_is_the_fallback_surface(tmp_path: Path) -> None:
     pack = load_pack("scrum", tmp_path)
     presentation = load_presentation("scrum", tmp_path, pack)
@@ -201,6 +218,7 @@ def test_the_built_in_pack_is_the_fallback_surface(tmp_path: Path) -> None:
             "repeat",
         ),
         (("fields.card", ["ghost"]), "ghost"),
+        (("fields.card", ["scene"]), "scene"),
         (("fields.columns", ["no_such_field"]), "no_such_field"),
         (("fields.rows", ["title"]), "rows"),
     ],

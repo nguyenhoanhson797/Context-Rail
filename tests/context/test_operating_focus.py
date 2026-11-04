@@ -207,6 +207,21 @@ def test_resolving_is_read_only(
     assert after == before
 
 
+def test_a_hierarchy_order_of_title_sorts_by_title(
+    operating_waterfall_store: SimpleNamespace,
+) -> None:
+    model = operating_waterfall_store.model
+    level = replace(model.operating.hierarchy[0], order="title")
+    model = replace(
+        model, operating=replace(model.operating, hierarchy=(level,))
+    )
+    ctx = _context(operating_waterfall_store.store, "waterfall")
+
+    groups = resolve_hierarchy(ctx, model)
+
+    assert [row.slug for row in groups[0].items] == ["build", "design"]
+
+
 def test_the_unit_and_hierarchy_follow_the_pack(
     operating_scrum_store: SimpleNamespace,
     operating_waterfall_store: SimpleNamespace,

@@ -71,7 +71,7 @@ def test_all_items_bypasses_the_queue_presets(
     ctx = _context(operating_scrum_store.store, "scrum")
 
     view = resolve_queue(
-        ctx, operating_scrum_store.model, "cto", all_items=True
+        ctx, operating_scrum_store.model, "cto", all=True
     )
 
     assert view.scope == "all"
@@ -157,6 +157,20 @@ def test_an_ambiguous_focus_refuses_the_queue(
         resolve_queue(ctx, operating_scrum_store.model, "cto")
 
     assert caught.value.code == "AMBIGUOUS_FOCUS"
+
+
+def test_focus_only_without_a_focus_returns_nothing(
+    operating_waterfall_store: SimpleNamespace,
+) -> None:
+    model = operating_waterfall_store.model
+    focus = replace(model.operating.focus, resolve="none")
+    model = replace(model, operating=replace(model.operating, focus=focus))
+    ctx = _context(operating_waterfall_store.store, "waterfall")
+
+    view = resolve_queue(ctx, model, "cto", focus_only=True)
+
+    assert view.items == ()
+    assert view.focus.state == "none"
 
 
 def test_queue_order_is_total_across_mapping_order(

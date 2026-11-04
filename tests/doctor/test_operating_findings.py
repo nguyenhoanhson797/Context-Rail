@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from importlib import resources
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from context_rail.core.result import is_ok
 from context_rail.doctor.checks import SEVERITIES, run_doctor
@@ -33,6 +35,13 @@ def _doctor(store: Path) -> dict:
     result = invoke("doctor", {}, store=store, actor="cto")
     assert is_ok(result), result
     return result["value"]
+
+
+def _pack_document(name: str) -> dict:
+    text = resources.files("context_rail").joinpath(
+        "packs", name, "pack.yaml"
+    ).read_text(encoding="utf-8")
+    return yaml.safe_load(text)
 
 
 def _codes(store: Path) -> set[str]:
@@ -148,6 +157,48 @@ def test_progress_invalid_is_reported_for_a_defensive_rule(
 
     codes = [issue["code"] for issue in result["issues"]]
     assert "progress_invalid" in codes
+
+
+def test_a_bad_surface_is_a_warning(
+    operating_scrum_store: SimpleNamespace,
+) -> None:
+    store = operating_scrum_store.store
+    write_pack(store, "scrum", _pack_document("scrum"))
+    surface = store / "packs" / "scrum" / "surface.yaml"
+    surface.write_text("version: 2\n", encoding="utf-8", newline="\n")
+
+    issues = [
+        issue
+        for issue in _doctor(store)["issues"]
+        if issue["code"] == "surface_invalid"
+    ]
+
+    assert issues
+    assert issues[0]["severity"] == "warning"
+
+
+def test_a_hierarchy_preset_without_a_placement_is_an_error(
+    operating_scrum_store: SimpleNamespace,
+) -> None:
+    store = operating_scrum_store.store
+    pack = load_pack("scrum", store)
+    manifest = load_manifest(store)
+    stripped = replace(
+        manifest,
+        placement={
+            key: value for key, value in manifest.placement.items() if key != "item"
+        },
+        preset_placement={},
+    )
+    index = Index.open(store, pack)
+    index.sync()
+    try:
+        result = run_doctor(store, stripped, pack, index)
+    finally:
+        index.close()
+
+    codes = [issue["code"] for issue in result["issues"]]
+    assert "hierarchy_placement" in codes
 
 
 def test_an_invalid_pack_is_a_validation_refusal_not_a_doctor_cascade(
