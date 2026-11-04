@@ -367,11 +367,18 @@ candidate. `gate` is a read-only governance check; it never runs a Check.
 
 `rail serve ui` opens the loopback, token-gated project UI. It is the
 context-rail-link React shell and design system, served from
-`src/context_rail/ui/static`; the pages read one pack-aware snapshot, so the
-board columns are the pack's statuses and the roadmap is built from the pack's
-containers (`root/container: true`). The screens in this phase are Summary, Now,
-Board, Roadmap, Scope, Decisions, Doctor and Settings, with the document drawer
-and command palette.
+`src/context_rail/ui/static`; the pages read one compiled snapshot, so the board
+columns are the unit workflow's states, the plan is the declared hierarchy and
+every visible label comes from the pack's presentation. The screens are
+Summary, Now, Board, Plan, Scope, Decisions, Doctor, Pack and Settings, with the
+document drawer and command palette. A screen with no data shows an explicit
+empty state rather than a blank page; the drawer carries the item's preset
+label, workflow, gate, legal next states, applicable actions and focus
+breadcrumb.
+
+No React module branches on a pack name. Relabelling a pack (`surface.yaml`)
+relabels the UI without a new approval; changing the operating model or a
+workflow changes the semantic digest and requires reapproval.
 
 Build the shell with `npm --prefix web install` once, then
 `npm --prefix web run build`; the bundle lands in the Python package and is

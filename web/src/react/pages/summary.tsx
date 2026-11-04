@@ -19,6 +19,7 @@ import {
   gateSentence, ownerSummaryKey, ownerSummaryOf, type OwnerSummary,
 } from './evidence';
 import { OwnerHierarchy } from './hierarchy';
+import { focusName, hierarchyLabels, progressOf, unitLabel } from './operating';
 
 /* How many rows each section shows before the rest move behind a closed disclosure. */
 export const NEEDS_PREVIEW = 3;
@@ -217,6 +218,14 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
   const phaseDone = snapshot.phases.filter((phase) => text(phase.state) === 'done').length;
   const recent = [...tasks].sort((a, b) => text(b.updated).localeCompare(text(a.updated))).slice(0, 5);
   const workflowCount = (name: string) => tasks.filter((task) => text(task.workflow) === name).length;
+  const focus = focusName(snapshot);
+  const progress = progressOf(snapshot);
+  const unitMany = unitLabel(snapshot, true);
+  const hierarchy = hierarchyLabels(snapshot);
+  const planLabel = hierarchy[0] || 'Plan';
+  const describing = focus
+    ? `Focus: ${focus} · ${text(progress.complete, '0')}/${text(progress.total, '0')} ${unitMany} done`
+    : `Project-wide · ${text(progress.complete, '0')}/${text(progress.total, '0')} ${unitMany} done`;
 
   const go = (route: Route, params?: Record<string, string>) => navigate(route, params);
   return (
@@ -226,6 +235,7 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
         description="Where the project stands, in plain words: what needs you, what is moving and what comes next."
         action={<Button onClick={() => go('board')}>Open the board</Button>}
       />
+      <p className="faint" data-operating="focus">{describing}</p>
       <div className="stats" style={{ marginBottom: 16 }}>
         <div className="stat">
           <span className="k"><Terminal size={14} aria-hidden="true" />Open</span>
@@ -243,9 +253,9 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
           <span className="d">{blocked.length ? 'waiting to be unblocked' : 'nothing is stuck'}</span>
         </div>
         <button type="button" className="stat" onClick={() => go('roadmap')}>
-          <span className="k"><RouteGlyph size={14} aria-hidden="true" />Roadmap</span>
+          <span className="k"><RouteGlyph size={14} aria-hidden="true" />{planLabel}</span>
           <span className="v">{snapshot.phases.length}</span>
-          <span className="d">{phaseDone} of {snapshot.phases.length} container{snapshot.phases.length === 1 ? '' : 's'} done</span>
+          <span className="d">{phaseDone} of {snapshot.phases.length} {planLabel.toLowerCase()} done</span>
         </button>
       </div>
       <div className="grid2">

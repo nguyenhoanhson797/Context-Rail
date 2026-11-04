@@ -87,6 +87,7 @@ import { Badge, Button, Empty, ErrorState, Loading, Markdown, PageHeading, Panel
 import { useModalFocus, useOverlayEscape } from '../overlays';
 import { AutomationSettings } from './settings';
 import { EVIDENCE, evidenceTitle, evidenceWord } from './evidence';
+import { focusName, hierarchyLabels, labelOf, screenTitle, unitLabel, unitOf } from './operating';
 
 type Tone = 'neutral' | 'good' | 'warning' | 'danger' | 'accent';
 
@@ -527,8 +528,11 @@ function recentFirst(a: Data, b: Data): number {
 export function BoardPage({ snapshot, project, read, request, refresh, busy, mutate, openDoc, params, navigate }: PageProps) {
   const categories = object(snapshot.status_categories);
   const workflows = rows(snapshot.workflows);
+  const unitWorkflow = text(unitOf(snapshot).workflow);
   const requestedWorkflow = params.get('workflow') ?? '';
-  const workflowName = workflows.some((entry) => text(entry.name) === requestedWorkflow) ? requestedWorkflow : '';
+  const knownWorkflow = (name: string) => workflows.some((entry) => text(entry.name) === name);
+  const workflowName = knownWorkflow(requestedWorkflow) ? requestedWorkflow : knownWorkflow(unitWorkflow) ? unitWorkflow : '';
+  const unit = unitLabel(snapshot);
   const workflowDoc = workflows.find((entry) => text(entry.name) === workflowName);
   const statuses = Array.isArray(workflowDoc?.states) && workflowDoc!.states.length
     ? workflowDoc!.states.filter((state): state is string => typeof state === 'string')
@@ -609,8 +613,8 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
     <>
       <div className="ph" style={{ padding: '16px 20px 0' }}>
         <div>
-          <h1>Board</h1>
-          <p>Drag a card to a column to move it, or open a card and pick a status. The item's workflow decides what is legal; a refused move puts the card back and says why.</p>
+          <h1>{screenTitle(snapshot, 'board', 'Board')}</h1>
+          <p>{`Drag a ${unit} to a column to move it, or open a card and pick a status. The item's workflow decides what is legal; a refused move puts the card back and says why.`}</p>
         </div>
       </div>
       <p className="sr">A drop asks the server, never the screen. Nothing moves until the store confirms it. Keyboard: focus a card's grip, press space, use the arrow keys, then space to drop. Each card also has a status picker.</p>
@@ -784,6 +788,7 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
   const claims = rows(snapshot.claims);
   const count = (category: string) => tasks.filter((task) => text(task.category) === category).length;
   const queue = rows(object(next.data).queue);
+  const focus = focusName(snapshot);
   /* The outcome each queued task serves: the parent context the reader needs
      before they act, read once and shared with the drawer. */
   const outcomes = useOutcomes(project, read, busy);
@@ -832,7 +837,7 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
         </div>
         <div className="stack">
           <section className="panel">
-            <div className="panel-h"><h2>Up next</h2></div>
+            <div className="panel-h"><h2>Up next</h2>{focus ? <div className="acts"><span className="faint">{'Focus: ' + focus}</span></div> : null}</div>
             {next.isError ? (
               <ErrorState error={next.error.message} retry={() => void next.refetch()} />
             ) : next.isPending ? (
@@ -846,6 +851,12 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
                     <div className="grow">
                       <div className="trunc" style={{ fontWeight: 500 }} title={titleOf(entry)}>{titleOf(entry)}</div>
                       <div className="faint trunc" style={{ fontSize: 12 }} title={text(entry.why)}>{text(entry.why)}</div>
+                      {entry.focus ? <div className="faint" style={{ fontSize: 12 }}>in focus</div> : null}
+                      {Array.isArray(entry.actions) && entry.actions.length ? (
+                        <div className="faint trunc" style={{ fontSize: 12 }} title={entry.actions.join(', ')}>
+                          {'actions: ' + entry.actions.join(', ')}
+                        </div>
+                      ) : null}
                       {outcome.length ? (
                         <div className="faint trunc" style={{ fontSize: 12 }} title={'Serves the outcome: ' + outcome.map((o) => o.text).join('; ')}>
                           {'serves ' + outcomeLabel(outcome[0])}
@@ -920,6 +931,8 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
   const phases = snapshot.phases;
   const tasks = snapshot.tasks;
   const milestones = rows(snapshot.milestones);
+  const hierarchy = hierarchyLabels(snapshot);
+  const containerWord = (hierarchy[0] || 'containers').toLowerCase();
   /* The outcome a phase's work serves: the parent context of the work, not a
      second copy of the outcome's status. */
   const outcomes = useOutcomes(project, read, busy);
@@ -934,8 +947,8 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
     <div>
       <div className="ph">
         <div>
-          <h1>Roadmap</h1>
-          <p>{plural(phases.length, 'container')}, in order.</p>
+          <h1>Plan</h1>
+          <p>{`${plural(phases.length, containerWord)}, in order.`}</p>
           {/* Containers are pack work that holds other work; completion is progress, not proof. */}
           <p className="faint">
             Items completed is work, not proof. Gates are shown on each item's workflow card.
@@ -990,7 +1003,7 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
           })}
         </div>
       ) : (
-        <LegacyEmptyBlock icon={<RouteGlyph size={20} aria-hidden="true" />} title="No containers yet" text="Add one with rail change add <preset> &quot;...&quot;." />
+        <LegacyEmptyBlock icon={<RouteGlyph size={20} aria-hidden="true" />} title={`No ${containerWord} yet`} text="Add one with rail change add <preset> &quot;...&quot;." />
       )}
       {milestones.length ? (
         <section className="panel" style={{ marginTop: 16 }}>

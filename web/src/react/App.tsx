@@ -7,10 +7,12 @@ import { ACTIVE_STATUSES, object, rows, text, type Data, type PageProps, type Ro
 import { Button, ErrorState, Loading, PageHeading } from './ui';
 import { SummaryPage } from './pages/summary';
 import { NowPage, BoardPage, RoadmapPage, ScopePage, DecisionsPage, DoctorPage, SettingsPage } from './pages/workspace';
-const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = { summary: SummaryPage, now: NowPage, board: BoardPage, roadmap: RoadmapPage, scope: ScopePage, decisions: DecisionsPage, doctor: DoctorPage, settings: SettingsPage };
-const labels: Record<Route, string> = { summary: 'Summary', overview: 'Overview', atlas: 'Atlas', outcomes: 'Outcomes', traceability: 'Traceability', impact: 'Impact', activity: 'Catch up', now: 'Now', board: 'Board', roadmap: 'Roadmap', scope: 'Scope', decisions: 'Decisions', rules: 'Rules', lens: 'Lens', graph: 'Graph', doctor: 'Doctor', portfolio: 'Projects', settings: 'Settings' };
+import { PackPage } from './pages/pack';
+import { screenTitle } from './pages/operating';
+const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = { summary: SummaryPage, now: NowPage, board: BoardPage, roadmap: RoadmapPage, scope: ScopePage, decisions: DecisionsPage, doctor: DoctorPage, pack: PackPage, settings: SettingsPage };
+const labels: Record<Route, string> = { summary: 'Summary', overview: 'Overview', atlas: 'Atlas', outcomes: 'Outcomes', traceability: 'Traceability', impact: 'Impact', activity: 'Catch up', now: 'Now', board: 'Board', roadmap: 'Plan', scope: 'Scope', decisions: 'Decisions', rules: 'Rules', lens: 'Lens', graph: 'Graph', doctor: 'Doctor', pack: 'Pack', portfolio: 'Projects', settings: 'Settings' };
 /* Phase one keeps the owner's summary and the agent rail; inspect screens follow the data. */
-const groups: [string, Route[]][] = [['For you', ['summary']], ['Agent rail', ['now','board','roadmap','scope','decisions']], ['Inspect', ['doctor']]];
+const groups: [string, Route[]][] = [['For you', ['summary']], ['Agent rail', ['now','board','roadmap','scope','decisions']], ['Inspect', ['doctor','pack']]];
 import { parseAddress, routeHash } from './router';
 import { crumbModel, trailOf, TRAIL_ROUTES } from './crumbs';
 import { ToolForm } from './ToolForm';
@@ -20,9 +22,9 @@ import { useRailKeyboard } from './keyboard';
 import { restorePreferences } from './preferences';
 import { CommandPalette, ConfirmDialog, DocDrawer, StatusGlyph, WrenchIcon, type PaletteGroup, type PaletteItem } from './overlays';
 const address = () => parseAddress(location.hash);
-const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,decisions:GitBranch,doctor:Stethoscope,settings:Settings};
+const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,decisions:GitBranch,doctor:Stethoscope,pack:FileText,settings:Settings};
 /* The legacy palette order and its G-key labels (web/src/core/palette.js). */
-const paletteRoutes: Route[] = ['summary','now','board','roadmap','scope','decisions','doctor','settings'];
+const paletteRoutes: Route[] = ['summary','now','board','roadmap','scope','decisions','doctor','pack','settings'];
 const navKeys: Partial<Record<Route,string>> = {summary:'U',now:'N',board:'B',roadmap:'R',scope:'S',decisions:'D',doctor:'H'};
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD = isMac ? '⌘' : 'Ctrl';
@@ -216,7 +218,7 @@ export default function App() {
     :healthState==='ok'?`${text(object(healthDoctor.by_severity).error,'0')} errors, ${text(object(healthDoctor.by_severity).warning,'0')} warnings`
     :healthState==='error'?`Health unavailable: ${health.isError?health.error.message:text(health.data?.error,'the health read failed')}`
     :`Health unknown${healthReason?' — '+healthReason:''}`;
-  const navItem=(r:Route)=>{const Icon=routeIcons[r]??FileText;return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{labels[r]}</span></button>;};
+  const navItem=(r:Route)=>{const Icon=routeIcons[r]??FileText;return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{screenTitle(snapshot.data,r,labels[r])}</span></button>;};
   /* ---------- command palette items (legacy groups: Navigate, Run a tool, Docs) ---------- */
   /* A group that shows only its first matches says so and offers the rest: a
      truncated list must never hide work without a way to reach it. */

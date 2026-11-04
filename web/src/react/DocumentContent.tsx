@@ -46,7 +46,16 @@ export function DocumentContent({id,data,task,context,contextLoading=false,conte
  const fm=Object.entries(object(doc.frontmatter)).filter(([key])=>!['title','type'].includes(key));
  const goals=rows(object(context).goals).map(goal=>({goal,why:namesDoc(goal,id)})).filter(entry=>entry.why&&docValid(text(entry.goal.id)));
  const states=statuses.length?statuses:['todo','in-progress','blocked','done'];
+ const card=object(data.card);
+ const cardFocus=object(card.focus);
+ const cardActions=Array.isArray(card.actions)?card.actions.filter((entry):entry is string=>typeof entry==='string'):[];
+ const presetLabel=text(card.preset_label);
  return <><h1 id="d-h" style={{fontSize:20,margin:'0 0 6px'}}>{title}</h1>
+ {presetLabel||text(cardFocus.slug)||cardActions.length?<p className="faint" style={{fontSize:12,margin:'0 0 8px'}} data-operating="card">
+   {presetLabel?<span>{presetLabel}</span>:null}
+   {text(cardFocus.slug)?<span>{' · focus '}<button type="button" className="link" onClick={()=>openDoc(text(cardFocus.slug))}>{text(cardFocus.title,text(cardFocus.slug))}</button></span>:null}
+   {cardActions.length?<span>{' · actions ' + cardActions.join(', ')}</span>:null}
+ </p>:null}
  {task&&<div className="row" style={{gap:6,flexWrap:'wrap',margin:'8px 0 14px'}}>{states.map(state=><Button key={state} className={status===state?'btn-sm rail-status-current':'btn-sm'} variant={status===state?'primary':'secondary'} disabled={busy||status===state} aria-current={status===state?'true':undefined} onClick={()=>onMoveStatus?.(state)}><StatusGlyph status={state} statuses={states}/>{titleCase(state)}</Button>)}</div>}
  {task&&<Button className="btn-sm btn-secondary" style={{marginBottom:12}} onClick={()=>navigate('board')}><Layers size={14}/>Open the board</Button>}
  {error?<div className="alert" role="alert"><span>{error}</span></div>:null}
