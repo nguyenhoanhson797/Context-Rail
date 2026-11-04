@@ -11,6 +11,7 @@ from context_rail.gateway.handlers.common import (
     apply_tag_edits,
     check_gate_state,
     compose_doc,
+    default_parent,
     doc_frontmatter,
     document_version,
     load_body,
@@ -62,6 +63,9 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     if not title:
         raise WriteRefused("VALIDATION_FAILED", "a document needs a title")
     relations = parse_relations(args["rel"])
+    parent = default_parent(ctx, preset, relations)
+    if parent is not None:
+        relations.setdefault("part_of", []).append(parent)
     fields = parse_set_values(args["set"])
     for generated in ("title", "tags"):
         if generated in fields:

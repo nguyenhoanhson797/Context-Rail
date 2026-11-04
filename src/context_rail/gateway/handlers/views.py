@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
-from context_rail.context import recipes
+from context_rail.context import operating, recipes
 from context_rail.gateway.confirmation import confirmation_phrase
 from context_rail.gateway.handlers.common import parse_relation_filter
 from context_rail.kernel import structure
@@ -109,6 +109,12 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         }
         for row in checks[:LIST_CAP]
     ]
+    model = ctx.model
+    unit = operating.resolve_unit(ctx, model)
+    focus = _focus(ctx, model)
+    groups, groups_omitted = _groups(ctx, model)
+    progress = operating.resolve_progress(ctx, model)
+    queue = _queue(ctx, model)
     return {
         "counts": counts,
         "executable": executable_page,
@@ -118,6 +124,16 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "check_states": states,
         "check_states_omitted": max(len(checks) - LIST_CAP, 0),
         "approval": recipes.approval_state(ctx),
+        "unit": None if unit is None else unit.as_dict(),
+        "focus": focus,
+        "groups": groups,
+        "progress": progress.as_dict(),
+        "queue": queue,
+        "labels": {
+            name: {"one": operating.label(model, name), "many": operating.label(model, name, plural=True)}
+            for name in model.presentation.labels
+        },
+        "groups_omitted": groups_omitted,
         "omitted": {
             "executable": executable_omitted,
             "blocked": blocked_omitted,
@@ -125,6 +141,48 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "too_long": too_long_omitted,
         },
     }
+
+
+def _focus(ctx: Context, model: Any) -> dict[str, Any]:
+    try:
+        return operating.resolve_focus(ctx, model).as_dict()
+    except operating.OperatingError as error:
+        return {
+            "state": "ambiguous" if error.code == "AMBIGUOUS_FOCUS" else "invalid",
+            "focus": None,
+            "candidates": error.details.get("candidates", []),
+            "resolved_by": "refused",
+            "error": error.code,
+        }
+
+
+def _queue(ctx: Context, model: Any) -> dict[str, Any]:
+    try:
+        view = operating.resolve_queue(ctx, model, ctx.actor)
+    except operating.OperatingError as error:
+        return {
+            "items": [],
+            "omitted": 0,
+            "scope": "project",
+            "error": error.code,
+        }
+    return {
+        "items": [item.as_dict() for item in view.items[:LIST_CAP]],
+        "omitted": max(len(view.items) - LIST_CAP, 0),
+        "scope": view.scope,
+    }
+
+
+def _groups(ctx: Context, model: Any) -> tuple[list[dict[str, Any]], int]:
+    groups = operating.resolve_hierarchy(ctx, model)
+    shown: list[dict[str, Any]] = []
+    omitted = 0
+    for group in groups:
+        values = group.as_dict()
+        values["items"] = values["items"][:LIST_CAP]
+        omitted += max(len(group.items) - LIST_CAP, 0)
+        shown.append(values)
+    return shown, omitted
 
 
 def ledger(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

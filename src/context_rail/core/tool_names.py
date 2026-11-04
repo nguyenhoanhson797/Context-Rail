@@ -85,6 +85,7 @@ VISIBLE_PATHS: frozenset[str] = frozenset(VISIBLE_ALIASES) | {
     "sync driver",
     "types",
     "next",
+    "model",
     "explain",
     "why",
 }

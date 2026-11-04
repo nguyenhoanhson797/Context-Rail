@@ -516,8 +516,20 @@ TOOLS: tuple[Tool, ...] = (
         name="next",
         summary="The executable queue, or one worker's next card.",
         permission="read",
-        params=(Param("item", "str", help="the item a worker is working on"),),
+        params=(
+            Param("item", "str", help="the item a worker is working on"),
+            Param("all", "bool", help="every item preset, ignoring the queue scope"),
+            Param("into", "str", help="a container to use as the focus for this call"),
+            Param("focus_only", "bool", help="only items inside the focus"),
+        ),
         handler="context_rail.gateway.handlers.surface:next",
+    ),
+    Tool(
+        name="model",
+        summary="The compiled operating model, its focus and its digests.",
+        permission="read",
+        params=(),
+        handler="context_rail.gateway.handlers.surface:model",
     ),
     Tool(
         name="explain",
@@ -583,7 +595,7 @@ for _tool in TOOLS:
 del _tool, _param
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
-_SURFACE_LEAVES = {"init", "approve", "types", "next", "explain", "why", "do"}
+_SURFACE_LEAVES = {"init", "approve", "types", "next", "model", "explain", "why", "do"}
 
 
 def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:

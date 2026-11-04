@@ -32,6 +32,55 @@ if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
 
+def default_parent(
+    ctx: Context,
+    preset: Preset,
+    relations: dict[str, list[str] | tuple[str, ...]],
+) -> str | None:
+    """The focus parent an ``add`` takes when the pack's model says so.
+
+    The default applies to the unit and to presets sharing its workflow; a
+    container or an unrelated preset (a risk, an asset, a render) stays
+    unparented unless the caller passes ``--rel``. An explicit relation always
+    wins, and a required hierarchy with no focus refuses rather than guesses.
+    """
+    if preset.primitive != "item" or preset.container is True:
+        return None
+    if relations.get("part_of"):
+        return None
+    model = ctx.model
+    unit = model.operating.unit
+    if unit is None:
+        return None
+    declared = ctx.pack.presets.get(unit)
+    if declared is None:
+        return None
+    if preset.name != unit and preset.workflow != declared.workflow:
+        return None
+    from context_rail.context import operating
+
+    try:
+        resolved = operating.resolve_focus(ctx, model)
+    except operating.OperatingError as error:
+        raise WriteRefused(error.code, error.message, error.details) from None
+    if resolved.focus is not None:
+        return resolved.focus.slug
+    required = any(level.required for level in model.operating.hierarchy)
+    if required and model.operating.focus is not None:
+        preset_name = model.operating.focus.preset
+        raise WriteRefused(
+            "NO_FOCUS",
+            f"a {preset.name!r} needs a parent {preset_name!r}, and no focus matches",
+            {
+                "preset": preset.name,
+                "hierarchy": preset_name,
+                "rel": f"part_of=<{preset_name}>",
+                "command": f"rail change add {preset.name} <title> --rel part_of=<{preset_name}>",
+            },
+        )
+    return None
+
+
 def validate_relation_targets(
     index: Index,
     source_slug: str,

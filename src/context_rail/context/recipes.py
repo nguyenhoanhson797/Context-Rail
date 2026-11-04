@@ -309,6 +309,8 @@ def brief(
     waits, waits_omitted = human_waits(context, limit)
     decisions, decisions_total = query.reversible_decisions(index, limit=limit)
     checks, checks_omitted = check_rows(context, limit)
+    operating_state = _operating_state(context)
+    headline = _headline(operating_state)
     sections, omitted = _brief_sections(
         context,
         approval=approval,
@@ -326,13 +328,15 @@ def brief(
         checks=checks,
         checks_omitted=checks_omitted,
         limit=limit,
+        operating_state=operating_state,
     )
-    text, trimmed = _fit(sections, chars)
+    text, trimmed = _fit(sections, max(chars - len(headline) - 2, 1))
     for key, count in trimmed.items():
         omitted[key] += count
+    text = headline + "\n\n" + text
     return {
-        "text": text,
-        "estimated_tokens": estimate_tokens(text),
+        "text": text[:chars],
+        "estimated_tokens": estimate_tokens(text[:chars]),
         "omitted": omitted,
         "approval": approval,
         "state": {
@@ -341,8 +345,53 @@ def brief(
             "stuck": len(stuck),
             "too_long": len(long_items),
             "needs_human": len(waits) + waits_omitted,
+            **operating_state,
+            "headline": headline,
         },
     }
+
+
+def _operating_state(context: Context) -> dict[str, Any]:
+    """The focus, unit and workflow progress one brief or digest reports."""
+    from context_rail.context import operating
+
+    model = getattr(context, "model", None)
+    if model is None:
+        return {"unit": None, "focus": {"state": "none", "focus": None}, "progress": None}
+    unit = operating.resolve_unit(context, model)
+    try:
+        resolved = operating.resolve_focus(context, model)
+        focus = resolved.as_dict()
+    except operating.OperatingError as error:
+        focus = {
+            "state": "ambiguous" if error.code == "AMBIGUOUS_FOCUS" else "invalid",
+            "focus": None,
+            "candidates": error.details.get("candidates", []),
+            "resolved_by": "refused",
+            "error": error.code,
+        }
+    progress = operating.resolve_progress(context, model).as_dict()
+    if unit is not None:
+        progress["unit"] = unit.as_dict()
+    return {
+        "unit": None if unit is None else unit.as_dict(),
+        "focus": focus,
+        "progress": progress,
+    }
+
+
+def _headline(state: dict[str, Any]) -> str:
+    progress = state.get("progress") or {}
+    unit = state.get("unit") or {}
+    noun = unit.get("label", "item")
+    counted = f"{progress.get('complete', 0)}/{progress.get('total', 0)} {noun.lower()} done"
+    focus = state.get("focus") or {}
+    if focus.get("state") == "resolved" and focus.get("focus"):
+        chosen = focus["focus"]
+        return f"Focus: {chosen.get('title') or chosen.get('slug')} — {counted}"
+    if focus.get("state") == "ambiguous":
+        return f"Focus: ambiguous ({len(focus.get('candidates') or [])} candidates) — {counted}"
+    return f"Focus: none (project-wide) — {counted}"
 
 
 def _workflow_lines(
@@ -402,6 +451,7 @@ def _brief_sections(
     checks: Sequence[dict[str, Any]],
     checks_omitted: int,
     limit: int,
+    operating_state: dict[str, Any] | None = None,
 ) -> tuple[list[Section], dict[str, int]]:
     sections = [Section(key) for key in SECTION_KEYS]
     by_key = {section.key: section for section in sections}
@@ -435,6 +485,11 @@ def _brief_sections(
         charter_section.entries.append("no charter document yet")
 
     workflow_section = by_key["workflows"]
+    if operating_state and operating_state.get("unit"):
+        workflow_section.fixed.append(
+            f"unit: {operating_state['unit'].get('label')} "
+            f"({operating_state['unit'].get('workflow')})"
+        )
     workflow_lines, workflow_omitted = _workflow_lines(context, items, limit)
     workflow_section.entries.extend(workflow_lines)
     omitted["workflows"] = workflow_omitted
@@ -543,6 +598,7 @@ def digest(
     counts = activity["counts"]
     runnable = structure.executable(list(items))
     recent_reports = activity["reports"]
+    operating_state = _operating_state(context)
     return {
         "summary": {
             "text": _clip(
@@ -558,6 +614,7 @@ def digest(
                 "untriaged_reports": counts["untriaged_reports"],
             },
             "approval": approval["state"],
+            **operating_state,
         },
         "needs_human": list(waits),
         "reversible_decisions": list(decisions),

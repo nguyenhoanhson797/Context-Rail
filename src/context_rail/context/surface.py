@@ -122,6 +122,7 @@ def card(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
         "proof": proof,
         "command": _command(doc["slug"], next_states),
     }
+    payload.update(_operating_card(context, preset.name, doc["slug"]))
     return _bounded(payload, limit)
 
 
@@ -145,6 +146,7 @@ def explain(
             "defaults": dict(preset.defaults),
             "states": list(workflow.transitions),
         }
+        payload.update(_operating_note(context, preset.name))
         return _bounded(payload, limit)
     workflow = pack.workflows.get(name)
     if workflow is not None:
@@ -180,23 +182,22 @@ def explain_workflow(
         raise SurfaceError(
             "NOT_FOUND", f"no workflow {name!r}", {"name": name}
         )
-    return _bounded(
-        {
-            "kind": "workflow",
-            "name": workflow.name,
-            "initial": workflow.initial,
-            "states": list(workflow.transitions),
-            "transitions": {
-                source: list(targets)
-                for source, targets in workflow.transitions.items()
-            },
-            "quality": {
-                status: {"gate": rule.gate, "checks": list(rule.checks)}
-                for status, rule in workflow.quality.items()
-            },
+    payload = {
+        "kind": "workflow",
+        "name": workflow.name,
+        "initial": workflow.initial,
+        "states": list(workflow.transitions),
+        "transitions": {
+            source: list(targets)
+            for source, targets in workflow.transitions.items()
         },
-        limit,
-    )
+        "quality": {
+            status: {"gate": rule.gate, "checks": list(rule.checks)}
+            for status, rule in workflow.quality.items()
+        },
+    }
+    payload.update(_operating_note(context, name))
+    return _bounded(payload, limit)
 
 
 def render_card(card: Mapping[str, Any], *, limit: int = CARD_CHARS) -> str:
@@ -215,6 +216,12 @@ def render_card(card: Mapping[str, Any], *, limit: int = CARD_CHARS) -> str:
         + (f", children {proof['children']}" if proof.get("children") else ""),
         f"command: {card.get('command')}",
     ]
+    focus = card.get("focus")
+    if isinstance(focus, Mapping):
+        lines.insert(0, f"focus: {focus.get('title') or focus.get('slug')}")
+    actions = card.get("actions") or ()
+    if actions:
+        lines.append("actions: " + ", ".join(actions))
     text = "\n".join(lines)
     return text if len(text) <= limit else text[: limit - 12] + "\n[truncated]"
 
@@ -266,6 +273,58 @@ def verbs(context: Any) -> dict[str, Any]:
     ]
     payload = {"items": entries, "omitted": 0}
     return _bounded(payload, VERBS_CHARS)
+
+
+def _compiled(context: Any) -> Any:
+    model = getattr(context, "model", None)
+    if model is not None:
+        return model
+    from context_rail.model.compiler import compile_project
+
+    return compile_project(context.pack, context.pack.operating)
+
+
+def _operating_card(context: Any, preset: str, slug: str) -> dict[str, Any]:
+    from context_rail.context import operating
+
+    model = _compiled(context)
+    row = operating.item_row(context, slug)
+    actions = (
+        ()
+        if row is None
+        else operating.applicable_actions(
+            context, model, row, getattr(context, "actor", "cto")
+        )
+    )
+    policy = model.operating.focus
+    return {
+        "preset_label": operating.label(model, preset),
+        "unit": model.operating.unit,
+        "focus": operating.focus_membership(context, model, slug),
+        "actions": list(actions),
+        "operating": {
+            "role": operating.role_for(model, preset),
+            "hierarchy": [level.preset for level in model.operating.hierarchy],
+            "focus": None if policy is None else policy.preset,
+        },
+    }
+
+
+def _operating_note(context: Any, name: str) -> dict[str, Any]:
+    from context_rail.context import operating
+
+    model = _compiled(context)
+    policy = model.operating.focus
+    return {
+        "operating": {
+            "role": operating.role_for(model, name),
+            "unit": model.operating.unit,
+            "hierarchy": [level.preset for level in model.operating.hierarchy],
+            "queue": list(model.operating.queue.presets),
+            "progress": list(model.operating.progress.of),
+            "focus": None if policy is None else policy.preset,
+        }
+    }
 
 
 def _document(context: Any, slug: str) -> dict[str, Any]:

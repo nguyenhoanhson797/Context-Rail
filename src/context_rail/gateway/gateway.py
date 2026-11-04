@@ -95,6 +95,15 @@ class Context:
         return None if found is None else parse_charter(found[1])
 
     @cached_property
+    def model(self) -> Any:
+        """The compiled operating model, built once per invocation."""
+        from context_rail.model.compiler import compile_project
+        from context_rail.model.presentation import load_presentation
+
+        presentation = load_presentation(self.pack.name, self.store, self.pack)
+        return compile_project(self.pack, self.pack.operating, presentation)
+
+    @cached_property
     def profile(self) -> Profile | None:
         """The Actor profile the acting name resolves to, when the store has one.
 

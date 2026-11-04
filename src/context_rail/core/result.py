@@ -23,6 +23,9 @@ ERROR_CODES = (
     "PROCESS_ERROR",
     "INTERNAL",
     "SCHEMA_UNSUPPORTED",
+    "NO_FOCUS",
+    "AMBIGUOUS_FOCUS",
+    "INVALID_FOCUS",
 )
 
 #: Codes for something that broke rather than something refused: the CLI exits
