@@ -15,7 +15,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -778,17 +778,14 @@ class Index:
 
 
 def pack_hash(pack: Pack) -> str:
-    """SHA-256 of the canonical JSON of every semantic pack field."""
-    body = json.dumps(_canonical(asdict(pack)), sort_keys=True, separators=(",", ":"))
-    return sha256_hex(body.encode("utf-8"))
+    """SHA-256 of the canonical JSON of every semantic pack field.
 
+    A v1 pack has no operating block, so the key is omitted rather than
+    written as null: its digest stays exactly what it was before v5.
+    """
+    from context_rail.model.compiler import canonical_json, semantic_payload
 
-def _canonical(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _canonical(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_canonical(item) for item in value]
-    return value
+    return sha256_hex(canonical_json(semantic_payload(pack)).encode("utf-8"))
 
 
 def _json(value: Any) -> str:

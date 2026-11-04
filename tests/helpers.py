@@ -673,6 +673,16 @@ def write_pack(store: Path, name: str, document: dict[str, Any]) -> Path:
     return path
 
 
+def compiled_model(store: Path, name: str = "basic") -> Any:
+    """Load a pack and its ``surface.yaml`` and return the compiled ProjectModel.
+
+    No index is opened, so a test can compile a pack in isolation.
+    """
+    from context_rail.model.compiler import load_project
+
+    return load_project(name, Path(store))
+
+
 NESTED_LAYOUT: dict[str, str] = {
     "phase": "items/{preset}/{slug}.md",
     "sprint": "{part_of}/{slug}.md",
