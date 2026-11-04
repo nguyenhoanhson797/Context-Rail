@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Iterator
 
@@ -20,6 +21,7 @@ from context_rail.kernel.packs import (
     plan_item_map,
     preset_workflow,
 )
+from context_rail.model.compiler import ProjectModel, compile_project
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import initial_manifest, manifest_from_mapping
 from context_rail.model.metadata import ENGINE_PRESETS
@@ -30,6 +32,7 @@ from context_rail.model.pack import (
     load_pack,
     pack_layout,
 )
+from context_rail.model.presentation import load_presentation
 from context_rail.store import query
 from context_rail.store.approval import (
     approval_state,
@@ -80,18 +83,24 @@ def pack_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
 
 def pack_show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """One pack's resources, origin, manifest etag and approval state."""
+    """One pack's resources, origin, etag, operating model and three digests."""
     requested = args["name"]
     name = _known(ctx.store, requested)
     data = pack_bytes(ctx.store, name)
     # A store keeps the pack name its approval was recorded for, so an alias it
     # is still running must report the approval of that same target.
     target = requested if requested == ctx.manifest.pack else name
+    pack = load_pack(name, ctx.store)
+    model = _compiled(ctx.store, name, pack)
     return {
         "pack": name,
         "resources": pack_resources(ctx.store, name),
         "origin": pack_origins(ctx.store)[name],
         "etag": etag(data),
+        "operating": "neutral" if pack.operating is None else asdict(pack.operating),
+        "semantic_digest": model.semantic_digest,
+        "presentation_digest": model.presentation_digest,
+        "full_digest": model.full_digest,
         "approval": approval_state(ctx, f"pack:{target}"),
     }
 
@@ -142,10 +151,27 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
             has_layout = pack_layout(name, ctx.store) is not None
             if has_layout:
                 initial_manifest(name, ctx.store)
+            _compiled(ctx.store, name, pack)
         except ModelError as error:
-            problems.append({"path": "layout.yaml", "message": error.message})
+            problems.append(
+                {
+                    "path": "surface.yaml"
+                    if "surface.yaml" in error.message
+                    else "layout.yaml"
+                    if "layout.yaml" in error.message
+                    else "pack.yaml",
+                    "message": error.message,
+                    "fix": _fix_for_path(error.message),
+                }
+            )
     except ModelError as error:
-        problems.append({"path": "pack.yaml", "message": error.message})
+        problems.append(
+            {
+                "path": "pack.yaml",
+                "message": error.message,
+                "fix": "fix pack.yaml and run: rail pack validate " + str(requested),
+            }
+        )
     return {"valid": not problems, "problems": problems}
 
 
@@ -167,6 +193,7 @@ def pack_create(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
     resolved = installed_pack_name(ctx.store, source)
     if resolved is None:
         raise WriteRefused("NOT_FOUND", f"unknown pack {source!r}", {"pack": source})
+    _compiled(ctx.store, resolved, load_pack(resolved, ctx.store))
     destination = Path(ctx.store) / "packs" / name / "pack.yaml"
     if destination.exists():
         raise WriteRefused(
@@ -319,6 +346,20 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         value["record"] = result["record"]
         ctx.close()
         return value
+
+
+def _compiled(store: Path, name: str, pack: Any) -> ProjectModel:
+    """Compile one pack and its presentation, reporting a bad surface."""
+    presentation = load_presentation(name, store, pack)
+    return compile_project(pack, pack.operating, presentation)
+
+
+def _fix_for_path(message: str) -> str:
+    if "surface.yaml" in message:
+        return "fix surface.yaml, then run: rail pack validate <name>"
+    if "layout.yaml" in message:
+        return "fix layout.yaml, then run: rail pack validate <name>"
+    return "fix pack.yaml, then run: rail pack validate <name>"
 
 
 def _after_planning(
