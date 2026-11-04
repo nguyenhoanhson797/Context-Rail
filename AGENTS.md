@@ -90,7 +90,8 @@ repository.
   React module may branch on a pack name.
 - Quality belongs to the workflow: a status may name a charter gate and the
   checks it selects. The engine never branches on a gate name.
-- Agents read the compiled surface (`types`, `next`, `show`, `explain`, `why`),
+- Agents read the compiled surface (`model`, `types`, `next`, `show`, `explain`,
+  `why`),
   never `pack.yaml`. Pack actions are declarative and run as the caller through
   the gateway; no agent-defined executable tools.
 - `cli.py` imports only stdlib modules and `gateway.tools` at import time; every
