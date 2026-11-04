@@ -23,6 +23,7 @@ from typing import Any
 from context_rail.core.util import canonical_iso, sha256_hex
 from context_rail.model.cto import parse_check, parse_report, parse_run, parse_verdict
 from context_rail.model.errors import ModelError
+from context_rail.model.execution import EXECUTION_KIND, parse_execution
 from context_rail.model.fields import (
     boolean,
     integer,
@@ -55,7 +56,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 4
+INDEX_SCHEMA = 5
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -263,6 +264,28 @@ _SCHEMA = (
         data_json TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE executions(
+        path TEXT PRIMARY KEY,
+        record_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target TEXT NOT NULL,
+        state TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        started_at TEXT,
+        completed_at TEXT,
+        outputs_json TEXT NOT NULL,
+        error TEXT,
+        actor TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        params_json TEXT NOT NULL,
+        runner_digest TEXT,
+        at TEXT,
+        data_json TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX executions_target_action ON executions(target, action, attempt DESC)",
+    "CREATE INDEX executions_action ON executions(action, state)",
 )
 
 #: Projection tables keyed by the store path of their evidence.
@@ -274,6 +297,7 @@ _PATH_TABLES = (
     "reports",
     "approvals",
     "reviews",
+    "executions",
 )
 _PROJECTION_COLUMNS = {
     "checks": (
@@ -362,6 +386,24 @@ _PROJECTION_COLUMNS = {
         "verdict",
         "data_json",
     ),
+    "executions": (
+        "path",
+        "record_id",
+        "action",
+        "target",
+        "state",
+        "attempt",
+        "started_at",
+        "completed_at",
+        "outputs_json",
+        "error",
+        "actor",
+        "tool",
+        "params_json",
+        "runner_digest",
+        "at",
+        "data_json",
+    ),
 }
 
 _RUN_KIND = "run.completed"
@@ -378,6 +420,7 @@ _PROJECTED_KINDS = frozenset(
         _REPORT_KIND,
         _APPROVAL_KIND,
         _REVIEW_KIND,
+        EXECUTION_KIND,
         TRIAGE_KIND,
     }
 )
@@ -821,6 +864,8 @@ def _projection(doc: Doc) -> tuple[list[tuple[str, tuple[Any, ...]]], set[str]]:
         return _triage_rows(record_id, data), set()
     if kind == _APPROVAL_KIND:
         return _approval_rows(doc, record_id, data), set()
+    if kind == EXECUTION_KIND:
+        return _execution_rows(doc, record_id, data), set()
     return _review_rows(doc, record_id, data), set()
 
 
@@ -1012,6 +1057,31 @@ def _review_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[s
     integer(payload["profile_version"], "review.profile_version", positive=True)
     row = (doc.path, record_id, item, run_id, candidate, reviewer, verdict, _json(data))
     return [("reviews", row)]
+
+
+def _execution_rows(
+    doc: Doc, record_id: str, data: dict[str, Any]
+) -> list[tuple[str, tuple[Any, ...]]]:
+    execution = parse_execution(data)
+    row = (
+        doc.path,
+        record_id,
+        execution.action,
+        execution.target,
+        execution.state,
+        execution.attempt,
+        execution.started_at,
+        execution.completed_at,
+        _json(list(execution.outputs)),
+        execution.error,
+        execution.actor,
+        execution.tool,
+        _json(execution.params),
+        execution.runner_digest,
+        _at(doc),
+        _json(data),
+    )
+    return [("executions", row)]
 
 
 def _strict(

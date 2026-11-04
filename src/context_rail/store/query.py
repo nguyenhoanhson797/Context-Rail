@@ -27,6 +27,8 @@ __all__ = [
     "check_state",
     "check_states",
     "digest_rows",
+    "execution_count",
+    "execution_latest",
     "find",
     "human_proposals",
     "human_wait_reports",
@@ -1045,6 +1047,65 @@ def rejected_reviews(
         for record_id, item, run_id, candidate, reviewer, at in rows
     ]
     return found, _scalar(ix, f"SELECT COUNT(*) {joins}{clause}", params)
+
+
+def execution_latest(
+    ix: Index,
+    *,
+    actions: Sequence[str] | None = None,
+    targets: Sequence[str] | None = None,
+) -> list[dict[str, Any]]:
+    """The newest attempt per ``(action, target)``, never merged with status."""
+    where: list[str] = []
+    params: list[Any] = []
+    if actions is not None:
+        if not actions:
+            return []
+        where.append(f"action IN ({', '.join('?' * len(actions))})")
+        params.extend(actions)
+    if targets is not None:
+        if not targets:
+            return []
+        where.append(f"target IN ({', '.join('?' * len(targets))})")
+        params.extend(targets)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = ix.conn.execute(
+        "SELECT action, target, state, attempt, started_at, completed_at, "
+        "outputs_json, error, actor, tool, params_json, runner_digest, record_id "
+        f"FROM executions {clause} "
+        "ORDER BY target, action, attempt DESC, completed_at DESC, record_id DESC",
+        params,
+    ).fetchall()
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (row[0], row[1])
+        if key in latest:
+            continue
+        latest[key] = {
+            "action": row[0],
+            "target": row[1],
+            "state": row[2],
+            "attempt": row[3],
+            "started_at": row[4],
+            "completed_at": row[5],
+            "outputs": json.loads(row[6]),
+            "error": row[7],
+            "actor": row[8],
+            "tool": row[9],
+            "params": json.loads(row[10]),
+            "runner_digest": row[11],
+            "record": row[12],
+        }
+    return [latest[key] for key in sorted(latest)]
+
+
+def execution_count(ix: Index, action: str, target: str) -> int:
+    """How many attempts one action has recorded on one target."""
+    row = ix.conn.execute(
+        "SELECT COUNT(*) FROM executions WHERE action = ? AND target = ?",
+        (action, target),
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
 
 
 def worker_totals(ix: Index) -> dict[str, dict[str, Any]]:

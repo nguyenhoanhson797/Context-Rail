@@ -16,7 +16,7 @@ from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
 from context_rail.store.index import Index
-from helpers import init_store, write_pack
+from helpers import init_store, write_pack, write_record
 
 OPERATING_CODES = {
     "focus_missing": "warning",
@@ -199,6 +199,76 @@ def test_a_hierarchy_preset_without_a_placement_is_an_error(
 
     codes = [issue["code"] for issue in result["issues"]]
     assert "hierarchy_placement" in codes
+
+
+def test_an_outermost_hierarchy_preset_needs_a_root_placement(
+    operating_scrum_store: SimpleNamespace,
+) -> None:
+    store = operating_scrum_store.store
+    pack = load_pack("scrum", store)
+    manifest = load_manifest(store)
+    broken = replace(
+        manifest,
+        preset_placement={"sprint": "{part_of}/{slug}.md"},
+    )
+    index = Index.open(store, pack)
+    index.sync()
+    try:
+        result = run_doctor(store, broken, pack, index)
+    finally:
+        index.close()
+
+    codes = [issue["code"] for issue in result["issues"]]
+    assert "hierarchy_placement" in codes
+
+
+def test_execution_missing_then_failed_then_succeeded(
+    operating_video_store: SimpleNamespace,
+) -> None:
+    store = operating_video_store.store
+    shot = operating_video_store.shot
+    for status in ("storyboard", "generating", "review", "approved"):
+        _move(store, shot, status)
+
+    missing = _codes(store)
+    assert "execution_missing" in missing
+
+    _write_execution(store, "01JDOCTOREXEC00000000001", shot, "failed", 1)
+    failed = _codes(store)
+    assert "execution_failed" in failed
+
+    _write_execution(store, "01JDOCTOREXEC00000000002", shot, "succeeded", 2)
+    clean = _codes(store)
+    assert "execution_failed" not in clean
+    assert "execution_missing" not in clean
+
+
+def _write_execution(
+    store: Path, record_id: str, target: str, state: str, attempt: int
+) -> None:
+    at = f"2026-11-04T10:0{attempt}:00Z"
+    write_record(
+        store,
+        record_id,
+        "execution.completed",
+        {
+            "schema": 1,
+            "action": "render",
+            "target": target,
+            "state": state,
+            "attempt": attempt,
+            "started_at": at,
+            "completed_at": at,
+            "outputs": [] if state != "succeeded" else [f"renders/{target}.mp4"],
+            "error": None if state != "failed" else "the encoder stopped",
+            "actor": "renderer",
+            "tool": "runner",
+            "params": {},
+            "runner_digest": "sha256:runner",
+        },
+        at=at,
+        about=(target,),
+    )
 
 
 def test_an_invalid_pack_is_a_validation_refusal_not_a_doctor_cascade(

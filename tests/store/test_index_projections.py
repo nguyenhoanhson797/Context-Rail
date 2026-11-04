@@ -16,7 +16,7 @@ from context_rail.model.pack import load_pack
 from context_rail.store.doc import record_digest
 from context_rail.store.index import INDEX_SCHEMA, Index
 from context_rail.store.location import index_path
-from context_rail.store.query import ledger, untriaged_reports
+from context_rail.store.query import execution_count, execution_latest, ledger, untriaged_reports
 from helpers import (
     init_pack_store,
     run_cli,
@@ -38,6 +38,7 @@ REQUIRED_TABLES = {
     "triaged_reports",
     "approvals",
     "reviews",
+    "executions",
 }
 BASE_TABLES = {"docs", "fields", "relations", "tags", "docs_fts", "meta"}
 TRIAGE_ID = "01JTRIAGE00000000000000001"
@@ -86,8 +87,8 @@ def truth_files(store: Path) -> dict[Path, bytes]:
     }
 
 
-def test_index_schema_four_keeps_the_base_tables_and_fts():
-    assert INDEX_SCHEMA == 4
+def test_index_schema_five_keeps_the_base_tables_and_fts():
+    assert INDEX_SCHEMA == 5
 
 
 def test_open_creates_the_typed_tables(store_factory):
@@ -100,9 +101,9 @@ def test_open_creates_the_typed_tables(store_factory):
             index.conn.execute(
                 "SELECT value FROM meta WHERE key = 'schema'"
             ).fetchone()[0]
-            == "4"
+            == "5"
         )
-        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 5
 
 
 def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
@@ -450,3 +451,39 @@ def test_cli_status_and_reindex_rebuild_a_corrupt_index(tmp_path):
         if path.is_file()
     }
     assert after == before
+
+
+def test_execution_records_keep_attempts_and_the_latest_state(store_factory) -> None:
+    store = store_factory(docs=3)
+    for attempt, state in ((1, "failed"), (2, "succeeded")):
+        write_record(
+            store,
+            f"01JEXECUTION000000000000{attempt}",
+            "execution.completed",
+            {
+                "schema": 1,
+                "action": "render",
+                "target": "shot-1",
+                "state": state,
+                "attempt": attempt,
+                "started_at": f"2026-11-04T10:0{attempt}:00Z",
+                "completed_at": f"2026-11-04T10:0{attempt}:30Z",
+                "outputs": [f"renders/shot-1-{attempt}.mp4"],
+                "error": None if state == "succeeded" else "encoder stopped",
+                "actor": "renderer",
+                "tool": "runner",
+                "params": {"quality": "hero"},
+                "runner_digest": "sha256:runner",
+            },
+            at=f"2026-11-04T10:0{attempt}:30Z",
+            about=("shot-1",),
+        )
+    with opened(store) as index:
+        index.sync()
+        latest = execution_latest(index, actions=("render",), targets=("shot-1",))
+        assert execution_count(index, "render", "shot-1") == 2
+        assert len(latest) == 1
+        assert latest[0]["state"] == "succeeded"
+        assert latest[0]["attempt"] == 2
+        assert latest[0]["outputs"] == ["renders/shot-1-2.mp4"]
+        assert latest[0]["params"] == {"quality": "hero"}

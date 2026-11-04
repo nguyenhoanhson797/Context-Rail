@@ -177,6 +177,7 @@ class ProgressView:
     by_category: dict[str, int]
     children: tuple[dict[str, Any], ...]
     omitted: int
+    runs: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -186,7 +187,7 @@ class ProgressView:
             "by_category": dict(self.by_category),
             "children": [dict(child) for child in self.children],
             "omitted": self.omitted,
-            "runs": None,
+            "runs": None if self.runs is None else dict(self.runs),
         }
 
 
@@ -231,6 +232,23 @@ def focus_membership(
     if resolved.focus.slug in _ancestors(slug, _parents(ctx)):
         return resolved.focus.as_ref()
     return None
+
+
+def outside_focus(ctx: Context, model: ProjectModel, slug: str) -> str | None:
+    """The focus slug when ``slug`` is outside it, else None.
+
+    Raises :class:`OperatingError` when the focus is ambiguous, so a caller
+    never starts work under a guess. No focus policy or ``resolve: none`` means
+    the project is project-wide and everything is inside it.
+    """
+    resolved = resolve_focus(ctx, model)
+    if resolved.focus is None:
+        return None
+    if resolved.focus.slug == slug:
+        return None
+    if resolved.focus.slug in _ancestors(slug, _parents(ctx)):
+        return None
+    return resolved.focus.slug
 
 
 def resolve_unit(ctx: Context, model: ProjectModel) -> Unit | None:
@@ -480,7 +498,39 @@ def resolve_progress(
         by_category=counts,
         children=tuple(children),
         omitted=0,
+        runs=_execution_summary(ctx, model, rows),
     )
+
+
+_RUN_CAP = 20
+
+
+def _execution_summary(
+    ctx: Context, model: ProjectModel, rows: list[ItemRow]
+) -> dict[str, Any] | None:
+    """The latest declared execution state per target, or None when no run exists."""
+    actions = model.operating.execution_actions
+    if not actions or not rows:
+        return None
+    from context_rail.store import query
+
+    latest = query.execution_latest(
+        ctx.index, actions=actions, targets=tuple(row.slug for row in rows)
+    )
+    if not latest:
+        return None
+    by_state = {state: 0 for state in ("running", "succeeded", "failed", "cancelled")}
+    for row in latest:
+        state = row.get("state")
+        if state in by_state:
+            by_state[state] += 1
+    return {
+        "actions": list(actions),
+        "total": len(latest),
+        "by_state": by_state,
+        "latest": latest[:_RUN_CAP],
+        "omitted": max(len(latest) - _RUN_CAP, 0),
+    }
 
 
 def _is_complete(ctx: Context, model: ProjectModel, row: ItemRow) -> bool:
@@ -701,6 +751,7 @@ __all__ += [
     "applicable_actions",
     "focus_membership",
     "item_row",
+    "outside_focus",
     "require_focus",
     "role_for",
 ]

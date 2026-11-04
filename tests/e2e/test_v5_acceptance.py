@@ -197,7 +197,9 @@ def test_the_model_command_returns_the_ir(
     value = invoke("model", {}, store=operating_video_store.store, actor="cto")["value"]
 
     assert value["neutral"] is False
-    assert value["model"]["unit"] == "shot"
+    assert value["model"]["unit"]["preset"] == "shot"
+    assert value["model"]["unit"]["workflow"] == "shot"
+    assert value["model"]["unit"]["label"] == "Shot"
     assert value["model"]["queue"]["presets"] == ["shot"]
     assert value["unit"]["workflow"] == "shot"
     assert value["focus"]["state"] == "resolved"

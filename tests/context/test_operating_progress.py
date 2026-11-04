@@ -12,7 +12,13 @@ from context_rail.gateway.gateway import Context, invoke
 from context_rail.model.compiler import compile_project
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
-from helpers import copy_pack_templates, init_pack_store, init_store, write_pack
+from helpers import (
+    copy_pack_templates,
+    init_pack_store,
+    init_store,
+    write_pack,
+    write_record,
+)
 
 
 def _context(store: Path, pack: str) -> Context:
@@ -135,6 +141,87 @@ def test_a_mixed_workflow_pack_uses_per_preset_states(tmp_path: Path) -> None:
     assert view.total == 2
     assert view.complete == 2
     assert view.by_category["done"] == 2
+
+
+def _approve_video_shot(store: Path, slug: str) -> None:
+    for status in ("storyboard", "generating", "review", "approved"):
+        _move(store, slug, status)
+
+
+def _execution(
+    store: Path,
+    record_id: str,
+    target: str,
+    *,
+    state: str,
+    attempt: int,
+    at: str,
+) -> None:
+    write_record(
+        store,
+        record_id,
+        "execution.completed",
+        {
+            "schema": 1,
+            "action": "render",
+            "target": target,
+            "state": state,
+            "attempt": attempt,
+            "started_at": at,
+            "completed_at": at,
+            "outputs": [f"renders/{target}.mp4"],
+            "error": None if state != "failed" else "the encoder stopped",
+            "actor": "renderer",
+            "tool": "runner",
+            "params": {},
+            "runner_digest": "sha256:runner",
+        },
+        at=at,
+        about=(target,),
+    )
+
+
+def test_execution_progress_is_separate_from_workflow_progress(
+    operating_video_store: SimpleNamespace,
+) -> None:
+    store = operating_video_store.store
+    _approve_video_shot(store, operating_video_store.shot)
+    _execution(
+        store,
+        "01JEXECUTION0000000000001",
+        operating_video_store.shot,
+        state="succeeded",
+        attempt=1,
+        at="2026-11-04T10:04:12Z",
+    )
+    first = _context(store, "video")
+    try:
+        view = resolve_progress(first, operating_video_store.model)
+    finally:
+        first.close()
+
+    assert view.complete == 1
+    assert view.runs is not None
+    assert view.runs["by_state"]["succeeded"] == 1
+
+    _execution(
+        store,
+        "01JEXECUTION0000000000002",
+        operating_video_store.shot,
+        state="failed",
+        attempt=2,
+        at="2026-11-04T10:10:00Z",
+    )
+    second = _context(store, "video")
+    try:
+        after = resolve_progress(second, operating_video_store.model)
+    finally:
+        second.close()
+
+    assert after.complete == 1
+    assert after.runs is not None
+    assert after.runs["by_state"]["failed"] == 1
+    assert after.runs["latest"][0]["state"] == "failed"
 
 
 def _mixed_document() -> dict[str, Any]:
