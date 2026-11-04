@@ -23,6 +23,7 @@ from context_rail.model.cache import cached_model
 from context_rail.model.actions import Action, parse_actions
 from context_rail.model.errors import ModelError
 from context_rail.model.fields import relative_path, reserved_fields
+from context_rail.model.operating import OperatingSpec, parse_operating
 from context_rail.model.primitives import (
     CATEGORIES,
     FINISHED_CATEGORIES,
@@ -38,6 +39,7 @@ __all__ = [
     "LAYOUT_KEYS",
     "PACK_KEYS",
     "PACK_VERSION",
+    "SUPPORTED_PACK_VERSIONS",
     "Pack",
     "Preset",
     "QualityRule",
@@ -64,6 +66,7 @@ PACK_KEYS = (
     "execution",
     "workflows",
     "actions",
+    "operating",
 )
 REQUIRED_PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
 PRESET_KEYS = (
@@ -81,7 +84,8 @@ WORKFLOW_KEYS = ("initial", "transitions", "execution", "quality")
 QUALITY_KEYS = ("gate", "checks")
 LAYOUT_FILE = "layout.yaml"
 LAYOUT_KEYS = ("placement", "presets")
-PACK_VERSION = 1
+PACK_VERSION = 2
+SUPPORTED_PACK_VERSIONS = (1, 2)
 DEFAULT_TEMPLATE = "templates/{primitive}.md"
 DEFAULT_MEASUREMENT_MIN_RUNS = 10
 _PACK_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
@@ -185,6 +189,7 @@ class Pack:
     execution: dict[str, dict[str, bool]]
     workflows: dict[str, Workflow]
     actions: dict[str, Action] = field(default_factory=dict)
+    operating: OperatingSpec | None = None
 
     def workflow(self, name: str) -> Workflow:
         """The workflow called ``name``, refusing an unknown one."""
@@ -303,10 +308,11 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
     version = data["version"]
     if isinstance(version, bool) or not isinstance(version, int):
         _refuse("pack version must be an integer")
-    if version != PACK_VERSION:
+    if version not in SUPPORTED_PACK_VERSIONS:
         raise ModelError(
             "SCHEMA_UNSUPPORTED",
-            f"pack version {version} is not supported; expected {PACK_VERSION}",
+            f"pack version {version} is not supported; "
+            f"expected {PACK_VERSION}",
         )
 
     unknown = sorted(set(data) - set(PACK_KEYS))
@@ -335,7 +341,7 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
     policy = _policy(data["policy"])
     actions = parse_actions(data.get("actions", {}), statuses, presets, workflows)
 
-    return Pack(
+    pack = Pack(
         name=name,
         version=version,
         statuses=statuses,
@@ -347,6 +353,11 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
         workflows=workflows,
         actions=actions,
     )
+    if "operating" not in data:
+        return pack
+    if version < 2:
+        _refuse("pack version 1 may not declare operating; declare version 2")
+    return replace(pack, operating=parse_operating(data["operating"], pack))
 
 
 def _statuses(raw: Any) -> dict[str, str]:

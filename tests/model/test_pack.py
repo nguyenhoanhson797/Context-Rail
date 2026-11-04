@@ -190,7 +190,7 @@ def test_local_pack_template_override_is_kept(tmp_path: Path) -> None:
         pytest.param((("name", "../small"),), id="name-escape"),
         pytest.param((("color", "red"),), id="extra-top-level-key"),
         pytest.param((("statuses", _DELETE),), id="missing-statuses"),
-        pytest.param((("version", 2),), id="unsupported-version"),
+        pytest.param((("version", 3),), id="unsupported-version"),
         pytest.param((("version", "1"),), id="non-integer-version"),
         pytest.param((("statuses.doing", "finished"),), id="unknown-category"),
         pytest.param((("statuses.doing", 1),), id="non-string-category"),
@@ -228,7 +228,7 @@ def test_invalid_local_pack_is_refused(
     _write_pack(tmp_path, _pack(*mutations))
     with pytest.raises(ModelError) as err:
         load_pack("basic", tmp_path)
-    if mutations == (("version", 2),):
+    if mutations == (("version", 3),):
         assert err.value.code in ("SCHEMA_UNSUPPORTED", "VALIDATION_FAILED")
     else:
         assert err.value.code == "VALIDATION_FAILED"

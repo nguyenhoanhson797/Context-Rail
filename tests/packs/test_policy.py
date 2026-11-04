@@ -69,9 +69,9 @@ def test_the_shipped_retry_policy_keeps_the_implementer_budget(tmp_path: Path) -
     assert _effective_budget({}, {"attempts": 2}, pack.policy["retries"]).attempts == 2
 
 
-def test_version_two_is_schema_unsupported(tmp_path: Path) -> None:
+def test_version_three_is_schema_unsupported(tmp_path: Path) -> None:
     store = init_store(tmp_path)
-    write_pack(store, "custom", dict(_BASE, version=2))
+    write_pack(store, "custom", dict(_BASE, version=3))
     with pytest.raises(ModelError) as caught:
         load_pack("custom", store)
     assert caught.value.code == "SCHEMA_UNSUPPORTED"
