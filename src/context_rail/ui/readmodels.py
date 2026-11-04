@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from context_rail.context.recipes import item_rows, item_titles
-from context_rail.kernel import structure
 from context_rail.store import query
 
 __all__ = ["read"]
@@ -38,23 +36,42 @@ def read(context: Any, view: str) -> dict[str, Any]:
 
 
 def _next(context: Any) -> dict[str, Any]:
-    index = context.index
-    items = item_rows(index, context.pack)
-    runnable = structure.executable(items)
-    titles = item_titles(index)
-    by_slug = {item.slug: item for item in items}
+    from context_rail.context import operating
+
+    model = getattr(context, "model", None)
+    if model is None:
+        from context_rail.model.compiler import compile_project
+
+        model = compile_project(context.pack, context.pack.operating)
+    try:
+        view = operating.resolve_queue(context, model, context.actor)
+    except operating.OperatingError as error:
+        return {
+            "status": "error",
+            "error": error.message,
+            "code": error.code,
+            "candidates": error.details.get("candidates", []),
+        }
     queue = [
         {
-            "id": slug,
-            "title": titles.get(slug, slug),
-            "workflow": by_slug[slug].workflow,
-            "status": by_slug[slug].status,
-            "category": by_slug[slug].category,
-            "why": f"{by_slug[slug].workflow} · {by_slug[slug].status}",
+            "id": item.slug,
+            "title": item.title,
+            "workflow": item.workflow,
+            "status": item.status,
+            "category": item.status,
+            "focus": item.focus,
+            "actions": list(item.actions),
+            "why": item.why,
         }
-        for slug in runnable
+        for item in view.items
     ]
-    return {"status": "ok", "queue": queue, "count": len(queue)}
+    return {
+        "status": "ok",
+        "queue": queue,
+        "count": len(queue),
+        "focus": view.focus.as_dict(),
+        "scope": view.scope,
+    }
 
 
 def _scope_items(context: Any) -> list[dict[str, Any]]:

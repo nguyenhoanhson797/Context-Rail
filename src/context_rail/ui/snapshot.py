@@ -162,6 +162,11 @@ def build(context: Any) -> dict[str, Any]:
     """One pack-aware snapshot document for the React shell."""
     index = context.index
     pack = context.pack
+    model = getattr(context, "model", None)
+    if model is None:
+        from context_rail.model.compiler import compile_project
+
+        model = compile_project(pack, pack.operating)
     fields = _fields(index)
     relations = _relations(index)
     rows = _doc_rows(index)
@@ -282,6 +287,12 @@ def build(context: Any) -> dict[str, Any]:
         "schema": 4,
         "pack": pack.name,
         "project": _project(context, docs, counts),
+        "operating": _operating(context, model),
+        "digests": {
+            "semantic": model.semantic_digest,
+            "presentation": model.presentation_digest,
+            "full": model.full_digest,
+        },
         "statuses": list(pack.statuses),
         "status_categories": dict(pack.statuses),
         "workflows": _workflows(pack),
@@ -297,6 +308,63 @@ def build(context: Any) -> dict[str, Any]:
         "cursor": cursor,
         "claims": [],
         "counts": counts,
+    }
+
+
+_QUEUE_CAP = 200
+
+
+def _operating(context: Any, model: Any) -> dict[str, Any]:
+    """The compiled model's working structure, resolved once for this request."""
+    from context_rail.context import operating
+
+    unit = operating.resolve_unit(context, model)
+    try:
+        focus = operating.resolve_focus(context, model).as_dict()
+    except operating.OperatingError as error:
+        focus = {
+            "state": "ambiguous" if error.code == "AMBIGUOUS_FOCUS" else "invalid",
+            "focus": None,
+            "candidates": error.details.get("candidates", []),
+            "resolved_by": "refused",
+            "error": error.code,
+        }
+    try:
+        view = operating.resolve_queue(context, model, context.actor)
+        queue = {
+            "items": [item.as_dict() for item in view.items[:_QUEUE_CAP]],
+            "omitted": max(len(view.items) - _QUEUE_CAP, 0),
+            "scope": view.scope,
+        }
+    except operating.OperatingError as error:
+        queue = {"items": [], "omitted": 0, "scope": "project", "error": error.code}
+    progress = operating.resolve_progress(context, model).as_dict()
+    presentation = model.presentation
+    return {
+        "unit": None if unit is None else unit.as_dict(),
+        "hierarchy": [
+            {
+                "preset": level.preset,
+                "order": level.order,
+                "required": level.required,
+                "label": operating.label(model, level.preset, plural=True),
+            }
+            for level in model.operating.hierarchy
+        ],
+        "focus": focus,
+        "queue": queue,
+        "progress": progress,
+        "labels": {
+            name: {"one": value.one, "many": value.many}
+            for name, value in presentation.labels.items()
+        },
+        "screens": [
+            {"id": screen.id, "kind": screen.kind, "title": screen.title}
+            for screen in presentation.screens
+        ],
+        "fields": {
+            role: list(values) for role, values in presentation.fields.items()
+        },
     }
 
 

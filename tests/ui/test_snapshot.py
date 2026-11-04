@@ -86,6 +86,14 @@ def test_a_priority_item_is_scope_and_not_a_roadmap_container(tmp_path: Path) ->
 
 def test_the_cursor_and_counts_follow_categories(tmp_path: Path) -> None:
     store = init_store(tmp_path, "scrum")
+    _add(store, "sprint", "Sprint 1")
+    shown = invoke("show", {"slug": "sprint-1"}, store=store)
+    invoke(
+        "move",
+        {"slug": "sprint-1", "status": "doing", "expect": shown["value"]["doc"]["etag"]},
+        store=store,
+        actor="cto",
+    )
     _add(store, "task", "Started")
     shown = invoke("show", {"slug": "started"}, store=store)
     invoke(
