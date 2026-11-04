@@ -157,9 +157,7 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
                 {
                     "path": "surface.yaml"
                     if "surface.yaml" in error.message
-                    else "layout.yaml"
-                    if "layout.yaml" in error.message
-                    else "pack.yaml",
+                    else "layout.yaml",
                     "message": error.message,
                     "fix": _fix_for_path(error.message),
                 }
