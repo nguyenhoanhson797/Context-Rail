@@ -74,6 +74,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("no_git_drivers", "bool", help="skip installing git merge drivers"),
             Param("dry_run", "bool", help="print the stage plan without writing"),
             Param("harness", "str", repeat=True, help="agents, claude, cursor or gemini"),
+            Param("solo", "bool", help="bind one human as the project owner; the approval gates are skipped"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.onboarding:init",

@@ -183,7 +183,8 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     policy_issues, policy = _policy(context)
     issues.extend(policy_issues)
     if policy is not None:
-        issues.extend(_approval_issues(context))
+        if getattr(policy, "mode", "full") != "solo":
+            issues.extend(_approval_issues(context))
         issues.extend(_constitution_issues(context))
         issues.extend(_protected_moved_issues(context, policy))
         issues.extend(_gate_issues(context, policy))

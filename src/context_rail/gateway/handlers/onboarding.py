@@ -169,6 +169,7 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
         key=args["key"],
         actor=actor,
         draft=draft,
+        solo=bool(args.get("solo")),
     )
 
 
@@ -595,9 +596,10 @@ def _materialise(
     actor: str,
     draft: bool,
     include_workspace: bool = True,
+    solo: bool = False,
 ) -> dict[str, Any]:
     manifest, pack, existing, manifest_data = _store_shape(store, pack_name)
-    prepared = _prepare(answers, project_root)
+    prepared = _prepare(answers, project_root, solo=solo)
     parsed = parse_answers(prepared)
     if parsed["pack"] != pack.name:
         raise WriteRefused(
@@ -705,7 +707,7 @@ def _store_shape(
     return manifest, pack, False, data
 
 
-def _prepare(answers: dict[str, Any], project_root: Path) -> dict[str, Any]:
+def _prepare(answers: dict[str, Any], project_root: Path, *, solo: bool = False) -> dict[str, Any]:
     """Fill the two charter fields the engine derives, never guessing an answer."""
     if not isinstance(answers, dict):
         return answers
@@ -723,6 +725,8 @@ def _prepare(answers: dict[str, Any], project_root: Path) -> dict[str, Any]:
                 {"key": "charter.default_branch"},
             )
         charter["default_branch"] = branch
+    if solo:
+        charter["mode"] = "solo"
     titles = _titles(prepared)
     if titles is not None:
         charter.setdefault("project", _project(_picture_slugs(*titles)))
@@ -836,6 +840,7 @@ def _charter_frontmatter(
         "remote": charter.remote,
         "allow_push": charter.allow_push,
         "reviewer_different_model": charter.reviewer_different_model,
+        "mode": charter.mode,
     }
     return prepare_document_fields(pack.presets["charter"], front)
 

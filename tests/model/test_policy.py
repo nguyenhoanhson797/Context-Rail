@@ -588,3 +588,15 @@ def test_a_windows_alternate_data_stream_is_refused() -> None:
         parse_charter(
             charter_fields(protected_files=["items/task/a.md:stream"])
         )
+
+
+def test_solo_charter_mode_is_accepted_and_full_is_the_default() -> None:
+    solo = parse_charter(charter_fields(mode="solo"))
+    assert solo.mode == "solo"
+    full = parse_charter(charter_fields())
+    assert full.mode == "full"
+
+
+def test_a_bogus_charter_mode_is_refused() -> None:
+    with pytest.raises(ModelError):
+        parse_charter(charter_fields(mode="shared"))

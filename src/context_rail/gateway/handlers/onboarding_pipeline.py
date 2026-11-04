@@ -176,6 +176,11 @@ def approval_stage(
     from context_rail.gateway.handlers.onboarding import _is_tty, approve
     from context_rail.store.write import WriteRefused
 
+    policy = getattr(context, "policy", None)
+    if getattr(policy, "mode", None) == "solo":
+        # The owner is the approval; the ceremony is skipped.
+        return {"state": "skipped", "reason": "solo"}
+
     try:
         state = context.approval["state"]
     except (ModelError, WriteRefused) as exc:

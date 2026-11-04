@@ -441,23 +441,16 @@ def _authorize(
                 {"reason": "approval_missing", "tool": tool.name},
             )
         return None
-    # Solo mode: one human is both human and CTO. The store is local-only,
-    # so ``cto-alone`` is allowed; ``human-only`` still needs a named human.
-    # Execution gates (checks, review) are unchanged.
+    # Solo mode: one human is both human and CTO, and the act of owning
+    # the project (this invocation) is the approval. The charter ceremony
+    # and the lockout on the protected picture are skipped; the workflow
+    # quality gates (checks, review, merge) still apply.
     if getattr(policy, "mode", "full") == "solo":
         if tool.name in EXECUTION_TOOLS and actor not in (_HUMAN, _CTO):
             return fail(
                 "PERMISSION_DENIED",
                 "solo mode allows the human or CTO to execute",
                 {"tool": tool.name, "actor": actor},
-            )
-        # Solo still blocks approval_mismatch on the charter meaning itself.
-        locked = _lockout(tool, params, context)
-        if locked is not None:
-            return fail(
-                "INVALID_STATE",
-                "the charter is not approved; nothing executes yet",
-                {"reason": locked, "tool": tool.name},
             )
         return None
     locked = _lockout(tool, params, context)
