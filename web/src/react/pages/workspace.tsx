@@ -87,7 +87,7 @@ import { Badge, Button, Empty, ErrorState, Loading, Markdown, PageHeading, Panel
 import { useModalFocus, useOverlayEscape } from '../overlays';
 import { AutomationSettings } from './settings';
 import { EVIDENCE, evidenceTitle, evidenceWord } from './evidence';
-import { cardFieldsOf, focusName, hierarchyLabels, labelOf, priorityValues, screenTitle, unitLabel, unitOf } from './operating';
+import { cardFieldsOf, focusName, hierarchyLabels, hierarchyLevels, labelOf, priorityValues, screenTitle, screenTitleForRoute, unitLabel, unitOf } from './operating';
 
 type Tone = 'neutral' | 'good' | 'warning' | 'danger' | 'accent';
 
@@ -958,7 +958,12 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
   const tasks = snapshot.tasks;
   const milestones = rows(snapshot.milestones);
   const hierarchy = hierarchyLabels(snapshot);
-  const containerWord = (hierarchy[0] || 'containers').toLowerCase();
+  const levelPreset = (() => {
+    const level = hierarchyLevels(snapshot)[0];
+    return level ? text(level.preset) : '';
+  })();
+  const singular = levelPreset ? labelOf(snapshot, levelPreset).toLowerCase() : (hierarchy[0] || 'container').toLowerCase();
+  const pluralWord = levelPreset ? labelOf(snapshot, levelPreset, true).toLowerCase() : `${singular}s`;
   /* The outcome a phase's work serves: the parent context of the work, not a
      second copy of the outcome's status. */
   const outcomes = useOutcomes(project, read, busy);
@@ -973,8 +978,8 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
     <div>
       <div className="ph">
         <div>
-          <h1>Plan</h1>
-          <p>{`${plural(phases.length, containerWord)}, in order.`}</p>
+          <h1>{screenTitleForRoute(snapshot, 'roadmap', 'Plan')}</h1>
+          <p>{`${plural(phases.length, singular, pluralWord)}, in order.`}</p>
           {/* Containers are pack work that holds other work; completion is progress, not proof. */}
           <p className="faint">
             Items completed is work, not proof. Gates are shown on each item's workflow card.
@@ -1029,7 +1034,7 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
           })}
         </div>
       ) : (
-        <LegacyEmptyBlock icon={<RouteGlyph size={20} aria-hidden="true" />} title={`No ${containerWord} yet`} text="Add one with rail change add <preset> &quot;...&quot;." />
+        <LegacyEmptyBlock icon={<RouteGlyph size={20} aria-hidden="true" />} title={`No ${pluralWord} yet`} text="Add one with rail change add <preset> &quot;...&quot;." />
       )}
       {milestones.length ? (
         <section className="panel" style={{ marginTop: 16 }}>

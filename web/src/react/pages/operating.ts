@@ -70,9 +70,22 @@ export function routeForScreen(screen: ScreenDef | null, legacy: string): string
 }
 
 export function screenFor(snapshot: Snapshot | Data, route: string): ScreenDef | null {
-  return screensOf(snapshot).find(
+  const found = screensOf(snapshot).find(
     (entry) => text(entry.id) === route || KIND_ROUTE[text(entry.kind)] === route,
-  ) as Data | null as unknown as ScreenDef | null;
+  );
+  return found ? screenDef(snapshot, text(found.id)) : null;
+}
+
+/* One title for one route, everywhere: nav, breadcrumb, document.title and
+   "Go to" in the palette. A pack that renames its Plan screen governs every
+   surface. */
+export function screenTitleForRoute(
+  snapshot: Snapshot | Data | undefined,
+  route: string,
+  fallback: string,
+): string {
+  const screen = snapshot && screenFor(snapshot, route);
+  return screen ? screen.title : fallback;
 }
 
 export const titleCase = (id: string): string =>
@@ -95,15 +108,19 @@ export function hierarchyLabels(snapshot: Snapshot | Data): string[] {
 }
 
 export function screenTitle(snapshot: Snapshot | Data | undefined, id: string, fallback: string): string {
-  const screen = rows(operatingOf(snapshot ?? {}).screens).find((entry) => text(entry.id) === id);
-  if (screen) return text(screen.title, fallback);
-  /* Legacy id -> kind fallback: `roadmap` is the plan screen, `decisions`
-     is the records screen. New packs address screens by their own id. */
-  const legacyKind: Record<string, string> = { roadmap: 'plan', decisions: 'records', now: 'queue' };
-  const kind = legacyKind[id];
-  if (kind) {
-    const byKind = rows(operatingOf(snapshot ?? {}).screens).find((entry) => text(entry.kind) === kind);
-    if (byKind) return text(byKind.title, fallback);
+  const find = (predicate: (entry: Data) => boolean) =>
+    rows(operatingOf(snapshot ?? {}).screens).find(predicate);
+  const byId = find((entry) => text(entry.id) === id);
+  if (byId) return text(byId.title, fallback);
+  /* Custom screen ids (e.g. {id: sprints, kind: timeline}) match by kind. */
+  const byKind = find((entry) => text(entry.kind) === id);
+  if (byKind) return text(byKind.title, fallback);
+  /* Legacy route ids: `roadmap` is the plan screen (plan or timeline kind),
+     `decisions` the records screen. */
+  const legacyKind: Record<string, string[]> = { roadmap: ['plan', 'timeline'], decisions: ['records'], now: ['queue'] };
+  for (const kind of legacyKind[id] ?? []) {
+    const legacy = find((entry) => text(entry.kind) === kind);
+    if (legacy) return text(legacy.title, fallback);
   }
   return fallback;
 }

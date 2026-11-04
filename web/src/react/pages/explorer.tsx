@@ -7,7 +7,7 @@
 import { useMemo, type CSSProperties } from 'react';
 import { object, text, type Data, type PageProps } from '../contracts';
 import { Badge, Empty, PageHeading, Panel } from '../ui';
-import { hierarchyLabels, labelOf, screenTitle, unitLabel } from './operating';
+import { hierarchyLevels, labelOf, screenTitle, unitLabel } from './operating';
 
 const idOf = (doc: Data): string => text(doc.id);
 const titleOf = (doc: Data): string => text(doc.title, text(doc.id));
@@ -23,9 +23,12 @@ function phaseOf(task: Data): string {
 
 export function ExplorerPage({ snapshot, openDoc }: PageProps) {
   const title = screenTitle(snapshot, 'explorer', 'Hierarchy');
-  const levels = hierarchyLabels(snapshot);
-  const containerWord = (levels[0] ?? 'containers').toLowerCase();
+  const levels = hierarchyLevels(snapshot);
+  const levelPreset = levels[0] ? text(levels[0].preset) : '';
+  const singular = levelPreset ? labelOf(snapshot, levelPreset).toLowerCase() : 'container';
+  const pluralWord = levelPreset ? labelOf(snapshot, levelPreset, true).toLowerCase() : 'containers';
   const unit = unitLabel(snapshot);
+  const unitMany = unitLabel(snapshot, true).toLowerCase();
 
   const grouped = useMemo(() => {
     const containers = snapshot.phases;
@@ -52,7 +55,7 @@ export function ExplorerPage({ snapshot, openDoc }: PageProps) {
         title={title}
         description={
           levels.length
-            ? `${levels.map((level) => titleOfPreset(snapshot, level)).join(' → ')} → ${unit}. A ${unit.toLowerCase()} with no ${containerWord} link sits outside the chain and says so.`
+            ? `${levels.map((level) => labelOf(snapshot, text(level.preset), true)).join(' → ')} → ${unit}. A ${unit.toLowerCase()} with no ${singular} link sits outside the chain and says so.`
             : `No hierarchy declared. ${unit} items are listed flat.`
         }
       />
@@ -70,7 +73,7 @@ export function ExplorerPage({ snapshot, openDoc }: PageProps) {
                     <i style={{ '--p': share / 100 } as CSSProperties} />
                   </span>
                   <span className="faint" style={{ fontSize: 12 }}>
-                    {done}/{kids.length} {unit.toLowerCase()}s done
+                    {done}/{kids.length} {unitMany} done
                   </span>
                   <Badge tone={text(container.state) === 'done' ? 'good' : text(container.state) === 'active' ? 'accent' : 'neutral'}>
                     {text(container.state, 'planned')}
@@ -94,22 +97,22 @@ export function ExplorerPage({ snapshot, openDoc }: PageProps) {
                     </div>
                   ))
                 ) : (
-                  <div className="faint">No {unit.toLowerCase()} names this {containerWord}.</div>
+                  <div className="faint">No {unitMany} name this {singular}.</div>
                 )}
               </Panel>
             );
           })}
         </div>
       ) : (
-        <Empty title={`No ${containerWord} yet`}>
-          {`Add one with rail change add <${containerWord.slice(0, -1) || 'container'}> "...", then a ${unit.toLowerCase()} with --part-of.`}
+        <Empty title={`No ${pluralWord} yet`}>
+          {`Add one with rail change add <${singular}> "...", then a ${unit.toLowerCase()} with --part-of.`}
         </Empty>
       )}
 
       {grouped.orphans.length ? (
         <Panel title={`Outside the chain · ${grouped.orphans.length}`}>
           <p className="faint" style={{ fontSize: 12, marginBottom: 8 }}>
-            These {unit.toLowerCase()}s do not name a {containerWord}. They are shown here, never guessed into one.
+            These {unitMany} do not name a {singular}. They are shown here, never guessed into one.
           </p>
           {grouped.orphans.map((orphan) => (
             <div
@@ -133,12 +136,10 @@ export function ExplorerPage({ snapshot, openDoc }: PageProps) {
       ) : null}
 
       {grouped.containers.length && totalChildren === 0 && grouped.orphans.length === 0 ? (
-        <div className="faint" style={{ marginTop: 8 }}>No {unit.toLowerCase()}s yet.</div>
+        <div className="faint" style={{ marginTop: 8 }}>No {unitMany} yet.</div>
       ) : null}
     </div>
   );
 }
 
-function titleOfPreset(snapshot: PageProps['snapshot'], preset: string): string {
-  return labelOf(snapshot, preset, true);
-}
+

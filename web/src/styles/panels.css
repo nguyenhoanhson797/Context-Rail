@@ -81,6 +81,10 @@
   flex-direction: column;
   gap: 16px;
 }
+/* raw-flow pages map Panels without a flex wrapper: adjacent panels keep the stack rhythm */
+.page :not(.stack) > .panel + .panel {
+  margin-top: 16px;
+}
 /* rows inside a bordered panel draw separators between themselves only, never against the panel edge */
 .panel > .mini:first-child {
   border-top: 0;

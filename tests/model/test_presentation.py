@@ -174,6 +174,77 @@ def test_the_presentation_hash_is_canonical(tmp_path: Path) -> None:
     )
 
 
+def test_a_screen_may_pin_presets_and_a_grouping_field(tmp_path: Path) -> None:
+    pack = _pack(tmp_path)
+    _write_surface(
+        tmp_path,
+        {
+            "version": 1,
+            "screens": [
+                {
+                    "id": "timeline",
+                    "kind": "timeline",
+                    "title": "Timeline",
+                    "preset": "scene",
+                    "group_by": "sequence",
+                },
+                {
+                    "id": "explorer",
+                    "kind": "explorer",
+                    "title": "Explorer",
+                    "presets": ["shot", "scene"],
+                },
+            ],
+        },
+    )
+
+    presentation = load_presentation("studio", tmp_path, pack)
+
+    assert presentation.screens[0].preset == "scene"
+    assert presentation.screens[0].group_by == "sequence"
+    assert presentation.screens[1].presets == ("shot", "scene")
+
+
+@pytest.mark.parametrize(
+    ("screen", "message"),
+    [
+        (
+            {"id": "s", "kind": "timeline", "title": "S", "preset": "ghost"},
+            "ghost",
+        ),
+        (
+            {"id": "s", "kind": "timeline", "title": "S", "presets": ["ghost"]},
+            "ghost",
+        ),
+        (
+            {
+                "id": "s",
+                "kind": "timeline",
+                "title": "S",
+                "preset": "scene",
+                "presets": ["shot"],
+            },
+            "both preset and presets",
+        ),
+        (
+            {"id": "s", "kind": "timeline", "title": "S", "group_by": "ghost"},
+            "ghost",
+        ),
+    ],
+)
+def test_a_screen_pin_must_reference_the_pack(
+    tmp_path: Path, screen: dict, message: str
+) -> None:
+    pack = _pack(tmp_path)
+    _write_surface(tmp_path, {"version": 1, "screens": [screen]})
+
+    with pytest.raises(ModelError) as caught:
+        load_presentation("studio", tmp_path, pack)
+
+    assert caught.value.code == "VALIDATION_FAILED"
+    assert message in caught.value.message
+
+
 def test_a_partial_surface_keeps_neutral_defaults_for_the_rest(
     tmp_path: Path,
 ) -> None:

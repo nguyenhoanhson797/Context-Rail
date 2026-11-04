@@ -458,3 +458,68 @@ h3.sub {
   display: block;
   max-width: 100%;
 }
+
+/* The pulse: the project's story in one line under the topbar. One control,
+   one destination (Summary); quiet, single line, pack vocabulary. */
+.pulse {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px var(--gutter);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.pulse:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.pulse:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.pulse-goal {
+  max-width: 38ch;
+  color: var(--text);
+  font-weight: 600;
+}
+.pulse-sep {
+  color: var(--border-strong);
+}
+.pulse-progress {
+  white-space: nowrap;
+}
+.pulse-spacer {
+  flex: 1 1 auto;
+}
+.pulse-stat {
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.pulse-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.pulse-cta {
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 2px 10px;
+}
+.pulse:hover .pulse-cta {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+@media (max-width: 900px) {
+  .pulse-progress,
+  .pulse-sep.hide-m,
+  .pulse-stat.hide-m {
+    display: none;
+  }
+}

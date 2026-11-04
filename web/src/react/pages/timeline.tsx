@@ -6,16 +6,18 @@
 import { useMemo } from 'react';
 import { object, text, type Data, type PageProps } from '../contracts';
 import { Badge, Empty, PageHeading, Panel } from '../ui';
-import { focusName, hierarchyLabels, screenTitle, unitLabel } from './operating';
+import { focusName, hierarchyLevels, labelOf, screenTitle, unitLabel } from './operating';
 
 const idOf = (doc: Data): string => text(doc.id);
 const titleOf = (doc: Data): string => text(doc.title, text(doc.id));
 
 export function TimelinePage({ snapshot, openDoc }: PageProps) {
   const title = screenTitle(snapshot, 'timeline', screenTitle(snapshot, 'plan', 'Plan'));
-  const levels = hierarchyLabels(snapshot);
-  const containerWord = (levels[0] ?? 'containers').toLowerCase();
-  const unit = unitLabel(snapshot);
+  const levels = hierarchyLevels(snapshot);
+  const levelPreset = levels[0] ? text(levels[0].preset) : '';
+  const singular = levelPreset ? labelOf(snapshot, levelPreset).toLowerCase() : 'container';
+  const pluralWord = levelPreset ? labelOf(snapshot, levelPreset, true).toLowerCase() : 'containers';
+  const unitMany = unitLabel(snapshot, true).toLowerCase();
   const focus = focusName(snapshot);
 
   const ordered = useMemo(() => {
@@ -37,7 +39,7 @@ export function TimelinePage({ snapshot, openDoc }: PageProps) {
     <div>
       <PageHeading
         title={title}
-        description={`${containerWord}s in sequence. ${focus ? `Focus: ${focus}.` : ''} ${totalKids ? `${totalDone}/${totalKids} ${unit.toLowerCase()}s done.` : ''}`}
+        description={`${pluralWord} in sequence. ${focus ? `Focus: ${focus}.` : ''} ${totalKids ? `${totalDone}/${totalKids} ${unitMany} done.` : ''}`}
       />
 
       {ordered.length ? (
@@ -62,10 +64,10 @@ export function TimelinePage({ snapshot, openDoc }: PageProps) {
                       onClick={() => openDoc(idOf(phase))}
                       style={{ fontSize: 12, marginBottom: 8 }}
                     >
-                      Open the {containerWord.slice(0, -1) || 'container'}
+                      Open the {singular}
                     </button>
                     <div className="faint" style={{ fontSize: 12, marginBottom: 4 }}>
-                      {done}/{kids.length} {unit.toLowerCase()}s done
+                      {done}/{kids.length} {unitMany} done
                     </div>
                     {kids.length ? (
                       kids.slice(0, 6).map((kid) => (
@@ -84,7 +86,7 @@ export function TimelinePage({ snapshot, openDoc }: PageProps) {
                         </div>
                       ))
                     ) : (
-                      <div className="faint">No {unit.toLowerCase()}s yet.</div>
+                      <div className="faint">No {unitMany} yet.</div>
                     )}
                     {kids.length > 6 ? (
                       <div className="faint" style={{ fontSize: 12 }}>+{kids.length - 6} more</div>
@@ -96,8 +98,8 @@ export function TimelinePage({ snapshot, openDoc }: PageProps) {
           </div>
         </div>
       ) : (
-        <Empty title={`No ${containerWord} yet`}>
-          {`Add one with rail change add <${containerWord.slice(0, -1) || 'container'}> "..." `}
+        <Empty title={`No ${pluralWord} yet`}>
+          {`Add one with rail change add <${singular}> "..." `}
         </Empty>
       )}
     </div>

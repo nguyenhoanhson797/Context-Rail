@@ -14,7 +14,7 @@ import { WorkflowPage } from './pages/workflow';
 import { ExecutionPage } from './pages/execution';
 import { ExplorerPage } from './pages/explorer';
 import { TimelinePage } from './pages/timeline';
-import { allWorkItems, labelOf, screensOf, screenHasData, screenTitle } from './pages/operating';
+import { allWorkItems, focusName, labelOf, progressOf, screenTitleForRoute, screensOf, screenHasData, unitLabel } from './pages/operating';
 const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = { summary: SummaryPage, now: NowPage, board: BoardPage, roadmap: RoadmapPage, scope: ScopePage, catalog: CatalogPage, decisions: DecisionsPage, doctor: DoctorPage, pack: PackPage, settings: SettingsPage, queue: QueuePage, timeline: TimelinePage, workflow: WorkflowPage, execution: ExecutionPage, explorer: ExplorerPage };
 const labels: Record<Route, string> = { summary: 'Summary', overview: 'Overview', atlas: 'Atlas', outcomes: 'Outcomes', traceability: 'Traceability', impact: 'Impact', activity: 'Catch up', now: 'Now', board: 'Board', roadmap: 'Plan', scope: 'Scope', catalog: 'Catalog', decisions: 'Records', rules: 'Rules', lens: 'Lens', graph: 'Graph', doctor: 'Doctor', pack: 'Pack', portfolio: 'Projects', settings: 'Settings', queue: 'Queue', timeline: 'Timeline', workflow: 'Workflow', execution: 'Execution', explorer: 'Hierarchy' };
 /* Pack-driven nav: screens the pack declares, in the pack's order. A route
@@ -227,7 +227,6 @@ export default function App() {
     :healthState==='ok'?`${text(object(healthDoctor.by_severity).error,'0')} errors, ${text(object(healthDoctor.by_severity).warning,'0')} warnings`
     :healthState==='error'?`Health unavailable: ${health.isError?health.error.message:text(health.data?.error,'the health read failed')}`
     :`Health unknown${healthReason?' — '+healthReason:''}`;
-  const screenFor: Partial<Record<Route,string>> = {roadmap:'plan', decisions:'records'};
   /* The nav is the pack's screens, in the pack's order. Legacy shell routes
      (now/scope/doctor/settings) stay in the shell but out of the pack nav. */
   const packNav: Route[] = (() => {
@@ -248,7 +247,7 @@ export default function App() {
     if (declared) return screenHasData(snapshot.data, r);
     return false;
   };
-  const navItem=(r:Route)=>{const Icon=routeIcons[r]??FileText;return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{screenTitle(snapshot.data,screenFor[r]??r,labels[r])}</span></button>;};
+  const navItem=(r:Route)=>{const Icon=routeIcons[r]??FileText;const title=screenTitleForRoute(snapshot.data,r,labels[r]);return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{title}</span></button>;};
   /* ---------- command palette items (legacy groups: Navigate, Run a tool, Docs) ---------- */
   /* A group that shows only its first matches says so and offers the rest: a
      truncated list must never hide work without a way to reach it. */
@@ -267,7 +266,7 @@ export default function App() {
   const paletteGroups: PaletteGroup[] = (() => {
     const list: PaletteGroup[] = [];
     const navRoutes = snapshot.data ? packNav : paletteRoutes;
-    const pages=[...navRoutes].filter(r=>match(labels[r],'go to '+r, r)).map((r):PaletteItem => { const Icon=routeIcons[r]??FileText; return { key:'page-'+r, name:'Go to '+(snapshot.data?screenTitle(snapshot.data, screenFor[r]??r, labels[r]):labels[r]), icon:<Icon size={15}/>, kbd:navKeys[r]?['G',navKeys[r] as string]:undefined, run:()=>navigate(r) }; });
+    const pages=[...navRoutes].filter(r=>match(labels[r],screenTitleForRoute(snapshot.data,r,''),'go to '+r, r)).map((r):PaletteItem => { const Icon=routeIcons[r]??FileText; return { key:'page-'+r, name:'Go to '+screenTitleForRoute(snapshot.data,r,labels[r]), icon:<Icon size={15}/>, kbd:navKeys[r]?['G',navKeys[r] as string]:undefined, run:()=>navigate(r) }; });
     const extras:PaletteItem[] = [
       { key:'theme', name:'Toggle dark mode', icon:<Sun size={15}/>, kbd:[MOD,'Shift','L'], run:toggleTheme },
       { key:'side', name:'Toggle sidebar', icon:<PanelLeft size={15}/>, kbd:['['], run:toggleSidebar },
@@ -307,19 +306,43 @@ export default function App() {
   const docType=text(docObject.type,docRow?'task':'');
   const claimRow=rows(snapshot.data?.claims).find(claim=>text(claim.task)===doc);
   const claimText=claimRow?text(claimRow.actor,text(claimRow.holder,'claimed')):'';
-  const routeErrors=Object.values(readErrors[project+'|'+route]??{}).filter(Boolean);
+  const crumbTitle=(r:string)=>screenTitleForRoute(snapshot.data,r,Object.hasOwn(labels,r)?labels[r as Route]:'Not found');
+  /* The pulse keeps the project's story in sight on every screen: where it
+     stands, what is moving. Summary and Settings lead with their own reading
+     of it, so the strip is quiet there. It reads the same operating model the
+     pages read, in the pack's own vocabulary — never a second copy. */
+  const pulse=(() => {
+    const data=snapshot.data;
+    if (!data || route==='summary' || route==='settings') return null;
+    const dataTasks=rows(data.tasks);
+    const active=dataTasks.filter((t)=>text(t.category)==='active').length;
+    const blocked=dataTasks.filter((t)=>text(t.category)==='blocked').length;
+    const open=dataTasks.filter((t)=>!['done','dropped'].includes(text(t.category))).length;
+    const focus=focusName(data);
+    const progress=progressOf(data);
+    const unitMany=unitLabel(data,true);
+    const position=focus?`Focus ${focus}`:'Project-wide';
+    return {
+      goal:text(object(data.project).goal),
+      progress:`${position} · ${text(progress.complete,'0')}/${text(progress.total,'0')} ${unitMany} done`,
+      open,
+      active,
+      blocked,
+    };
+  })();
   /* The trail of the current address. A route outside the drill-down keeps the
      single crumb it always had: the page's own name. */
-  const crumbs=trail.length?trail:[{key:'page',label:Object.hasOwn(labels,route)?labels[route as Route]:'Not found',route:route as Route,params:{},current:true,hint:undefined}];
-  useEffect(()=>{ document.title=(Object.hasOwn(labels,route)?labels[route as Route]:'Page not found')+' · '+projectName+' · Context Rail'; },[route,projectName]);
+  const crumbs=trail.length?trail:[{key:'page',label:crumbTitle(route),route:route as Route,params:{},current:true,hint:undefined}];
+  useEffect(()=>{ document.title=crumbTitle(route)+' · '+projectName+' · Context Rail'; },[route,projectName,snapshot.data]);
+  const routeErrors=Object.values(readErrors[project+'|'+route]??{}).filter(Boolean);
   return <DocumentNavigation.Provider value={openDoc}><div className={`rail-app shell ${collapsed&&!mnav?'collapsed':''} ${mnav?'mnav':''}`}><a href="#main" className="skip rail-skip" onClick={e=>{e.preventDefault();main.current?.focus();}}>Skip to content</a>
     {mnav&&<button type="button" className="side-scrim" aria-label="Close navigation" onClick={()=>setMnav(false)}/>}
     <aside className="side rail-sidebar" data-open={mnav} data-collapsed={collapsed&&!mnav} inert={narrow&&!mnav?true:undefined}><div className="side-top"><div className="row" style={{gap:2}}><div className="ws grow rail-brand"><span className="ws-logo rail-brand-logo" style={{width:22,height:22}}>{projectName[0]||'C'}</span><span className="ws-name trunc">{projectName}</span></div>{!collapsed&&<button type="button" className="ibtn ibtn-sm hide-m" aria-label="Collapse sidebar" onClick={()=>setCollapsed(true)}><PanelLeft className="i" strokeWidth={1.8} size={15}/></button>}</div></div><nav className="side-scroll" aria-label="Main navigation">{collapsed&&!mnav&&<button type="button" className="sitem" aria-label="Expand sidebar" onClick={()=>setCollapsed(false)}><PanelLeft className="i" strokeWidth={1.8} size={16}/></button>}{rows(registry.data?.projects).some(p=>p.exists&&p.id!==registry.data?.current)&&<div className="side-projects" role="group" aria-label="Projects">{!(collapsed&&!mnav)&&<div className="side-label">Projects</div>}{[{id:text(registry.data?.current),label:projectName,isCurrent:true},...rows(registry.data?.projects).filter(p=>p.exists&&p.id!==registry.data?.current).map(p=>({id:text(p.id),label:text(p.name,text(p.id)),isCurrent:false}))].map(p=>{const on=p.isCurrent?!project||project===p.id:project===p.id;return <button type="button" key={p.isCurrent?'current':p.id} className={`sitem rail-project-link ${on?'on':''}`} aria-current={on?'true':undefined} disabled={busy} title={p.id&&p.id!==p.label?p.id:undefined} onClick={()=>switchProject(p.isCurrent?'':p.id)}><Folders className="i" strokeWidth={1.8} size={16}/><span className="trunc">{p.label}</span></button>;})}</div>}
       <section role="group" aria-label="Pack"><div className="side-label">Pack</div>{packNav.filter(visible).map(navItem)}</section>
       <section role="group" aria-label="Shell"><div className="side-label">Shell</div>{['now', 'scope'].filter((r) => visible(r as Route)).map((r) => navItem(r as Route))}</section>
       </nav><div className="side-bot">{navItem('settings')}</div></aside>
-    <div className="main rail-main-wrap"><header className="topbar rail-topbar"><button type="button" className="ibtn" id="mnav-btn" aria-label="Toggle navigation" aria-expanded={mnav} onClick={()=>setMnav(v=>!v)}><Menu className="i" strokeWidth={1.8} size={17}/></button><nav className="crumbs trunc" aria-label="Breadcrumb">{crumbs.map((crumb,index)=><Fragment key={crumb.key}>{index>0?<span className="sep" aria-hidden="true">/</span>:null}<button type="button" className={crumb.current?'cur':undefined} aria-current={crumb.current?'page':undefined} title={crumb.hint} onClick={crumb.current?undefined:()=>navigate(crumb.route,crumb.params)}>{crumb.label}</button></Fragment>)}</nav><span className="sp"/><span className="faint hide-m" style={{fontSize:12}}>{snapshot.data?'store v'+snapshot.data.schema:''}</span><span className="faint hide-m" data-health={contextFailure?'error':healthState} style={{fontSize:11}} title="the diagnostics read">{healthLabel}</span>{readTimes[project+'|'+route] && <span className="faint hide-m" style={{fontSize:11}} title="the time of the last read">{'as of '+new Date(readTimes[project+'|'+route]).toLocaleTimeString().replace(/\u202f/g,' ')}</span>}<button type="button" className="ibtn" disabled={busy||invalid} aria-label="Reload" onClick={()=>void refresh()}><RotateCcw className="i" strokeWidth={1.8} size={15}/></button><button type="button" className="topsearch" aria-label="Search and commands" onClick={()=>setPalette(true)}><Search className="i" strokeWidth={1.8} size={14}/><span className="lbltxt">Search or run a tool...</span><span className="kbd">{MOD}{isMac?'':' '}K</span></button></header>
-    {routeErrors.length>0&&<div className="offline-bar" role="alert"><TriangleAlert size={15}/><span><b>{(Object.hasOwn(labels,route)?labels[route as Route]:route)+" could not load."}</b> {routeErrors.join(" ")}{readTimes[project+"|"+route]&&(" Last good read "+new Date(readTimes[project+"|"+route]).toLocaleTimeString()+".")}</span><span className="sp"/><button type="button" className="btn btn-sm btn-secondary" onClick={()=>void refresh()}>Try again</button></div>}
+    <div className="main rail-main-wrap"><header className="topbar rail-topbar"><button type="button" className="ibtn" id="mnav-btn" aria-label="Toggle navigation" aria-expanded={mnav} onClick={()=>setMnav(v=>!v)}><Menu className="i" strokeWidth={1.8} size={17}/></button><nav className="crumbs trunc" aria-label="Breadcrumb">{crumbs.map((crumb,index)=><Fragment key={crumb.key}>{index>0?<span className="sep" aria-hidden="true">/</span>:null}<button type="button" className={crumb.current?'cur':undefined} aria-current={crumb.current?'page':undefined} title={crumb.hint} onClick={crumb.current?undefined:()=>navigate(crumb.route,crumb.params)}>{crumb.label}</button></Fragment>)}</nav><span className="sp"/><span className="faint hide-m" style={{fontSize:12}}>{snapshot.data?'store v'+snapshot.data.schema:''}</span><span className="faint hide-m" data-health={contextFailure?'error':healthState} style={{fontSize:11}} title="the diagnostics read">{healthLabel}</span>{readTimes[project+'|'+route] && <span className="faint hide-m" style={{fontSize:11}} title="the time of the last read">{'as of '+new Date(readTimes[project+'|'+route]).toLocaleTimeString().replace(/\u202f/g,' ')}</span>}<button type="button" className="ibtn" disabled={busy||invalid} aria-label="Reload" onClick={()=>void refresh()}><RotateCcw className="i" strokeWidth={1.8} size={15}/></button><button type="button" className="topsearch" aria-label="Search and commands" onClick={()=>setPalette(true)}><Search className="i" strokeWidth={1.8} size={14}/><span className="lbltxt">Search or run a tool...</span><span className="kbd">{MOD}{isMac?'':' '}K</span></button></header>{pulse&&<button type="button" className="pulse" onClick={()=>navigate('summary')} aria-label="Open the project summary">{pulse.goal?<span className="pulse-goal trunc">{pulse.goal}</span>:<span className="pulse-goal trunc">{text(object(snapshot.data?.project).name,'Project')}</span>}<span className="pulse-sep" aria-hidden="true">·</span><span className="pulse-progress">{pulse.progress}</span><span className="pulse-sep hide-m" aria-hidden="true">·</span><span className="pulse-stat hide-m">Open {pulse.open}</span><span className="pulse-stat pulse-active hide-m">In motion {pulse.active}</span><span className="pulse-stat hide-m">Blocked {pulse.blocked}</span><span className="pulse-spacer"/><span className="pulse-cta">Summary</span></button>}
+    {routeErrors.length>0&&<div className="offline-bar" role="alert"><TriangleAlert size={15}/><span><b>{crumbTitle(route)+" could not load."}</b> {routeErrors.join(" ")}{readTimes[project+"|"+route]&&(" Last good read "+new Date(readTimes[project+"|"+route]).toLocaleTimeString()+".")}</span><span className="sp"/><button type="button" className="btn btn-sm btn-secondary" onClick={()=>void refresh()}>Try again</button></div>}
     <main id="main" ref={main} tabIndex={-1} className="content">{notice&&<div role="alert" className="offline-bar rail-error">{notice}</div>}<div className={route==='settings'?'rail-settings-wrap rail-main':route==='board'?'page flush wide rail-main':route==='atlas'?'rail-main':'page understanding rail-main'}>{invalid?<ErrorState error="This project is invalid or not registered. No project data was requested."/>:registry.isError?<ErrorState error={registry.error.message} retry={()=>void registry.refetch()}/>:snapshot.isError?<ErrorState error={snapshot.error.message} retry={()=>void snapshot.refetch()}/>:!snapshot.data?<Loading/>:Page?<Page snapshot={snapshot.data} project={project} params={locationState.params} navigate={navigate} openDoc={openDoc} read={readPage} mutate={mutate} busy={busy} refresh={()=>refresh()} request={(path,init)=>client.request(path,init)} theme={theme} setTheme={setTheme}/>:<><PageHeading title="Page not found" description="This address does not name a screen in Context Rail." action={<Button onClick={()=>navigate('summary')}>Go to Summary</Button>}/></>}</div></main></div>
     {doc&&<DocDrawer id={doc} type={docType} claim={claimText} full={docFull} onToggleFull={()=>setDocFull(value=>!value)} onClose={closeDoc}><DocumentContent id={doc} data={docData} task={rows(snapshot.data?.tasks).some(taskRow=>text(taskRow.id)===doc)} context={understanding.data} contextLoading={understanding.isFetching} contextError={understanding.isError?understanding.error.message:''} status={text(docRow?.status)} statuses={docStates} busy={busy} loading={documentQuery.isPending} error={documentQuery.isError?documentQuery.error.message:''} navigate={navigate} openDoc={openDoc} onMoveStatus={moveDocStatus}/></DocDrawer>}
     {activeTool&&<ToolForm tool={activeTool} confirmTools={confirmTools} busy={busy} hidden={!!confirmation} onClose={()=>setActiveTool(null)} mutate={mutate} onConfirm={requestConfirm}/>}
