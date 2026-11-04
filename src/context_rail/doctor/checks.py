@@ -61,7 +61,9 @@ SEVERITIES: dict[str, str] = {
     "intent_pending": "error",
     "approval_missing": "error",
     "approval_mismatch": "error",
+    "approval_unsigned": "warning",
     "policy_invalid": "error",
+    "daemon_stale": "warning",
     "check_invalid": "error",
     "check_stale": "warning",
     "check_unknown": "warning",
@@ -177,6 +179,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_duplicate_issues(slugs))
     issues.extend(_relation_type_issues(rows, relations))
     issues.extend(_intent_issues(store))
+    issues.extend(_daemon_issues(store))
     policy_issues, policy = _policy(context)
     issues.extend(policy_issues)
     if policy is not None:
@@ -191,7 +194,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_report_issues(ix))
     issues.extend(_run_issues(ix))
     issues.extend(
-        _operating_issues(store, manifest, pack, rows, relations, children)
+        _operating_issues(store, manifest, pack, rows, relations, children, ix)
     )
     issues.extend(_profile_issues(context, rows))
     issues.extend(_adapter_issues(store, ix))
@@ -748,6 +751,27 @@ def _intent_issues(store: Path) -> list[dict[str, Any]]:
     ]
 
 
+def _daemon_issues(store: Path) -> list[dict[str, Any]]:
+    """A stale daemon descriptor: safe to clear, never a second write path."""
+    try:
+        from context_rail.gateway.daemon import daemon_alive, daemon_endpoint
+    except ImportError:
+        return []
+    endpoint = daemon_endpoint(store)
+    if endpoint is None or not endpoint.is_file():
+        return []
+    if daemon_alive(store):
+        return []
+    return [
+        _issue(
+            "daemon_stale",
+            str(endpoint),
+            "a daemon descriptor remains but its process is gone",
+            fix="rail ops doctor --fix",
+        )
+    ]
+
+
 def _approval_issues(context: Any) -> list[dict[str, Any]]:
     """One issue when the picture has no human approval, or differs from it."""
     from context_rail.store.approval import approval_state, charter_document
@@ -1131,6 +1155,7 @@ def _operating_issues(
     rows: list[_Row],
     relations: dict[str, list[tuple[str, str]]],
     children: dict[str, set[str]],
+    ix: Index,
 ) -> list[dict[str, Any]]:
     """Store-level facts about the compiled operating model.
 
@@ -1244,7 +1269,7 @@ def _operating_issues(
                         )
                     )
 
-    for level in operating.hierarchy:
+    for position, level in enumerate(operating.hierarchy):
         try:
             render_path(
                 manifest,
@@ -1262,6 +1287,24 @@ def _operating_issues(
                     "rail change repath, or fix rail.yaml",
                 )
             )
+            continue
+        if position == 0:
+            template = manifest.preset_placement.get(
+                level.preset
+            ) or manifest.placement.get("item", "")
+            if any(
+                token in template
+                for token in ("{part_of}", "{nearest:", "{root:", "{about}")
+            ):
+                issues.append(
+                    _issue(
+                        "hierarchy_placement",
+                        f"packs/{pack.name}/pack.yaml",
+                        f"the outermost hierarchy preset {level.preset!r} "
+                        "needs a parent in its placement",
+                        "give the outermost container a root placement",
+                    )
+                )
 
     progress = operating.progress
     if not progress.of:
@@ -1292,6 +1335,47 @@ def _operating_issues(
                             "fix operating.progress.complete",
                         )
                     )
+    issues.extend(_execution_issues(ix, operating, rows))
+    return issues
+
+
+def _execution_issues(
+    ix: Index, operating: Any, rows: list[_Row]
+) -> list[dict[str, Any]]:
+    """A completion whose declared execution never succeeded, or last failed."""
+    actions = operating.execution_actions
+    if not actions:
+        return []
+    from context_rail.store import query
+
+    issues: list[dict[str, Any]] = []
+    for row in rows:
+        if row.category != "done":
+            continue
+        latest = query.execution_latest(
+            ix, actions=actions, targets=(row.slug,)
+        )
+        by_action = {entry["action"]: entry for entry in latest}
+        for action in actions:
+            found = by_action.get(action)
+            if found is None:
+                issues.append(
+                    _issue(
+                        "execution_missing",
+                        row.path,
+                        f"{row.slug!r} is complete but {action!r} has no run",
+                        f"run {action!r}, or record why it is not needed",
+                    )
+                )
+            elif found["state"] == "failed":
+                issues.append(
+                    _issue(
+                        "execution_failed",
+                        row.path,
+                        f"the latest {action!r} run on {row.slug!r} failed",
+                        "inspect the run in rail show, then re-run it",
+                    )
+                )
     return issues
 
 
