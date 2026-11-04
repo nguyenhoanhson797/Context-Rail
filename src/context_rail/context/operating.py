@@ -197,6 +197,41 @@ def label(model: ProjectModel, preset: str, *, plural: bool = False) -> str:
     return declared.many if plural else declared.one
 
 
+def item_row(ctx: Context, slug: str) -> ItemRow | None:
+    """One indexed item in the resolver's own shape, or None."""
+    return _one(ctx, slug)
+
+
+def role_for(model: ProjectModel, preset: str) -> str:
+    """How a preset participates in the operating model."""
+    if preset == model.operating.unit:
+        return "unit"
+    if preset in {level.preset for level in model.operating.hierarchy}:
+        return "container"
+    if preset in model.operating.queue.presets:
+        return "queue"
+    if preset in model.operating.progress.of:
+        return "progress"
+    return "other"
+
+
+def focus_membership(
+    ctx: Context, model: ProjectModel, slug: str
+) -> dict[str, Any] | None:
+    """The focus container one item belongs to, including itself."""
+    try:
+        resolved = resolve_focus(ctx, model)
+    except OperatingError:
+        return None
+    if resolved.focus is None:
+        return None
+    if resolved.focus.slug == slug:
+        return resolved.focus.as_ref()
+    if resolved.focus.slug in _ancestors(slug, _parents(ctx)):
+        return resolved.focus.as_ref()
+    return None
+
+
 def resolve_unit(ctx: Context, model: ProjectModel) -> Unit | None:
     """The canonical work item, or None for a heterogeneous pack."""
     name = model.operating.unit
@@ -645,4 +680,10 @@ def _requires_met(ctx: Context, action: Any, slug: str) -> bool:
     return True
 
 
-__all__ += ["applicable_actions", "require_focus"]
+__all__ += [
+    "applicable_actions",
+    "focus_membership",
+    "item_row",
+    "require_focus",
+    "role_for",
+]
