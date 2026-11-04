@@ -35,11 +35,11 @@ def _context(store: Path, pack: str) -> Context:
 
 
 @pytest.mark.parametrize(
-    ("fixture", "pack", "unit", "container", "board"),
+    ("fixture", "pack", "unit", "container", "board", "actions"),
     [
-        ("operating_scrum_store", "scrum", "story", "sprint", "Sprint board"),
-        ("operating_waterfall_store", "waterfall", "deliverable", "phase", "Deliverables"),
-        ("operating_video_store", "video", "shot", "scene", "Shots"),
+        ("operating_scrum_store", "scrum", "story", "sprint", "Sprint board", []),
+        ("operating_waterfall_store", "waterfall", "deliverable", "phase", "Deliverables", []),
+        ("operating_video_store", "video", "shot", "scene", "Shots", ["render"]),
     ],
 )
 def test_the_snapshot_projects_each_operating_model(
@@ -49,6 +49,7 @@ def test_the_snapshot_projects_each_operating_model(
     unit: str,
     container: str,
     board: str,
+    actions: list[str],
 ) -> None:
     case: SimpleNamespace = request.getfixturevalue(fixture)
     context = _context(case.store, pack)
@@ -65,6 +66,7 @@ def test_the_snapshot_projects_each_operating_model(
     assert operating["queue"]["items"]
     assert operating["queue_policy"]["presets"]
     assert operating["progress"]["runs"] is None
+    assert operating["execution"]["actions"] == actions
     assert operating["labels"][unit]["one"]
     assert any(screen["title"] == board for screen in operating["screens"])
     assert value["digests"]["semantic"]

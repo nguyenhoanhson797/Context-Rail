@@ -365,6 +365,7 @@ def _operating(context: Any, model: Any) -> dict[str, Any]:
             "require": queue_policy.require,
             "focus": queue_policy.focus,
         },
+        "execution": {"actions": list(model.operating.execution_actions)},
         "progress": progress,
         "labels": {
             name: {"one": value.one, "many": value.many}
