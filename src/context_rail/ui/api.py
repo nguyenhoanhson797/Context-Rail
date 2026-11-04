@@ -48,6 +48,7 @@ _ENGINE_KEYS = frozenset(
         "etag",
         "digest",
         "problems",
+        "fields",
     }
 )
 

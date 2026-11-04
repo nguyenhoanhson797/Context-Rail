@@ -206,6 +206,8 @@ def build(context: Any) -> dict[str, Any]:
                 ).transitions
             ),
         }
+        for key, value in values.items():
+            doc.setdefault(key, value)
         docs.append(doc)
 
     by_preset: dict[str, list[dict[str, Any]]] = {}
