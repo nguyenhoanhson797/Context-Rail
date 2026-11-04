@@ -45,6 +45,9 @@ def test_error_vocabulary_is_the_copied_legacy_one():
         "PROCESS_ERROR",
         "INTERNAL",
         "SCHEMA_UNSUPPORTED",
+        "NO_FOCUS",
+        "AMBIGUOUS_FOCUS",
+        "INVALID_FOCUS",
     }
     assert set(INFRA_CODES) == {"INTERNAL", "INTEGRATION_FAILURE", "PROCESS_ERROR"}
 

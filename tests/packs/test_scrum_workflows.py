@@ -55,6 +55,8 @@ def test_a_bug_is_created_in_the_bugfix_initial_state(tmp_path: Path) -> None:
 
 
 def test_basic_flow_and_waterfall_stay_single_workflow(tmp_path: Path) -> None:
-    for name in ("basic", "flow", "waterfall"):
+    for name in ("basic", "flow"):
         pack = load_pack(name, tmp_path)
         assert set(pack.workflows) == {"default"}
+    waterfall = load_pack("waterfall", tmp_path)
+    assert {"default", "phase", "delivery"} <= set(waterfall.workflows)

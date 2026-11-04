@@ -1177,7 +1177,10 @@ def _operating_issues(
             if row.preset == policy.preset and row.category == policy.category
         ]
         path = f"items/{policy.preset}"
-        if not candidates:
+        has_open_work = any(
+            row.category not in (None, "done", "dropped") for row in rows
+        )
+        if not candidates and has_open_work:
             issues.append(
                 _issue(
                     "focus_missing",
@@ -1222,13 +1225,16 @@ def _operating_issues(
         required_levels = [
             level.preset for level in operating.hierarchy if level.required
         ]
+        hierarchy_presets = {level.preset for level in operating.hierarchy}
         for level in operating.hierarchy:
             if level.preset not in required_levels:
                 continue
             for row in rows:
                 if row.preset != level.preset:
                     continue
-                if not _has_descendant(row.slug, children, by_slug, unit):
+                if not _has_descendant(
+                    row.slug, children, by_slug, hierarchy_presets
+                ):
                     issues.append(
                         _issue(
                             "empty_container",
@@ -1313,7 +1319,7 @@ def _has_descendant(
     slug: str,
     children: dict[str, set[str]],
     by_slug: dict[str, _Row],
-    preset: str,
+    hierarchy_presets: set[str],
 ) -> bool:
     seen: set[str] = set()
     queue = list(children.get(slug, ()))
@@ -1323,7 +1329,11 @@ def _has_descendant(
             continue
         seen.add(current)
         row = by_slug.get(current)
-        if row is not None and row.preset == preset and row.category not in FINISHED_CATEGORIES:
+        if (
+            row is not None
+            and row.primitive == "item"
+            and row.preset not in hierarchy_presets
+        ):
             return True
         queue.extend(children.get(current, ()))
     return False

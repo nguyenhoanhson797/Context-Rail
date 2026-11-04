@@ -24,7 +24,7 @@ def test_renaming_a_sprint_tag_changes_no_behaviour(tmp_path) -> None:
 def test_story_under_a_sprint_is_blocked_by_an_unfinished_dependency(tmp_path) -> None:
     store = init_store(tmp_path, pack="scrum")
     sprint = invoke("add", {"preset": "sprint", "title": "Sprint 1"}, store=store, actor="cto")["value"]
-    first = invoke("add", {"preset": "task", "title": "First"}, store=store, actor="cto")["value"]
+    first = invoke("add", {"preset": "task", "title": "First", "rel": [f"part_of={sprint['slug']}"]}, store=store, actor="cto")["value"]
     second = invoke("add", {"preset": "story", "title": "Second", "rel": [f"part_of={sprint['slug']}", f"depends_on={first['slug']}"]}, store=store, actor="cto")["value"]
     blocked = invoke("status", {}, store=store, actor="cto")["value"]["blocked"]
     assert blocked[second["slug"]] == f"depends_on:{first['slug']}"

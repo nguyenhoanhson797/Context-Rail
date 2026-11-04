@@ -25,6 +25,7 @@ _REFUSED_TOOLS = (
     "show",
     "types",
     "next",
+    "model",
     "explain",
     "why",
     "status",
@@ -75,6 +76,7 @@ _ARGS: dict[str, dict[str, Any]] = {
     "show": {"slug": "t0"},
     "types": {},
     "next": {},
+    "model": {},
     "explain": {"name": "task"},
     "why": {"slug": "t0"},
     "status": {},
@@ -220,7 +222,7 @@ def test_unknown_policy_key_is_refused(store_factory: Any) -> None:
 def test_unknown_pack_version_is_refused(store_factory: Any) -> None:
     store = store_factory(docs=20)
     pack = _builtin_pack()
-    pack["version"] = 2
+    pack["version"] = 3
     _write_pack(store, pack)
     _assert_tools_refuse(store, {"SCHEMA_UNSUPPORTED", "VALIDATION_FAILED"})
 

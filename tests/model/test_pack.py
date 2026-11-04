@@ -473,6 +473,8 @@ def test_every_builtin_pack_loads_with_one_default_workflow(
 
     if name == "scrum":
         assert {"sprint", "bugfix", "scope"} <= set(pack.workflows)
+    elif name == "waterfall":
+        assert {"default", "phase", "delivery"} == set(pack.workflows)
     else:
         assert set(pack.workflows) == {"default"}
     assert all(

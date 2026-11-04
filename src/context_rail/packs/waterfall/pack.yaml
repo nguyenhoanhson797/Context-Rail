@@ -10,13 +10,38 @@ transitions:
   blocked: [building, testing, dropped]
   done: [building]
   dropped: [planned]
+workflows:
+  phase:
+    initial: planned
+    transitions:
+      planned: [designing, dropped]
+      designing: [building, planned, dropped]
+      building: [testing, blocked, dropped]
+      testing: [done, building, blocked, dropped]
+      blocked: [building, testing, dropped]
+      done: [building]
+      dropped: [planned]
+    quality:
+      done: {gate: item_done}
+  delivery:
+    initial: planned
+    transitions:
+      planned: [designing, dropped]
+      designing: [building, planned, dropped]
+      building: [testing, blocked, dropped]
+      testing: [done, building, blocked, dropped]
+      blocked: [building, testing, dropped]
+      done: [building]
+      dropped: [planned]
+    quality:
+      done: {gate: item_done}
 presets:
   goal:        {primitive: item,   tags: [goal], container: true}
   scope:       {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
   requirement: {primitive: item,   tags: [requirement], container: false}
-  phase:       {primitive: item,   tags: [phase], container: true}
-  deliverable: {primitive: item,   tags: [deliverable], container: false, template: templates/deliverable.md}
-  task:        {primitive: item,   tags: [task], container: false}
+  phase:       {primitive: item,   tags: [phase], container: true, workflow: phase}
+  deliverable: {primitive: item,   tags: [deliverable], container: false, workflow: delivery, template: templates/deliverable.md}
+  task:        {primitive: item,   tags: [task], container: false, workflow: delivery}
   bug:         {primitive: item,   tags: [bug], container: false}
   milestone:   {primitive: item,   tags: [milestone], container: true}
   risk:        {primitive: item,   tags: [risk], container: false, fields: {severity: [low, medium, high, critical]}}
