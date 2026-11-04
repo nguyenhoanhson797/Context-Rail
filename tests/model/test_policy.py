@@ -525,6 +525,7 @@ def test_policy_allowlist_is_extended_once_centrally() -> None:
         "remote",
         "allow_push",
         "reviewer_different_model",
+        "mode",
     }
 
 

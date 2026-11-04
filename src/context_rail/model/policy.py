@@ -147,6 +147,7 @@ class Charter:
     remote: str
     allow_push: bool
     reviewer_different_model: bool
+    mode: str = "full"
 
 
 def parse_charter(fields: dict[str, Any]) -> Charter:
@@ -169,6 +170,10 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
     budgets = _budgets(data.get("budgets"))
     thresholds = _thresholds(data.get("thresholds"))
     change_rule = _change_rule(data.get("change_rule"))
+    mode_raw = data.get("mode", "full")
+    mode = string(mode_raw, "charter.mode")
+    if mode not in ("full", "solo"):
+        refuse("charter.mode must be 'full' or 'solo'")
 
     return Charter(
         schema=schema,
@@ -187,6 +192,7 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
             data.get("reviewer_different_model", True),
             "charter.reviewer_different_model",
         ),
+        mode=mode,
     )
 
 

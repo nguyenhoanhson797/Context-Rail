@@ -7,7 +7,7 @@ literal ``"unknown"``, never a zero.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any, Sequence
 
@@ -44,6 +44,7 @@ __all__ = [
     "PROFILE_KEYS",
     "PROFILE_METHODS",
     "PROFILE_RECIPES",
+    "PROFILE_RUNNERS",
     "PROFILE_SCHEMA",
     "READ_ONLY_TOOL_IDS",
     "REPORT_IMPACTS",
@@ -146,6 +147,7 @@ USAGE_KEYS = (
 )
 
 PROFILE_RECIPES = ("cto", "implementer", "reviewer")
+PROFILE_RUNNERS = ("droid", "claude", "codex", "local")
 PROFILE_AUTO = (None, "low", "medium", "high")
 PROFILE_EFFORTS = (None, "low", "medium", "high")
 PROFILE_KEYS = (
@@ -160,6 +162,8 @@ PROFILE_KEYS = (
     "tools",
     "skills",
     "budgets",
+    "runner",
+    "runner_options",
 )
 PROFILE_BUDGET_KEYS = ("max_chars", "max_docs")
 PROFILE_RUN_BUDGET_KEYS = ("attempts", "seconds", "tokens", "credits")
@@ -360,6 +364,8 @@ class Profile:
     skills: tuple[str, ...]
     budgets: dict[str, Any]
     body: str = ""
+    runner: str = "droid"
+    runner_options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -576,6 +582,18 @@ def parse_profile(fields: dict[str, Any], *, body: str | None = None) -> Profile
             refuse("profile body must be a non-empty role prompt")
         prompt = body
 
+    runner_raw = data.get("runner", "droid")
+    runner = string(runner_raw, "profile.runner")
+    if runner not in PROFILE_RUNNERS:
+        refuse("profile.runner must be one of " + ", ".join(PROFILE_RUNNERS))
+    runner_options: dict[str, Any] = {}
+    if "runner_options" in data:
+        opts = mapping(data["runner_options"], "profile.runner_options")
+        for key, value in opts.items():
+            if not isinstance(value, (str, int, float, bool)) or not str(value):
+                refuse(f"profile.runner_options.{key} must be a non-empty scalar")
+        runner_options = dict(opts)
+
     return Profile(
         schema=schema,
         version=integer(data["version"], "profile.version", positive=True),
@@ -589,6 +607,8 @@ def parse_profile(fields: dict[str, Any], *, body: str | None = None) -> Profile
         skills=skills,
         budgets=budgets,
         body=prompt,
+        runner=runner,
+        runner_options=runner_options,
     )
 
 

@@ -67,6 +67,7 @@ CHARTER_KEYS = (
     "remote",
     "allow_push",
     "reviewer_different_model",
+    "mode",
 )
 
 #: The one allowlist for Policy data, so no surface accepts a key another refuses.
