@@ -218,7 +218,8 @@ export default function App() {
     :healthState==='ok'?`${text(object(healthDoctor.by_severity).error,'0')} errors, ${text(object(healthDoctor.by_severity).warning,'0')} warnings`
     :healthState==='error'?`Health unavailable: ${health.isError?health.error.message:text(health.data?.error,'the health read failed')}`
     :`Health unknown${healthReason?' — '+healthReason:''}`;
-  const navItem=(r:Route)=>{const Icon=routeIcons[r]??FileText;return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{screenTitle(snapshot.data,r,labels[r])}</span></button>;};
+  const screenFor: Partial<Record<Route,string>> = {roadmap:'plan'};
+  const navItem=(r:Route)=>{const Icon=routeIcons[r]??FileText;return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{screenTitle(snapshot.data,screenFor[r]??r,labels[r])}</span></button>;};
   /* ---------- command palette items (legacy groups: Navigate, Run a tool, Docs) ---------- */
   /* A group that shows only its first matches says so and offers the rest: a
      truncated list must never hide work without a way to reach it. */

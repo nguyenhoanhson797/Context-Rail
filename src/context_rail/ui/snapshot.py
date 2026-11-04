@@ -340,6 +340,7 @@ def _operating(context: Any, model: Any) -> dict[str, Any]:
         queue = {"items": [], "omitted": 0, "scope": "project", "error": error.code}
     progress = operating.resolve_progress(context, model).as_dict()
     presentation = model.presentation
+    queue_policy = model.operating.queue
     return {
         "unit": None if unit is None else unit.as_dict(),
         "hierarchy": [
@@ -353,6 +354,11 @@ def _operating(context: Any, model: Any) -> dict[str, Any]:
         ],
         "focus": focus,
         "queue": queue,
+        "queue_policy": {
+            "presets": list(queue_policy.presets),
+            "require": queue_policy.require,
+            "focus": queue_policy.focus,
+        },
         "progress": progress,
         "labels": {
             name: {"one": value.one, "many": value.many}

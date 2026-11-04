@@ -788,6 +788,7 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
   const claims = rows(snapshot.claims);
   const count = (category: string) => tasks.filter((task) => text(task.category) === category).length;
   const queue = rows(object(next.data).queue);
+  const nextError = text(object(next.data).error);
   const focus = focusName(snapshot);
   /* The outcome each queued task serves: the parent context the reader needs
      before they act, read once and shared with the drawer. */
@@ -842,6 +843,8 @@ export function NowPage({ snapshot, project, read, request, openDoc, navigate, b
               <ErrorState error={next.error.message} retry={() => void next.refetch()} />
             ) : next.isPending ? (
               <div style={{ padding: '12px 14px' }} className="faint">Loading...</div>
+            ) : nextError ? (
+              <div style={{ padding: '12px 14px' }} className="faint" role="alert">{nextError}</div>
             ) : queue.length ? (
               queue.slice(0, 6).map((entry) => {
                 const outcome = outcomeOf(idOf(entry));

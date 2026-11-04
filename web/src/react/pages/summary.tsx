@@ -212,6 +212,7 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
   const active = tasks.filter((task) => text(task.category) === 'active');
   const blocked = tasks.filter((task) => text(task.category) === 'blocked');
   const queue = rows(object(next.data).queue);
+  const nextError = text(object(next.data).error);
   const approval = text(snapshot.project.state, 'missing');
   const needs = blocked.length + (approval === 'approved' ? 0 : 1);
   const goal = text(snapshot.project.goal);
@@ -303,6 +304,8 @@ export function SummaryPage({ snapshot, project, navigate, openDoc, read, busy }
                 <p className="faint">{next.error.message}</p>
               ) : next.isPending ? (
                 <p className="faint">Reading the queue…</p>
+              ) : nextError ? (
+                <p className="faint">{nextError}</p>
               ) : queue.length ? (
                 queue.slice(0, 5).map((entry) => (
                   <div className="sm-row" key={idOf(entry)} data-task-id={idOf(entry)}>

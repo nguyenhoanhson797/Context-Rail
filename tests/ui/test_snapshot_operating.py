@@ -63,6 +63,7 @@ def test_the_snapshot_projects_each_operating_model(
     assert operating["hierarchy"][0]["preset"] == container
     assert operating["focus"]["state"] == "resolved"
     assert operating["queue"]["items"]
+    assert operating["queue_policy"]["presets"]
     assert operating["progress"]["runs"] is None
     assert operating["labels"][unit]["one"]
     assert any(screen["title"] == board for screen in operating["screens"])

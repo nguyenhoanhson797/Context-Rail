@@ -23,7 +23,7 @@ export function PackPage({ snapshot }: PageProps) {
   const digests = object(snapshot.digests);
   const approval = text(object(snapshot.project).state, 'missing');
   const unit = object(operating.unit);
-  const queue = object(operating.queue);
+  const queue = object(operating.queue_policy);
   const progress = object(operating.progress);
 
   return (

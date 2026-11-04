@@ -58,7 +58,7 @@ def _next(context: Any) -> dict[str, Any]:
             "title": item.title,
             "workflow": item.workflow,
             "status": item.status,
-            "category": item.status,
+            "category": context.pack.statuses.get(item.status, ""),
             "focus": item.focus,
             "actions": list(item.actions),
             "why": item.why,
