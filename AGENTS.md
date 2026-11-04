@@ -74,7 +74,11 @@ repository.
   and execution relevance. It is semantic and approved; version 1 packs load
   with the neutral model and may not declare it.
 - `surface.yaml` is presentation only and is not part of the approval. It cannot
-  introduce a preset, workflow, status or action. A label or card change changes
+  introduce a preset, workflow, status or action. Screens may pin one `preset`
+  (or `presets`) and a `group_by` on the declared kinds (`summary`, `board`,
+  `plan`, `timeline`, `workflow`, `execution`, `explorer`, `queue`, `catalog`,
+  `records`, `pack`); all are checked against the pack, and an unknown kind,
+  reference or field is refused. A label or card change changes
   the presentation digest; an operating, transition, preset or placement change
   changes the semantic digest and needs reapproval.
 - The compiler is the only interpreter. Commands, agents and the UI read the

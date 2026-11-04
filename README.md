@@ -315,8 +315,13 @@ model. Commands and agents read that model, never the YAML:
   merged with workflow completion.
 
 Presentation is separate. An optional `surface.yaml` beside the pack controls
-labels, screens and card, filter and column fields. It cannot add a preset,
-workflow, status or action, and it is not part of the pack approval.
+labels, screens and card, filter and column fields. A screen may pin one
+`preset` (or a `presets` list) and a `group_by`; the shell renders the
+pack-declared `summary`, `board`, `plan`, `timeline`, `workflow`, `execution`,
+`explorer`, `queue`, `catalog`, `records` and `pack` kinds, in the pack's order
+and under the pack's titles. It cannot add a preset, workflow, status or
+action, an unknown kind or reference is refused, and it is not part of the
+pack approval.
 
 Three digests are reported by `rail pack show`:
 
@@ -365,16 +370,18 @@ The loop gates stay separate on purpose: `dispatch` launches an implementer,
 `review` is a different actor, and `merge` fast-forwards only an approved
 candidate. `gate` is a read-only governance check; it never runs a Check.
 
-`rail serve ui` opens the loopback, token-gated project UI. It is the
-context-rail-link React shell and design system, served from
-`src/context_rail/ui/static`; the pages read one compiled snapshot, so the board
-columns are the unit workflow's states, the plan is the declared hierarchy and
-every visible label comes from the pack's presentation. The screens are
-Summary, Now, Board, Plan, Scope, Decisions, Doctor, Pack and Settings, with the
-document drawer and command palette. A screen with no data shows an explicit
-empty state rather than a blank page; the drawer carries the item's preset
-label, workflow, gate, legal next states, applicable actions and focus
-breadcrumb.
+`rail serve ui` opens the loopback, token-gated project UI. It is the React
+shell and design system, served from `src/context_rail/ui/static`; the pages
+read one compiled snapshot, so the board columns are the unit workflow's
+states, the plan is the declared hierarchy and every visible label comes from
+the pack's presentation. The shell renders the screens the pack declares in
+`surface.yaml`, in the pack's order — the built-in packs ship their own titles
+(for video: Shots, Scenes, Render queue and Assets) plus the declared Queue,
+Workflow, Hierarchy Explorer and, for video, Execution screens. Summary, Now,
+Scope, Doctor, Pack and Settings stay with the shell. A
+screen with no data shows an explicit empty state rather than a blank page; the
+drawer carries the item's preset label, workflow, gate, legal next states,
+applicable actions and focus breadcrumb.
 
 No React module branches on a pack name. Relabelling a pack (`surface.yaml`)
 relabels the UI without a new approval; changing the operating model or a
@@ -382,8 +389,9 @@ workflow changes the semantic digest and requires reapproval.
 
 Build the shell with `npm --prefix web install` once, then
 `npm --prefix web run build`; the bundle lands in the Python package and is
-served by `rail serve ui`. The legacy reads a screen does not yet have are
-explicit refusals, so a deferred screen is hidden rather than shown empty.
+served by `rail serve ui`. A pack that declares only a subset of screens
+shows only those, in its order; nothing is guessed from what a pack leaves
+undeclared.
 
 Every former flat command name remains accepted, including `status`, `dispatch`,
 `review`, `merge`, `check`, `verify`, `relocate`, `ci`, `pack`, `sync`,

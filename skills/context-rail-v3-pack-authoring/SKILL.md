@@ -202,18 +202,24 @@ labels:
   shot: {one: Shot, many: Shots}
   scene: {one: Scene, many: Scenes}
 screens:
-  - {id: board, kind: board, title: Shots}
-  - {id: plan, kind: plan, title: Scenes}
-  - {id: runs, kind: queue, title: Render queue}
+  - {id: board, kind: board, title: Shots, preset: shot, group_by: status}
+  - {id: plan, kind: timeline, title: Scenes, preset: scene}
+  - {id: runs, kind: queue, title: Render queue, preset: render}
+  - {id: catalog, kind: catalog, title: Assets, presets: [asset, render]}
 fields:
   card: [model, duration, status]
   filters: [scene, model, status]
   columns: [kind, model, duration]
 ```
 
-Screen kinds: `summary`, `board`, `plan`, `queue`, `catalog`, `records`,
-`pack`. Labels and fields may only name presets and fields the pack declares.
-`surface.yaml` cannot introduce a preset, workflow, status or action.
+Screen kinds: `summary`, `board`, `plan`, `timeline`, `workflow`, `execution`,
+`explorer`, `queue`, `catalog`, `records`, `pack`. A screen may pin one
+`preset` (or a `presets` list) and a `group_by`; all are checked against the
+pack and against declared fields. Labels and fields may only name presets and
+fields the pack declares. `surface.yaml` cannot introduce a preset, workflow,
+status or action. The shell renders the screens in the pack's order and under
+the pack's titles; an unknown kind or field is a `surface.yaml` validation
+error, never a guess.
 
 Semantic versus presentation, in one line: a label, screen or card change is
 presentation and keeps the human approval; a unit, focus, queue, progress,

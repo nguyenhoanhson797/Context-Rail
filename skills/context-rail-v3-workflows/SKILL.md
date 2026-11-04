@@ -59,8 +59,10 @@ the focus) by following the sprint workflow; the operating block only declares
 that the active sprint is the focus. Do not encode a transition in `operating`,
 and do not widen a gate from a presentation file.
 
-`surface.yaml` is the third layer: labels and screens. It cannot add a preset,
-workflow, status or action, and it is not approved.
+`surface.yaml` is the third layer: labels, screens and card/filter/column
+fields. A screen may pin one `preset` (or `presets`) and a `group_by`; all are
+checked against the pack. It cannot add a preset, workflow, status or action,
+and it is not approved.
 - `small` and `indie` are deprecated aliases for `basic` and `flow`. A store
   that still says `pack: small` keeps working and keeps its approval;
   `rail ops pack list` shows the canonical pack and marks it active.
