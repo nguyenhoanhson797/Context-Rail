@@ -252,13 +252,14 @@ the checks the gate selects, so two workflows can share a status name and still
 require different proof. A missing or stale check refuses the move and names the
 command that produces it.
 
-Agents never read `pack.yaml`. The pack is compiled into five read-only views:
+Agents never read `pack.yaml`. The pack is compiled into read-only views:
 
 | Command | Answers |
 |---|---|
 | `rail types` | every document type, its workflow and use line |
-| `rail next` | the executable queue, or one worker's card |
-| `rail show <slug>` | the item plus its workflow card |
+| `rail next` | the operating queue, or one worker's card |
+| `rail model` | the compiled operating model, its focus, unit and digests |
+| `rail show <slug>` | the item plus its workflow and operating card |
 | `rail why <slug>` | the missing proof and the command |
 | `rail explain <name>` | a preset, workflow or action in full |
 
@@ -266,6 +267,74 @@ Agents never read `pack.yaml`. The pack is compiled into five read-only views:
 example `start-sprint`, `close-sprint`, `file-bug`) through the gateway as the
 caller. A verb cannot change the actor, a path, an etag or a profile, and every
 write leaves one `action.executed` record.
+
+## Operating model and pack v2
+
+A pack version 2 may declare one optional `operating` block. It names the
+project's working structure, using only what the pack already declares:
+
+```yaml
+operating:
+  version: 1
+  unit: shot
+  hierarchy:
+    - {preset: scene, order: sequence, required: true}
+  focus: {preset: scene, category: active, order: sequence, resolve: unique}
+  queue: {presets: [shot], require: transition, focus: priority}
+  progress: {group: scene, of: [shot], complete: {states: [approved]}}
+  execution: {actions: [render]}
+```
+
+The compiler validates every reference and produces one immutable project
+model. Commands and agents read that model, never the YAML:
+
+- **unit** is the canonical work item and the default board;
+- **hierarchy** orders containers on the plan screen and supplies `add`'s
+  default parent;
+- **focus** is the container the project is working in; `unique` refuses an
+  ambiguity with candidates instead of guessing, `first` and `explicit` are
+  opt-ins, and `none` is valid for continuous work;
+- **queue** scopes `next` by presets and eligibility, with focus priority by
+  default; `--all`, `--into <id>` and `--focus-only` are the explicit escapes;
+- **progress** counts declared done-category states, grouped along the
+  hierarchy. Execution progress comes from execution records only and is never
+  merged with workflow completion.
+
+Presentation is separate. An optional `surface.yaml` beside the pack controls
+labels, screens and card, filter and column fields. It cannot add a preset,
+workflow, status or action, and it is not part of the pack approval.
+
+Three digests are reported by `rail pack show`:
+
+| Digest | Covers | Use |
+|---|---|---|
+| semantic | statuses, workflows, quality, presets, fields, actions, operating, placement, policy | approval, index compatibility |
+| presentation | labels, screens, card/filter/column fields | UI and API cache |
+| full | canonical bytes of both | diagnostics |
+
+Changing a label or a card field changes only the presentation digest and keeps
+the human approval valid. Changing the operating block, a transition, the
+placement or a preset is a semantic change: the store reports
+`approval_mismatch` until a human reapproves.
+
+**Upgrading a store that used a built-in pack:** the shipped packs are version 2
+and carry their operating block, so their semantic digest changed. Existing
+stores on a package built-in will report `approval_mismatch`. Inspect the new
+digest, then reapprove:
+
+```powershell
+rail ops pack show scrum
+rail --actor human approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer <you>
+rail --actor human approve charter --confirm "APPROVE charter" --confirmer <you>
+```
+
+Existing v1 local packs need no change: they load with the neutral model and
+keep their approval. No documents or paths migrate; the pack version and the
+semantic digest are the compatibility boundary.
+
+A neutral model is conservative: no unit, no hierarchy, no focus, a queue of
+every non-container item preset, progress by the `done` category and no group.
+It is not a guess at what the pack meant.
 
 ## Command surface
 

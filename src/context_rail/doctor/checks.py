@@ -105,7 +105,10 @@ SEVERITIES: dict[str, str] = {
 SEVERITIES.update(stage2.SEVERITY)
 
 _REPAIR = "rail ops doctor --repair"
-_APPROVE = 'rail approve charter --confirm "APPROVE charter" --confirmer <you>'
+_APPROVE = (
+    'rail approve charter --confirm "APPROVE charter" --confirmer <you>; '
+    'for a pack-only change: rail approve pack:<name> --confirm "APPROVE pack:<name>"'
+)
 _RELOCATE = "rail change repath"
 _TRIAGE = "rail loop triage"
 _REPORT = "rail loop report <item> --run <run> --report-file <file>"
