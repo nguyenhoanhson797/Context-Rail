@@ -96,8 +96,21 @@ def test_pack_show_reports_operating_and_three_digests(tmp_path: Path) -> None:
 
 def test_pack_show_reports_a_neutral_model(tmp_path: Path) -> None:
     store = init_store(tmp_path)
+    write_pack(
+        store,
+        "plain",
+        {
+            "name": "plain",
+            "version": 1,
+            "statuses": {"todo": "not_started", "done": "done", "dropped": "dropped"},
+            "initial": "todo",
+            "transitions": {"todo": ["done", "dropped"], "done": [], "dropped": []},
+            "presets": {"task": {"primitive": "item", "tags": ["task"]}},
+            "policy": {"stuck_hours": 24, "retries": 1},
+        },
+    )
 
-    shown = invoke("pack show", {"name": "basic"}, store=store, actor="human")
+    shown = invoke("pack show", {"name": "plain"}, store=store, actor="human")
 
     assert shown["value"]["operating"] == "neutral"
     assert shown["value"]["semantic_digest"]
@@ -186,3 +199,78 @@ def test_pack_create_refuses_an_invalid_surface(tmp_path: Path) -> None:
     assert result["ok"] is False
     assert result["error"]["code"] == "VALIDATION_FAILED"
     assert not (store / "packs" / "studio-copy").exists()
+
+
+def test_scrum_declares_its_operating_model(tmp_path: Path) -> None:
+    from context_rail.model.pack import load_pack
+
+    operating = load_pack("scrum", tmp_path).operating
+
+    assert operating is not None
+    assert operating.unit == "story"
+    assert [level.preset for level in operating.hierarchy] == ["sprint"]
+    assert operating.focus is not None
+    assert operating.focus.preset == "sprint"
+    assert operating.focus.category == "active"
+    assert operating.queue is not None
+    assert operating.queue.presets == ("story", "task", "bug")
+    assert operating.progress is not None
+    assert operating.progress.group == "sprint"
+
+
+def test_waterfall_declares_deliverables_and_ordered_phases(tmp_path: Path) -> None:
+    from context_rail.model.pack import load_pack
+
+    pack = load_pack("waterfall", tmp_path)
+    operating = pack.operating
+
+    assert "deliverable" in pack.presets
+    assert operating is not None
+    assert operating.unit == "deliverable"
+    assert operating.hierarchy[0].preset == "phase"
+    assert operating.hierarchy[0].order == "sequence"
+    assert operating.focus is not None
+    assert operating.focus.preset == "phase"
+    assert "start-phase" in pack.actions
+
+
+def test_the_video_pack_compiles_with_shots_and_scenes(tmp_path: Path) -> None:
+    from context_rail.model.pack import load_pack
+
+    pack = load_pack("video", tmp_path)
+    operating = pack.operating
+
+    assert pack.version == 2
+    assert operating is not None
+    assert operating.unit == "shot"
+    assert operating.hierarchy[0].preset == "scene"
+    assert operating.focus is not None
+    assert operating.focus.category == "active"
+    assert operating.queue.presets == ("shot",)
+    assert operating.progress.complete.states == ("approved",)
+    assert operating.execution.actions == ("render",)
+    assert {"start-scene", "storyboard", "generate", "approve", "publish", "render"} <= set(
+        pack.actions
+    )
+
+
+def test_every_builtin_pack_validates(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    for name in ("basic", "flow", "scrum", "waterfall", "video"):
+        result = invoke("pack validate", {"name": name}, store=store, actor="human")
+        assert result["value"]["valid"] is True, result
+
+
+def test_the_three_operating_fixtures_start_in_their_declared_focus(
+    operating_scrum_store: Any,
+    operating_waterfall_store: Any,
+    operating_video_store: Any,
+) -> None:
+    scrum = operating_scrum_store.model.operating
+    waterfall = operating_waterfall_store.model.operating
+    video = operating_video_store.model.operating
+
+    assert scrum.focus is not None and scrum.focus.preset == "sprint"
+    assert waterfall.focus is not None and waterfall.focus.preset == "phase"
+    assert video.focus is not None and video.focus.preset == "scene"
+    assert operating_video_store.model.presentation.labels["shot"].many == "Shots"

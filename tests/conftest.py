@@ -33,6 +33,7 @@ from helpers import (
     InjectedFault,
     advance_default_branch,
     approve_picture,
+    compiled_model,
     init_store,
     item_etag,
     require_git_identity,
@@ -1754,3 +1755,123 @@ def ui_server(tmp_path: Path) -> Iterator[SimpleNamespace]:
     """A loopback UI bound to port 0, stopped at teardown."""
     with serve_ui(init_store(tmp_path)) as created:
         yield created
+
+
+# ── the v5 operating fixtures ──────────────────────────────────────────────
+
+def _created(store: Path, preset: str, title: str, **extra: Any) -> dict[str, Any]:
+    """One ``add`` through the gateway, failing the fixture when it refuses."""
+    args: dict[str, Any] = {"preset": preset, "title": title, **extra}
+    result = invoke("add", args, store=store, actor="cto")
+    assert is_ok(result), result
+    return result["value"]
+
+
+def _slug(value: dict[str, Any]) -> str:
+    return value.get("slug") or value["doc"]["slug"]
+
+
+def _etag(store: Path, slug: str) -> str:
+    shown = invoke("show", {"slug": slug}, store=store, actor="cto")
+    assert is_ok(shown), shown
+    return shown["value"]["doc"]["etag"]
+
+
+def _move(store: Path, slug: str, status: str) -> None:
+    moved = invoke(
+        "move",
+        {"slug": slug, "status": status, "expect": _etag(store, slug)},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(moved), moved
+
+
+@pytest.fixture
+def operating_scrum_store(tmp_path: Path) -> SimpleNamespace:
+    """A scrum store with an active sprint, stories, a task, a bug and a scope item."""
+    store = init_store(tmp_path / "scrum", "scrum")
+    sprint = _slug(_created(store, "sprint", "Sprint one"))
+    story = _slug(
+        _created(
+            store,
+            "story",
+            "Checkout story",
+            rel=[f"part_of={sprint}"],
+            set=["priority=must"],
+        )
+    )
+    task = _slug(_created(store, "task", "Write the copy", rel=[f"part_of={sprint}"]))
+    bug = _slug(_created(store, "bug", "Export crashes"))
+    scope = _slug(_created(store, "scope", "Invoicing", set=["priority=must"]))
+    _move(store, sprint, "doing")
+    return SimpleNamespace(
+        store=store,
+        pack="scrum",
+        model=compiled_model(store, "scrum"),
+        sprint=sprint,
+        story=story,
+        task=task,
+        bug=bug,
+        scope=scope,
+    )
+
+
+@pytest.fixture
+def operating_waterfall_store(tmp_path: Path) -> SimpleNamespace:
+    """A waterfall store with ordered phases and deliverables."""
+    store = init_store(tmp_path / "waterfall", "waterfall")
+    first = _slug(
+        _created(store, "phase", "Design", set=["sequence=1"])
+    )
+    second = _slug(
+        _created(store, "phase", "Build", set=["sequence=2"])
+    )
+    deliverable = _slug(
+        _created(store, "deliverable", "Design document", rel=[f"part_of={first}"])
+    )
+    second_deliverable = _slug(
+        _created(store, "deliverable", "Service", rel=[f"part_of={second}"])
+    )
+    _move(store, first, "designing")
+    return SimpleNamespace(
+        store=store,
+        pack="waterfall",
+        model=compiled_model(store, "waterfall"),
+        phase=first,
+        next_phase=second,
+        deliverable=deliverable,
+        other_deliverable=second_deliverable,
+    )
+
+
+@pytest.fixture
+def operating_video_store(tmp_path: Path) -> SimpleNamespace:
+    """A video store with an active scene, shots, a render and an asset."""
+    store = init_store(tmp_path / "video", "video")
+    scene = _slug(_created(store, "scene", "Act one", set=["sequence=1"]))
+    shot = _slug(
+        _created(
+            store,
+            "shot",
+            "Opening shot",
+            rel=[f"part_of={scene}"],
+            set=["model=hero", "duration=short"],
+        )
+    )
+    second_shot = _slug(
+        _created(store, "shot", "Close up", rel=[f"part_of={scene}"])
+    )
+    render = _slug(_created(store, "render", "Opening render"))
+    asset = _slug(_created(store, "asset", "Hero plate"))
+    _move(store, scene, "storyboard")
+    return SimpleNamespace(
+        store=store,
+        pack="video",
+        model=compiled_model(store, "video"),
+        scene=scene,
+        shot=shot,
+        second_shot=second_shot,
+        render=render,
+        asset=asset,
+    )

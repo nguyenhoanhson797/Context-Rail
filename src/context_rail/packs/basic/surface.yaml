@@ -1,0 +1,21 @@
+version: 1
+labels:
+  task: {one: Task, many: Tasks}
+  goal: {one: Goal, many: Goals}
+  milestone: {one: Milestone, many: Milestones}
+  risk: {one: Risk, many: Risks}
+  bug: {one: Bug, many: Bugs}
+  idea: {one: Idea, many: Ideas}
+  question: {one: Question, many: Questions}
+screens:
+  - {id: summary, kind: summary, title: Summary}
+  - {id: board, kind: board, title: Tasks}
+  - {id: plan, kind: plan, title: Milestones}
+  - {id: queue, kind: queue, title: Next}
+  - {id: catalog, kind: catalog, title: Ideas}
+  - {id: records, kind: records, title: Decisions}
+  - {id: pack, kind: pack, title: Pack}
+fields:
+  card: [status, workflow]
+  filters: [status]
+  columns: [title, status]

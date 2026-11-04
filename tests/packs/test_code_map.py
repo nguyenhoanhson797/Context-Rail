@@ -10,7 +10,7 @@ from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from helpers import init_store
 
-PACKS = ("basic", "flow", "scrum", "waterfall")
+PACKS = ("basic", "flow", "scrum", "waterfall", "video")
 
 
 @pytest.mark.parametrize("pack", PACKS)

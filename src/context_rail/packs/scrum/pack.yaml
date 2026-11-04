@@ -1,5 +1,5 @@
 name: scrum
-version: 1
+version: 2
 statuses: {todo: not_started, ready: not_started, doing: active, review: active, blocked: blocked, done: done, dropped: dropped, reported: not_started, fixing: active, verifying: active, closed: done}
 initial: todo
 transitions:
@@ -57,8 +57,8 @@ presets:
   scope:      {primitive: item,   tags: [scope], container: true, workflow: scope, fields: {priority: [must, should, could, wont]}}
   epic:       {primitive: item,   tags: [epic], container: true, workflow: sprint}
   sprint:     {primitive: item,   tags: [sprint], container: true, workflow: sprint}
-  story:      {primitive: item,   tags: [story], container: false, workflow: sprint}
-  task:       {primitive: item,   tags: [task], container: false, workflow: sprint}
+  story:      {primitive: item,   tags: [story], container: false, workflow: sprint, fields: {priority: [must, should, could, wont]}}
+  task:       {primitive: item,   tags: [task], container: false, workflow: sprint, fields: {priority: [must, should, could, wont]}}
   bug:        {primitive: item,   tags: [bug], container: false, workflow: bugfix}
   risk:       {primitive: item,   tags: [risk], container: false, fields: {severity: [low, medium, high, critical]}}
   question:   {primitive: item,   tags: [question], container: false}
@@ -76,6 +76,24 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false, workflow: bugfix}
 policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+operating:
+  version: 1
+  unit: story
+  hierarchy:
+    - preset: sprint
+      required: true
+  focus:
+    preset: sprint
+    category: active
+    resolve: unique
+  queue:
+    presets: [story, task, bug]
+    require: transition
+    focus: priority
+  progress:
+    group: sprint
+    of: [story]
+    complete: {category: done}
 actions:
   start-sprint:
     "on": sprint

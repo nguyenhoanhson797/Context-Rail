@@ -1,0 +1,19 @@
+version: 1
+labels:
+  shot: {one: Shot, many: Shots}
+  scene: {one: Scene, many: Scenes}
+  render: {one: Render, many: Renders}
+  asset: {one: Asset, many: Assets}
+  review: {one: Review, many: Reviews}
+screens:
+  - {id: summary, kind: summary, title: Production}
+  - {id: board, kind: board, title: Shots}
+  - {id: plan, kind: plan, title: Scenes}
+  - {id: queue, kind: queue, title: Render queue}
+  - {id: catalog, kind: catalog, title: Assets}
+  - {id: records, kind: records, title: Decisions}
+  - {id: pack, kind: pack, title: Pack}
+fields:
+  card: [model, duration, status, workflow]
+  filters: [scene, model, status]
+  columns: [kind, model, duration]

@@ -1,0 +1,20 @@
+version: 1
+labels:
+  story: {one: Story, many: Stories}
+  epic: {one: Epic, many: Epics}
+  task: {one: Task, many: Tasks}
+  idea: {one: Idea, many: Ideas}
+  risk: {one: Risk, many: Risks}
+  bug: {one: Bug, many: Bugs}
+screens:
+  - {id: summary, kind: summary, title: Summary}
+  - {id: board, kind: board, title: Stories}
+  - {id: plan, kind: plan, title: Epics}
+  - {id: queue, kind: queue, title: Next}
+  - {id: catalog, kind: catalog, title: Ideas}
+  - {id: records, kind: records, title: Decisions}
+  - {id: pack, kind: pack, title: Pack}
+fields:
+  card: [status, workflow]
+  filters: [epic, status]
+  columns: [title, status]

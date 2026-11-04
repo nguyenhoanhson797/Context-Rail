@@ -1,5 +1,5 @@
 name: waterfall
-version: 1
+version: 2
 statuses: {planned: not_started, designing: active, building: active, testing: active, blocked: blocked, done: done, dropped: dropped}
 initial: planned
 transitions:
@@ -15,6 +15,7 @@ presets:
   scope:       {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
   requirement: {primitive: item,   tags: [requirement], container: false}
   phase:       {primitive: item,   tags: [phase], container: true}
+  deliverable: {primitive: item,   tags: [deliverable], container: false, template: templates/deliverable.md}
   task:        {primitive: item,   tags: [task], container: false}
   bug:         {primitive: item,   tags: [bug], container: false}
   milestone:   {primitive: item,   tags: [milestone], container: true}
@@ -34,3 +35,37 @@ presets:
   profile:     {primitive: actor,  tags: []}
   fix:         {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+operating:
+  version: 1
+  unit: deliverable
+  hierarchy:
+    - preset: phase
+      order: sequence
+      required: true
+  focus:
+    preset: phase
+    category: active
+    order: sequence
+    resolve: unique
+  queue:
+    presets: [deliverable, task]
+    require: transition
+    focus: priority
+  progress:
+    group: phase
+    of: [deliverable]
+    complete: {category: done}
+actions:
+  start-phase:
+    "on": phase
+    from: [planned]
+    tool: change move
+    args: {slug: "{item}", status: designing, expect: "{etag}"}
+    use_when: "a phase is ready to start"
+  complete-phase:
+    "on": phase
+    from: [testing]
+    tool: change move
+    args: {slug: "{item}", status: done, expect: "{etag}"}
+    requires: {children: true}
+    use_when: "every deliverable in the phase is finished"

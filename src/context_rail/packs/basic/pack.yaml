@@ -1,5 +1,5 @@
 name: basic
-version: 1
+version: 2
 statuses: {todo: not_started, doing: active, blocked: blocked, done: done, dropped: dropped}
 initial: todo
 transitions:
@@ -31,6 +31,20 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, retries: 1}
+operating:
+  version: 1
+  unit: task
+  hierarchy:
+    - preset: goal
+      required: false
+  queue:
+    presets: [task, bug, idea]
+    require: transition
+    focus: priority
+  progress:
+    group: goal
+    of: [task]
+    complete: {category: done}
 actions:
   start:
     "on": task

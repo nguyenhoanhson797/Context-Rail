@@ -82,7 +82,7 @@ def test_basic_pack_loads_and_maps_categories(tmp_path: Path) -> None:
 def test_builtin_basic_pack_matches_pinned_values(tmp_path: Path) -> None:
     p = load_pack("basic", tmp_path)
     assert p.name == "basic"
-    assert p.version == 1
+    assert p.version == 2
     assert p.statuses == {
         "todo": "not_started",
         "doing": "active",

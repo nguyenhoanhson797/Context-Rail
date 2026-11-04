@@ -1,5 +1,5 @@
 name: flow
-version: 1
+version: 2
 statuses: {backlog: not_started, ready: not_started, building: active, review: active, blocked: blocked, shipped: done, dropped: dropped}
 initial: backlog
 transitions:
@@ -36,3 +36,17 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+operating:
+  version: 1
+  unit: story
+  hierarchy:
+    - preset: epic
+      required: false
+  queue:
+    presets: [story, task, idea, bug]
+    require: transition
+    focus: priority
+  progress:
+    group: epic
+    of: [story]
+    complete: {category: done}

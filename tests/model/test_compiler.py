@@ -6,8 +6,6 @@ import copy
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from context_rail.model.compiler import (
     canonical_json,
     compile_operating,
@@ -18,11 +16,39 @@ from context_rail.model.pack import load_pack
 from context_rail.model.presentation import default_presentation
 from helpers import compiled_model, write_pack
 
-_NEUTRAL = {
-    "basic": ("bug", "fix", "idea", "question", "risk", "task"),
-    "flow": ("bug", "fix", "idea", "question", "risk", "story", "task"),
-    "scrum": ("bug", "fix", "question", "risk", "story", "task"),
-    "waterfall": ("bug", "fix", "question", "requirement", "risk", "task"),
+_PLAIN: dict[str, Any] = {
+    "name": "plain",
+    "version": 2,
+    "statuses": {
+        "todo": "not_started",
+        "doing": "active",
+        "done": "done",
+        "dropped": "dropped",
+    },
+    "initial": "todo",
+    "transitions": {
+        "todo": ["doing", "dropped"],
+        "doing": ["done", "dropped"],
+        "done": ["doing"],
+        "dropped": ["todo"],
+    },
+    "presets": {
+        "goal": {"primitive": "item", "tags": ["goal"], "container": True},
+        "task": {"primitive": "item", "tags": ["task"], "container": False},
+        "bug": {"primitive": "item", "tags": ["bug"], "container": False},
+        "note": {"primitive": "note", "tags": []},
+        "decision": {"primitive": "record", "tags": ["decision"]},
+        "event": {"primitive": "record", "tags": ["event"]},
+        "check": {"primitive": "check", "tags": []},
+        "charter": {"primitive": "policy", "tags": []},
+        "vision": {"primitive": "note", "tags": []},
+        "wont": {"primitive": "note", "tags": []},
+        "skill": {"primitive": "note", "tags": []},
+        "cto": {"primitive": "actor", "tags": []},
+        "profile": {"primitive": "actor", "tags": []},
+        "scope": {"primitive": "item", "tags": ["scope"], "container": True},
+    },
+    "policy": {"stuck_hours": 24, "retries": 1},
 }
 
 _STUDIO: dict[str, Any] = {
@@ -95,11 +121,9 @@ def _studio(tmp_path: Path, *mutations: tuple[str, Any]) -> Any:
     return load_pack("studio", tmp_path)
 
 
-@pytest.mark.parametrize("name", sorted(_NEUTRAL))
-def test_a_pack_without_operating_gets_the_neutral_model(
-    tmp_path: Path, name: str
-) -> None:
-    model = compiled_model(tmp_path, name)
+def test_a_pack_without_operating_gets_the_neutral_model(tmp_path: Path) -> None:
+    write_pack(tmp_path, "plain", _PLAIN)
+    model = compiled_model(tmp_path, "plain")
     operating = model.operating
 
     assert operating.unit is None
@@ -107,8 +131,8 @@ def test_a_pack_without_operating_gets_the_neutral_model(
     assert operating.focus is None
     assert operating.queue.require == "transition"
     assert operating.queue.focus == "priority"
-    assert operating.queue.presets == _NEUTRAL[name]
-    assert operating.progress.of == _NEUTRAL[name]
+    assert operating.queue.presets == ("bug", "task")
+    assert operating.progress.of == ("bug", "task")
     assert operating.progress.group is None
     assert operating.progress.complete.category == "done"
     assert operating.execution_actions == ()

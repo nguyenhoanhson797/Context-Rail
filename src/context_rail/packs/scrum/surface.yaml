@@ -1,0 +1,19 @@
+version: 1
+labels:
+  sprint: {one: Sprint, many: Sprints}
+  story: {one: Story, many: Stories}
+  task: {one: Task, many: Tasks}
+  bug: {one: Bug, many: Bugs}
+  epic: {one: Epic, many: Epics}
+screens:
+  - {id: summary, kind: summary, title: Summary}
+  - {id: board, kind: board, title: Sprint board}
+  - {id: plan, kind: plan, title: Sprints}
+  - {id: queue, kind: queue, title: Next}
+  - {id: catalog, kind: catalog, title: Backlog}
+  - {id: records, kind: records, title: Decisions}
+  - {id: pack, kind: pack, title: Pack}
+fields:
+  card: [status, workflow, priority]
+  filters: [sprint, status, workflow]
+  columns: [title, status]

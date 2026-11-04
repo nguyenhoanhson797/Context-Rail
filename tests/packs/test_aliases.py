@@ -64,7 +64,7 @@ def test_pack_list_shows_the_successor_and_marks_it_active(tmp_path: Path) -> No
     store = init_store(tmp_path, pack="small")
     value = invoke("pack list", {}, store=store, actor="human")["value"]
     names = {row["name"] for row in value["packs"]}
-    assert {"basic", "flow", "scrum", "waterfall"} == names
+    assert {"basic", "flow", "scrum", "waterfall", "video"} == names
     active = [row["name"] for row in value["packs"] if row["active"]]
     assert active == ["basic"]
 
