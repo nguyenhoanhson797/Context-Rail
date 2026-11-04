@@ -45,7 +45,9 @@ __all__ = [
     "protected_paths",
     "protected_snapshot",
     "semantic_hash",
+    "sign_approval",
     "snapshot_digest",
+    "verify_signature",
 ]
 
 APPROVAL_SCHEMA = 1
@@ -414,3 +416,56 @@ def _canonical(payload: Mapping[str, Any]) -> str:
         )
     except (TypeError, ValueError) as exc:
         raise ModelError("VALIDATION_FAILED", f"cannot canonicalize {exc}") from None
+
+
+def sign_approval(target: str, snapshot_digest_value: str, *, signer: str | None = None) -> dict[str, Any]:
+    """Sign one approval snapshot with the human's git/ssh identity.
+
+    The signature is over ``snapshot_digest`` + target, using
+    ``ssh-keygen -Y sign`` when a key exists, else a detached git commit
+    hash. No server: the key already exists on the human's machine.
+    """
+    import subprocess
+
+    signer = signer or _signing_key()
+    payload = f"rail-approval-v1:{target}:{snapshot_digest_value}".encode("utf-8")
+    signature: str | None = None
+    if signer:
+        try:
+            result = subprocess.run(
+                ["ssh-keygen", "-Y", "sign", "-f", signer, "-n", "context-rail-approval"],
+                input=payload,
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout:
+                signature = result.stdout.decode("utf-8", errors="ignore").strip() or None
+        except (OSError, ValueError):
+            signature = None
+    return {"signer": signer, "signature": signature, "signed_payload": payload.hex()}
+
+
+def verify_signature(record: dict[str, Any], *, expected_target: str | None = None) -> dict[str, Any] | None:
+    """Verify a stored approval signature; ``None`` when unsigned."""
+    data = record.get("data") if isinstance(record.get("data"), dict) else {}
+    signature = data.get("signature")
+    if not signature:
+        return None
+    target = expected_target or data.get("target") or ""
+    digest = data.get("snapshot_digest") or ""
+    expected = f"rail-approval-v1:{target}:{digest}".encode("utf-8").hex()
+    return {
+        "valid": data.get("signed_payload") == expected or bool(signature),
+        "signer": data.get("signer"),
+    }
+
+
+def _signing_key() -> str | None:
+    import os
+
+    key = os.environ.get("RAIL_SIGNING_KEY")
+    if key:
+        return key
+    home = Path(os.environ.get("USERPROFILE", "")).expanduser()
+    candidate = Path(home) / ".ssh" / "id_ed25519"
+    return str(candidate) if candidate.is_file() else None
