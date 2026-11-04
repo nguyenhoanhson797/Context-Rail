@@ -41,6 +41,22 @@ rail read ledger [--item <slug>] [--since <iso>]
 - Every `--expect` is the etag just read: a stale write is refused.
 - `loop tick` must be the outer session; it refuses when `RAIL_ACTOR` is set.
 
+## Focus and the queue
+
+The pack names one focus container (the active sprint, the current phase, the
+active scene). The queue is focus-first and the brief's headline names it.
+
+- `rail next` returns only the operating queue. `rail next --all` reaches every
+  item preset when the focus is not what you want; it still respects workflow
+  transitions, gates, claims and actor permissions.
+- An ambiguous focus is refused with `AMBIGUOUS_FOCUS` and its candidates. Use
+  `rail next --into <id>` or move one container out of the active category.
+  Never pick one by guessing.
+- `NO_FOCUS` on `add` means the pack needs a parent and none matches: pass
+  `--rel part_of=<container>` or start the container first.
+- A work order's card carries the focus breadcrumb and the applicable actions;
+  a worker reads them rather than scanning the store.
+
 ## What each step guarantees
 
 | Step | Guarantee |
@@ -61,6 +77,8 @@ rail read ledger [--item <slug>] [--since <iso>]
 | `INVALID_STATE: the charter is not approved` (the gateway says “the charter is not approved; nothing executes yet”) | Run `rail --actor human approve charter ...` first |
 | `BUSINESS_RULE_VIOLATED: the item_done gate is not satisfied` | Missing/stale checks, review, acceptance or human verdict |
 | `'cto tick' cannot be nested inside a running session` | A child session already set `RAIL_ACTOR` |
+| `AMBIGUOUS_FOCUS: N containers are active` | Two containers match; pass `--into <id>` or finish one |
+| `NO_FOCUS: a 'story' needs a parent 'sprint'` | Start the container, or pass `--rel part_of=<container>` |
 | A review from the implementer | Separation rule; use a distinct reviewer profile |
 | A merge with a conflicting candidate | One rebase retry, then escalate to the human |
 

@@ -45,6 +45,49 @@ rail gate                   # doctor + approval and done gates (never runs check
 rail gate --warnings-as-errors
 ```
 
+## Packs, digests and reapproval
+
+```powershell
+rail ops pack validate scrum    # compile the operating model + surface, never refuses
+rail ops pack show scrum        # operating block or "neutral", three digests, approval
+rail ops pack create --name team --from scrum
+```
+
+- `semantic_digest` covers statuses, workflows, quality, presets, fields,
+  actions, `operating`, placement and policy. It is the approval and
+  compatibility target.
+- `presentation_digest` covers `surface.yaml` labels, screens and fields; it is
+  only the UI/API cache key.
+- `full_digest` is both, for diagnostics.
+- The shipped packs are v2, so their semantic digest changed. A store on a
+  package built-in reports `approval_mismatch`; inspect and reapprove:
+
+```powershell
+rail ops pack show scrum
+rail --actor human approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer <you>
+rail --actor human approve charter --confirm "APPROVE charter" --confirmer <you>
+```
+
+A v1 local pack is unaffected: it loads with the neutral model and keeps its
+approval. A label-only change never needs reapproval.
+
+## Operating doctor codes
+
+| Code | Severity | Fix |
+|---|---|---|
+| `focus_missing` | warning | `rail next --all`, or start the focus container |
+| `focus_ambiguous` | warning | `rail next --into <id>`, or finish one container |
+| `orphan_unit` | warning | `rail change link <unit> part_of <container>` |
+| `empty_container` | warning | add a unit, or drop the empty container |
+| `hierarchy_placement` | error | `rail change repath`, or fix `rail.yaml` |
+| `surface_invalid` | warning | fix `surface.yaml` |
+| `progress_invalid` | error | fix the operating progress rule |
+| `execution_failed` | warning | inspect the run, or re-run it |
+| `execution_missing` | warning | run the action the operating model expects |
+
+An invalid pack is a `pack validate` error, not a doctor cascade: the compiler
+refuses it before any check runs.
+
 ## Recovery order
 
 1. Read the code and `error.details` in the envelope — refusals name the fix.

@@ -80,8 +80,10 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 | Command | Answers |
 |---|---|
 | `rail overview` | The daily starting page: approval, goal, gates, executable work, waits |
-| `rail read status` | Counts, executable items, blockers with reasons, stuck items |
+| `rail read status` | Counts, executable items, blockers with reasons, stuck items, focus, groups, progress |
 | `rail read digest` | Activity, human waits, reversible decisions, quality, usage |
+| `rail model` | The compiled operating model, focus, unit, hierarchy and digests |
+| `rail types` | Pack document types, workflows and the operating role of each |
 
 ## Five command families
 
@@ -114,6 +116,9 @@ Exact flags: `references/commands.md` in this skill.
 | `VALIDATION_FAILED: unrecognized arguments` | Global options belong before the command; `add` is positional |
 | “the charter is not approved; nothing executes yet” | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` |
 | `'cto tick' cannot be nested inside a running session` | Start `rail loop tick` from the outer session, with `RAIL_ACTOR` unset |
+| `AMBIGUOUS_FOCUS` | Two containers match the focus; pass `--into <id>` or finish one |
+| `NO_FOCUS` on `add` | The pack needs a parent; start the container or pass `--rel part_of=<container>` |
+| `approval_mismatch` after a pack upgrade | The semantic digest changed; reapprove `pack:<name>` then the charter |
 | A check is `stale` | Re-run `rail check run`; a stale pass is not a pass |
 
 ## Invariants worth knowing before changing anything

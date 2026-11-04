@@ -25,8 +25,9 @@ If the project fits `basic`, `flow`, `scrum` or `waterfall`, copy one with
 
 ```text
 packs/<name>/
-  pack.yaml        # name, version, statuses, initial, transitions, presets, policy
+  pack.yaml        # name, version, statuses, transitions, presets, policy, operating
   layout.yaml      # optional: initial placement + preset placements
+  surface.yaml     # optional: labels, screens, card/filter/column fields
   profiles/        # cto.md, implementer.md, reviewer.md, ...
   skills/          # worker skills copied into the store's workspace
   templates/       # one body template per primitive or preset
@@ -137,6 +138,86 @@ One action is one allowlisted gateway tool: `add`, `update`, `link`, `move`,
 not set `path`, `actor`, `key`, `profile` or `store`, call `do`, `cto tick`,
 `pack use`, `relocate`, `merge` or `adapters sync`, and it runs with the caller's
 permissions. `do` records one `action.executed`; read-only actions write nothing.
+
+## The operating model (pack version 2)
+
+Version 2 adds one optional `operating` block. It changes command behaviour
+(scope, defaults, grouping and progress), so it is semantic and approved, never
+a theme. A v1 pack keeps loading with a neutral model and may not declare it.
+
+```yaml
+version: 2
+operating:
+  version: 1
+  unit: shot
+  hierarchy:
+    - {preset: scene, order: sequence, required: true}
+  focus: {preset: scene, category: active, order: sequence, resolve: unique}
+  queue: {presets: [shot], require: transition, focus: priority}
+  progress: {group: scene, of: [shot], complete: {states: [approved]}}
+  execution: {actions: [render]}
+```
+
+| Key | Contract |
+|---|---|
+| `unit` | an item preset; the default board and card |
+| `hierarchy` | item presets with `container: true`, outermost first; `order` names a field or `sequence`/`created`/`updated`/`title`/`slug`; `required` makes a parent mandatory |
+| `focus` | a hierarchy preset plus a fixed category; `resolve` is `unique` (default), `first`, `explicit` or `none` |
+| `queue` | item presets, `require: transition` (default) or `action`, `focus: priority` (default) or `only` |
+| `progress` | `group` is a hierarchy preset; `of` defaults to the unit; completion names `states` in every referenced workflow and in the `done` category, or `category: done`, or per-preset `presets` |
+| `execution` | declared action names whose runs count as execution progress |
+
+Everything is by name and validated: an unknown preset, workflow, status,
+category, field or action is refused, as is a duplicate hierarchy preset, a
+focus outside the hierarchy, or a completion state not in the `done` category.
+The compiler is the only interpreter; commands and agents read `rail model`,
+never this block.
+
+`focus` is the container's own status. Give the pack a start action that moves
+it into the active category:
+
+```yaml
+actions:
+  start-scene:
+    on: scene
+    from: [draft]
+    tool: change move
+    args: {slug: "{item}", status: storyboard, expect: "{etag}"}
+    use_when: "a scene is ready to work on"
+```
+
+`add` then defaults a unit's parent to the focus unless the caller passes an
+explicit `--rel part_of=...`. A required hierarchy with no focus refuses with
+`NO_FOCUS`; it never guesses.
+
+## Presentation (`surface.yaml`)
+
+Presentation is separate, optional and **not part of the approval**. A missing
+file gives neutral defaults: title-cased preset labels and the standard screen
+list.
+
+```yaml
+version: 1
+labels:
+  shot: {one: Shot, many: Shots}
+  scene: {one: Scene, many: Scenes}
+screens:
+  - {id: board, kind: board, title: Shots}
+  - {id: plan, kind: plan, title: Scenes}
+  - {id: runs, kind: queue, title: Render queue}
+fields:
+  card: [model, duration, status]
+  filters: [scene, model, status]
+  columns: [kind, model, duration]
+```
+
+Screen kinds: `summary`, `board`, `plan`, `queue`, `catalog`, `records`,
+`pack`. Labels and fields may only name presets and fields the pack declares.
+`surface.yaml` cannot introduce a preset, workflow, status or action.
+
+Semantic versus presentation, in one line: a label, screen or card change is
+presentation and keeps the human approval; a unit, focus, queue, progress,
+transition, preset or placement change is semantic and needs reapproval.
 
 ## Placement contract
 
@@ -263,7 +344,8 @@ only what the title segment renders.
 2. Edit `pack.yaml`, `templates/`, `profiles/` and `layout.yaml`.
 3. `rail ops pack validate --name my-team` — a read-only report: missing
    required presets, missing templates, bad placement, engine presets without
-   defaults.
+   defaults, and every `pack.yaml` or `surface.yaml` operating/presentation
+   problem with a fix hint.
 4. `rail ops doctor` on a store using it — placement, metadata, duplicate slugs.
 5. `rail change repath --dry-run` — every move the derived placement implies,
    plus the documents it had to skip.
@@ -312,6 +394,20 @@ anchor is visible rather than silently ignored.
 
 ## Approval
 
-Pack policy changes and `ops pack use` are human-only decisions. A CTO may
-propose a pack, but the human runs the guarded switch with the typed phrase
-`USE PACK <name>`.
+Pack policy and operating changes, and `ops pack use`, are human-only
+decisions. A CTO may propose a pack, but the human runs the guarded switch with
+the typed phrase `USE PACK <name>`.
+
+A semantic change (operating, transition, preset, placement, policy) changes the
+semantic digest. `rail ops pack show <name>` reports `semantic_digest`,
+`presentation_digest` and `full_digest` plus the approval state. When the
+semantic digest moved, the store reports `approval_mismatch`; inspect and
+reapprove:
+
+```powershell
+rail ops pack show my-team
+rail --actor human approve pack:my-team --confirm "APPROVE pack:my-team" --confirmer <you>
+```
+
+A label, screen or card-field change touches only the presentation digest and
+never needs reapproval.

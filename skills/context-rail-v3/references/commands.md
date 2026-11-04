@@ -19,6 +19,11 @@ rail read find [--primitive P] [--preset P] [--tag T] [--status S]
                [--category C] [--text Q] [--rel REL=SLUG] [--limit N]
 rail read show <slug> [--body-chars N]
 rail read ledger [--item SLUG] [--profile NAME] [--since ISO] [--limit N]
+rail model
+rail types [--item SLUG] [--limit N]
+rail next [--item SLUG] [--all] [--into CONTAINER] [--focus-only]
+rail explain <name> [--limit N]
+rail why <slug>
 rail change add <preset> "<title>" [--rel REL=SLUG]... [--tag TAG]...
                  [--set KEY=VALUE]... [--body-file FILE] [--confirm PHRASE]
 rail change update <slug> --expect ETAG [--set KEY=VALUE]... [--tag TAG]...
@@ -33,6 +38,12 @@ rail change repath [--dry-run] [--confirm "APPROVE <slug>"]
 `status` is managed: change it only with `change move`. `change move` enforces
 the pack's transitions, and a move into a `done` category runs the charter's
 done gate.
+
+`next` is focus-aware: it defaults to the operating queue, `--all` reaches every
+item preset (still respecting transitions, gates and actor rights), `--into`
+overrides the focus for one call, and `--focus-only` filters. `add` gives a unit
+its focus container as `part_of` unless `--rel part_of=...` is explicit.
+`model` prints the compiled operating model and its three digests.
 
 ## Checks, reports and the loop
 
@@ -57,6 +68,10 @@ rail --actor human approve <target> --confirm "APPROVE <target>" --confirmer NAM
 ```
 
 `target` is `charter`, a protected slug, or `pack:<name>`.
+
+`rail ops pack show` reports `operating` (or `"neutral"`), `semantic_digest`,
+`presentation_digest`, `full_digest` and the approval state. Approval binds to
+the semantic digest; `surface.yaml` changes only the presentation digest.
 
 ## Operations
 
@@ -106,5 +121,8 @@ Every former flat command name is still accepted: `status`, `digest`,
 | `CONFLICT` | Etag changed since read; re-read and retry |
 | `INVALID_STATE` | Dispatch of a non-executable item, immutable record, wrong profile recipe |
 | `BUSINESS_RULE_VIOLATED` | A charter gate is not satisfied |
+| `NO_FOCUS` | The pack needs a parent container and none matches; pass `--into` or `--rel part_of=...` |
+| `AMBIGUOUS_FOCUS` | Several containers match; `error.details.candidates` names them, pass `--into <id>` |
+| `INVALID_FOCUS` | The `--into` slug is not a declared hierarchy container |
 
 A refusal always names the reason and the fix in `error.details`.

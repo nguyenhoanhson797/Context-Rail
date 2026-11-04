@@ -29,7 +29,8 @@ binary.
 | `basic` | one stream | `todo → doing → done` | `milestone`, `idea` |
 | `flow` | continuous kanban | `backlog → ready → building → review → shipped` | `idea`, `story`, `epic` |
 | `scrum` | sprints | `todo → ready → doing → review → done` | `epic`, `sprint`, `story` |
-| `waterfall` | phase gates | `planned → designing → building → testing → done` | `requirement`, `phase`, `milestone` |
+| `waterfall` | phase gates | `planned → designing → building → testing → done` | `requirement`, `phase`, `deliverable` |
+| `video` | scenes and shots | `draft → storyboard → generating → review → approved → published` | `scene`, `shot`, `render`, `asset`, `review` |
 
 Every pack also declares `blocked` and `dropped`; the table lists the flow the
 team sees. All four also declare the shared base presets: `goal`, `scope`, `task`, `bug`,
@@ -41,6 +42,25 @@ team sees. All four also declare the shared base presets: `goal`, `scope`, `task
   names a source file, class, function or method; `depends_on` points at what it
   needs, so the notes pointing at a code note are its editing impact. The source
   path lives in `source_path` because the engine reserves `path`.
+
+## The operating model sits beside the workflow
+
+A v2 pack can add one `operating` block: the unit, the hierarchy, the focus
+container, the queue and the progress population. It **selects and orders** the
+workflow; it never changes a transition, a quality gate or an action. The two
+are separate layers:
+
+- `operating` says which sprint or scene is current, which presets `next`
+  returns, and what counts as progress;
+- `workflows` still say which moves are legal and what proof each move needs.
+
+So a sprint's `start-sprint` action moves it into the active category (making it
+the focus) by following the sprint workflow; the operating block only declares
+that the active sprint is the focus. Do not encode a transition in `operating`,
+and do not widen a gate from a presentation file.
+
+`surface.yaml` is the third layer: labels and screens. It cannot add a preset,
+workflow, status or action, and it is not approved.
 - `small` and `indie` are deprecated aliases for `basic` and `flow`. A store
   that still says `pack: small` keeps working and keeps its approval;
   `rail ops pack list` shows the canonical pack and marks it active.
