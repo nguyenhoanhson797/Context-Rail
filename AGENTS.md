@@ -12,6 +12,9 @@ These records are working material: they stay on disk, untracked, and are never
 published.
 
 - Design: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
+- Operating-model design (v5): `docs/superpowers/specs/2026-11-04-v5-operating-model.md`
+- Operating-model plan (v5): `docs/superpowers/plans/2026-11-04-v5-operating-model.md`
+- Operating-model architecture: `library/arch-operating-model.md`
 - Stage 3 plan (complete): `docs/superpowers/plans/2026-10-28-v3-stage-3.md`
 - Stage 3 architecture: `library/arch-stage-3.md`
 - Command surface (implemented): `docs/superpowers/specs/2026-11-02-command-surface-consolidation.md`
@@ -67,6 +70,24 @@ repository.
 - A pack is one project type with many named workflows; `statuses` is pack-wide
   and a preset selects exactly one workflow. Transitions and execution flags are
   read through the workflow, never the pack.
+- Pack version 2 may declare `operating`: unit, hierarchy, focus, queue, progress
+  and execution relevance. It is semantic and approved; version 1 packs load
+  with the neutral model and may not declare it.
+- `surface.yaml` is presentation only and is not part of the approval. It cannot
+  introduce a preset, workflow, status or action. A label or card change changes
+  the presentation digest; an operating, transition, preset or placement change
+  changes the semantic digest and needs reapproval.
+- The compiler is the only interpreter. Commands, agents and the UI read the
+  compiled model (`model`, `types`, `next`, `show`, `explain`, `why`) and never
+  parse `operating` or `surface.yaml` themselves.
+- Focus lives in the container's own status. Ambiguity is refused with its
+  candidates; `--into` and `--all` are the explicit escapes, and neither
+  bypasses a gate, a claim or actor permissions.
+- Queue eligibility is workflow transitions (default) or declared actor actions
+  (`require: action`). Completion counts declared `done`-category states;
+  execution progress comes from execution records only and is never merged.
+- No engine logic branches on a pack name, a preset name or a tag name, and no
+  React module may branch on a pack name.
 - Quality belongs to the workflow: a status may name a charter gate and the
   checks it selects. The engine never branches on a gate name.
 - Agents read the compiled surface (`types`, `next`, `show`, `explain`, `why`),
@@ -88,3 +109,10 @@ repository.
   task or plan in comments.
 - Shared test fixtures and helpers are defined once, as listed in plan Task 1;
   reuse them instead of writing local variants.
+- A new operating or presentation refusal gets a negative test: unknown key,
+  preset, workflow, state, category, field, screen kind or action, an ambiguous
+  or missing focus, an invalid completion rule, and an invalid surface.
+- Every doctor code is in `SEVERITIES`; an invalid pack is a `pack validate`
+  error, never a doctor cascade.
+- Docs and skills tests cover the public files only; `docs/superpowers/` stays
+  local working material.

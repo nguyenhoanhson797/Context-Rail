@@ -8,6 +8,20 @@ role-specific context, and a human approves the boundary, the quality bar and
 irreversible actions. The store it manages is plain Markdown you commit to git;
 the package ships the CLI, the MCP server and a loopback UI over one tool table.
 
+## How it fits together
+
+| Layer | Owns | Where |
+|---|---|---|
+| Domain model | what exists: presets, fields, workflows, quality gates, actions | `pack.yaml` |
+| Operating model | how it is organised and worked: unit, hierarchy, focus, queue, progress | `pack.yaml` `operating`, compiled by the engine |
+| Execution engine | how work is performed: commands, gateway, checks, runs, policies | this package |
+| Workspace projection | how people and agents interact: CLI read models, MCP, UI, briefs | one compiled model per call |
+
+A static compiler validates the pack and its optional presentation, then
+produces one immutable project model. Commands, agents and the UI read that
+model; none of them interprets `pack.yaml` on its own. The store remains the
+truth and the index a disposable cache.
+
 ## Requirements
 
 - Python 3.11 or newer (CI covers 3.11 and 3.13 on Windows and Ubuntu).
