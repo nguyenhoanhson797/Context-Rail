@@ -8,6 +8,7 @@ exits 2. Parser errors print one VALIDATION_FAILED envelope and exit 1.
 
 import argparse
 import json
+import os
 import sys
 
 from context_rail.gateway.tools import (
@@ -57,6 +58,11 @@ def _parser() -> argparse.ArgumentParser:
             "acting actor (default: RAIL_ACTOR, then human; "
             "human-only tools need an explicit human)"
         ),
+    )
+    parser.add_argument(
+        "--no-daemon",
+        action="store_true",
+        help="bypass the loopback RPC daemon (as RAIL_NO_DAEMON=1)",
     )
     _subcommands(parser, SURFACE_TOOLS, required=False)
     return parser
@@ -286,7 +292,9 @@ def main(argv: list[str] | None = None) -> int:
         namespace = _parser().parse_args(_join_dash_values(args))
     except SystemExit as exc:
         return int(exc.code or 0)
-    reserved = {"store", "actor", "group", "_tool"}
+    if namespace.no_daemon:
+        os.environ["RAIL_NO_DAEMON"] = "1"
+    reserved = {"store", "actor", "group", "_tool", "no_daemon"}
     tool = getattr(namespace, "_tool", None)
     if tool is None:
         _emit(
@@ -310,16 +318,23 @@ def main(argv: list[str] | None = None) -> int:
     }
     from context_rail.core.result import INFRA_CODES
     from context_rail.gateway.execution import EXPLICIT_ACTOR
-    from context_rail.gateway.gateway import invoke
+    from context_rail.gateway.gateway import invoke, try_daemon_invoke
 
     EXPLICIT_ACTOR.set(namespace.actor)
-    result = invoke(
+    result = try_daemon_invoke(
         tool,
         params,
         store=namespace.store,
         actor=namespace.actor,
     )
-    if canonical_tool(tool) in {"mcp serve", "sync driver", "ui serve"}:
+    if result is None:
+        result = invoke(
+            tool,
+            params,
+            store=namespace.store,
+            actor=namespace.actor,
+        )
+    if canonical_tool(tool) in {"mcp serve", "sync driver", "ui serve", "serve daemon"}:
         if result.get("ok") is True:
             return 0
         _emit(result, stderr=True)

@@ -9,12 +9,17 @@ Rights are decided here, before any handler runs: a call's decision class comes
 from the technical facts of the change, a profile narrows its actor's methods,
 the human-only floor cannot be widened, and nothing executable runs until the
 human has approved the protected picture.
+
+The gateway also timestamps wall time per invocation (Phase 0/10 budget
+evidence): no I/O, no source hashing, just ``time.perf_counter`` spans over
+authorize + handler.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import time
 import traceback
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -31,6 +36,7 @@ from context_rail.core.tool_names import (
     canonical_tool,
 )
 from context_rail.gateway.tools import TOOLS, Param, Tool
+from context_rail.gateway.daemon import NO_DAEMON_ENV
 from context_rail.kernel import rights
 from context_rail.kernel.lifecycle import category_of
 from context_rail.model.cto import Profile, parse_profile
@@ -44,11 +50,64 @@ from context_rail.store.location import PathEscape, find_store
 from context_rail.store.query import QueryError
 from context_rail.store.write import WriteRefused
 
-__all__ = ["EXECUTION_TOOLS", "Context", "effective_decision", "invoke"]
+__all__ = ["EXECUTION_TOOLS", "Context", "effective_decision", "invoke", "last_timing", "try_daemon_invoke", "warm_context"]
 
 Handler = Callable[[Any, dict[str, Any], str], Any]
 
 _BY_NAME = {tool.name: tool for tool in TOOLS}
+
+#: Last invocation timing, for ``rail ops measure`` and UI health. Process-local.
+_LAST_TIMING: dict[str, Any] = {"tool": None, "authorize_ms": None, "handler_ms": None, "total_ms": None}
+
+
+def last_timing() -> dict[str, Any]:
+    """The most recent invocation's phase timing (process-local, no I/O)."""
+    return dict(_LAST_TIMING)
+
+
+def try_daemon_invoke(
+    name: str,
+    args: dict[str, Any] | None,
+    *,
+    store: Path | str | None,
+    actor: str | None,
+) -> dict[str, Any] | None:
+    """Try a live daemon for this store; ``None`` means run direct invoke.
+
+    The daemon is a cache of one invocation, never a second write path:
+    it still calls ``invoke()``. ``RAIL_NO_DAEMON`` and long-running
+    transports (``mcp serve``, ``ui serve``, ``sync driver``) always run
+    direct. A stale descriptor is a clean miss within ``DAEMON_TIMEOUT_MS``.
+    """
+    if os.environ.get(NO_DAEMON_ENV):
+        return None
+    canonical = canonical_tool(name) if isinstance(name, str) else ""
+    if canonical in {"mcp serve", "ui serve", "sync driver"}:
+        return None
+    if store is None:
+        return None
+    try:
+        from context_rail.gateway.daemon import daemon_alive, daemon_endpoint
+
+        store_path = Path(store)
+        if not daemon_alive(store_path):
+            return None
+        descriptor = daemon_endpoint(store_path)
+        if descriptor is None or not descriptor.is_file():
+            return None
+        import json
+
+        payload = json.loads(descriptor.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return None
+        if not isinstance(payload.get("port"), int):
+            return None
+        from context_rail.gateway.daemon import try_daemon
+
+        return try_daemon(store_path, canonical, dict(args or {}), actor)
+    except Exception:
+        return None
+
 
 #: Tools that execute something; none of them may run before the human approves.
 EXECUTION_TOOLS = ("verify", "dispatch", "review", "merge", "cto tick")
@@ -97,11 +156,11 @@ class Context:
     @cached_property
     def model(self) -> Any:
         """The compiled operating model, built once per invocation."""
-        from context_rail.model.compiler import compile_project
+        from context_rail.model.cache import cached_project
         from context_rail.model.presentation import load_presentation
 
         presentation = load_presentation(self.pack.name, self.store, self.pack)
-        return compile_project(self.pack, self.pack.operating, presentation)
+        return cached_project(self.pack, presentation)
 
     @cached_property
     def profile(self) -> Profile | None:
@@ -167,14 +226,24 @@ def invoke(
     *,
     store: Path | str | None = None,
     actor: str | None = None,
+    context: Context | None = None,
 ) -> dict[str, Any]:
-    """Run one tool and return a Result envelope; no exception escapes."""
+    """Run one tool and return a Result envelope; no exception escapes.
+
+    ``context`` injects a warm Context (the daemon's): no manifest/index
+    reloads, and the caller owns closing it. A mismatch is ignored and a
+    store-bound one is built in its place.
+    """
+    _started = time.perf_counter()
     resolved_actor, actor_named = _resolve_actor(actor)
     actor_env = _actor_env()
     named_token = ACTOR_NAMED.set(actor_named)
-    context: Context | None = None
     requested = name
     params: dict[str, Any] | None = None
+    _auth_ms: float | None = None
+    _handler_ms: float | None = None
+    injected = _usable_context(context, store, resolved_actor)
+    context = injected
     try:
         tool = _tool(name)
         defaults = alias_defaults(name) if isinstance(name, str) else {}
@@ -183,20 +252,67 @@ def invoke(
         else:
             params = _parameters(tool, args)
         if tool.name not in {"init", "migrate"}:
-            context = _open_context(store, resolved_actor, actor_named)
+            if context is None:
+                context = _open_context(store, resolved_actor, actor_named)
+        _auth_start = time.perf_counter()
         refusal = _authorize(
             tool, params, context, resolved_actor, actor_env, actor_named
         )
+        _auth_ms = (time.perf_counter() - _auth_start) * 1000.0
         if refusal is not None:
             return _with_command(refusal, tool.name, params)
         handler = _handler(tool.handler)
-        return ok(handler(context, params, resolved_actor))
+        _handler_start = time.perf_counter()
+        result = ok(handler(context, params, resolved_actor))
+        _handler_ms = (time.perf_counter() - _handler_start) * 1000.0
+        return result
     except Exception as exc:  # the boundary converts every fault into a Result
         return _with_command(_failure(exc), requested, params)
     finally:
-        if context is not None:
+        if context is not None and injected is None:
             context.close()
         ACTOR_NAMED.reset(named_token)
+        _LAST_TIMING.update(
+            {
+                "tool": requested,
+                "authorize_ms": _auth_ms,
+                "handler_ms": _handler_ms,
+                "total_ms": (time.perf_counter() - _started) * 1000.0,
+            }
+        )
+
+
+def _usable_context(
+    context: Context | None, store: Path | str | None, actor: str
+) -> Context | None:
+    """The injected context when it fits the store and actor, else None."""
+    if context is None or store is None:
+        return None
+    if context.actor != actor:
+        return None
+    try:
+        return context if Path(context.store).resolve() == Path(store).resolve() else None
+    except OSError:
+        return None
+
+
+def warm_context(store: Path | str, actor: str, *, actor_named: bool = True) -> Context:
+    """A pre-opened Context for the daemon: one manifest, one sync, cached model."""
+    found = Path(store)
+    if not (found / "rail.yaml").is_file():
+        raise WriteRefused("NOT_FOUND", "no store found")
+    manifest = load_manifest(found)
+    pack = load_pack(manifest.pack, found)
+    index = Index.open(found, pack)
+    index.sync()
+    return Context(
+        store=found,
+        manifest=manifest,
+        pack=pack,
+        actor=actor,
+        actor_named=actor_named,
+        _index=index,
+    )
 
 
 def _actor_env() -> str | None:
@@ -323,6 +439,25 @@ def _authorize(
                 "INVALID_STATE",
                 "the charter is not approved; nothing executes yet",
                 {"reason": "approval_missing", "tool": tool.name},
+            )
+        return None
+    # Solo mode: one human is both human and CTO. The store is local-only,
+    # so ``cto-alone`` is allowed; ``human-only`` still needs a named human.
+    # Execution gates (checks, review) are unchanged.
+    if getattr(policy, "mode", "full") == "solo":
+        if tool.name in EXECUTION_TOOLS and actor not in (_HUMAN, _CTO):
+            return fail(
+                "PERMISSION_DENIED",
+                "solo mode allows the human or CTO to execute",
+                {"tool": tool.name, "actor": actor},
+            )
+        # Solo still blocks approval_mismatch on the charter meaning itself.
+        locked = _lockout(tool, params, context)
+        if locked is not None:
+            return fail(
+                "INVALID_STATE",
+                "the charter is not approved; nothing executes yet",
+                {"reason": locked, "tool": tool.name},
             )
         return None
     locked = _lockout(tool, params, context)

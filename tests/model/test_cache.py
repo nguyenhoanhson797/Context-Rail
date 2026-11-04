@@ -1,0 +1,81 @@
+"""The compiled project cache: one ProjectModel per digest, pure and safe."""
+
+from __future__ import annotations
+
+import copy
+from pathlib import Path
+from typing import Any
+
+from context_rail.model.cache import cached_project, clear_project_cache
+from context_rail.model.compiler import compile_project, semantic_digest
+from context_rail.model.pack import load_pack
+from context_rail.model.presentation import default_presentation, presentation_hash
+from helpers import write_pack
+
+_PLAIN: dict[str, Any] = {
+    "name": "plain",
+    "version": 2,
+    "statuses": {"todo": "not_started", "doing": "active", "done": "done", "dropped": "dropped"},
+    "initial": "todo",
+    "transitions": {"todo": ["doing", "dropped"], "doing": ["done", "dropped"], "done": ["doing"], "dropped": ["todo"]},
+    "presets": {
+        "goal": {"primitive": "item", "tags": ["goal"], "container": True},
+        "task": {"primitive": "item", "tags": ["task"], "container": False},
+        "note": {"primitive": "note", "tags": []},
+        "decision": {"primitive": "record", "tags": ["decision"]},
+        "event": {"primitive": "record", "tags": ["event"]},
+        "check": {"primitive": "check", "tags": []},
+        "charter": {"primitive": "policy", "tags": []},
+        "vision": {"primitive": "note", "tags": []},
+        "wont": {"primitive": "note", "tags": []},
+        "skill": {"primitive": "note", "tags": []},
+        "cto": {"primitive": "actor", "tags": []},
+        "profile": {"primitive": "actor", "tags": []},
+        "scope": {"primitive": "item", "tags": ["scope"], "container": True},
+    },
+    "policy": {"stuck_hours": 24, "retries": 1},
+}
+
+
+def _plain_pack(tmp_path: Path) -> Any:
+    write_pack(tmp_path, "plain", copy.deepcopy(_PLAIN))
+    return load_pack("plain", tmp_path)
+
+
+def test_cached_project_reuses_identical_model(tmp_path: Path) -> None:
+    clear_project_cache()
+    pack = _plain_pack(tmp_path)
+    presentation = default_presentation(pack)
+    first = cached_project(pack, presentation)
+    second = cached_project(pack, presentation)
+    assert first is second
+    assert first.full_digest == compile_project(pack, pack.operating, presentation).full_digest
+    assert first.semantic_digest == semantic_digest(pack)
+
+
+def test_cache_invalidates_on_presentation_change(tmp_path: Path) -> None:
+    clear_project_cache()
+    pack = _plain_pack(tmp_path)
+    presentation = default_presentation(pack)
+    first = cached_project(pack, presentation)
+    changed = copy.deepcopy(presentation)
+    from context_rail.model.presentation import Label
+    changed.labels["task"] = Label(one="Job", many="Jobs")
+    second = cached_project(pack, changed)
+    assert second is not first
+    assert second.presentation_digest != first.presentation_digest
+    assert second.semantic_digest == first.semantic_digest
+
+
+def test_cache_invalidates_on_semantic_change(tmp_path: Path) -> None:
+    clear_project_cache()
+    pack = _plain_pack(tmp_path)
+    presentation = default_presentation(pack)
+    first = cached_project(pack, presentation)
+    mutated = copy.deepcopy(_PLAIN)
+    mutated["statuses"]["todo"] = "active"
+    write_pack(tmp_path, "plain", mutated)
+    pack2 = load_pack("plain", tmp_path)
+    second = cached_project(pack2, default_presentation(pack2))
+    assert second is not first
+    assert second.semantic_digest != first.semantic_digest

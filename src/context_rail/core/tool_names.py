@@ -88,6 +88,7 @@ VISIBLE_PATHS: frozenset[str] = frozenset(VISIBLE_ALIASES) | {
     "model",
     "explain",
     "why",
+    "serve daemon",
 }
 
 #: Flat names accepted for continuity and where they move in the grouped surface.

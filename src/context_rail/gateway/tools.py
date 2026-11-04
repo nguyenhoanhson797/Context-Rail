@@ -144,6 +144,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("item", "str", required=True, positional=True, help="leaf Item slug"),
             Param("profile", "str", default="implementer", help="implementer profile name"),
             Param("expect", "str", required=True, help="the Item's current etag"),
+            Param("all", "bool", help="dispatch outside the operating focus"),
             Param("key", "str", required=True, help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.dispatch:dispatch",
@@ -366,6 +367,13 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.ui:serve",
     ),
     Tool(
+        name="serve daemon",
+        summary="Serve one warm RPC daemon for this store: pinned Index, compiled model, per-actor Contexts.",
+        permission="read",
+        params=(Param("port", "int", default=0, help="port to bind on 127.0.0.1 (default: choose one)"),),
+        handler="context_rail.gateway.handlers.daemon:serve",
+    ),
+    Tool(
         name="sync driver",
         summary="Merge one scratch file for Git without touching the live store.",
         permission="write",
@@ -570,6 +578,8 @@ TOOLS: tuple[Tool, ...] = (
         permission="read",
         params=(
             Param("repair", "bool", help="roll interrupted writes forward first"),
+            Param("fix", "bool", help="apply safe fixes (clear daemon descriptor)"),
+            Param("dry_run", "bool", help="report fixes without applying them"),
         ),
         handler="context_rail.gateway.handlers.doctor:doctor",
     ),
@@ -595,7 +605,7 @@ for _tool in TOOLS:
 del _tool, _param
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
-_SURFACE_LEAVES = {"init", "approve", "types", "next", "model", "explain", "why", "do"}
+_SURFACE_LEAVES = {"init", "approve", "types", "next", "model", "explain", "why", "do", "serve daemon"}
 
 
 def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:

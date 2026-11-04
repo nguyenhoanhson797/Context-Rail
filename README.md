@@ -364,11 +364,19 @@ what you are doing:
 |---|---|
 | **Daily** | `init`, `approve`, `overview`, `read status\|digest\|find\|show\|ledger`, `types`, `next`, `explain`, `why`, `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop dispatch\|review\|merge\|report\|triage\|tick`, `do <action>`, `gate` |
 | **Operations** | `ops doctor\|reindex\|migrate\|rollback`, `ops pack list\|show\|validate\|create\|use`, `ops sync`, `ops sync install`, `ops adapters render`, `ops measure versions\|fix` |
-| **Transports** | `serve mcp`, `serve ui` |
+| **Transports** | `serve mcp`, `serve ui`, `serve daemon` |
 
 The loop gates stay separate on purpose: `dispatch` launches an implementer,
 `review` is a different actor, and `merge` fast-forwards only an approved
 candidate. `gate` is a read-only governance check; it never runs a Check.
+
+`rail serve daemon` keeps one manifest, one synced index and one compiled
+`ProjectModel` open for the store and answers every call through the same
+gateway: each request still goes through the authorizer and the one write
+path. The CLI auto-connects over 127.0.0.1 with a per-store token when a
+live descriptor exists and falls back to a direct call on any miss;
+`--no-daemon` (or `RAIL_NO_DAEMON=1`) bypasses it, and `RAIL_DAEMON_TIMEOUT_MS`
+tunes the wait (default 2000 ms).
 
 `rail serve ui` opens the loopback, token-gated project UI. It is the React
 shell and design system, served from `src/context_rail/ui/static`; the pages

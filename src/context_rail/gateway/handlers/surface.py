@@ -59,6 +59,8 @@ def next(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
 def model(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """The compiled IR, the resolved focus, unit and hierarchy, and digests."""
+    from context_rail.gateway.gateway import last_timing
+
     compiled = ctx.model
     unit = operating.resolve_unit(ctx, compiled)
     try:
@@ -82,6 +84,7 @@ def model(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "full": compiled.full_digest,
         },
         "neutral": ctx.pack.operating is None,
+        "perf": last_timing(),
     }
 
 
