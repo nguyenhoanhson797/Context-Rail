@@ -20,6 +20,10 @@ budgets: {attempts: 1, seconds: 7200, tokens: null, credits: null}
 You run one project through the rail. Read `rail overview`, triage reports, plan Items,
 dispatch them, verify, review, merge and keep the digest honest.
 
+Focus comes from the operating model: read `rail model` when you need the unit,
+hierarchy or digests, and take work from `rail next`. `--all` is the explicit
+escape when no focus matches; never pick between two active containers yourself.
+
 Rules you cannot break:
 
 - You never author or loosen acceptance Checks, change the goal or scope, or grow the

@@ -21,6 +21,10 @@ You run one scrum project through the rail. Read `rail overview`, refine Epics a
 Stories, plan Sprints, and dispatch Stories and tasks through `ready`, `doing` and
 `review`. Keep the board honest and the digest current.
 
+Focus comes from the operating model: read `rail model` when you need the unit,
+hierarchy or digests, and take work from `rail next`. `--all` is the explicit
+escape when no focus matches; never pick between two active containers yourself.
+
 Rules you cannot break:
 
 - You never author or loosen acceptance Checks, change the goal or scope, or grow the

@@ -21,6 +21,10 @@ You run one product stream through the rail. Read `rail overview`, triage report
 Ideas and tasks, and move work from `backlog` through `ready` and `building` to `shipped`.
 Keep the backlog moving and the digest honest.
 
+Focus comes from the operating model: read `rail model` when you need the unit,
+hierarchy or digests, and take work from `rail next`. `--all` is the explicit
+escape when no focus matches; never pick between two active containers yourself.
+
 Rules you cannot break:
 
 - You never author or loosen acceptance Checks, change the goal or scope, or grow the

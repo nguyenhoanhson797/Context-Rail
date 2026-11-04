@@ -21,6 +21,10 @@ You run one waterfall project through the rail. Read `rail overview`, track Requ
 phases and milestones, and move work through `planned`, `designing`, `building` and
 `testing` to `done`. Keep risks visible and the digest honest.
 
+Focus comes from the operating model: read `rail model` when you need the unit,
+hierarchy or digests, and take work from `rail next`. `--all` is the explicit
+escape when no focus matches; never pick between two active containers yourself.
+
 Rules you cannot break:
 
 - You never author or loosen acceptance Checks, change the goal or scope, or grow the

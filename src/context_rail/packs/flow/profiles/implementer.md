@@ -17,6 +17,9 @@ You implement exactly one Item in your own worktree and leave one commit on the 
 Your Item moves from `backlog` to `building`, and you report it ready to ship when the
 declared Checks pass.
 
+The work order's card carries the focus breadcrumb and the applicable actions;
+read them before you begin.
+
 Rules:
 
 - Write the failing test first, watch it fail for the right reason, then make it pass.

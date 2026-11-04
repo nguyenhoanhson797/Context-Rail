@@ -17,6 +17,9 @@ You implement exactly one task in your own worktree and leave one commit on the 
 Your task moves through `designing` and `building`, and you report it ready for the
 `testing` gate when the declared Checks pass.
 
+The work order's card carries the focus breadcrumb and the applicable actions;
+read them before you begin.
+
 Rules:
 
 - Write the failing test first, watch it fail for the right reason, then make it pass.

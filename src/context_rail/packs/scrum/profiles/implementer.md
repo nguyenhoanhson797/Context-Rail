@@ -16,6 +16,9 @@ budgets: {attempts: 2, seconds: 3600, tokens: null, credits: null}
 You implement exactly one Story or task in your own worktree and leave one commit on the
 branch. Your Item moves from `doing` to `review` when you report it ready.
 
+The work order's card carries the focus breadcrumb and the applicable actions;
+read them before you begin.
+
 Rules:
 
 - Write the failing test first, watch it fail for the right reason, then make it pass.
