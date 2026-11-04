@@ -1,6 +1,6 @@
 import { type Route } from './contracts';
 import { docValid } from './transport';
-const ROUTES = new Set(['summary','now','board','roadmap','scope','decisions','doctor','pack','settings']);
+const ROUTES = new Set(['summary','now','board','roadmap','scope','catalog','decisions','doctor','pack','settings','queue','timeline','workflow','execution','explorer','overview','atlas','outcomes','traceability','impact','lens','graph','rules','activity','portfolio']);
 const ALIASES: Record<string,string> = { home:'summary',tasks:'board',health:'doctor' };
 const PARAMS = new Set(['project','sec','alt','task','focus','phase','workflow','depth','types','fields','all','doc','goal','item','files','since','limit','correction']);
 export function parseAddress(hash: string): {route: string; params: URLSearchParams} {

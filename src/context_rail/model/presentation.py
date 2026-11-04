@@ -43,9 +43,21 @@ __all__ = [
 PRESENTATION_FILE = "surface.yaml"
 PRESENTATION_VERSION = 1
 LABEL_KEYS = ("one", "many")
-SCREEN_KEYS = ("id", "kind", "title")
+SCREEN_KEYS = ("id", "kind", "title", "preset", "presets", "group_by")
 FIELD_ROLES = ("card", "filters", "columns")
-SCREEN_KINDS = ("summary", "board", "plan", "queue", "catalog", "records", "pack")
+SCREEN_KINDS = (
+    "summary",
+    "board",
+    "plan",
+    "queue",
+    "catalog",
+    "records",
+    "pack",
+    "timeline",
+    "workflow",
+    "execution",
+    "explorer",
+)
 #: Document keys a card, filter or column may always name.
 _UNIVERSAL_FIELDS = (
     "slug",
@@ -79,6 +91,9 @@ class Screen:
     id: str
     kind: str
     title: str
+    preset: str | None = None
+    presets: tuple[str, ...] = ()
+    group_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -137,7 +152,7 @@ def parse_presentation(raw: Any, pack: Pack) -> Presentation:
             f"expected {PRESENTATION_VERSION}"
         )
     labels = _labels(data.get("labels", {}), pack)
-    screens = _screens(data.get("screens"))
+    screens = _screens(data.get("screens"), pack)
     fields = _fields(data.get("fields", {}), pack)
     defaults = default_presentation(pack)
     if screens is None:
@@ -157,12 +172,16 @@ def default_presentation(pack: Pack) -> Presentation:
         name: Label(one=_title(name), many=_plural(_title(name)))
         for name in pack.presets
     }
+    unit = None
+    if pack.operating is not None:
+        unit = pack.operating.unit
+    board_preset = unit if unit in pack.presets else None
     return Presentation(
         version=PRESENTATION_VERSION,
         labels=labels,
         screens=(
             Screen("summary", "summary", "Summary"),
-            Screen("board", "board", "Board"),
+            Screen("board", "board", "Board", preset=board_preset),
             Screen("plan", "plan", "Plan"),
             Screen("queue", "queue", "Queue"),
             Screen("catalog", "catalog", "Catalog"),
@@ -182,7 +201,14 @@ def presentation_hash(presentation: Presentation) -> str:
             for name, label in presentation.labels.items()
         },
         "screens": [
-            {"id": screen.id, "kind": screen.kind, "title": screen.title}
+            {
+                "id": screen.id,
+                "kind": screen.kind,
+                "title": screen.title,
+                "preset": screen.preset,
+                "presets": list(screen.presets),
+                "group_by": screen.group_by,
+            }
             for screen in presentation.screens
         ],
         "fields": {
@@ -212,7 +238,7 @@ def _labels(raw: Any, pack: Pack) -> dict[str, Label]:
     return labels
 
 
-def _screens(raw: Any) -> tuple[Screen, ...] | None:
+def _screens(raw: Any, pack: Pack) -> tuple[Screen, ...] | None:
     if raw is None:
         return None
     if not isinstance(raw, list):
@@ -223,7 +249,7 @@ def _screens(raw: Any) -> tuple[Screen, ...] | None:
         where = f"{PRESENTATION_FILE} screens[{position}]"
         body = mapping(entry, where)
         no_unknown(body, SCREEN_KEYS, where)
-        for key in SCREEN_KEYS:
+        for key in ("id", "kind", "title"):
             if key not in body:
                 refuse(f"{where} is missing {key}")
         identifier = string(body["id"], f"{where}.id")
@@ -238,7 +264,42 @@ def _screens(raw: Any) -> tuple[Screen, ...] | None:
                 f"{where}.kind must be one of " + ", ".join(SCREEN_KINDS)
             )
         title = string(body["title"], f"{where}.title")
-        screens.append(Screen(id=identifier, kind=kind, title=title))
+        preset: str | None = None
+        presets: tuple[str, ...] = ()
+        group_by: str | None = None
+        if "preset" in body:
+            preset = string(body["preset"], f"{where}.preset")
+            if preset not in pack.presets:
+                refuse(f"{where}.preset names unknown preset {preset!r}")
+        if "presets" in body:
+            raw_presets = body["presets"]
+            if not isinstance(raw_presets, list):
+                refuse(f"{where}.presets must be a list")
+            names: list[str] = []
+            for value in raw_presets:
+                name = string(value, f"{where}.presets")
+                if name not in pack.presets:
+                    refuse(f"{where}.presets names unknown preset {name!r}")
+                if name not in names:
+                    names.append(name)
+            presets = tuple(names)
+        if preset is not None and presets:
+            refuse(f"{where} names both preset and presets")
+        if "group_by" in body:
+            group_by = string(body["group_by"], f"{where}.group_by")
+            allowed = _allowed_fields(pack, "columns")
+            if group_by not in allowed:
+                refuse(f"{where}.group_by names {group_by!r}, which the pack does not declare")
+        screens.append(
+            Screen(
+                id=identifier,
+                kind=kind,
+                title=title,
+                preset=preset,
+                presets=presets,
+                group_by=group_by,
+            )
+        )
     return tuple(screens)
 
 

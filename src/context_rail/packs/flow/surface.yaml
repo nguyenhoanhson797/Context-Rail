@@ -1,4 +1,4 @@
-version: 1
+﻿version: 1
 labels:
   story: {one: Story, many: Stories}
   epic: {one: Epic, many: Epics}
@@ -8,11 +8,13 @@ labels:
   bug: {one: Bug, many: Bugs}
 screens:
   - {id: summary, kind: summary, title: Summary}
-  - {id: board, kind: board, title: Stories}
-  - {id: plan, kind: plan, title: Epics}
+  - {id: board, kind: board, title: Stories, preset: story, group_by: status}
+  - {id: plan, kind: timeline, title: Epics, preset: epic}
   - {id: queue, kind: queue, title: Next}
-  - {id: catalog, kind: catalog, title: Ideas}
-  - {id: records, kind: records, title: Decisions}
+  - {id: workflow, kind: workflow, title: Workflow}
+  - {id: explorer, kind: explorer, title: Hierarchy}
+  - {id: catalog, kind: catalog, title: Ideas, presets: [idea, bug]}
+  - {id: records, kind: records, title: Records}
   - {id: pack, kind: pack, title: Pack}
 fields:
   card: [status, workflow]

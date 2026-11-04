@@ -6,24 +6,22 @@
    here is written by an agent or the owner: every line is composed from the
    store's records and opens the record it came from. React escapes every value.
    ===================================================================== */
-import { useMemo, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { object, rows, text, type Data, type PageProps, type Route } from '../contracts';
-import { Badge, Button, ErrorState, Loading, PageHeading } from '../ui';
+import { Badge, Button, PageHeading } from '../ui';
 import { docValid } from '../transport';
 import { readKey } from '../refresh';
-import { CircleCheck, History, House, Loader, MapIcon, Route as RouteGlyph, ShieldCheck, Terminal, TriangleAlert, Users, Flag } from '../icons';
-import { dayNum, fmtDay, modelOf, type Model, type Program, type Task } from './atlas/model';
+import { History, Loader, Route as RouteGlyph, Terminal, TriangleAlert, Users, Flag } from '../icons';
+import { dayNum, type Model, type Program } from './atlas/model';
 import {
-  EVIDENCE, countWord, evidenceSentence, evidenceWord, fetchOwnerSummary,
-  gateSentence, ownerSummaryKey, ownerSummaryOf, type OwnerSummary,
+  countWord, evidenceWord,
+  type OwnerSummary,
 } from './evidence';
-import { OwnerHierarchy } from './hierarchy';
 import { focusName, hierarchyLabels, progressOf, unitLabel } from './operating';
 
 /* How many rows each section shows before the rest move behind a closed disclosure. */
 export const NEEDS_PREVIEW = 3;
-const LANDED_PREVIEW = 5;
 const INFLIGHT_PREVIEW = 3;
 
 type Tone = 'danger' | 'warning' | 'accent' | 'neutral';
@@ -101,15 +99,6 @@ export function finishedThisWeek(M: Model): number | null {
 
 const plural = (n: number, one: string, many = one + 's') => n + ' ' + (n === 1 ? one : many);
 
-function Meter({ value, total, label }: { value: number; total: number; label: string }) {
-  const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((value / total) * 100))) : 0;
-  return (
-    <span className="sm-meter" role="img" aria-label={label}>
-      <span className="sm-meter-fill" style={{ width: pct + '%' }} />
-    </span>
-  );
-}
-
 function SourceLink({ id, children, openDoc }: { id: string; children: ReactNode; openDoc: (id: string) => void }) {
   return docValid(id) ? (
     <button type="button" className="link rail-link sm-src" onClick={() => openDoc(id)}>
@@ -117,25 +106,6 @@ function SourceLink({ id, children, openDoc }: { id: string; children: ReactNode
     </button>
   ) : (
     <span className="sm-src">{children}</span>
-  );
-}
-
-function NeedRow({ need, openDoc }: { need: Need; openDoc: (id: string) => void }) {
-  return (
-    <div className="sm-row sm-need" data-need-kind={need.kind} title={need.hint || undefined}>
-      <Badge tone={need.tone}>{need.label}</Badge>
-      <SourceLink id={need.id} openDoc={openDoc}>{need.title}</SourceLink>
-    </div>
-  );
-}
-
-function TaskRow({ task, M, openDoc, when }: { task: Task; M: Model; openDoc: (id: string) => void; when?: string }) {
-  const lane = M.P.get(task.program);
-  return (
-    <div className="sm-row" data-task-id={task.id}>
-      <SourceLink id={task.id} openDoc={openDoc}>{task.title}</SourceLink>
-      <span className="faint sm-row-meta">{[lane ? lane.label : '', when || ''].filter(Boolean).join(' · ')}</span>
-    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-version: 1
+﻿version: 1
 labels:
   phase: {one: Phase, many: Phases}
   deliverable: {one: Deliverable, many: Deliverables}
@@ -8,11 +8,13 @@ labels:
   risk: {one: Risk, many: Risks}
 screens:
   - {id: summary, kind: summary, title: Summary}
-  - {id: board, kind: board, title: Deliverables}
-  - {id: plan, kind: plan, title: Phases}
+  - {id: board, kind: board, title: Deliverables, preset: deliverable, group_by: status}
+  - {id: plan, kind: timeline, title: Phases, preset: phase}
   - {id: queue, kind: queue, title: Next}
-  - {id: catalog, kind: catalog, title: Requirements}
-  - {id: records, kind: records, title: Decisions}
+  - {id: workflow, kind: workflow, title: Workflow}
+  - {id: explorer, kind: explorer, title: Hierarchy}
+  - {id: catalog, kind: catalog, title: Requirements, presets: [requirement, task]}
+  - {id: records, kind: records, title: Records}
   - {id: pack, kind: pack, title: Pack}
 fields:
   card: [status, workflow]

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RAIL_KEY } from '../refresh';
 import { object, rows, text, type Data, type PageProps } from '../contracts';

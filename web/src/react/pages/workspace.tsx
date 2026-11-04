@@ -87,7 +87,7 @@ import { Badge, Button, Empty, ErrorState, Loading, Markdown, PageHeading, Panel
 import { useModalFocus, useOverlayEscape } from '../overlays';
 import { AutomationSettings } from './settings';
 import { EVIDENCE, evidenceTitle, evidenceWord } from './evidence';
-import { focusName, hierarchyLabels, labelOf, screenTitle, unitLabel, unitOf } from './operating';
+import { cardFieldsOf, focusName, hierarchyLabels, labelOf, priorityValues, screenTitle, unitLabel, unitOf } from './operating';
 
 type Tone = 'neutral' | 'good' | 'warning' | 'danger' | 'accent';
 
@@ -97,7 +97,8 @@ const PRIORITY_TONE: Record<string, Tone> = { must: 'accent', should: 'accent', 
 const SEVERITY_TONE: Record<string, Tone> = { error: 'danger', warning: 'warning', info: 'neutral' };
 const CHECK_TONE: Record<string, Tone> = { pass: 'good', fail: 'danger', pending: 'neutral', asserted: 'warning' };
 const MOSCOW: Record<string, string> = { must: 'Must', should: 'Should', could: 'Could', wont: "Won't" };
-const PRIORITY_ORDER = ['must', 'should', 'could', 'wont'];
+const priorityLabel = (value: string): string => MOSCOW[value] ?? titleCase(value);
+const priorityOrderOf = (snapshot: Snapshot): string[] => priorityValues(snapshot);
 const SEVERITIES = ['error', 'warning', 'info'];
 const DONE_LIMIT = 5;
 const COLUMN_PREFIX = 'column:';
@@ -315,12 +316,19 @@ const BOARD_EMPTY: Record<string, string> = { todo: 'Nothing waiting.', 'in-prog
 
 /* The legacy card body: title row, blocked reason and the meta line. Store text is a React
    text node only; the reference chips keep the legacy "m" and "mono" wrappers. */
-function BoardCardBody({ task, claim, phaseTitle, outcome, done, openDoc }: { task: Data; claim?: Data; phaseTitle: string; outcome?: Outcome[]; done: boolean; openDoc: (id: string) => void }) {
+function BoardCardBody({ task, claim, phaseTitle, outcome, done, openDoc, snapshot }: { task: Data; claim?: Data; phaseTitle: string; outcome?: Outcome[]; done: boolean; openDoc: (id: string) => void; snapshot?: Snapshot }) {
   const refs = linkRefs(task.implements);
   const why = text(task.status) === 'blocked' ? text(task.blocked_why) : '';
   const priority = text(task.priority);
   const who = claim ? text(claim.actor, text(claim.holder, 'claimed')) : '';
   const claimTip = claim ? [`Claimed by ${who}${claim.mine ? ' (you)' : ''}`, claim.expired ? 'lease expired' : ''].filter(Boolean).join(' - ') : '';
+  const cardFields = snapshot ? cardFieldsOf(snapshot) : [];
+  const extra = cardFields.filter((field) => field && !['status', 'workflow', 'priority', 'title', 'id', 'slug'].includes(field));
+  const fieldValue = (field: string): string => {
+    const value = task[field] ?? object(task.fields)[field];
+    if (Array.isArray(value)) return value.map((entry) => text(entry)).filter(Boolean).join(', ');
+    return text(value);
+  };
   return (
     <>
       <div className="top">
@@ -337,7 +345,11 @@ function BoardCardBody({ task, claim, phaseTitle, outcome, done, openDoc }: { ta
       <div className="meta">
         <span className="key">{idOf(task)}</span>
         <span className="m faint">{text(task.workflow)}</span>
-        {priority ? <span className="m">{chip(priority === 'must' ? 'accent' : 'gray', MOSCOW[priority] ?? priority)}</span> : null}
+        {priority ? <span className="m">{chip(priority === 'must' ? 'accent' : 'gray', priorityLabel(priority))}</span> : null}
+        {extra.map((field) => {
+          const value = fieldValue(field);
+          return value ? <span key={field} className="m faint" title={`${field}: ${value}`}>{value}</span> : null;
+        })}
         {refs.length ? (
           <span className="m refs mono" data-tip={`Implements ${refs.join(', ')}`}>
             {refs.slice(0, 2).join(' ')}
@@ -375,7 +387,7 @@ function DraggableCard({
   busy,
   openDoc,
   onMove,
-  onOpenWorkspace,
+  snapshot,
 }: {
   task: Data;
   claim?: Data;
@@ -386,6 +398,7 @@ function DraggableCard({
   openDoc: (id: string) => void;
   onMove: (task: Data, status: string) => void;
   onOpenWorkspace: (task: Data) => void;
+  snapshot?: Snapshot;
 }) {
   const id = idOf(task);
   const selectId = useId();
@@ -408,7 +421,7 @@ function DraggableCard({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setActions(false);
       }}
     >
-      <BoardCardBody task={task} claim={claim} phaseTitle={phaseTitle} outcome={outcome} done={done} openDoc={openDoc} />
+      <BoardCardBody task={task} claim={claim} phaseTitle={phaseTitle} outcome={outcome} done={done} openDoc={openDoc} snapshot={snapshot} />
       <div className="rail-card-actions" style={{ position: 'absolute', top: 6, right: 6, opacity: actions ? 1 : 0 }}>
         <button
           type="button"
@@ -461,6 +474,7 @@ function BoardColumn({
   openDoc,
   onMove,
   onOpenWorkspace,
+  snapshot,
 }: {
   status: string;
   name: string;
@@ -476,6 +490,7 @@ function BoardColumn({
   openDoc: (id: string) => void;
   onMove: (task: Data, status: string) => void;
   onOpenWorkspace: (task: Data) => void;
+  snapshot?: Snapshot;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${COLUMN_PREFIX}${status}`, data: { status } });
   const column = tasks.filter((task) => text(task.status) === status);
@@ -503,6 +518,7 @@ function BoardColumn({
               openDoc={openDoc}
               onMove={onMove}
               onOpenWorkspace={onOpenWorkspace}
+              snapshot={snapshot}
             />
           ))
         ) : (
@@ -551,8 +567,14 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
 
   const phases = snapshot.phases;
+  const hierarchyFirst = hierarchyLabels(snapshot)[0]?.toLowerCase() ?? 'container';
   const all = snapshot.tasks;
-  const scoped = useMemo(() => all.filter((task) => !workflowName || text(task.workflow) === workflowName), [all, workflowName]);
+  const boardPreset = text(object(snapshot.operating).board_preset) || (() => {
+    const screen = rows(object(snapshot.operating).screens).find((entry) => text(entry.kind) === 'board');
+    return text(screen?.preset) || text(unitOf(snapshot).preset);
+  })();
+  const byPreset = useMemo(() => (boardPreset ? all.filter((task) => text(task.preset) === boardPreset) : all), [all, boardPreset]);
+  const scoped = useMemo(() => byPreset.filter((task) => !workflowName || text(task.workflow) === workflowName), [byPreset, workflowName]);
   const tasks = useMemo(() => scoped.filter((task) => !phase || phaseRef(task) === phase), [scoped, phase]);
   const openCount = (list: Data[]) => list.filter((task) => text(task.category) !== 'done' && text(task.category) !== 'dropped').length;
   const doneCount = (list: Data[]) => list.filter((task) => text(task.category) === 'done').length;
@@ -643,10 +665,10 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
         ) : null}
         <div className="row" style={{ gap: 8 }}>
           <label className="faint" htmlFor="board-phase">
-            Container
+            {titleCase(hierarchyFirst)}
           </label>
           <select className="select" id="board-phase" value={phase} onChange={(event) => setPhase(event.target.value)} disabled={busy}>
-            <option value="">{`All containers · ${openCount(scoped)} open`}</option>
+            <option value="">{`All ${hierarchyFirst}s · ${openCount(scoped)} open`}</option>
             {phases.filter((p) => openCount(scoped.filter((task) => phaseRef(task) === idOf(p))) > 0).length ? (
               <optgroup label="With open work">
                 {phases.filter((p) => openCount(scoped.filter((task) => phaseRef(task) === idOf(p))) > 0).map(phaseOption)}
@@ -668,11 +690,11 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
               <span className="num">{`${doneCount(tasks)}/${tasks.length} done`}</span>
               {chip(PHASE_STATE[text(selectedPhase.state)] ?? 'gray', text(selectedPhase.state, 'planned'))}
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => setPhase('')}>
-                Show all containers
+                Show all {hierarchyFirst}s
               </button>
             </>
           ) : (
-            <span className="num">{`${openCount(scoped)} open, ${doneCount(scoped)} done in ${phases.length} container${phases.length === 1 ? '' : 's'}`}</span>
+            <span className="num">{`${openCount(scoped)} open, ${doneCount(scoped)} done in ${phases.length} ${hierarchyFirst}${phases.length === 1 ? '' : 's'}`}</span>
           )}
         </span>
         {busy ? <span className="faint">Working...</span> : null}
@@ -714,13 +736,14 @@ export function BoardPage({ snapshot, project, read, request, refresh, busy, mut
               openDoc={openDoc}
               onMove={(task, status2) => void move(task, status2)}
               onOpenWorkspace={setWorkspace}
+              snapshot={snapshot}
             />
           ))}
         </div>
         <DragOverlay dropAnimation={null}>
           {active ? (
             <div className="kcard">
-              <BoardCardBody task={active} claim={claimFor(idOf(active))} phaseTitle={phaseTitleOf(active)} outcome={outcomeOf(active)} done={text(active.status) === 'done'} openDoc={openDoc} />
+              <BoardCardBody task={active} claim={claimFor(idOf(active))} phaseTitle={phaseTitleOf(active)} outcome={outcomeOf(active)} done={text(active.status) === 'done'} openDoc={openDoc} snapshot={snapshot} />
             </div>
           ) : null}
         </DragOverlay>
@@ -781,7 +804,7 @@ const CURSOR_RIGHT: [string, string, ReactNode][] = [
   ['Completed', 'completed', <CircleCheck key="completed" size={13} aria-hidden="true" />],
 ];
 
-export function NowPage({ snapshot, project, read, request, openDoc, navigate, busy }: PageProps) {
+export function NowPage({ snapshot, project, read, openDoc, navigate, busy }: PageProps) {
   const next = useQuery({ queryKey: readKey(project, 'next'), queryFn: ({ signal }) => read('next', {}, signal), retry: false, enabled: !busy });
   const tasks = snapshot.tasks;
   const cursor = object(snapshot.cursor);
@@ -1031,26 +1054,27 @@ export function ScopePage({ snapshot, project, read, openDoc, busy }: PageProps)
   const items = snapshot.scope_items;
   const rollData = object(roll.data);
   const scoreById = useMemo(() => new Map(rows(rollData.items).map((item) => [text(item.id, text(item.item)), item])), [rollData.items]);
-  /* The legacy Scope page (pages/core.js pageScope): one panel per MoSCoW group, each row a
+  const priorities = priorityOrderOf(snapshot);
+  /* The legacy Scope page (pages/core.js pageScope): one panel per priority group, each row a
      legacy .mini that leads with the item id, then the claim pill, the proven share and - only
      when it says something else - the ticked share. */
   return (
     <div>
       <div className="ph">
         <div>
-          <h1>Scope</h1>
+          <h1>{screenTitle(snapshot, 'scope', 'Scope')}</h1>
           {/* A refused score read never reads as healthy proof: the headline says the number is
               not assessed, and the shell's offline bar is the visible read failure (Lead-owned). */}
           <p>{roll.isError ? evidenceTitle('proven') + ' ' + evidenceWord('not_assessed') : roll.data ? scoreLine(rollData) : 'What must be true, and how much of it is proven.'}</p>
         </div>
       </div>
-      {PRIORITY_ORDER.map((priority) => {
+      {priorities.map((priority) => {
         const group = items.filter((item) => text(item.priority) === priority);
         if (!group.length) return null;
         return (
           <section className="panel" key={priority} style={{ marginBottom: 16 }}>
             <div className="panel-h">
-              <h2>{MOSCOW[priority] ?? priority}</h2>
+              <h2>{priorityLabel(priority)}</h2>
               <div className="acts"><span className="faint">{group.length}</span></div>
             </div>
             {group.map((item) => {
@@ -1089,17 +1113,29 @@ export function DecisionsPage({ snapshot, openDoc }: PageProps) {
   const decisions = snapshot.decisions;
   const risks = snapshot.risks;
   const questions = snapshot.questions;
+  const otherRecords = rows(snapshot.records).filter(
+    (doc) => !['decision', 'risk', 'question'].includes(text(doc.preset)),
+  );
+  const byPreset = useMemo(() => {
+    const map = new Map<string, Data[]>();
+    for (const doc of otherRecords) {
+      const preset = text(doc.preset) || 'other';
+      map.set(preset, [...(map.get(preset) ?? []), doc]);
+    }
+    return [...map.entries()];
+  }, [snapshot.records]);
   const isOpen = (doc: Data) => !['done', 'dropped'].includes(text(doc.category));
   const openRisks = risks.filter(isOpen).length;
   const openQuestions = questions.filter(isOpen).length;
-  /* The legacy Decisions page (pages/core.js pageDecisions): one decisions panel, then the
-     risks/questions pair in a two-column grid, every row a legacy .mini. */
+  const title = screenTitle(snapshot, 'records', 'Records');
+  /* The legacy Decisions page plus the pack's other record presets: records first, then the
+     risk/question concerns in a two-column grid, every row a legacy .mini. */
   return (
     <div>
       <div className="ph">
         <div>
-          <h1>Decisions</h1>
-          <p>{plural(decisions.length, 'decision')}, {plural(openRisks, 'open risk')}, {plural(openQuestions, 'open question')}.</p>
+          <h1>{title}</h1>
+          <p>{plural(decisions.length + otherRecords.length, 'record')}, {plural(openRisks, 'open risk')}, {plural(openQuestions, 'open question')}.</p>
         </div>
       </div>
       <section className="panel" style={{ marginBottom: 16 }}>
@@ -1118,6 +1154,17 @@ export function DecisionsPage({ snapshot, openDoc }: PageProps) {
           <div style={{ padding: '12px 14px' }} className="faint">None.</div>
         )}
       </section>
+      {byPreset.map(([preset, list]) => (
+        <section className="panel" style={{ marginBottom: 16 }} key={preset}>
+          <div className="panel-h"><h2>{labelOf(snapshot, preset, true)}</h2></div>
+          {list.map((record) => (
+            <div className="mini" key={idOf(record)} role="button" tabIndex={0} onClick={() => openDoc(idOf(record))}>
+              <span className="grow trunc" title={titleOf(record)}>{titleOf(record)}</span>
+              <span className="faint" style={{ fontSize: 12 }}>{labelOf(snapshot, text(record.preset), true)}</span>
+            </div>
+          ))}
+        </section>
+      ))}
       <div className="grid2 decisions-grid">
         <section className="panel">
           <div className="panel-h"><h2>Risks</h2></div>

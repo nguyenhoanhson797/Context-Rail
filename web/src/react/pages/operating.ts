@@ -8,6 +8,72 @@ export const unitOf = (snapshot: Snapshot | Data): Data => object(operatingOf(sn
 export const labelsOf = (snapshot: Snapshot | Data): Data => object(operatingOf(snapshot).labels);
 export const focusOf = (snapshot: Snapshot | Data): Data => object(operatingOf(snapshot).focus);
 export const progressOf = (snapshot: Snapshot | Data): Data => object(operatingOf(snapshot).progress);
+export const queueOf = (snapshot: Snapshot | Data): Data => object(operatingOf(snapshot).queue);
+export const queuePolicyOf = (snapshot: Snapshot | Data): Data => object(operatingOf(snapshot).queue_policy);
+export const screensOf = (snapshot: Snapshot | Data): Data[] => rows(operatingOf(snapshot).screens);
+export const fieldsOf = (snapshot: Snapshot | Data): Record<string, string[]> => {
+  const fields = object(operatingOf(snapshot).fields);
+  const out: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    out[key] = Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+  }
+  return out;
+};
+export const cardFieldsOf = (snapshot: Snapshot | Data): string[] => fieldsOf(snapshot).card ?? [];
+export const filterFieldsOf = (snapshot: Snapshot | Data): string[] => fieldsOf(snapshot).filters ?? [];
+export const columnFieldsOf = (snapshot: Snapshot | Data): string[] => fieldsOf(snapshot).columns ?? [];
+
+export interface ScreenDef {
+  id: string;
+  kind: string;
+  title: string;
+  preset: string | null;
+  presets: string[];
+  groupBy: string | null;
+}
+
+export function screenDef(snapshot: Snapshot | Data, id: string): ScreenDef | null {
+  const screen = screensOf(snapshot).find((entry) => text(entry.id) === id);
+  if (!screen) return null;
+  const presets = Array.isArray(screen.presets)
+    ? screen.presets.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  return {
+    id: text(screen.id),
+    kind: text(screen.kind),
+    title: text(screen.title),
+    preset: text(screen.preset) || null,
+    presets,
+    groupBy: text(screen.group_by) || null,
+  };
+}
+
+/* Kind -> route. The shell's routes keep their legacy names; a screen is
+   addressed by its id, and the kind decides which renderer it gets. */
+export const KIND_ROUTE: Record<string, string> = {
+  summary: 'summary',
+  board: 'board',
+  plan: 'roadmap',
+  timeline: 'roadmap',
+  queue: 'queue',
+  catalog: 'catalog',
+  records: 'decisions',
+  pack: 'pack',
+  workflow: 'workflow',
+  execution: 'execution',
+  explorer: 'explorer',
+};
+
+export function routeForScreen(screen: ScreenDef | null, legacy: string): string {
+  if (!screen) return legacy;
+  return KIND_ROUTE[screen.kind] ?? legacy;
+}
+
+export function screenFor(snapshot: Snapshot | Data, route: string): ScreenDef | null {
+  return screensOf(snapshot).find(
+    (entry) => text(entry.id) === route || KIND_ROUTE[text(entry.kind)] === route,
+  ) as Data | null as unknown as ScreenDef | null;
+}
 
 export const titleCase = (id: string): string =>
   id.replace(/-/g, ' ').replace(/(^|\s)\w/g, (c) => c.toUpperCase());
@@ -30,7 +96,16 @@ export function hierarchyLabels(snapshot: Snapshot | Data): string[] {
 
 export function screenTitle(snapshot: Snapshot | Data | undefined, id: string, fallback: string): string {
   const screen = rows(operatingOf(snapshot ?? {}).screens).find((entry) => text(entry.id) === id);
-  return text(screen?.title, fallback);
+  if (screen) return text(screen.title, fallback);
+  /* Legacy id -> kind fallback: `roadmap` is the plan screen, `decisions`
+     is the records screen. New packs address screens by their own id. */
+  const legacyKind: Record<string, string> = { roadmap: 'plan', decisions: 'records', now: 'queue' };
+  const kind = legacyKind[id];
+  if (kind) {
+    const byKind = rows(operatingOf(snapshot ?? {}).screens).find((entry) => text(entry.kind) === kind);
+    if (byKind) return text(byKind.title, fallback);
+  }
+  return fallback;
 }
 
 export function focusName(snapshot: Snapshot | Data): string {
@@ -38,4 +113,81 @@ export function focusName(snapshot: Snapshot | Data): string {
   if (text(focus.state) !== 'resolved') return '';
   const chosen = object(focus.focus);
   return text(chosen.title, text(chosen.slug));
+}
+
+export function catalogItems(snapshot: Snapshot | Data, presetFilter?: string[]): Data[] {
+  const unit = text(unitOf(snapshot).preset);
+  const presetSet = presetFilter && presetFilter.length ? new Set(presetFilter) : null;
+  if (presetSet) {
+    return rows(object(snapshot).tasks).filter((task) => presetSet.has(text(task.preset)));
+  }
+  return rows(object(snapshot).tasks).filter(
+    (task) =>
+      !['done', 'dropped'].includes(text(task.category)) &&
+      text(task.preset) !== unit &&
+      !text(task.priority),
+  );
+}
+
+export function priorityValues(snapshot: Snapshot | Data): string[] {
+  const presets = rows(object(snapshot).presets);
+  for (const preset of presets) {
+    const fields = object(preset.fields);
+    const priority = fields.priority;
+    if (Array.isArray(priority) && priority.length) {
+      return priority.filter((entry): entry is string => typeof entry === 'string');
+    }
+  }
+  return ['must', 'should', 'could', 'wont'];
+}
+
+export function hierarchyLevels(snapshot: Snapshot | Data): Data[] {
+  return rows(operatingOf(snapshot).hierarchy);
+}
+
+export function allWorkItems(snapshot: Snapshot | Data): Data[] {
+  const snap = object(snapshot);
+  const seen = new Set<string>();
+  const all: Data[] = [];
+  for (const key of ['tasks', 'phases', 'scope_items', 'records', 'decisions', 'risks', 'questions', 'core_docs', 'milestones']) {
+    for (const doc of rows(snap[key])) {
+      const id = text(doc.id);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      all.push(doc);
+    }
+  }
+  return all;
+}
+
+export function screenHasData(snapshot: Snapshot | Data, route: string): boolean {
+  switch (route) {
+    case 'board':
+    case 'queue':
+    case 'workflow':
+    case 'explorer':
+    case 'execution':
+      return true;
+    case 'roadmap':
+      return (
+        rows(object(snapshot).phases).length > 0 ||
+        rows(object(snapshot).tasks).length > 0
+      );
+    case 'scope':
+      return rows(object(snapshot).scope_items).length > 0;
+    case 'catalog': {
+      const def = screenFor(snapshot, 'catalog');
+      return catalogItems(snapshot, def?.presets).length > 0;
+    }
+    case 'decisions':
+      return (
+        rows(object(snapshot).decisions).length +
+          rows(object(snapshot).risks).length +
+          rows(object(snapshot).questions).length +
+          rows(object(snapshot).records).length >
+        0
+      );
+    default:
+      return true;
+  }
 }

@@ -1,11 +1,10 @@
 import {Fragment} from 'react';
-import {object,rows,text,type Data,type PageProps} from './contracts';
+import {object,text,type Data,type PageProps} from './contracts';
 import {Button,Markdown} from './ui';
 import {docValid} from './transport';
-import {FileText,Layers,Target} from './icons';
+import {Layers} from './icons';
 import {StatusGlyph} from './overlays';
 const titleCase = (id:string) => id.replace(/-/g,' ').replace(/(^|\s)\w/g,c=>c.toUpperCase());
-const linkName = (v:unknown) => typeof v==='string'?v.trim().replace(/^\[\[/,'').replace(/\]\]$/,'').split('|')[0].trim():'';
 /* A front-matter value reads as prose ("a, b" / "phase: x"), not as JSON with quotes and brackets around the link buttons. */
 const plainValue = (value:unknown):string => {
  if(value===null||value===undefined)return '';
@@ -23,28 +22,11 @@ export function LinkedValue({value,openDoc}:{value:unknown;openDoc:(id:string)=>
  }
  parts.push(body.slice(last));return <>{parts}</>;
 }
-/* A source reference: opens the doc by its internal id, never an href. */
-function SourceRef({source,openDoc}:{source:unknown;openDoc:(id:string)=>void}) {
- const src=object(source);const id=text(src.id);
- if(!id||!docValid(id))return null;
- const line=src.line_start!==null&&src.line_start!==undefined?'L'+text(src.line_start)+(src.line_end!==null&&src.line_end!==undefined&&src.line_end!==src.line_start?'-'+text(src.line_end):''):'';
- const where=[text(src.section).replace(/^#+\s*/,'').trim(),line].filter(Boolean).join(' ');
- const tip=(text(src.path)||id)+(where?' - '+where:'');
- return <button type="button" className="src-ref" title={tip} onClick={()=>openDoc(id)}><FileText size={12}/><span className="src-id">{id}</span>{where?<span className="src-loc">{where}</span>:null}</button>;
-}
-/* Why the current understanding model names this id: a task of a goal, a scope item, or a requirement. */
-function namesDoc(goal:Data,id:string) {
- if(rows(goal.tasks).some(task=>text(task.id)===id))return 'a task of';
- if(rows(goal.items).some(item=>text(item.id)===id))return 'it is a scope item of';
- for(const item of rows(goal.items)) if(rows(item.requirements).some(requirement=>linkName(requirement)===id))return 'a requirement names it';
- return '';
-}
-export function DocumentContent({id,data,task,context,contextLoading=false,contextError='',status='',statuses=[],busy=false,loading=false,error='',navigate,openDoc,onMoveStatus}:{id:string;data:Data;task:boolean;context:unknown;contextLoading?:boolean;contextError?:string;status?:string;statuses?:string[];busy?:boolean;loading?:boolean;error?:string;navigate:PageProps['navigate'];openDoc:PageProps['openDoc'];onMoveStatus?:(status:string)=>void}) {
+export function DocumentContent({id,data,task,status='',statuses=[],busy=false,loading=false,error='',navigate,openDoc,onMoveStatus}:{id:string;data:Data;task:boolean;context:unknown;contextLoading?:boolean;contextError?:string;status?:string;statuses?:string[];busy?:boolean;loading?:boolean;error?:string;navigate:PageProps['navigate'];openDoc:PageProps['openDoc'];onMoveStatus?:(status:string)=>void}) {
  const doc=Object.keys(object(data.doc)).length?object(data.doc):data;
  const hasDoc=Object.keys(doc).length>0;
  const title=text(doc.title,id);
  const fm=Object.entries(object(doc.frontmatter)).filter(([key])=>!['title','type'].includes(key));
- const goals=rows(object(context).goals).map(goal=>({goal,why:namesDoc(goal,id)})).filter(entry=>entry.why&&docValid(text(entry.goal.id)));
  const states=statuses.length?statuses:['todo','in-progress','blocked','done'];
  const card=object(data.card);
  const cardFocus=object(card.focus);

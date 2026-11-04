@@ -303,6 +303,7 @@ def build(context: Any) -> dict[str, Any]:
         "milestones": by_preset.get(_MILESTONE, []),
         "scope_items": scope_items,
         "decisions": by_preset.get(_DECISION, []),
+        "records": [doc for doc in docs if doc["primitive"] == "record"],
         "risks": by_preset.get(_RISK, []),
         "questions": by_preset.get(_QUESTION, []),
         "cursor": cursor,
@@ -370,7 +371,14 @@ def _operating(context: Any, model: Any) -> dict[str, Any]:
             for name, value in presentation.labels.items()
         },
         "screens": [
-            {"id": screen.id, "kind": screen.kind, "title": screen.title}
+            {
+                "id": screen.id,
+                "kind": screen.kind,
+                "title": screen.title,
+                "preset": screen.preset,
+                "presets": list(screen.presets),
+                "group_by": screen.group_by,
+            }
             for screen in presentation.screens
         ],
         "fields": {

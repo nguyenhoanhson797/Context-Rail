@@ -8,7 +8,7 @@ export interface RailDoc extends Data { id: string; title: string; type: string;
 export interface Snapshot extends Data {
   project: Data; tasks: RailDoc[]; phases: RailDoc[]; scope_items: RailDoc[];
   decisions: RailDoc[]; risks: RailDoc[]; questions: RailDoc[]; core_docs: RailDoc[]; statuses: string[];
-  operating?: Data; digests?: Data;
+  records?: RailDoc[]; operating?: Data; digests?: Data;
 }
 /* The diagnostics document (/api/health): explicit loading/unknown/error - a
    clean board is ``ok`` with a dated summary, never a missing value read as 0. */
@@ -22,7 +22,7 @@ export interface Health extends Data {
   error_code: string | null;
   reasons: string[];
 }
-export type Route = 'summary' | 'overview' | 'atlas' | 'outcomes' | 'traceability' | 'impact' | 'now' | 'board' | 'lens' | 'graph' | 'roadmap' | 'scope' | 'decisions' | 'rules' | 'doctor' | 'pack' | 'activity' | 'portfolio' | 'settings';
+export type Route = 'summary' | 'overview' | 'atlas' | 'outcomes' | 'traceability' | 'impact' | 'now' | 'board' | 'lens' | 'graph' | 'roadmap' | 'scope' | 'catalog' | 'decisions' | 'rules' | 'doctor' | 'pack' | 'activity' | 'portfolio' | 'settings' | 'queue' | 'timeline' | 'workflow' | 'execution' | 'explorer';
 /* The statuses that mean work is happening right now. A reader looking for live
    work puts these first, in the palette and in every picker. */
 export const ACTIVE_STATUSES = new Set(['in-progress', 'blocked']);

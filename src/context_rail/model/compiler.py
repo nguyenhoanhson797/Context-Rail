@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -62,10 +62,18 @@ class OperatingModel:
     progress: ProgressPolicy
     execution_actions: tuple[str, ...]
     semantic_digest: str
+    unit_workflow: str | None = None
+    unit_label: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "unit": self.unit,
+            "unit": None
+            if self.unit is None
+            else {
+                "preset": self.unit,
+                "workflow": self.unit_workflow,
+                "label": self.unit_label,
+            },
             "hierarchy": [
                 {
                     "preset": level.preset,
@@ -128,7 +136,14 @@ class ProjectModel:
                     for name, label in self.presentation.labels.items()
                 },
                 "screens": [
-                    {"id": screen.id, "kind": screen.kind, "title": screen.title}
+                    {
+                        "id": screen.id,
+                        "kind": screen.kind,
+                        "title": screen.title,
+                        "preset": screen.preset,
+                        "presets": list(screen.presets),
+                        "group_by": screen.group_by,
+                    }
                     for screen in self.presentation.screens
                 ],
                 "fields": {
@@ -221,6 +236,11 @@ def compile_operating(pack: Pack, raw: Any = None) -> OperatingModel:
         return neutral_operating(pack, digest)
     queue = spec.queue or neutral_operating(pack, digest).queue
     progress = spec.progress or _neutral_progress(pack, spec.unit, queue)
+    workflow = (
+        None
+        if spec.unit is None
+        else pack.presets[spec.unit].workflow
+    )
     return OperatingModel(
         unit=spec.unit,
         hierarchy=spec.hierarchy,
@@ -229,6 +249,7 @@ def compile_operating(pack: Pack, raw: Any = None) -> OperatingModel:
         progress=progress,
         execution_actions=spec.execution.actions,
         semantic_digest=digest,
+        unit_workflow=workflow,
     )
 
 
@@ -242,6 +263,13 @@ def compile_project(
     """Compile one pack and its presentation into the project's IR."""
     digest = semantic_digest(pack, placement)
     operating = compile_operating(pack, operating_raw)
+    shown = presentation if presentation is not None else default_presentation(pack)
+    unit_label = (
+        declared.one
+        if operating.unit is not None
+        and (declared := shown.labels.get(operating.unit)) is not None
+        else None
+    )
     operating = OperatingModel(
         unit=operating.unit,
         hierarchy=operating.hierarchy,
@@ -250,8 +278,9 @@ def compile_project(
         progress=operating.progress,
         execution_actions=operating.execution_actions,
         semantic_digest=digest,
+        unit_workflow=operating.unit_workflow,
+        unit_label=unit_label,
     )
-    shown = presentation if presentation is not None else default_presentation(pack)
     presentation_fingerprint = presentation_hash(shown)
     full = sha256_hex(
         canonical_json(
