@@ -1,7 +1,7 @@
 /* Plan is the weekly screen: the plan view's pinned containers, the work graph
    under them, and the sequence the pack declares. A missing parent is shown as
    a gap, never repaired by inference. */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { ArrowRight, CircleDashed, GitBranch, Layers, Target, TriangleAlert } from '../icons';
 import { object, rows, text, type Data, type PageProps } from '../contracts';
 import { cn } from '../ui';
@@ -97,7 +97,7 @@ function SequenceLens({ roots, snapshot, openDoc, selected }: { roots: Data[]; s
                     type="button"
                     key={`${text(entry.doc.id)}-${index}`}
                     className={cn('rp-bar', category === 'done' && 'done', category === 'blocked' && 'blocked', selected === text(entry.doc.id) && 'sel')}
-                    style={{ left: `${index * share}%`, width: `${Math.max(share - 1.2, 4)}%` }}
+                    style={{ '--bar-left': `${index * share}%`, '--bar-width': `${Math.max(share - 1.2, 4)}%` } as CSSProperties}
                     title={`${text(entry.doc.title, text(entry.doc.id))} · ${titleCase(text(entry.doc.status))}`}
                     onClick={() => openDoc(text(entry.doc.id))}
                   >

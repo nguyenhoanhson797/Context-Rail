@@ -412,10 +412,10 @@ function GridLens({
       <table className="rf-gridtable">
         <thead>
           <tr>
-            <th>{text(catalog?.title, 'Catalog')}</th>
-            <th>Preset</th>
-            {fields.filter((field) => field !== 'title').map((field) => <th key={field}>{field === 'status' ? 'Status' : titleCase(field)}</th>)}
-            <th>Gate</th>
+            <th className="rf-grid-col-title">{text(catalog?.title, 'Catalog')}</th>
+            <th className="rf-grid-col-preset">Preset</th>
+            {fields.filter((field) => field !== 'title').map((field) => <th key={field} className={`rf-grid-col-${field}`}>{field === 'status' ? 'Status' : titleCase(field)}</th>)}
+            <th className="rf-grid-col-gate">Gate</th>
           </tr>
         </thead>
         <tbody>
@@ -424,14 +424,14 @@ function GridLens({
             const gate = workflow ? gateFor(snapshot, workflow, text(item.status)) : null;
             return (
               <tr key={text(item.id)} className={text(item.id) === selectedDoc ? 'sel' : undefined} onClick={() => openDoc(text(item.id))} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openDoc(text(item.id))}>
-                <td><b>{text(item.title, text(item.id))}</b><span className="rf-gridid">{text(item.id)}</span></td>
-                <td>{labelOf(snapshot, presetOf(item))}</td>
+                <td className="rf-grid-col-title"><b>{text(item.title, text(item.id))}</b><span className="rf-gridid">{text(item.id)}</span></td>
+                <td className="rf-grid-col-preset">{labelOf(snapshot, presetOf(item))}</td>
                 {fields.filter((field) => field !== 'title').map((field) => (
-                  <td key={field} className={field === 'status' ? 'rf-gridstatus' : undefined}>
+                  <td key={field} className={cn(`rf-grid-col-${field}`, field === 'status' && 'rf-gridstatus')}>
                     {field === 'status' ? titleCase(text(item.status)) : fieldValue(item, field) || '—'}
                   </td>
                 ))}
-                <td>{gate ? <span className="rf-chip rf-chip-gate">{gate.gate}</span> : '—'}</td>
+                <td className="rf-grid-col-gate">{gate ? <span className="rf-chip rf-chip-gate">{gate.gate}</span> : '—'}</td>
               </tr>
             );
           })}
@@ -549,7 +549,7 @@ export function FlowPage({ snapshot, params, navigate, openDoc, busy }: PageProp
         <div className="rf-head-main">
           <div className="rf-kicker">{`${labelOf(snapshot, population[0] ?? '', true)} · ${groupBy === 'status' ? 'grouped by status' : groupBy ? `grouped by ${groupBy}` : 'category fallback'}`}</div>
           <h1>{screen?.title ?? screenTitle(snapshot, 'board', 'Flow')}</h1>
-          <p>{`The pack's working population. Move a ${unit} through its own states; the store decides what is legal.`}</p>
+          <p>{`The pack's working population. Each ${unit} moves through its own states; the store decides what is legal.`}</p>
         </div>
         <div className="rf-head-side">
           <span className="rf-chip rf-chip-muted" title="The UI reports work; agents change state through the gateway.">agent-driven</span>

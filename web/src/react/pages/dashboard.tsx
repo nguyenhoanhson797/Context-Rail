@@ -522,7 +522,7 @@ export function DashboardPage({ snapshot, navigate, openDoc, health, healthError
                   ) : (
                     <p className="rdb-empty-note">No container matches the declared focus category.</p>
                   )}
-                  <div className="rdb-spotlight-foot">Start or move a container into the active category, then the runway will spotlight it.</div>
+                  <div className="rdb-spotlight-foot">The runway spotlights the active container once the store has one.</div>
                 </div>
               ) : null}
 
