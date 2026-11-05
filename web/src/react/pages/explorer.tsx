@@ -60,8 +60,9 @@ export function ExplorerPage({ snapshot, openDoc }: PageProps) {
         }
       />
 
+      <div className="stack">
       {grouped.containers.length ? (
-        <div className="stack">
+        <>
           {grouped.containers.map((container) => {
             const kids = grouped.byContainer.get(idOf(container)) ?? [];
             const done = kids.filter((kid) => text(kid.category) === 'done').length;
@@ -102,7 +103,7 @@ export function ExplorerPage({ snapshot, openDoc }: PageProps) {
               </Panel>
             );
           })}
-        </div>
+        </>
       ) : (
         <Empty title={`No ${pluralWord} yet`}>
           {`Add one with rail change add <${singular}> "...", then a ${unit.toLowerCase()} with --part-of.`}
@@ -136,8 +137,9 @@ export function ExplorerPage({ snapshot, openDoc }: PageProps) {
       ) : null}
 
       {grouped.containers.length && totalChildren === 0 && grouped.orphans.length === 0 ? (
-        <div className="faint" style={{ marginTop: 8 }}>No {unitMany} yet.</div>
+        <div className="faint">No {unitMany} yet.</div>
       ) : null}
+      </div>
     </div>
   );
 }
