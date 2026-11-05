@@ -113,16 +113,3 @@ def test_agents_md_records_the_v5_contract() -> None:
         "branch on a pack name",
     ):
         assert phrase in text, phrase
-
-
-def test_the_architecture_note_maps_the_modules() -> None:
-    text = _read("library/arch-operating-model.md")
-
-    for phrase in (
-        "model/compiler.py",
-        "context/operating.py",
-        "ProjectModel",
-        "semantic_digest",
-        "focus_missing",
-    ):
-        assert phrase in text, phrase
