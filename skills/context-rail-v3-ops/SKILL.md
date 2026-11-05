@@ -48,8 +48,8 @@ rail gate --warnings-as-errors
 ## Packs, digests and reapproval
 
 ```powershell
-rail ops pack validate scrum    # compile the operating model + surface, never refuses
-rail ops pack show scrum        # operating block or "neutral", three digests, approval
+rail ops pack validate --name scrum    # compile the operating model + surface, never refuses
+rail ops pack show --name scrum        # operating block or "neutral", three digests, approval
 rail ops pack create --name team --from scrum
 ```
 
@@ -63,7 +63,7 @@ rail ops pack create --name team --from scrum
   package built-in reports `approval_mismatch`; inspect and reapprove:
 
 ```powershell
-rail ops pack show scrum
+rail ops pack show --name scrum
 rail --actor human approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer <you>
 rail --actor human approve charter --confirm "APPROVE charter" --confirmer <you>
 ```
@@ -107,7 +107,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | A check reports `stale` | Declared inputs changed since the verdict | `rail check run` again |
 | `doctor` flags approval drift | A protected file changed after approval | Re-approve the target |
 | The index is corrupt or missing | Cache only | `rail ops reindex --full` |
-| Two CTOS at once | Single-instance lock | Let the running tick finish |
+| Two CTOs at once | Single-instance lock | Let the running tick finish |
 
 ## Surfaces and interop
 

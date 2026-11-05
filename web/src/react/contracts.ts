@@ -42,6 +42,10 @@ export interface PageProps {
   request: (path: '/api/portfolio' | '/api/projects' | '/api/tools', init?: RequestInit) => Promise<Data>;
   theme: 'light' | 'dark' | 'system';
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  /* The diagnostics read is separate from the snapshot: the dashboard shows
+     its dated state without blocking the rest of the page on the doctor. */
+  health?: Health;
+  healthError?: string;
 }
 /* --- UI-02: source-backed intelligence read contracts (GET /api/read/<view>) ---
    One versioned envelope for every view. Missing data is null with a reason and

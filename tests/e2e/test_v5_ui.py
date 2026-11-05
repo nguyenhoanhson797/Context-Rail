@@ -92,6 +92,24 @@ def test_a_screen_pins_its_population_and_grouping(
     assert screens["plan"]["preset"] == plan_preset
 
 
+@pytest.mark.parametrize(
+    ("pack", "title"),
+    [
+        ("scrum", "Summary"),
+        ("waterfall", "Summary"),
+        ("video", "Production"),
+        ("flow", "Summary"),
+        ("basic", "Summary"),
+    ],
+)
+def test_the_summary_screen_carries_the_pack_title(tmp_path, pack: str, title: str) -> None:
+    store = init_store(tmp_path / pack, pack)
+    document = api.context_document(store)
+    screens = {screen["kind"]: screen for screen in document["operating"]["screens"]}
+
+    assert screens["summary"]["title"] == title
+
+
 def test_declared_actions_expose_their_preconditions(
     operating_scrum_store: SimpleNamespace,
 ) -> None:

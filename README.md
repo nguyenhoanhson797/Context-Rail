@@ -129,13 +129,34 @@ rail ops doctor        # store integrity issues
 rail gate              # doctor issues plus the approval and done gates
 ```
 
+## Agent onboarding, for any harness
+
+A portable kit in `docs/agent-onboarding/` gets an agent from zero to working in
+any harness: Claude Code, Cursor, Gemini CLI, Codex, OpenCode, Windsurf, a
+custom MCP client or plain shell.
+
+- `AGENTS.template.md` — copy it to a project root as `AGENTS.md`; the safe
+  protocol in one file.
+- `references/harnesses.md` — instruction files, MCP wiring and actor choice.
+- `references/capabilities.md` — the full power map.
+- `references/{commands,playbooks,refusals,prompts}.md` — the command surface,
+  end-to-end recipes, recovery and role prompts.
+- `skills/context-rail-v3-onboarding/SKILL.md` — the same path as an installable
+  skill.
+
+The generated `AGENTS.md` that `rail ops adapters render` writes (and `rail init`
+writes once the picture exists) now carries the same protocol: read the compiled
+surface, pass an etag and a key, derive paths, respect human-only tools and
+follow a refusal's named fix.
+
 ## Skills
 
-Six operator skills under `skills/` in the repository checkout teach an agent
+Seven operator skills under `skills/` in the repository checkout teach an agent
 the rail itself, so it does not have to read the engine to answer "what can this
 do?" or "how do we change the workflow?":
 
 - `context-rail-v3` — mental model, quick start, command map
+- `context-rail-v3-onboarding` — adopt the rail in any project, any harness
 - `context-rail-v3-workflows` — packs, statuses, transitions, BA/PO steps
 - `context-rail-v3-pack-authoring` — pack creation, required metadata, defaults,
   declarative placement, workflows, quality and verbs
@@ -346,7 +367,7 @@ stores on a package built-in will report `approval_mismatch`. Inspect the new
 digest, then reapprove:
 
 ```powershell
-rail ops pack show scrum
+rail ops pack show --name scrum
 rail --actor human approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer <you>
 rail --actor human approve charter --confirm "APPROVE charter" --confirmer <you>
 ```

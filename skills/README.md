@@ -7,6 +7,7 @@ reading the engine source.
 | Skill | Use it when |
 |---|---|
 | `context-rail-v3` | First contact with a `context-rail/` store; quick start and command map |
+| `context-rail-v3-onboarding` | Adopting the rail in a new or existing project, with any harness |
 | `context-rail-v3-workflows` | Custom document types, statuses, transitions, BA/PO steps, pack switching |
 | `context-rail-v3-pack-authoring` | Creating or adjusting a pack: presets, required metadata, defaults, declarative placement |
 | `context-rail-v3-surface` | Working from `model`, `types`, `next`, `show`, `explain` and `why` without reading the pack |

@@ -101,6 +101,7 @@ Exact flags: `references/commands.md` in this skill.
 
 | You need | Load |
 |---|---|
+| Adopt the rail in a new project, or wire a harness | `context-rail-v3-onboarding` |
 | Custom document types, statuses, transitions, BA/PO steps, pack switching | `context-rail-v3-workflows` |
 | Create a pack, add document types, require metadata, change placement | `context-rail-v3-pack-authoring` |
 | Work from the compiled surface: types, next, show, explain, why | `context-rail-v3-surface` |

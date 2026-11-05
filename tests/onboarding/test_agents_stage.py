@@ -37,7 +37,10 @@ def test_agents_stage_writes_and_then_skips(unapproved_store: Path) -> None:
 
     assert first["state"] == "written"
     assert "AGENTS.md" in first["written"]
-    assert (unapproved_store.parent / "AGENTS.md").is_file()
+    agents = unapproved_store.parent / "AGENTS.md"
+    assert agents.is_file()
+    text = agents.read_text(encoding="utf-8")
+    assert "Read before you act" in text and "rail types" in text
     assert (unapproved_store.parent / ".agents" / "skills").is_dir()
     assert second["state"] == "unchanged"
 

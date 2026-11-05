@@ -405,13 +405,13 @@ decisions. A CTO may propose a pack, but the human runs the guarded switch with
 the typed phrase `USE PACK <name>`.
 
 A semantic change (operating, transition, preset, placement, policy) changes the
-semantic digest. `rail ops pack show <name>` reports `semantic_digest`,
+semantic digest. `rail ops pack show --name <name>` reports `semantic_digest`,
 `presentation_digest` and `full_digest` plus the approval state. When the
 semantic digest moved, the store reports `approval_mismatch`; inspect and
 reapprove:
 
 ```powershell
-rail ops pack show my-team
+rail ops pack show --name my-team
 rail --actor human approve pack:my-team --confirm "APPROVE pack:my-team" --confirmer <you>
 ```
 

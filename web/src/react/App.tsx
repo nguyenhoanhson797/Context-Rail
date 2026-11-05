@@ -6,16 +6,17 @@ import { RefreshGeneration, projectKey, readKey, refreshProject } from './refres
 import { ACTIVE_STATUSES, object, rows, text, type Data, type PageProps, type Route } from './contracts';
 import { Button, ErrorState, Loading, PageHeading } from './ui';
 import { SettingsPage } from './pages/workspace';
+import { DashboardPage } from './pages/dashboard';
 import { FlowPage } from './pages/flow';
 import { PlanPage } from './pages/plan';
 import { RecordsPage } from './pages/records';
 import { ItemSheet } from './pages/item';
 import { HealthSheet, ProgressSheet, RulesSheet } from './pages/sheets';
-import { allItems, attentionOf, flowScreen, focusState, hasFocus, ledgerScreen, planScreen } from './capabilities';
+import { allItems, attentionOf, flowScreen, focusState, hasFocus, ledgerScreen, planScreen, screenOf, SUMMARY_KINDS } from './capabilities';
 import { allWorkItems, focusName, labelOf, progressOf, screenTitleForRoute, unitLabel } from './pages/operating';
-/* The shell keeps three tracking slots and one utility route. A legacy route
-   lands on the slot or overlay that answers its question; it never keeps a
-   second navigation row alive. */
+/* The shell keeps one owner layer, three tracking slots and one utility route.
+   A legacy route lands on the slot or overlay that answers its question; it
+   never keeps a second navigation row alive. */
 function redirectPage(to: Route, extra: Record<string, string> = {}) {
   return function RedirectPage({ params, navigate }: PageProps) {
     useEffect(() => {
@@ -31,7 +32,7 @@ const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = 
   roadmap: PlanPage,
   decisions: RecordsPage,
   settings: SettingsPage,
-  summary: redirectPage('board'),
+  summary: DashboardPage,
   now: redirectPage('board'),
   scope: redirectPage('board'),
   catalog: redirectPage('board', { lens: 'grid' }),
@@ -251,12 +252,15 @@ export default function App() {
     :healthState==='ok'?`${text(object(healthDoctor.by_severity).error,'0')} errors, ${text(object(healthDoctor.by_severity).warning,'0')} warnings`
     :healthState==='error'?`Health unavailable: ${health.isError?health.error.message:text(health.data?.error,'the health read failed')}`
     :`Health unknown${healthReason?' — '+healthReason:''}`;
-  /* Three intent slots, not a screen list. The pack's declared view titles
-     name the slots; a legacy view becomes a lens or an overlay inside them. */
+  /* The owner layer plus three intent slots, not a screen list. The pack's
+     declared view titles name them; a legacy view becomes a lens or an overlay
+     inside them. */
+  const summaryScreenDef = snapshot.data ? screenOf(snapshot.data, SUMMARY_KINDS) : null;
   const flowScreenDef = snapshot.data ? flowScreen(snapshot.data) : null;
   const planScreenDef = snapshot.data ? planScreen(snapshot.data) : null;
   const ledgerScreenDef = snapshot.data ? ledgerScreen(snapshot.data) : null;
   const slots: { route: Route; title: string }[] = [
+    ...(summaryScreenDef ? [{ route: 'summary' as Route, title: summaryScreenDef.title }] : []),
     { route: 'board', title: flowScreenDef?.title ?? labels.board },
     { route: 'roadmap', title: planScreenDef?.title ?? labels.roadmap },
     { route: 'decisions', title: ledgerScreenDef?.title ?? labels.decisions },
@@ -324,7 +328,7 @@ export default function App() {
      supports it; none is a second copy of the page. */
   const pulse=useMemo(() => {
     const data=snapshot.data;
-    if (!data || route==='settings') return null;
+    if (!data || route==='settings' || route==='summary') return null;
     const items=allItems(data);
     const active=items.filter((t)=>text(t.category)==='active').length;
     const blocked=items.filter((t)=>text(t.category)==='blocked').length;
@@ -400,7 +404,7 @@ export default function App() {
     </div>}
     {pulse&&pulse.attention>0&&route!=='settings'?<div className="rail-attention-band" role="status"><b>{pulse.attention} need you</b><span>{[pulse.blockedCount?`${pulse.blockedCount} blocked`:'',pulse.gateCount?`${pulse.gateCount} proof owed`:'',pulse.focusCount?`${pulse.focusCount} focus candidates`:''].filter(Boolean).join(' · ')}</span><button type="button" className="rail-band-cta" onClick={toggleAttention}>{attentionOn?'Show all':'Review →'}</button></div>:null}
     {routeErrors.length>0&&<div className="offline-bar" role="alert"><TriangleAlert size={15}/><span><b>{crumbTitle(route)+" could not load."}</b> {routeErrors.join(" ")}{readTimes[project+"|"+route]&&(" Last good read "+new Date(readTimes[project+"|"+route]).toLocaleTimeString()+".")}</span><span className="sp"/><button type="button" className="btn btn-sm btn-secondary" onClick={()=>void refresh()}>Try again</button></div>}
-    <main id="main" ref={main} tabIndex={-1} className="content">{notice&&<div role="alert" className="offline-bar rail-error">{notice}</div>}<div className={route==='settings'?'rail-settings-wrap rail-main':'rail-main rail-screen'}>{invalid?<ErrorState error="This project is invalid or not registered. No project data was requested."/>:registry.isError?<ErrorState error={registry.error.message} retry={()=>void registry.refetch()}/>:snapshot.isError?<ErrorState error={snapshot.error.message} retry={()=>void snapshot.refetch()}/>:!snapshot.data?<Loading/>:Page?<Page snapshot={snapshot.data} project={project} params={locationState.params} navigate={navigate} openDoc={openDoc} read={readPage} mutate={mutate} busy={busy} refresh={()=>refresh()} request={(path,init)=>client.request(path,init)} theme={theme} setTheme={setTheme}/>:<><PageHeading title="Page not found" description="This address does not name a screen in Context Rail." action={<Button onClick={()=>navigate('board')}>Go to Flow</Button>}/></>}</div></main></div>
+    <main id="main" ref={main} tabIndex={-1} className="content">{notice&&<div role="alert" className="offline-bar rail-error">{notice}</div>}<div className={route==='settings'?'rail-settings-wrap rail-main':'rail-main rail-screen'}>{invalid?<ErrorState error="This project is invalid or not registered. No project data was requested."/>:registry.isError?<ErrorState error={registry.error.message} retry={()=>void registry.refetch()}/>:snapshot.isError?<ErrorState error={snapshot.error.message} retry={()=>void snapshot.refetch()}/>:!snapshot.data?<Loading/>:Page?<Page snapshot={snapshot.data} project={project} params={locationState.params} navigate={navigate} openDoc={openDoc} read={readPage} mutate={mutate} busy={busy} refresh={()=>refresh()} request={(path,init)=>client.request(path,init)} theme={theme} setTheme={setTheme} health={health.data} healthError={health.isError ? health.error.message : undefined}/>:<><PageHeading title="Page not found" description="This address does not name a screen in Context Rail." action={<Button onClick={()=>navigate('board')}>Go to Flow</Button>}/></>}</div></main></div>
     {doc&&snapshot.data&&<DocDrawer id={doc} type="" claim="" full={docFull} onToggleFull={()=>setDocFull(value=>!value)} onClose={closeDoc}><ItemSheet id={doc} snapshot={snapshot.data} document={docData} openDoc={openDoc} loading={documentQuery.isPending} error={documentQuery.isError?documentQuery.error.message:''}/></DocDrawer>}
     {activeTool&&<ToolForm tool={activeTool} confirmTools={confirmTools} busy={busy} hidden={!!confirmation} onClose={()=>setActiveTool(null)} mutate={mutate} onConfirm={requestConfirm}/>}
     {confirmation&&<ConfirmDialog title={confirmation.title} body={confirmation.body} ok={confirmation.ok} busy={busy} onRun={confirmation.run} onClose={()=>setConfirmation(null)}/>}
