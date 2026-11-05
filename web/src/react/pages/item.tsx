@@ -1,8 +1,7 @@
 /* The Item sheet: the one place a person sees the gate, the legal moves, the
    declared actions and the relations together. It opens beside the work and
    keeps the canvas's selection. */
-import { useState } from 'react';
-import { Check, Circle, CircleDashed, Lock, TriangleAlert } from '../icons';
+import { Check, Circle, CircleDashed, Lock } from '../icons';
 import { object, rows, text, type Data, type PageProps } from '../contracts';
 import { cn } from '../ui';
 import { DocumentContent } from '../DocumentContent';
@@ -28,22 +27,14 @@ export function ItemSheet({
   id,
   snapshot,
   document,
-  busy,
-  navigate,
   openDoc,
-  mutate,
-  onMove,
   loading = false,
   error = '',
 }: {
   id: string;
   snapshot: PageProps['snapshot'];
   document: Data;
-  busy: boolean;
-  navigate: PageProps['navigate'];
   openDoc: (id: string) => void;
-  mutate: PageProps['mutate'];
-  onMove: (id: string, status: string) => void;
   loading?: boolean;
   error?: string;
 }) {
@@ -74,18 +65,15 @@ export function ItemSheet({
   const claim = rows(object(snapshot).claims).find((entry) => text(entry.task) === id);
   const who = claim ? text(claim.actor, text(claim.holder, 'claimed')) : '';
   const priority = text(item?.priority, text(object(item?.fields).priority));
-  const writeTools = new Set(['move', 'update', 'add', 'link', 'rename', 'check', 'triage', 'report']);
   const actions = !item
     ? []
     : (() => {
-        const known = actionsFor(snapshot, preset, status).filter((action) => writeTools.has(text(action.tool)));
+        const known = actionsFor(snapshot, preset, status);
         const named = strings(card.actions);
         return named.length ? known.filter((action) => named.includes(text(action.name))) : known;
       })();
   const relations = Object.entries(object(item?.relations)).filter(([, value]) => Array.isArray(value) && value.length);
   const byId = new Map(allItems(snapshot).map((entry) => [text(entry.id), entry]));
-  const [notice, setNotice] = useState('');
-  const [working, setWorking] = useState('');
 
   const all = allItems(snapshot);
   const childIds = all
@@ -126,38 +114,6 @@ export function ItemSheet({
     return '';
   };
 
-  const substitute = (value: unknown): unknown => {
-    if (typeof value === 'string') {
-      return value
-        .replace(/\{item\}/g, id)
-        .replace(/\{etag\}/g, text(doc.etag, text(item?.etag)))
-        .replace(/\{title\}/g, title)
-        .replace(/\{parent\}/g, strings(object(item?.relations).part_of)[0] ?? '');
-    }
-    if (Array.isArray(value)) return value.map(substitute);
-    return value;
-  };
-
-  const runAction = async (action: Data) => {
-    if (busy || blockedAction(action)) return;
-    const tool = text(action.tool);
-    if (!['move', 'update', 'add', 'link', 'rename', 'check', 'triage', 'report'].includes(tool)) {
-      setNotice(`${tool} is a read or runner tool; this sheet only runs declarative changes.`);
-      return;
-    }
-    const args: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(object(action.args))) args[key] = substitute(value);
-    setWorking(text(action.name));
-    setNotice('');
-    try {
-      await mutate(tool, args);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    } finally {
-      setWorking('');
-    }
-  };
-
   return (
     <div className="ri-sheet">
       <header className="ri-head">
@@ -171,8 +127,6 @@ export function ItemSheet({
           {item ? <span className="rf-chip rf-chip-muted">{text(item.id)}</span> : <span className="rf-chip rf-chip-muted">{text(doc.type, 'document')}</span>}
         </div>
       </header>
-
-      {notice ? <div role="alert" className="rf-notice"><TriangleAlert size={14} /> {notice}</div> : null}
 
       {gate ? (
         <section className="ri-section">
@@ -200,21 +154,19 @@ export function ItemSheet({
       ) : null}
 
       {item ? <section className="ri-section">
-        <h3>Allowed now</h3>
+        <h3>Legal moves · agent-driven</h3>
         {next.length ? next.map((target) => {
           const targetGate = workflow ? gateFor(snapshot, workflow, target) : null;
           const targetOwed = itemsNeedingGate(snapshot, preset, status).includes(target);
-          const disabled = busy || (targetOwed && gateOpen());
+          const blocked = targetOwed && gateOpen();
           return (
             <div className="ri-action" key={target}>
               <span className="grow">
                 Move to {titleCase(target)}
-                {disabled && targetOwed ? <span className="ri-reason">{reason || 'gate is open'}</span> : null}
+                {blocked ? <span className="ri-reason">{reason || 'gate is open'}</span> : null}
               </span>
-              <button type="button" className="rf-move" disabled={disabled} onClick={() => onMove(id, target)}>
-                Move
-              </button>
               {targetGate ? <span className="rf-chip rf-chip-gate">{targetGate.gate}</span> : null}
+              <span className="rf-chip rf-chip-muted">agent</span>
             </div>
           );
         }) : <p className="ri-muted">No transition is declared from {titleCase(status)}.</p>}
@@ -226,13 +178,12 @@ export function ItemSheet({
                 {text(action.name)}
                 <span className="ri-reason">{reasonFor || text(action.use_when)}</span>
               </span>
-              <button type="button" className="rf-move" disabled={busy || Boolean(reasonFor) || working === text(action.name)} onClick={() => void runAction(action)}>
-                {working === text(action.name) ? 'Running…' : 'Run'}
-              </button>
+              <span className="rf-chip rf-chip-muted">agent</span>
             </div>
           );
         })}
         {!next.length && !actions.length ? <p className="ri-muted">This state has no declared move.</p> : null}
+        <p className="ri-agent-note">The sheet reports the compiled moves and actions. An agent runs them through the gateway; the UI never changes work state.</p>
       </section> : null}
 
       {relations.length ? (
@@ -268,24 +219,14 @@ export function ItemSheet({
       ) : null}
 
       <section className="ri-section ri-body">
-        <DocumentContent
-          id={id}
-          data={document}
-          task={false}
-          bodyOnly
-          context={undefined}
-          loading={loading}
-          error={error}
-          navigate={navigate}
-          openDoc={openDoc}
-        />
+        <DocumentContent id={id} data={document} loading={loading} error={error} openDoc={openDoc} />
       </section>
 
       {item ? <footer className="ri-foot">
         <StatusGlyph status={status} statuses={workflow ? workflowStatuses(snapshot, workflow) : []} category={category} size={12} />
         <span>{workflow ? `workflow ${workflow}` : 'no workflow'}</span>
         <span className="sp" />
-        <span className="faint">A refused move changes nothing.</span>
+        <span className="faint">Read-only here: agents move work; the UI reports it.</span>
       </footer> : null}
     </div>
   );

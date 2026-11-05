@@ -187,7 +187,7 @@ export function CommandPalette({ query, onQueryChange, groups, onClose, onRun }:
           }
         }}>
         <div className="pal-in"><CommandIcon size={17} />
-          <input id="pal-in" value={query} onChange={event => onQueryChange(event.target.value)} placeholder="Run a tool, jump to a task, doc or page..." autoComplete="off" role="combobox" aria-expanded="true" aria-haspopup="listbox" aria-autocomplete="list" aria-controls="pal-list" aria-activedescendant={active >= 0 ? 'pi-' + active : undefined} aria-label="Command menu" />
+          <input id="pal-in" value={query} onChange={event => onQueryChange(event.target.value)} placeholder="Read a tool, jump to a task, doc or page..." autoComplete="off" role="combobox" aria-expanded="true" aria-haspopup="listbox" aria-autocomplete="list" aria-controls="pal-list" aria-activedescendant={active >= 0 ? 'pi-' + active : undefined} aria-label="Command menu" />
         </div>
         <div className="pal-list" id="pal-list" ref={list} role="listbox" aria-label="Commands">
           {flat.length ? groups.map(group => (

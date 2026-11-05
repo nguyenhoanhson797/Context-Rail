@@ -790,6 +790,7 @@ button.rf-chip:hover { background: var(--surface-2); color: var(--text); }
 .ri-action .grow { min-width: 0; }
 .ri-reason { display: block; color: var(--text-4); font-size: 9.5px; line-height: 1.35; }
 .ri-muted { margin: 2px 0; color: var(--text-4); font-size: var(--fs-2xs); }
+.ri-agent-note { margin: 8px 0 0; padding-top: 7px; border-top: 1px dashed var(--border); color: var(--text-4); font-size: 9.5px; line-height: 1.5; }
 .ri-relation { display: flex; gap: 7px; padding: 3px 0; font-size: var(--fs-2xs); }
 .ri-relation b { min-width: 64px; color: var(--text-3); font-weight: 550; }
 .ri-link { color: var(--text-2); text-align: left; }

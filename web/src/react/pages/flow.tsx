@@ -2,25 +2,10 @@
    the screen's declared axis. The category bands are the engine's fixed
    semantics; the columns are the pack's own states. Nothing here branches on
    a pack name or a state name. */
-import { useCallback, useMemo, useState } from 'react';
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  closestCorners,
-  defaultAnnouncements,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from '@dnd-kit/core';
+import { useMemo, useState } from 'react';
 import {
   ArrowRight,
   CircleDashed,
-  GripVertical,
   Layers,
   LayoutDashboard,
   Lock,
@@ -64,7 +49,6 @@ import {
 } from '../capabilities';
 import { cardFieldsOf, focusName, hierarchyLabels, hierarchyLevels, labelOf, screenTitle, titleCase, unitLabel } from './operating';
 
-const COLUMN_PREFIX = 'status:';
 type Lens = 'board' | 'map' | 'grid' | 'canvas';
 const LENS_LABEL: Record<Lens, string> = { board: 'Board', map: 'Map', grid: 'Grid', canvas: 'Canvas' };
 
@@ -74,7 +58,6 @@ function FlowCard({
   item,
   workflow,
   snapshot,
-  busy,
   openDoc,
   onPeek,
   selected,
@@ -82,7 +65,6 @@ function FlowCard({
   item: Data;
   workflow: string;
   snapshot: PageProps['snapshot'];
-  busy: boolean;
   openDoc: (id: string) => void;
   onPeek: (item: Data | null) => void;
   selected: boolean;
@@ -90,11 +72,6 @@ function FlowCard({
   const id = text(item.id);
   const status = text(item.status);
   const category = text(item.category, categoryOf(snapshot, status));
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id,
-    disabled: busy,
-    data: { status },
-  });
   const gate = gateFor(snapshot, workflow, status);
   const owed = itemsNeedingGate(snapshot, presetOf(item), status);
   const priority = text(item.priority);
@@ -106,8 +83,7 @@ function FlowCard({
   const done = category === 'done';
   return (
     <div
-      ref={setNodeRef}
-      className={cn('rf-card', done && 'done', category === 'blocked' && 'blocked', category === 'active' && 'active', selected && 'sel', isDragging && 'dragging')}
+      className={cn('rf-card', done && 'done', category === 'blocked' && 'blocked', category === 'active' && 'active', selected && 'sel')}
       onMouseEnter={() => onPeek(item)}
       onMouseLeave={() => onPeek(null)}
       onFocus={() => onPeek(item)}
@@ -117,17 +93,6 @@ function FlowCard({
         <StatusGlyph status={status} statuses={workflowStatuses(snapshot, workflow)} category={category} size={13} />
         <button type="button" className="rf-card-title" onClick={() => openDoc(id)}>
           {text(item.title, id)}
-        </button>
-        <button
-          type="button"
-          className="rf-grip"
-          aria-label={`Move ${text(item.title, id)} with the keyboard`}
-          title="Press space, use the arrow keys, then space to drop"
-          disabled={busy}
-          {...listeners}
-          {...attributes}
-        >
-          <GripVertical size={13} strokeWidth={1.8} />
         </button>
       </div>
       {text(item.reason, text(item.blocked_why)) && category === 'blocked' ? (
@@ -169,7 +134,6 @@ function FlowColumn({
   items,
   workflow,
   snapshot,
-  busy,
   openDoc,
   onPeek,
   selectedDoc,
@@ -178,19 +142,16 @@ function FlowColumn({
   items: Data[];
   workflow: string;
   snapshot: PageProps['snapshot'];
-  busy: boolean;
   openDoc: (id: string) => void;
   onPeek: (item: Data | null) => void;
   selectedDoc: string;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: COLUMN_PREFIX + column.status, data: { status: column.status } });
   const inColumn = items.filter((item) => text(item.status) === column.status);
   const unit = unitLabel(snapshot).toLowerCase();
   const gate = gateFor(snapshot, workflow, column.status);
   return (
     <section
-      ref={setNodeRef}
-      className={cn('rf-col', isOver && 'over', column.category === 'blocked' && 'blocked', column.category === 'done' && 'done')}
+      className={cn('rf-col', column.category === 'blocked' && 'blocked', column.category === 'done' && 'done')}
       data-column={column.status}
       aria-label={`${column.label} column`}
     >
@@ -207,7 +168,6 @@ function FlowColumn({
               item={item}
               workflow={workflow}
               snapshot={snapshot}
-              busy={busy}
               openDoc={openDoc}
               onPeek={onPeek}
               selected={text(item.id) === selectedDoc}
@@ -228,7 +188,6 @@ function BoardLens({
   snapshot,
   busy,
   openDoc,
-  onMove,
   onPeek,
   groupBy,
   selectedDoc,
@@ -239,45 +198,18 @@ function BoardLens({
   snapshot: PageProps['snapshot'];
   busy: boolean;
   openDoc: (id: string) => void;
-  onMove: (item: Data, status: string) => void;
   onPeek: (item: Data | null) => void;
   groupBy: string;
   selectedDoc: string;
 }) {
   const columns = allStatusColumns(bands);
-  const [active, setActive] = useState<Data | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
-  const onDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      setActive(null);
-      const over = event.over ? String(event.over.id) : '';
-      if (!over.startsWith(COLUMN_PREFIX)) return;
-      const item = items.find((candidate) => text(candidate.id) === String(event.active.id));
-      if (item) onMove(item, over.slice(COLUMN_PREFIX.length));
-    },
-    [items, onMove],
-  );
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragStart={(event: DragStartEvent) => setActive(items.find((item) => text(item.id) === String(event.active.id)) ?? null)}
-      onDragEnd={onDragEnd}
-      onDragCancel={() => setActive(null)}
-      accessibility={{
-        announcements: {
-          ...defaultAnnouncements,
-          onDragStart: ({ active: dragged }) => `Picked up ${String(dragged.id)}.`,
-          onDragOver: ({ active: dragged, over }) => (over ? `${String(dragged.id)} is over ${String(over.id).replace(COLUMN_PREFIX, '')}.` : `${String(dragged.id)} left the board.`),
-          onDragEnd: ({ active: dragged, over }) =>
-            over ? `${String(dragged.id)} dropped on ${String(over.id).replace(COLUMN_PREFIX, '')}; the store decides whether it moves.` : `${String(dragged.id)} did not move.`,
-        },
-        screenReaderInstructions: {
-          draggable: 'Focus a card grip, press space, use the arrow keys, then space to drop. Escape cancels.',
-        },
-      }}
-    >
-      <div className="rf-bandgrid" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(144px, 1fr))` }}>
+    <>
+      <div
+        className="rf-bandgrid"
+        aria-busy={busy}
+        style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(144px, 1fr))` }}
+      >
         {bands.map((band) => (
           <div key={band.category} className={cn('rf-band', `rf-band-${band.category}`)} style={{ gridColumn: `span ${band.statuses.length}` }}>
             <span>{band.label}</span>
@@ -291,7 +223,6 @@ function BoardLens({
             items={items}
             workflow={workflow}
             snapshot={snapshot}
-            busy={busy}
             openDoc={openDoc}
             onPeek={onPeek}
             selectedDoc={selectedDoc}
@@ -303,17 +234,7 @@ function BoardLens({
           This screen groups by <b>{groupBy}</b>; the category bands remain the fixed fallback.
         </p>
       ) : null}
-      <DragOverlay dropAnimation={null}>
-        {active ? (
-          <div className="rf-card rf-card-drag">
-            <div className="rf-card-top">
-              <StatusGlyph status={text(active.status)} statuses={workflowStatuses(snapshot, workflow)} category={text(active.category)} size={13} />
-              <span className="rf-card-title">{text(active.title, text(active.id))}</span>
-            </div>
-          </div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+    </>
   );
 }
 
@@ -543,7 +464,7 @@ function CanvasLens({ snapshot }: { snapshot: PageProps['snapshot'] }) {
   );
 }
 
-export function FlowPage({ snapshot, params, navigate, openDoc, mutate, busy }: PageProps) {
+export function FlowPage({ snapshot, params, navigate, openDoc, busy }: PageProps) {
   const screen = flowScreen(snapshot);
   const population = populationPresets(snapshot, screen);
   const declaredGroup = groupByOf(screen);
@@ -566,7 +487,6 @@ export function FlowPage({ snapshot, params, navigate, openDoc, mutate, busy }: 
   const phase = containerPreset && allItems(snapshot).some((item) => text(item.id) === requestedPhase && text(item.preset) === containerPreset)
     ? requestedPhase
     : '';
-  const [notice, setNotice] = useState('');
   const [peek, setPeek] = useState<Data | null>(null);
   const lensParam = params.get('lens') ?? 'board';
 
@@ -614,20 +534,6 @@ export function FlowPage({ snapshot, params, navigate, openDoc, mutate, busy }: 
     navigate('board', next);
   };
 
-  const move = useCallback(
-    async (item: Data, status: string) => {
-      const id = text(item.id);
-      if (!id || busy || text(item.status) === status) return;
-      setNotice('');
-      try {
-        await mutate('change move', { slug: id, status, expect: text(item.etag) });
-      } catch (error) {
-        setNotice(error instanceof Error ? error.message : String(error));
-      }
-    },
-    [busy, mutate],
-  );
-
   const peekRelations = peek
     ? ['part_of', 'depends_on', 'verifies', 'owned_by'].map((rel) => ({ rel, values: Array.isArray(object(peek.relations)[rel]) ? (object(peek.relations)[rel] as unknown[]).filter((value): value is string => typeof value === 'string') : [] })).filter((entry) => entry.values.length)
     : [];
@@ -646,6 +552,7 @@ export function FlowPage({ snapshot, params, navigate, openDoc, mutate, busy }: 
           <p>{`The pack's working population. Move a ${unit} through its own states; the store decides what is legal.`}</p>
         </div>
         <div className="rf-head-side">
+          <span className="rf-chip rf-chip-muted" title="The UI reports work; agents change state through the gateway.">agent-driven</span>
           <span className="rf-popcount"><b>{items.length}</b> {labelOf(snapshot, population[0] ?? '', true)}</span>
           {focus ? <button type="button" className="rf-chip rf-chip-focus" onClick={() => navigate('roadmap', selectedDoc ? { doc: selectedDoc } : {})}><Target size={11} /> {focus}</button> : null}
           {attention.length ? <button type="button" className="rf-chip rf-chip-attn" onClick={() => setParam('attention', '1')}><TriangleAlert size={11} /> {attention.length} need you</button> : null}
@@ -686,8 +593,6 @@ export function FlowPage({ snapshot, params, navigate, openDoc, mutate, busy }: 
         {hasExecution(snapshot) ? <span className="rf-chip rf-chip-muted">execution separate</span> : null}
       </div>
 
-      {notice ? <div role="alert" className="rf-notice"><TriangleAlert size={14} /> {notice}</div> : null}
-
       {params.get('attention') === '1' && attention.length ? (
         <section className="rf-attention" aria-label="Needs you">
           <header><b>{attention.length} need you</b><span>blocked work, proof owed and an unresolved focus</span><button type="button" className="rf-link" onClick={() => setParam('attention', '')}>clear</button></header>
@@ -721,7 +626,6 @@ export function FlowPage({ snapshot, params, navigate, openDoc, mutate, busy }: 
               snapshot={snapshot}
               busy={busy}
               openDoc={openDoc}
-              onMove={(item, status) => void move(item, status)}
               onPeek={setPeek}
               groupBy={groupBy}
               selectedDoc={selectedDoc}

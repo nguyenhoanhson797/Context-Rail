@@ -59,7 +59,7 @@ import { ToolForm } from './ToolForm';
 import { DocumentNavigation } from './wikiLinks';
 import { useRailKeyboard } from './keyboard';
 import { restorePreferences } from './preferences';
-import { CommandPalette, ConfirmDialog, DocDrawer, StatusGlyph, WrenchIcon, type PaletteGroup, type PaletteItem } from './overlays';
+import { CommandPalette, ConfirmDialog, DocDrawer, StatusGlyph, type PaletteGroup, type PaletteItem } from './overlays';
 const address = () => parseAddress(location.hash);
 const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,catalog:Folders,decisions:GitBranch,doctor:Stethoscope,pack:FileText,settings:Settings,workflow:RouteIcon,execution:GitBranch,timeline:RouteIcon};
 /* The legacy palette order and its G-key labels (web/src/core/palette.js). */
@@ -236,12 +236,6 @@ export default function App() {
   const trail=useMemo(()=>trailOf(route,locationState.params,crumbModel(understanding.data,snapshot.data)),[route,locationState.params,understanding.data,snapshot.data]);
   const confirmTools=Array.isArray(tools.data?.confirm)?tools.data.confirm.filter((v):v is string=>typeof v==='string'):[];
   const closeDoc=useCallback(() => { setDoc(''); const next=address();next.params.delete('doc');history.replaceState(null,'','#'+next.route+(next.params.size?'?'+next.params:''));setLocationState(next); },[]);
-  const moveDocStatus=useCallback((status:string) => {
-    if(!doc) return;
-    const etag=text(object(object(documentQuery.data).doc).etag);
-    if(!etag) return;
-    void mutate('change move',{slug:doc,status,expect:etag}).catch(() => {});
-  },[doc,mutate,documentQuery.data]);
   const switchProject=(id:string)=>{if(busy) return;const q=new URLSearchParams(locationState.params); if(id)q.set('project',id);else q.delete('project');location.hash=route+(q.size?'?'+q:'');};
   const projectName=text(snapshot.data?.project.name,'Context Rail');
   /* The health line: a clean board is only ever ``ok`` with a dated summary; an
@@ -270,7 +264,7 @@ export default function App() {
   const slotRoutes = slots.map((slot) => slot.route);
   const navRoutes: Route[] = [...slotRoutes, 'settings'];
   const navItem=(r:Route,title?:string)=>{const Icon=routeIcons[r]??FileText;const label=title??screenTitleForRoute(snapshot.data,r,labels[r]);const selectedDoc=locationState.params.get('doc');const params:Record<string,string>=selectedDoc?{doc:selectedDoc}:{};return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r,params)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{label}</span></button>;};
-  /* ---------- command palette items (legacy groups: Navigate, Run a tool, Docs) ---------- */
+  /* ---------- command palette items (Navigate, Read a tool, Docs) ---------- */
   /* A group that shows only its first matches says so and offers the rest: a
      truncated list must never hide work without a way to reach it. */
   const NAV_LIMIT = 8;
@@ -301,9 +295,11 @@ export default function App() {
     const navAll=[...pages,...extras];
     const nav=isExpanded('Navigate')?navAll:navAll.slice(0,query?NAV_LIMIT_QUERY:NAV_LIMIT);
     if(nav.length) list.push({name:'Navigate',items:nav,more:pagination('Navigate',nav.length,navAll.length,'pages')});
-    const toolAll=rows(tools.data?.tools).filter(t=>match(t.name,t.cli_name,t.help)).map((t):PaletteItem => ({ key:'tool-'+text(t.name), name:text(t.name), sub:text(t.help), icon:(t.writes||t.writes_when)?<WrenchIcon size={15}/>:<Search size={15}/>, run:()=>setActiveTool(t) }));
-    const toolItems=isExpanded('Run a tool')?toolAll:toolAll.slice(0,query?TOOL_LIMIT_QUERY:TOOL_LIMIT);
-    if(toolItems.length) list.push({name:'Run a tool',items:toolItems,more:pagination('Run a tool',toolItems.length,toolAll.length,'tools')});
+    /* The human UI only runs reads. Work-state writes belong to agents
+       through the gateway; a palette entry must never be a second write path. */
+    const toolAll=rows(tools.data?.tools).filter(t=>!t.writes&&!t.writes_when).filter(t=>match(t.name,t.cli_name,t.help)).map((t):PaletteItem => ({ key:'tool-'+text(t.name), name:text(t.name), sub:text(t.help), icon:<Search size={15}/>, run:()=>setActiveTool(t) }));
+    const toolItems=isExpanded('Read a tool')?toolAll:toolAll.slice(0,query?TOOL_LIMIT_QUERY:TOOL_LIMIT);
+    if(toolItems.length) list.push({name:'Read a tool',items:toolItems,more:pagination('Read a tool',toolItems.length,toolAll.length,'reads')});
     if(query) {
       const statuses=snapshot.data?.statuses?.length?snapshot.data.statuses:['todo','in-progress','blocked','done'];
       /* Search every work item the snapshot carries, labeled by its pack
@@ -391,7 +387,7 @@ export default function App() {
         <button type="button" className="sitem rail-util-link" onClick={()=>openOverlay('rules')}><FileText className="i" strokeWidth={1.8} size={15}/><span className="trunc">Rules</span></button>
         {navItem('settings')}
       </div></aside>
-    <div className="main rail-main-wrap"><header className="topbar rail-topbar"><button type="button" className="ibtn" id="mnav-btn" aria-label="Toggle navigation" aria-expanded={mnav} onClick={()=>setMnav(v=>!v)}><Menu className="i" strokeWidth={1.8} size={17}/></button><nav className="crumbs trunc" aria-label="Breadcrumb">{crumbs.map((crumb,index)=><Fragment key={crumb.key}>{index>0?<span className="sep" aria-hidden="true">/</span>:null}<button type="button" className={crumb.current?'cur':undefined} aria-current={crumb.current?'page':undefined} title={crumb.hint} onClick={crumb.current?undefined:()=>navigate(crumb.route,crumb.params)}>{crumb.label}</button></Fragment>)}</nav><span className="sp"/><span className="faint hide-m" style={{fontSize:12}}>{snapshot.data?'store v'+snapshot.data.schema:''}</span>{readTimes[project+'|'+route] && <span className="faint hide-m" style={{fontSize:11}} title="the time of the last read">{'as of '+new Date(readTimes[project+'|'+route]).toLocaleTimeString().replace(/\u202f/g,' ')}</span>}<button type="button" className="ibtn" disabled={busy||invalid} aria-label="Reload" onClick={()=>void refresh()}><RotateCcw className="i" strokeWidth={1.8} size={15}/></button><button type="button" className="topsearch" aria-label="Search and commands" onClick={()=>setPalette(true)}><Search className="i" strokeWidth={1.8} size={14}/><span className="lbltxt">Search or run a tool...</span><span className="kbd">{MOD}{isMac?'':' '}K</span></button></header>{pulse&&<div className="rail-pulse" aria-label="Project pulse">
+    <div className="main rail-main-wrap"><header className="topbar rail-topbar"><button type="button" className="ibtn" id="mnav-btn" aria-label="Toggle navigation" aria-expanded={mnav} onClick={()=>setMnav(v=>!v)}><Menu className="i" strokeWidth={1.8} size={17}/></button><nav className="crumbs trunc" aria-label="Breadcrumb">{crumbs.map((crumb,index)=><Fragment key={crumb.key}>{index>0?<span className="sep" aria-hidden="true">/</span>:null}<button type="button" className={crumb.current?'cur':undefined} aria-current={crumb.current?'page':undefined} title={crumb.hint} onClick={crumb.current?undefined:()=>navigate(crumb.route,crumb.params)}>{crumb.label}</button></Fragment>)}</nav><span className="sp"/><span className="faint hide-m" style={{fontSize:12}}>{snapshot.data?'store v'+snapshot.data.schema:''}</span>{readTimes[project+'|'+route] && <span className="faint hide-m" style={{fontSize:11}} title="the time of the last read">{'as of '+new Date(readTimes[project+'|'+route]).toLocaleTimeString().replace(/\u202f/g,' ')}</span>}<button type="button" className="ibtn" disabled={busy||invalid} aria-label="Reload" onClick={()=>void refresh()}><RotateCcw className="i" strokeWidth={1.8} size={15}/></button><button type="button" className="topsearch" aria-label="Search and commands" onClick={()=>setPalette(true)}><Search className="i" strokeWidth={1.8} size={14}/><span className="lbltxt">Search or read a tool...</span><span className="kbd">{MOD}{isMac?'':' '}K</span></button></header>{pulse&&<div className="rail-pulse" aria-label="Project pulse">
       {pulse.goal?<span className="rail-pulse-goal trunc" title={pulse.goal}>{pulse.goal}</span>:<span className="rail-pulse-goal trunc">{text(object(snapshot.data?.project).name,'Project')}</span>}
       {pulse.focus?<button type="button" className="rail-pchip" onClick={()=>navigate('roadmap',locationState.params.get('doc')?{doc:locationState.params.get('doc') as string}:{})} title={`Focus ${pulse.focus}`}><span>Focus</span><b className="trunc">{pulse.focus}</b></button>:null}
       {pulse.focusAmbiguous?<button type="button" className="rail-pchip rail-pchip-attn" onClick={()=>navigate('roadmap')}><span>Focus</span><b>ambiguous</b></button>:null}
@@ -405,7 +401,7 @@ export default function App() {
     {pulse&&pulse.attention>0&&route!=='settings'?<div className="rail-attention-band" role="status"><b>{pulse.attention} need you</b><span>{[pulse.blockedCount?`${pulse.blockedCount} blocked`:'',pulse.gateCount?`${pulse.gateCount} proof owed`:'',pulse.focusCount?`${pulse.focusCount} focus candidates`:''].filter(Boolean).join(' · ')}</span><button type="button" className="rail-band-cta" onClick={toggleAttention}>{attentionOn?'Show all':'Review →'}</button></div>:null}
     {routeErrors.length>0&&<div className="offline-bar" role="alert"><TriangleAlert size={15}/><span><b>{crumbTitle(route)+" could not load."}</b> {routeErrors.join(" ")}{readTimes[project+"|"+route]&&(" Last good read "+new Date(readTimes[project+"|"+route]).toLocaleTimeString()+".")}</span><span className="sp"/><button type="button" className="btn btn-sm btn-secondary" onClick={()=>void refresh()}>Try again</button></div>}
     <main id="main" ref={main} tabIndex={-1} className="content">{notice&&<div role="alert" className="offline-bar rail-error">{notice}</div>}<div className={route==='settings'?'rail-settings-wrap rail-main':'rail-main rail-screen'}>{invalid?<ErrorState error="This project is invalid or not registered. No project data was requested."/>:registry.isError?<ErrorState error={registry.error.message} retry={()=>void registry.refetch()}/>:snapshot.isError?<ErrorState error={snapshot.error.message} retry={()=>void snapshot.refetch()}/>:!snapshot.data?<Loading/>:Page?<Page snapshot={snapshot.data} project={project} params={locationState.params} navigate={navigate} openDoc={openDoc} read={readPage} mutate={mutate} busy={busy} refresh={()=>refresh()} request={(path,init)=>client.request(path,init)} theme={theme} setTheme={setTheme}/>:<><PageHeading title="Page not found" description="This address does not name a screen in Context Rail." action={<Button onClick={()=>navigate('board')}>Go to Flow</Button>}/></>}</div></main></div>
-    {doc&&snapshot.data&&<DocDrawer id={doc} type="" claim="" full={docFull} onToggleFull={()=>setDocFull(value=>!value)} onClose={closeDoc}><ItemSheet id={doc} snapshot={snapshot.data} document={docData} busy={busy} navigate={navigate} openDoc={openDoc} mutate={mutate} onMove={moveDocStatus} loading={documentQuery.isPending} error={documentQuery.isError?documentQuery.error.message:''}/></DocDrawer>}
+    {doc&&snapshot.data&&<DocDrawer id={doc} type="" claim="" full={docFull} onToggleFull={()=>setDocFull(value=>!value)} onClose={closeDoc}><ItemSheet id={doc} snapshot={snapshot.data} document={docData} openDoc={openDoc} loading={documentQuery.isPending} error={documentQuery.isError?documentQuery.error.message:''}/></DocDrawer>}
     {activeTool&&<ToolForm tool={activeTool} confirmTools={confirmTools} busy={busy} hidden={!!confirmation} onClose={()=>setActiveTool(null)} mutate={mutate} onConfirm={requestConfirm}/>}
     {confirmation&&<ConfirmDialog title={confirmation.title} body={confirmation.body} ok={confirmation.ok} busy={busy} onRun={confirmation.run} onClose={()=>setConfirmation(null)}/>}
     {overlay==='progress'&&snapshot.data?<ProgressSheet snapshot={snapshot.data} onClose={closeOverlay}/>:null}
