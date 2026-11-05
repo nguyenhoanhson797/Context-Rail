@@ -147,54 +147,8 @@
 .rail-app .side-label { font-size:var(--fs-xs); }
 .rail-app .g-label { font-size:11.5px; }
 
-/* ---------- Summary: the owner's layer (pages/summary.tsx) ---------- */
-.rail-app .sm-page { display:flex; flex-direction:column; gap:12px; }
-.rail-app .sm-page > .panel { margin:0; }
-.rail-app .sm-section p { margin:0; }
-.rail-app .sm-layers { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:0; overflow:hidden; }
-.rail-app .sm-layer { display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; min-width:0; }
-.rail-app .sm-layer + .sm-layer { border-left:1px solid var(--divider); }
-.rail-app .sm-layer p { margin:0; color:var(--text-2); }
-.rail-app .sm-layer-h { display:inline-flex; align-items:center; gap:6px; }
-.rail-app .sm-layer[data-layer='owner'] .sm-layer-h { color:var(--accent); }
-.rail-app .sm-layers-note { grid-column:1 / -1; margin:0; padding:9px 16px; border-top:1px solid var(--divider); background:var(--surface-2); }
-.rail-app .sm-vision { margin:0; color:var(--text-2); }
-.rail-app .sm-numbers { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:18px; }
-.rail-app .sm-number { display:flex; flex-direction:column; gap:4px; min-width:0; }
-.rail-app .sm-big { font-size:22px; font-weight:600; letter-spacing:-0.01em; font-variant-numeric:tabular-nums; }
-.rail-app .sm-meter { display:block; width:100%; height:6px; border-radius:999px; background:var(--surface-3); overflow:hidden; }
-.rail-app .sm-meter-fill { display:block; height:100%; border-radius:inherit; background:var(--accent); }
-.rail-app .sm-caps { display:flex; flex-direction:column; gap:2px; }
-.rail-app .sm-cap { display:grid; grid-template-columns:minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(80px, 1fr) minmax(0, 1.4fr); align-items:center; gap:12px; width:100%; min-height:32px; padding:4px 8px; border:0; border-radius:6px; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; }
-.rail-app .sm-cap:hover, .rail-app .sm-cap:focus-visible { background:var(--surface-2); }
-.rail-app .sm-cap-name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.rail-app .sm-cap-n, .rail-app .sm-cap-state { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.rail-app .sm-cap[data-state='blocked'] .sm-meter-fill { background:var(--red); }
-.rail-app .sm-cap[data-state='built'] .sm-meter-fill { background:var(--green); }
-.rail-app .sm-finished { margin:0; }
-.rail-app .sm-rows { display:flex; flex-direction:column; gap:6px; }
-.rail-app .sm-row { display:flex; align-items:baseline; gap:8px; min-width:0; flex-wrap:wrap; }
-.rail-app .sm-row .rail-badge { flex:none; }
-.rail-app .sm-need { flex-wrap:nowrap; }
-.rail-app .sm-need .sm-src { flex:1 1 auto; min-width:0; }
-.rail-app .sm-src { text-align:left; overflow-wrap:anywhere; }
-.rail-app .sm-row-meta { font-size:var(--fs-xs, 12px); }
-/* Summary rows: trailing metadata sits on the panel's right edge, so dates and states line up. */
-.rail-app .sm-section .sm-row-meta { margin-left:auto; text-align:right; font-variant-numeric:tabular-nums; }
 /* An empty cursor section keeps its glyph on the text's baseline instead of stacking it above. */
 .rail-app .rail-inline-note { display:inline-flex; align-items:center; gap:6px; font-size:13px; line-height:1.4; }
 /* Risks and questions share the row; they stack once the page is narrow. */
 .rail-app .decisions-grid { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); }
 @media (max-width:1100px) { .rail-app .decisions-grid { grid-template-columns:minmax(0, 1fr); } }
-.rail-app .sm-sub { display:inline-flex; align-items:center; gap:5px; }
-.rail-app .sm-state { margin:0; font-weight:500; }
-.rail-app .sm-queue { margin:0; }
-.rail-app .sm-more > summary { padding:0 16px 10px; cursor:pointer; color:var(--text-3); }
-.rail-app .sm-foot { margin:0 0 18px; }
-@media (max-width:760px) {
-  .rail-app .sm-layers { grid-template-columns:1fr; }
-  .rail-app .sm-layer + .sm-layer { border-left:0; border-top:1px solid var(--divider); }
-  .rail-app .sm-numbers { grid-template-columns:1fr; }
-  .rail-app .sm-cap { grid-template-columns:minmax(0, 1fr) auto; row-gap:4px; }
-  .rail-app .sm-cap .sm-meter, .rail-app .sm-cap-n { grid-column:1 / -1; }
-}

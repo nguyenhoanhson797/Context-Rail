@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint';
 export default [
   { ignores: ['dist/'] },
   js.configs.recommended,
-  ...tseslint.configs.recommended.map(config => ({ ...config, files: ['src/react/**/*.{ts,tsx}', 'vitest.config.ts'] })),
+  ...tseslint.configs.recommended.map(config => ({ ...config, files: ['src/react/**/*.{ts,tsx}'] })),
   {
     files: ['src/react/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
