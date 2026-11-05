@@ -84,6 +84,7 @@ export function ItemSheet({
     return childDoc ? ['done', 'dropped'].includes(text(childDoc.category)) : false;
   });
 
+  const gateHasRequirements = gateChecks.length > 0 || acceptance || review || human || children;
   const gateOpen = () => openChecks.length > 0 || acceptance || review || human || (children && !childrenDone);
   const reason = openChecks.length
     ? `${openChecks.join(', ')} open`
@@ -128,7 +129,7 @@ export function ItemSheet({
         </div>
       </header>
 
-      {gate ? (
+      {gate && gateHasRequirements ? (
         <section className="ri-section">
           <h3>Gate · {gate.gate}{gateTarget !== status ? ` at ${titleCase(gateTarget)}` : ''}</h3>
           <div className="ri-checks">
@@ -154,22 +155,48 @@ export function ItemSheet({
       ) : null}
 
       {item ? <section className="ri-section">
-        <h3>Legal moves · agent-driven</h3>
-        {next.length ? next.map((target) => {
-          const targetGate = workflow ? gateFor(snapshot, workflow, target) : null;
-          const targetOwed = itemsNeedingGate(snapshot, preset, status).includes(target);
-          const blocked = targetOwed && gateOpen();
-          return (
-            <div className="ri-action" key={target}>
-              <span className="grow">
-                Move to {titleCase(target)}
-                {blocked ? <span className="ri-reason">{reason || 'gate is open'}</span> : null}
-              </span>
-              {targetGate ? <span className="rf-chip rf-chip-gate">{targetGate.gate}</span> : null}
-              <span className="rf-chip rf-chip-muted">agent</span>
-            </div>
-          );
-        }) : <p className="ri-muted">No transition is declared from {titleCase(status)}.</p>}
+        <div className="ri-section-head">
+          <h3>Workflow</h3>
+          <span className="rf-chip rf-chip-muted">agent-driven</span>
+        </div>
+        {next.length ? (
+          <div className="ri-next">
+            <span className="ri-next-label">Next</span>
+            {next.map((target) => {
+              const targetGate = workflow ? gateFor(snapshot, workflow, target) : null;
+              return (
+                <span className="ri-next-target" key={target}>
+                  {titleCase(target)}
+                  {targetGate ? <span className="ri-next-gate">{targetGate.gate}</span> : null}
+                </span>
+              );
+            })}
+          </div>
+        ) : actions.length ? (
+          <p className="ri-muted">No transition is declared from {titleCase(status)}.</p>
+        ) : (
+          <p className="ri-muted">This state has no declared move.</p>
+        )}
+        {next.length ? (
+          <details className="ri-details">
+            <summary>Workflow details</summary>
+            {next.map((target) => {
+              const targetGate = workflow ? gateFor(snapshot, workflow, target) : null;
+              const targetOwed = itemsNeedingGate(snapshot, preset, status).includes(target);
+              const blocked = targetOwed && gateOpen();
+              return (
+                <div className="ri-action" key={target}>
+                  <span className="grow">
+                    Move to {titleCase(target)}
+                    {blocked ? <span className="ri-reason">{reason || 'gate is open'}</span> : null}
+                  </span>
+                  {targetGate ? <span className="rf-chip rf-chip-gate">{targetGate.gate}</span> : null}
+                </div>
+              );
+            })}
+            <p className="ri-agent-note">The sheet reports the compiled moves and actions. An agent runs them through the gateway; the UI never changes work state.</p>
+          </details>
+        ) : null}
         {actions.map((action) => {
           const reasonFor = blockedAction(action);
           return (
@@ -178,12 +205,9 @@ export function ItemSheet({
                 {text(action.name)}
                 <span className="ri-reason">{reasonFor || text(action.use_when)}</span>
               </span>
-              <span className="rf-chip rf-chip-muted">agent</span>
             </div>
           );
         })}
-        {!next.length && !actions.length ? <p className="ri-muted">This state has no declared move.</p> : null}
-        <p className="ri-agent-note">The sheet reports the compiled moves and actions. An agent runs them through the gateway; the UI never changes work state.</p>
       </section> : null}
 
       {relations.length ? (
