@@ -55,13 +55,11 @@ export const KIND_ROUTE: Record<string, string> = {
   board: 'board',
   plan: 'roadmap',
   timeline: 'roadmap',
-  queue: 'queue',
   catalog: 'catalog',
   records: 'decisions',
-  pack: 'pack',
   workflow: 'workflow',
   execution: 'execution',
-  explorer: 'explorer',
+  pack: 'pack',
 };
 
 export function routeForScreen(screen: ScreenDef | null, legacy: string): string {
@@ -117,8 +115,7 @@ export function screenTitle(snapshot: Snapshot | Data | undefined, id: string, f
   if (byKind) return text(byKind.title, fallback);
   /* Legacy route ids: `roadmap` is the plan screen (plan or timeline kind),
      `decisions` the records screen. */
-  const legacyKind: Record<string, string[]> = { roadmap: ['plan', 'timeline'], decisions: ['records'], now: ['queue'] };
-  for (const kind of legacyKind[id] ?? []) {
+  const legacyKind: Record<string, string[]> = { roadmap: ['plan', 'timeline'], decisions: ['records'] };  for (const kind of legacyKind[id] ?? []) {
     const legacy = find((entry) => text(entry.kind) === kind);
     if (legacy) return text(legacy.title, fallback);
   }
@@ -180,9 +177,7 @@ export function allWorkItems(snapshot: Snapshot | Data): Data[] {
 export function screenHasData(snapshot: Snapshot | Data, route: string): boolean {
   switch (route) {
     case 'board':
-    case 'queue':
     case 'workflow':
-    case 'explorer':
     case 'execution':
       return true;
     case 'roadmap':

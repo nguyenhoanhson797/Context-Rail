@@ -9,18 +9,16 @@ import { SummaryPage } from './pages/summary';
 import { NowPage, BoardPage, RoadmapPage, ScopePage, DecisionsPage, DoctorPage, SettingsPage } from './pages/workspace';
 import { PackPage } from './pages/pack';
 import { CatalogPage } from './pages/catalog';
-import { QueuePage } from './pages/queue';
 import { WorkflowPage } from './pages/workflow';
 import { ExecutionPage } from './pages/execution';
-import { ExplorerPage } from './pages/explorer';
 import { TimelinePage } from './pages/timeline';
 import { allWorkItems, focusName, labelOf, progressOf, screenTitleForRoute, screensOf, screenHasData, unitLabel } from './pages/operating';
-const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = { summary: SummaryPage, now: NowPage, board: BoardPage, roadmap: RoadmapPage, scope: ScopePage, catalog: CatalogPage, decisions: DecisionsPage, doctor: DoctorPage, pack: PackPage, settings: SettingsPage, queue: QueuePage, timeline: TimelinePage, workflow: WorkflowPage, execution: ExecutionPage, explorer: ExplorerPage };
-const labels: Record<Route, string> = { summary: 'Summary', overview: 'Overview', atlas: 'Atlas', outcomes: 'Outcomes', traceability: 'Traceability', impact: 'Impact', activity: 'Catch up', now: 'Now', board: 'Board', roadmap: 'Plan', scope: 'Scope', catalog: 'Catalog', decisions: 'Records', rules: 'Rules', lens: 'Lens', graph: 'Graph', doctor: 'Doctor', pack: 'Pack', portfolio: 'Projects', settings: 'Settings', queue: 'Queue', timeline: 'Timeline', workflow: 'Workflow', execution: 'Execution', explorer: 'Hierarchy' };
+const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = { summary: SummaryPage, now: NowPage, board: BoardPage, roadmap: RoadmapPage, scope: ScopePage, catalog: CatalogPage, decisions: DecisionsPage, doctor: DoctorPage, pack: PackPage, settings: SettingsPage, timeline: TimelinePage, workflow: WorkflowPage, execution: ExecutionPage };
+const labels: Record<Route, string> = { summary: 'Summary', overview: 'Overview', atlas: 'Atlas', outcomes: 'Outcomes', traceability: 'Traceability', impact: 'Impact', activity: 'Catch up', now: 'Now', board: 'Board', roadmap: 'Plan', scope: 'Scope', catalog: 'Catalog', decisions: 'Records', rules: 'Rules', lens: 'Lens', graph: 'Graph', doctor: 'Doctor', pack: 'Pack', portfolio: 'Projects', settings: 'Settings', timeline: 'Timeline', workflow: 'Workflow', execution: 'Progress' };
 /* Pack-driven nav: screens the pack declares, in the pack's order. A route
    not in the pack's screens is hidden from nav (it stays reachable by URL for
    the legacy routes that pre-date surface.yaml). */
-const KIND_ROUTE: Record<string, Route> = { summary: 'summary', board: 'board', plan: 'roadmap', timeline: 'roadmap', queue: 'queue', catalog: 'catalog', records: 'decisions', pack: 'pack', workflow: 'workflow', execution: 'execution', explorer: 'explorer' };
+const KIND_ROUTE: Record<string, Route> = { summary: 'summary', board: 'board', plan: 'roadmap', timeline: 'roadmap', catalog: 'catalog', records: 'decisions', pack: 'pack', workflow: 'workflow', execution: 'execution' };
 const screenRoute = (kind: string): Route | null => KIND_ROUTE[kind] ?? null;
 import { parseAddress, routeHash } from './router';
 import { crumbModel, trailOf, TRAIL_ROUTES } from './crumbs';
@@ -31,7 +29,7 @@ import { useRailKeyboard } from './keyboard';
 import { restorePreferences } from './preferences';
 import { CommandPalette, ConfirmDialog, DocDrawer, StatusGlyph, WrenchIcon, type PaletteGroup, type PaletteItem } from './overlays';
 const address = () => parseAddress(location.hash);
-const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,catalog:Folders,decisions:GitBranch,doctor:Stethoscope,pack:FileText,settings:Settings,queue:House,workflow:RouteIcon,execution:GitBranch,explorer:Folders,timeline:RouteIcon};
+const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,catalog:Folders,decisions:GitBranch,doctor:Stethoscope,pack:FileText,settings:Settings,workflow:RouteIcon,execution:GitBranch,timeline:RouteIcon};
 /* The legacy palette order and its G-key labels (web/src/core/palette.js). */
 const paletteRoutes: Route[] = ['summary','now','board','roadmap','scope','catalog','decisions','doctor','pack','settings'];
 const navKeys: Partial<Record<Route,string>> = {summary:'U',now:'N',board:'B',roadmap:'R',scope:'S',decisions:'D',doctor:'H'};
@@ -228,17 +226,18 @@ export default function App() {
     :healthState==='error'?`Health unavailable: ${health.isError?health.error.message:text(health.data?.error,'the health read failed')}`
     :`Health unknown${healthReason?' — '+healthReason:''}`;
   /* The nav is the pack's screens, in the pack's order. Legacy shell routes
-     (now/scope/doctor/settings) stay in the shell but out of the pack nav. */
+     (now/scope/doctor/settings) stay in the shell but out of the pack nav;
+     Pack is demoted below Doctor — it answers "what are the rules", not a
+     daily tracking question. */
   const packNav: Route[] = (() => {
-    if (!snapshot.data) return paletteRoutes;
-    const screens = screensOf(snapshot.data);
-    if (!screens.length) return paletteRoutes;
-    const fromPack = screens
-      .map((screen) => screenRoute(text(screen.kind)))
-      .filter((route): route is Route => route !== null);
-    const withoutDuplicates = [...new Set(fromPack)];
-    const tail = (['doctor', 'settings'] as Route[]).filter((route) => !withoutDuplicates.includes(route));
-    return [...withoutDuplicates, ...tail];
+    const screens = snapshot.data ? screensOf(snapshot.data) : [];
+    const fromPack = (screens.length
+      ? screens.map((screen) => screenRoute(text(screen.kind)))
+      : paletteRoutes.filter((route) => !['doctor', 'settings'].includes(route)))
+      .filter((route): route is Route => route !== null && route !== 'pack');
+    const base = [...new Set(fromPack)];
+    const tail = (['doctor', 'pack', 'settings'] as Route[]).filter((route) => !base.includes(route));
+    return [...base, ...tail];
   })();
   const visible=(r:Route)=>{
     if (!snapshot.data) return true;

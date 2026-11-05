@@ -9,9 +9,8 @@ screens:
   - {id: summary, kind: summary, title: Summary}
   - {id: board, kind: board, title: Sprint board, preset: story, group_by: status}
   - {id: plan, kind: timeline, title: Sprints, preset: sprint}
-  - {id: queue, kind: queue, title: Next}
   - {id: workflow, kind: workflow, title: Workflow}
-  - {id: explorer, kind: explorer, title: Hierarchy}
+  - {id: execution, kind: execution, title: Progress}
   - {id: catalog, kind: catalog, title: Backlog, presets: [bug, task]}
   - {id: records, kind: records, title: Records}
   - {id: pack, kind: pack, title: Pack}

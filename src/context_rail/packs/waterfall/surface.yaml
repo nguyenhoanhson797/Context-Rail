@@ -10,9 +10,8 @@ screens:
   - {id: summary, kind: summary, title: Summary}
   - {id: board, kind: board, title: Deliverables, preset: deliverable, group_by: status}
   - {id: plan, kind: timeline, title: Phases, preset: phase}
-  - {id: queue, kind: queue, title: Next}
   - {id: workflow, kind: workflow, title: Workflow}
-  - {id: explorer, kind: explorer, title: Hierarchy}
+  - {id: execution, kind: execution, title: Progress}
   - {id: catalog, kind: catalog, title: Requirements, presets: [requirement, task]}
   - {id: records, kind: records, title: Records}
   - {id: pack, kind: pack, title: Pack}

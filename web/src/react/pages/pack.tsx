@@ -121,10 +121,10 @@ export function PackPage({ snapshot, navigate }: PageProps) {
                 className="btn btn-sm btn-ghost"
                 onClick={() => {
                   const kind = text(screen.kind);
-                  const legacy: Record<string, 'summary' | 'now' | 'board' | 'roadmap' | 'scope' | 'catalog' | 'decisions' | 'doctor' | 'pack' | 'settings' | 'queue' | 'workflow' | 'execution' | 'explorer'> = {
-                    plan: 'roadmap', timeline: 'roadmap', records: 'decisions', queue: 'queue',
+                  const legacy: Record<string, 'summary' | 'now' | 'board' | 'roadmap' | 'scope' | 'catalog' | 'decisions' | 'doctor' | 'pack' | 'settings' | 'workflow' | 'execution'> = {
+                    plan: 'roadmap', timeline: 'roadmap', records: 'decisions',
                     board: 'board', summary: 'summary', catalog: 'catalog', pack: 'pack',
-                    workflow: 'workflow', execution: 'execution', explorer: 'explorer',
+                    workflow: 'workflow', execution: 'execution',
                   };
                   navigate(legacy[kind] ?? 'summary');
                 }}

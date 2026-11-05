@@ -22,7 +22,7 @@ export interface Health extends Data {
   error_code: string | null;
   reasons: string[];
 }
-export type Route = 'summary' | 'overview' | 'atlas' | 'outcomes' | 'traceability' | 'impact' | 'now' | 'board' | 'lens' | 'graph' | 'roadmap' | 'scope' | 'catalog' | 'decisions' | 'rules' | 'doctor' | 'pack' | 'activity' | 'portfolio' | 'settings' | 'queue' | 'timeline' | 'workflow' | 'execution' | 'explorer';
+export type Route = 'summary' | 'overview' | 'atlas' | 'outcomes' | 'traceability' | 'impact' | 'now' | 'board' | 'lens' | 'graph' | 'roadmap' | 'scope' | 'catalog' | 'decisions' | 'rules' | 'doctor' | 'pack' | 'activity' | 'portfolio' | 'settings' | 'timeline' | 'workflow' | 'execution';
 /* The statuses that mean work is happening right now. A reader looking for live
    work puts these first, in the palette and in every picker. */
 export const ACTIVE_STATUSES = new Set(['in-progress', 'blocked']);

@@ -178,9 +178,11 @@ class ProgressView:
     children: tuple[dict[str, Any], ...]
     omitted: int
     runs: dict[str, Any] | None = None
+    of: tuple[str, ...] = ()
+    rule: Any | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "group": self.group,
             "total": self.total,
             "complete": self.complete,
@@ -189,6 +191,14 @@ class ProgressView:
             "omitted": self.omitted,
             "runs": None if self.runs is None else dict(self.runs),
         }
+        payload["of"] = list(self.of)
+        if self.rule is not None:
+            payload["rule"] = {
+                "states": list(getattr(self.rule, "states", ())),
+                "category": getattr(self.rule, "category", None),
+                "presets": {key: list(value) for key, value in getattr(self.rule, "presets", {}).items()},
+            }
+        return payload
 
 
 def label(model: ProjectModel, preset: str, *, plural: bool = False) -> str:
@@ -499,6 +509,8 @@ def resolve_progress(
         children=tuple(children),
         omitted=0,
         runs=_execution_summary(ctx, model, rows),
+        of=tuple(policy.of),
+        rule=policy.complete,
     )
 
 

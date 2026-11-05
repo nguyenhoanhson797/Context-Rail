@@ -970,7 +970,16 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
   const outcomeOf = useCallback((id: string) => outcomes.get(id) ?? [], [outcomes]);
   /* A phase reference may be a plain id, a [[wikilink]] or scope.phase, so resolve it exactly
      like the board does - a plain string compare loses every task of a linked phase. */
-  const tasksOf = (phaseId: string) => tasks.filter((task) => phaseRef(task) === phaseId);
+  /* Depth-first walk of the phase's tree: a phase holds stories, a story holds its tasks;
+     cycles and the same document under two parents stop the walk. */
+  const treeOf = (parentId: string, depth = 0, seen: Set<string> = new Set()): { row: Data; depth: number }[] =>
+    tasks
+      .filter((task) => phaseRef(task) === parentId && !seen.has(idOf(task)))
+      .flatMap((task) => {
+        const childSeen = new Set(seen);
+        childSeen.add(idOf(task));
+        return [{ row: task, depth }, ...treeOf(idOf(task), depth + 1, childSeen)];
+      });
   /* The legacy Roadmap page (pages/core.js pageRoadmap): each phase is one panel whose head
      links the phase document, with the run progress bar and the task progress, then at most
      eight task rows and the exact remainder. */
@@ -989,7 +998,8 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
       {phases.length ? (
         <div className="stack">
           {phases.map((p) => {
-            const list = tasksOf(idOf(p));
+            const tree = treeOf(idOf(p));
+            const list = tree.map((entry) => entry.row);
             const done = list.filter((task) => text(task.category) === 'done').length;
             const share = list.length ? fractionPct(done / list.length) ?? 0 : 0;
             return (
@@ -1013,13 +1023,13 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
                     </div>
                   ) : null}
                 </div>
-                {list.slice(0, 8).map((task) => {
+                {tree.slice(0, 8).map(({ row: task, depth }) => {
                   const outcome = outcomeOf(idOf(task));
                   return (
-                    <div className="mini" key={idOf(task)} role="button" tabIndex={0} onClick={() => openDoc(idOf(task))}>
+                    <div className="mini" key={idOf(task)} role="button" tabIndex={0} onClick={() => openDoc(idOf(task))} style={depth ? { paddingLeft: 14 + depth * 18, borderLeft: '1px solid var(--divider)' } : undefined}>
                       <StatusGlyph status={text(task.status)} statuses={statusesOf(snapshot)} category={text(task.category)} />
                       <span className="grow trunc" title={titleOf(task)}>{titleOf(task)}</span>
-                      {outcome.length ? (
+                      {depth ? null : outcome.length ? (
                         <span className="faint trunc" style={{ fontSize: 12, maxWidth: 160 }} title={'Serves the outcome: ' + outcome.map((o) => o.text).join('; ')}>
                           {outcomeLabel(outcome[0])}
                         </span>
@@ -1028,7 +1038,7 @@ export function RoadmapPage({ snapshot, project, read, openDoc, busy }: PageProp
                     </div>
                   );
                 })}
-                {list.length > 8 ? <div className="faint" style={{ padding: '6px 14px' }}>{'+' + String(list.length - 8) + ' more on the board'}</div> : null}
+                {tree.length > 8 ? <div className="faint" style={{ padding: '6px 14px' }}>{'+' + String(tree.length - 8) + ' more on the board'}</div> : null}
               </section>
             );
           })}

@@ -9,10 +9,8 @@ screens:
   - {id: summary, kind: summary, title: Production}
   - {id: board, kind: board, title: Shots, preset: shot, group_by: status}
   - {id: plan, kind: timeline, title: Scenes, preset: scene}
-  - {id: queue, kind: queue, title: Render queue}
   - {id: workflow, kind: workflow, title: Workflow}
-  - {id: execution, kind: execution, title: Execution}
-  - {id: explorer, kind: explorer, title: Hierarchy}
+  - {id: execution, kind: execution, title: Progress}
   - {id: catalog, kind: catalog, title: Assets, presets: [asset, render]}
   - {id: records, kind: records, title: Records}
   - {id: pack, kind: pack, title: Pack}
