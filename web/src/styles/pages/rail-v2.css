@@ -561,7 +561,8 @@ button.rf-chip:hover { background: var(--surface-2); color: var(--text); }
 .rp-row:hover { background: var(--surface-2); }
 .rp-row.sel { background: var(--accent-soft); border-left-color: var(--accent); color: var(--text); }
 .rp-rail { position: relative; width: 10px; align-self: stretch; flex: none; }
-.rp-dot { position: absolute; top: 50%; left: 0; width: 6px; height: 6px; margin-top: -3px; border: 1px solid var(--border-strong); border-radius: 50%; }
+.rp-dot { display: inline-block; width: 6px; height: 6px; flex: none; border: 1px solid var(--border-strong); border-radius: 50%; }
+.rp-rail .rp-dot { position: absolute; top: 50%; left: 0; margin-top: -3px; }
 .rp-dot.active { border-color: var(--accent); background: var(--accent-soft); }
 .rp-dot.done { border-color: var(--green); background: var(--green-soft); }
 .rp-dot.blocked { border-color: var(--red); background: var(--red-soft); }
