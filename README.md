@@ -1,501 +1,280 @@
 # Context Rail v3
 
-An agentic project workspace: the files are the truth, a rebuildable SQLite
-index is only a cache, and every change goes through one write path.
+[![PyPI](https://img.shields.io/pypi/v/context-rail)](https://pypi.org/project/context-rail/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://pypi.org/project/context-rail/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/nguyenhoanhson797/Context-Rail/blob/master/LICENSE)
 
-A CTO agent runs a project through the rail, sub-agents get narrow,
-role-specific context, and a human approves the boundary, the quality bar and
-irreversible actions. The store it manages is plain Markdown you commit to git;
-the package ships the CLI, the MCP server and a loopback UI over one tool table.
+**An agentic project workspace where the files are the truth** — a rebuildable
+SQLite index is only a cache, and every change goes through one write path.
 
-## How it fits together
+A CTO agent runs the project; sub-agents get narrow, role-specific context; a
+human approves the boundary, the quality bar and irreversible actions. The
+store is plain files in your git repo — Markdown documents, JSON records and
+`rail.yaml`.
 
-| Layer | Owns | Where |
-|---|---|---|
-| Domain model | what exists: presets, fields, workflows, quality gates, actions | `pack.yaml` |
-| Operating model | how it is organised and worked: unit, hierarchy, focus, queue, progress | `pack.yaml` `operating`, compiled by the engine |
-| Execution engine | how work is performed: commands, gateway, checks, runs, policies | this package |
-| Workspace projection | how people and agents interact: CLI read models, MCP, UI, briefs | one compiled model per call |
+- **No service to run.** Git in, files out — no database server, no proprietary format.
+- **One write path.** CLI, MCP and UI all pass through validation → authorize → lock → atomic write → record → index.
+- **Fail closed.** Unknown pack key, manifest schema or policy field is refused, never guessed.
 
-A static compiler validates the pack and its optional presentation, then
-produces one immutable project model. Commands, agents and the UI read that
-model; none of them interprets `pack.yaml` on its own. The store remains the
-truth and the index a disposable cache.
+## How it works in one picture
+
+```text
+  ┌──────────────┐   ┌──────────────┐   ┌─────────────────────┐
+  │ pack.yaml    │   │ rail.yaml    │   │ your git repo       │
+  │ domain +     ├──▶│ layout       ├──▶│ context-rail/       │
+  │ operating    │   │ (placement)  │   │  Markdown + records │
+  └──────┬───────┘   └──────┬───────┘   └─────────┬───────────┘
+         │                  │                      │
+         ▼                  ▼                      ▼
+  ┌─────────────────────────────────────────────────────┐
+  │ COMPILER — immutable ProjectModel                    │
+  │ pack + placement + surface.yaml → digest, refusing   │
+  └──────────────────────┬──────────────────────────────┘
+                         │ one compiled model
+                         ▼
+  ┌──────────────────────────────────────────────────────┐
+  │ GATEWAY — the only door                              │
+  │ permissions → etag freshness → lock → atomic write   │
+  └───┬─────────┬───────────┬──────────┬─────────────────┘
+      ▼         ▼           ▼          ▼
+  rail/ctx-rail   serve mcp  serve ui   briefs & agents
+
+  reads fan out the same way:  model → SQLite cache → go fast;
+  delete the cache, next command rebuilds it from the files.
+```
+
+**No command parses `pack.yaml`.** The compiler does, once, and everything else
+reads what it produced — so the CLI, MCP, UI and every agent see one answer.
+
+## Why the engine holds up
+
+| Property | What it means in practice |
+|---|---|
+| **Files are the truth** | SQLite is a cache under the git dir (or `.rail-local/` outside git); deleting it only costs a rebuild. Records are append-only and never rewritten. |
+| **Paths are derived, never chosen** | You pass `--rel part_of=sprint-3`; the placement template renders the path. `rail change repath --dry-run` shows every implied move before you apply it. |
+| **Quality belongs to the workflow** | A status can name a charter gate and the checks it selects. A missing or stale check refuses the move and names the command that produces it. |
+| **Approval is data** | `approve` is human-only. Change the semantics (transition, placement, operating block) and the store reports `approval_mismatch` until a human reapproves. |
+| **Agents get a narrow surface** | They never parse `pack.yaml` — they ask `rail types`, `rail next`, `rail show`, `rail why`, `rail explain`, and run declared verbs with `rail do`. |
+| **Work runs isolated** | Dispatch gets its own git worktree; merge is a fast-forward of an *approved* candidate; `gate` never runs Checks. |
+| **Collisions are impossible to miss** | Every write carries the etag it read; a stale write is refused. Every retry carries a `--key` and gets the same record back. |
+
+## The loop in one line
+
+```text
+rail overview → human approves → rail loop dispatch → checks run → rail loop review → rail loop merge
+     (brief)        (gate)          (own worktree)                 (other actor)     (fast-forward only)
+```
+
+`rail gate` is a read-only governance check. Nothing executes until a human
+approves the charter — or the charter binds `mode: solo` (one human owns the
+project; approval ceremony is skipped, the quality gates still apply).
 
 ## Requirements
 
-- Python 3.11 or newer (CI covers 3.11 and 3.13 on Windows and Ubuntu).
-- Git, for anything that launches or integrates work.
-- For the agent loop: an approved charter and the Factory `droid` CLI on
-  `PATH`. Reading and editing the store needs neither.
+Python 3.11+ · git (launch/integration only) · Node.js 22+ (only to rebuild the
+UI from source) · the Factory `droid` CLI (only for the agent loop; set
+`RAIL_DROID_BIN` to override).
 
 ## Install
 
 ```bash
-python -m pip install context-rail
+python -m pip install context-rail    # Windows: py -m pip install context-rail
 ```
 
-On Windows use `py` instead of `python` (`py -m pip install context-rail`); that
-is the only difference, every command below works the same in both shells.
-This installs two equivalent entry points, `rail` and `ctx-rail`; every example
-below also works as `python -m context_rail`.
-
-`python -m pip` installs into the interpreter that will run the tool. Bare
-`pip install context-rail` is the same command whenever `pip` on your `PATH`
-belongs to that interpreter; on a machine with several Pythons, the module form
-is the one that cannot pick the wrong one.
-
-To keep the tool out of your project environments, `pipx install context-rail`
-works too.
+`rail` and `ctx-rail` are the same entry point; `rail` examples also run as
+`python -m context_rail`. Upgrading a v1/v2 store:
+`rail --actor human ops migrate --source <old> --dir <project>` (`--dry-run` first).
 
 ## Quick start
 
-From the project you want to manage:
-
 ```bash
-rail init --pack basic            # writes ./context-rail/ and offers the picture
+rail init --pack basic                  # resumable onboarding: store → brief → approval
 rail change add task "Write the first task"
-rail read status
-rail overview
+rail read status                       # counts, queue, blockers
+rail overview                          # the daily starting page
 ```
 
-`rail init` is resumable: re-running it keeps what already exists and continues
-from the next missing stage. On a terminal it offers the onboarding interview;
-without one it scaffolds the store and returns the command to resume. Pass
-`--solo` with the picture (for example `rail init --pack basic --interview
---solo`) to write a `charter.md` whose `mode: solo` binds one human as the
-project owner — the maker is the approver, so the approval gates are skipped
-and the workflow quality gates (checks, review, merge) still apply.
+`rail init` writes `./context-rail/` in the current directory and asks for the
+charter picture on a terminal; elsewhere it scaffolds and prints the resume
+command. Every command answers with one JSON envelope on stdout (progress on
+stderr) and exits `0` / `1` / `2`. Global flags: `rail --store <path> --actor <who> <command>`.
 
-Every command prints one JSON envelope (`{"ok": true, "value": ...}` or
-`{"ok": false, "error": {...}}`) and exits 0 on success, 1 on a refusal, 2 on an
-infrastructure failure.
+If approval is missing, run:
+`rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"`
 
-Notes that are easy to trip over:
+## Pick a pack
 
-- `--store` and `--actor` are global options: they go before the command,
-  e.g. `rail --store path/to/context-rail read status`.
-- `change add` takes positional arguments: `rail change add <preset> "<title>"`.
-- Without `--store`, the nearest `context-rail` folder above the current
-  directory is used.
+`rail init --pack <name>` — each pack ships profiles, worker skills, templates and `surface.yaml`:
 
-### Onboarding a whole project
-
-Bare `rail init` is the onboarding pipeline. It probes the project, writes the
-absent skeleton, seeds the pack profiles and skills, offers the picture
-interview, asks for a fresh charter approval, writes the managed agent files,
-and offers the git drivers. Each stage reports `written`, `unchanged`,
-`skipped` or `refused`; re-running the same command resumes.
-
-```bash
-rail init --pack basic
-```
-
-If approval was skipped, the receipt prints the exact command:
-
-```bash
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
-```
-
-Useful flags:
-
-- `--scaffold` writes only `rail.yaml`, `.gitignore` and the pinned folders,
-  preserving the old scripting behavior.
-- `--dry-run` prints the stage plan and writes nothing.
-- `--no-approve` leaves approval for a later run; `--no-git-drivers` skips the
-  merge-driver prompt.
-- `--harness agents|claude|cursor|gemini` limits the generated agent files.
-- `--interview`, `--answers-file FILE --confirm "APPROVE charter"` and
-  `--draft-file FILE` remain picture-source modes. They write the picture and
-  leave approval `missing`; run `rail --actor human init` again to resume
-  approval, agent files and git drivers. `--interview` and `--answers-file` need
-  the `human` actor; a CTO may only propose with `--draft-file`, and a draft
-  records no approval.
-
-`ops adapters render` and `ops sync install` remain available on their own.
-`ops adapters render` mirrors the workspace profiles and skills into `AGENTS.md`
-and `.agents/skills/` (or `CLAUDE.md`, `.cursor/`, `GEMINI.md`); re-run it when a
-skill changes.
-
-Useful read commands:
-
-```bash
-rail overview          # the daily starting page
-rail read status       # counts, executable items, blockers, stuck items
-rail read digest       # activity, waits, decisions, quality, usage
-rail read find --rel part_of=ship-v3
-rail read show <slug>
-rail ops doctor        # store integrity issues
-rail gate              # doctor issues plus the approval and done gates
-```
-
-## Agent onboarding, for any harness
-
-A portable kit in `docs/agent-onboarding/` gets an agent from zero to working in
-any harness: Claude Code, Cursor, Gemini CLI, Codex, OpenCode, Windsurf, a
-custom MCP client or plain shell.
-
-- `AGENTS.template.md` — copy it to a project root as `AGENTS.md`; the safe
-  protocol in one file.
-- `references/harnesses.md` — instruction files, MCP wiring and actor choice.
-- `references/capabilities.md` — the full power map.
-- `references/{commands,playbooks,refusals,prompts}.md` — the command surface,
-  end-to-end recipes, recovery and role prompts.
-- `skills/context-rail-v3-onboarding/SKILL.md` — the same path as an installable
-  skill.
-
-The generated `AGENTS.md` that `rail ops adapters render` writes (and `rail init`
-writes once the picture exists) now carries the same protocol: read the compiled
-surface, pass an etag and a key, derive paths, respect human-only tools and
-follow a refusal's named fix.
-
-## Skills
-
-Seven operator skills under `skills/` in the repository checkout teach an agent
-the rail itself, so it does not have to read the engine to answer "what can this
-do?" or "how do we change the workflow?":
-
-- `context-rail-v3` — mental model, quick start, command map
-- `context-rail-v3-onboarding` — adopt the rail in any project, any harness
-- `context-rail-v3-workflows` — packs, statuses, transitions, BA/PO steps
-- `context-rail-v3-pack-authoring` — pack creation, required metadata, defaults,
-  declarative placement, workflows, quality and verbs
-- `context-rail-v3-surface` — `types`, `next`, `show`, `explain`, `why`, and
-  recovering from a refusal
-- `context-rail-v3-loop` — dispatch → verify → review → merge, refusals
-- `context-rail-v3-ops` — doctor, reindex, recovery, budgets, test lanes
-
-Install them into your agent's skill directory from a checkout:
-
-```bash
-cp -r skills/context-rail-v3* ~/.agents/skills/          # macOS, Linux
-```
-
-```powershell
-Copy-Item -Recurse skills\context-rail-v3* "$HOME\.agents\skills\"   # Windows
-```
-
-See `skills/README.md` for the difference from the pack skills that are
-installed into a store's workspace.
-
-## Human gates and the agent loop
-
-Work that launches an agent, or changes the picture's meaning, is gated. The
-brief reports the current state; nothing executes until a human approves the
-charter:
-
-```bash
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
-```
-
-`approve`, `ops migrate` and `ops pack use` are human-only tools. They need an
-explicitly named human: pass `--actor human` or set `RAIL_ACTOR=human`. A bare
-command still defaults to `human` for ordinary reads and writes, but not for
-these tools. The actor name is a workflow claim, not authentication; anyone
-with shell access as your OS user can act as you.
-
-Once the charter is approved, the loop uses isolated git worktrees:
-
-```bash
-rail loop dispatch <item> --expect <etag> --key <idempotency-key>
-rail loop review   <item> --run <run-id> --key <idempotency-key>
-rail loop merge    <item> --run <run-id> --expect <etag> --key <idempotency-key>
-```
-
-`rail loop tick --key <idempotency-key>` starts one bounded CTO session behind a
-single-instance lock. It must be the outer session, so it refuses to start when
-`RAIL_ACTOR` is already set.
-
-## Where state lives
-
-- **Store**: `<project>/context-rail/`, a plain directory of Markdown documents
-  plus `rail.yaml`. It is the product's only source of truth and is meant to be
-  committed to git. A pack may ship `layout.yaml` placement defaults; `init`
-  seeds `rail.yaml` from them, and `rail.yaml` is authoritative afterwards.
-- **Index**: a rebuildable SQLite cache under the worktree's git dir, or
-  `<store>/.rail-local/` outside git. Never in the repository tree; deleting it
-  only costs a rebuild.
-- **Control files**: dispatch/tick/merge progress and key bindings live in the
-  same local dir, written atomically, so a crash leaves either the old file or
-  the new one and never a partial document.
-
-## Placement and metadata
-
-A pack names the document types; `rail.yaml` says **where** each one lives.
-Agents never pass a path, a parent folder or a final title: they pass `--rel`
-and `--set`, and the resolver derives the path from the work graph.
-
-```powershell
-rail change add sprint "Sprint 3" --rel part_of=phase-1
-rail change add task "Implement checkout" --rel part_of=sprint-3 --set area=frontend
-# items/phase/phase-1/sprint-3/frontend/implement-checkout.md
-```
-
-`placement` is keyed by primitive, `presets` by preset and wins over it, and
-`kind:<kind>` places a record by its kind. A pack may ship `layout.yaml` to seed
-these; `rail.yaml` is authoritative after `init`.
-
-| Token | Resolves to | Scope |
+| Pack | Shape | Use when |
 |---|---|---|
-| `{slug}`, `{preset}` | the document's slug or preset | segment |
-| `{id}`, `{yyyy}`, `{yy}`, `{mm}`, `{dd}` | a record id or a timestamp | segment |
-| `{field:name}` | a required or defaulted field, slugified | segment |
-| `{kind}` | the record kind | record only |
-| `{part_of}`, `{about}`, `{verifies}` | the related document's path | graph |
-| `{part_of.slug}`, `{about.title}`, … | just the related slug or title slug | segment |
-| `{nearest:preset}`, `{root:preset}` | the nearest or outermost ancestor preset | prefix |
-| `{item}`, `{item.slug}`, `{item.title}` | the dispatch or run item | `kind:` placement only |
+| `basic` | todo → doing → done | smallest useful store, quick adoptions |
+| `flow` | continuous kanban | work arrives continuously, no sprints |
+| `scrum` | sprints | start/close rhythm for sprint planning |
+| `waterfall` | phase gates | requirements → design → build → test → release as distinct phases |
+| `video` | scenes and shots | production with renders, assets and reviews |
 
-- A primitive placement must start with a literal segment; a preset placement
-  may start with a path token such as `{part_of}` and inherit its parent's
-  folder. Every token-bearing template needs `{slug}` or `{id}`.
-- A record stays under `records/`; a document may not enter it. `{item.*}` is
-  only for a `kind:<kind>` record placement, and `{kind}` is record-only.
-- `skill`, `profile`, `cto` and `actor` are fixed to their `workspace/` shapes.
-- A path segment may not be `..`, a Windows device name, a control character or
-  over 80 characters; the whole path is capped at 200. A field value containing
-  a separator is slugified into one safe segment.
-- Presets may declare `required` fields and `defaults`. `add` merges defaults and
-  refuses a missing value; `update` revalidates the merged document. A default
-  used by `{field:...}` must be a non-empty string.
+No fit? `rail ops pack create --name <name> --from <pack>`, edit the draft,
+switch with `rail ops pack use` (human-only).
 
-`rail change repath --dry-run` lists every move the current placement implies
-and every document it had to skip; `rail change repath` applies them in one
-commit. `update` and `link` move an edited document and its descendants in the
-same commit; records move with them but are never rewritten.
+## Shape any kind of project
 
-| Doctor code | Severity | Meaning |
+The engine doesn't know what a sprint is. A **pack** declares the
+vocabulary; the engine enforces the shape. Every project is five declared
+parts:
+
+| Part | The question it answers | Declared in |
 |---|---|---|
-| `placement_mismatch` | warning | the path is not what the placement renders |
-| `placement_unresolved` | error | no target for the relation the placement walks |
-| `placement_ambiguous` | error | more than one target for that relation |
-| `placement_cycle` | error | `part_of`/`about`/`verifies` loops |
-| `placement_invalid` | error | an unsafe or unresolvable rendered path |
-| `required_field_missing` / `required_field_invalid` | error | preset metadata is absent or outside its enum |
-| `placement_historical` | warning | an existing record lost its anchor; it is never rewritten |
-| `record_metadata_missing` / `record_metadata_invalid` | warning | an existing record's metadata is stale |
+| **Container** | what groups work? | `operating.hierarchy` |
+| **Unit** | what is executable? | `operating.unit` |
+| **Focus** | what are we working right now? | `operating.focus` |
+| **Queue** | what can start next? | `operating.queue` |
+| **Progress** | what counts as finished? | `operating.progress` |
 
-A scoped skill copy under `workspace/<pack>/skills/` is pack-shipped material,
-so it is never moved and never reported as misplaced.
+### Scrum: goal → scope → sprint → story
 
-## Workflows and the agent surface
+```text
+  goal ──▶ scope ──▶ sprint ──▶ story ──▶ task
+   why     what      when      unit      detail
+```
 
-A pack is one project type with many named workflows over a shared status
-dictionary. `scrum` ships `sprint`, `bugfix` and `scope`: a task starts at
-`todo`, a bug at `reported`, and neither can use the other's moves. Every
-preset selects one workflow; `container: true` marks a phase, sprint, epic, goal
-or scope as work that is not executable.
+- `goal` states the outcome; `scope` holds the prioritized `must/should/could/won't`;
+- the `sprint` is the **required** hierarchy — stories hang off it and the
+  plan groups by it;
+- focus = the active sprint; an ambiguous focus is refused with candidates,
+  never guessed;
+- a `story` is the board column unit; a story to `done` needs `item_done`;
+  a bug to `closed` additionally needs `repro-check` and `acceptance`;
+- progress = done-category stories, grouped by sprint;
+- queue = stories, tasks and bugs with a legal transition available.
 
-A workflow also carries the quality bar. A status may name a charter gate and
-the checks the gate selects, so two workflows can share a status name and still
-require different proof. A missing or stale check refuses the move and names the
-command that produces it.
+### The same five parts, other domains
 
-Agents never read `pack.yaml`. The pack is compiled into read-only views:
+```text
+video   scene ──▶ shot ──▶ storyboard ──▶ generating ──▶ review ──▶ approved ──▶ published
+waterfall  phase ──▶ deliverable   (planned → designing → building → testing → done)
+flow    epic ──▶ story           (backlog → ready → building → review → shipped)
+basic   goal ──▶ task            (todo → doing → done)
+```
+
+| | scrum | waterfall | video | flow | basic |
+|---|---|---|---|---|---|
+| Container | sprint (required) | phase (required) | scene (required) | epic (optional) | goal (optional) |
+| Unit | story | deliverable | shot | story | task |
+| Focus | active sprint | active phase | active scene | continuous | continuous |
+| Queue | story·task·bug | deliverable·task | shot | story·task·idea·bug | task·bug·idea |
+| Progress | done / sprint | done / phase | `approved` / scene | done / epic | done / goal |
+| Gate | `item_done` (bugfix adds `repro-check`+`acceptance`) | `item_done` | `item_done` | — | — |
+
+In video, `render` runs are **execution records** — they show up in the
+progress view and the ledger, and are never merged with workflow completion.
+Same engine, same five parts; only the pack's data changed.
+
+### Why this costs zero engine code
+
+The spine is fixed — six primitives (`item`, `note`, `record`, `check`,
+`actor`, `policy`), eight relations, five categories (`not_started`,
+`active`, `blocked`, `done`, `dropped`) — and the compiler refuses anything
+it doesn't recognize. Everything project-specific is *data* in the pack: the
+words, the order, the gates, the labels. So:
+
+- relabelling or retitling screens is a `surface.yaml` change, no reapproval;
+- changing semantics (a transition, placement, or the `operating` block)
+  changes the digest and forces reapproval (`approval_mismatch`);
+- a new shape is a copied pack with different data — no engine code, no
+  special cases, no UI changes.
+
+Don't like the word "story"? Your pack gets to call it anything — the engine
+only knows "the unit".
+
+## The mental model in 60 seconds
+
+- **Presentation is presentation** — it is never part of what you approve.
+  Relabel a pack, retitle screens in `surface.yaml` → the human's approval
+  stands. Change a transition, placement, preset or the `operating` block →
+  `approval_mismatch`, and a human re-approves with
+  `rail --actor human approve pack:<name>` (and `approve charter`).
+- **Pack v2** adds an `operating` block — `unit`, `hierarchy`, `focus`, `queue`,
+  `progress` — which is semantic and approved. A pack v1 loads with the
+  neutral model and keeps its approval; nothing guesses what the pack meant.
+- **Quality is workflow-owned.** Two workflows can share a status name and
+  still demand different proof; the engine never branches on a gate name.
+- **Agents never read `pack.yaml`.** The compiled views are the whole surface:
 
 | Command | Answers |
 |---|---|
 | `rail types` | every document type, its workflow and use line |
-| `rail next` | the operating queue, or one worker's card |
-| `rail model` | the compiled operating model, its focus, unit and digests |
+| `rail next` | the operating queue (or one worker's card) |
+| `rail model` | the compiled operating model, its focus and digests |
 | `rail show <slug>` | the item plus its workflow and operating card |
-| `rail why <slug>` | the missing proof and the command |
+| `rail why <slug>` | the missing proof and the command that produces it |
 | `rail explain <name>` | a preset, workflow or action in full |
 
-`rail do <action> --item <slug> --etag <etag>` runs a pack-declared verb (for
-example `start-sprint`, `close-sprint`, `file-bug`) through the gateway as the
-caller. A verb cannot change the actor, a path, an etag or a profile, and every
-write leaves one `action.executed` record.
+## Commands you will actually use
 
-## Operating model and pack v2
-
-A pack version 2 may declare one optional `operating` block. It names the
-project's working structure, using only what the pack already declares:
-
-```yaml
-operating:
-  version: 1
-  unit: shot
-  hierarchy:
-    - {preset: scene, order: sequence, required: true}
-  focus: {preset: scene, category: active, order: sequence, resolve: unique}
-  queue: {presets: [shot], require: transition, focus: priority}
-  progress: {group: scene, of: [shot], complete: {states: [approved]}}
-  execution: {actions: [render]}
-```
-
-The compiler validates every reference and produces one immutable project
-model. Commands and agents read that model, never the YAML:
-
-- **unit** is the canonical work item and the default board;
-- **hierarchy** orders containers on the plan screen and supplies `add`'s
-  default parent;
-- **focus** is the container the project is working in; `unique` refuses an
-  ambiguity with candidates instead of guessing, `first` and `explicit` are
-  opt-ins, and `none` is valid for continuous work;
-- **queue** scopes `next` by presets and eligibility, with focus priority by
-  default; `--all`, `--into <id>` and `--focus-only` are the explicit escapes;
-- **progress** counts declared done-category states, grouped along the
-  hierarchy. Execution progress comes from execution records only and is never
-  merged with workflow completion.
-
-Presentation is separate. An optional `surface.yaml` beside the pack controls
-labels, screens and card, filter and column fields. A screen may pin one
-`preset` (or a `presets` list) and a `group_by`; the shell renders the
-pack-declared `summary`, `board`, `plan`, `timeline`, `workflow`, `execution`,
-`explorer`, `queue`, `catalog`, `records` and `pack` kinds, in the pack's order
-and under the pack's titles. It cannot add a preset, workflow, status or
-action, an unknown kind or reference is refused, and it is not part of the
-pack approval.
-
-Three digests are reported by `rail pack show`:
-
-| Digest | Covers | Use |
-|---|---|---|
-| semantic | statuses, workflows, quality, presets, fields, actions, operating, placement, policy | approval, index compatibility |
-| presentation | labels, screens, card/filter/column fields | UI and API cache |
-| full | canonical bytes of both | diagnostics |
-
-Changing a label or a card field changes only the presentation digest and keeps
-the human approval valid. Changing the operating block, a transition, the
-placement or a preset is a semantic change: the store reports
-`approval_mismatch` until a human reapproves.
-
-**Upgrading a store that used a built-in pack:** the shipped packs are version 2
-and carry their operating block, so their semantic digest changed. Existing
-stores on a package built-in will report `approval_mismatch`. Inspect the new
-digest, then reapprove:
-
-```powershell
-rail ops pack show --name scrum
-rail --actor human approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer <you>
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer <you>
-```
-
-Existing v1 local packs need no change: they load with the neutral model and
-keep their approval. No documents or paths migrate; the pack version and the
-semantic digest are the compatibility boundary.
-
-A neutral model is conservative: no unit, no hierarchy, no focus, a queue of
-every non-container item preset, progress by the `done` category and no group.
-It is not a guess at what the pack meant.
-
-## Command surface
-
-Start with `rail overview`; it is the bounded daily page. The rest is grouped by
-what you are doing:
-
-| Group | Commands |
+| I want to… | Command |
 |---|---|
-| **Daily** | `init`, `approve`, `overview`, `read status\|digest\|find\|show\|ledger`, `types`, `next`, `explain`, `why`, `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop dispatch\|review\|merge\|report\|triage\|tick`, `do <action>`, `gate` |
-| **Operations** | `ops doctor\|reindex\|migrate\|rollback`, `ops pack list\|show\|validate\|create\|use`, `ops sync`, `ops sync install`, `ops adapters render`, `ops measure versions\|fix` |
-| **Transports** | `serve mcp`, `serve ui`, `serve daemon` |
+| See where things stand | `rail overview` |
+| Get my next card | `rail next` |
+| Add work | `rail change add <preset> "<title>"` |
+| Move work | `rail change move <slug> <status>` |
+| Inspect one item | `rail read show <slug>` |
+| Find broken references | `rail ops doctor` |
+| Check gates | `rail gate` |
+| Dispatch an agent | `rail loop dispatch <item> --expect <etag> --key <key>` |
+| Approve a pack | `rail --actor human approve pack:<name> ...` |
 
-The loop gates stay separate on purpose: `dispatch` launches an implementer,
-`review` is a different actor, and `merge` fast-forwards only an approved
-candidate. `gate` is a read-only governance check; it never runs a Check.
+Former flat names (`status`, `dispatch`, `review`, `merge`, `ci`, …) still work;
+`rail <group> --help` is the grouped surface.
 
-`rail serve daemon` keeps one manifest, one synced index and one compiled
-`ProjectModel` open for the store and answers every call through the same
-gateway: each request still goes through the authorizer and the one write
-path. The CLI auto-connects over 127.0.0.1 with a per-store token when a
-live descriptor exists and falls back to a direct call on any miss;
-`--no-daemon` (or `RAIL_NO_DAEMON=1`) bypasses it, and `RAIL_DAEMON_TIMEOUT_MS`
-tunes the wait (default 2000 ms).
+## Surfaces
 
-`rail serve ui` opens the loopback, token-gated project UI. It is the React
-shell and design system, served from `src/context_rail/ui/static`; the pages
-read one compiled snapshot, so the board columns are the unit workflow's
-states, the plan is the declared hierarchy and every visible label comes from
-the pack's presentation. The shell renders the screens the pack declares in
-`surface.yaml`, in the pack's order — the built-in packs ship their own titles
-(for video: Shots, Scenes, Render queue and Assets) plus the declared Queue,
-Workflow, Hierarchy Explorer and, for video, Execution screens. Summary, Now,
-Scope, Doctor, Pack and Settings stay with the shell. A
-screen with no data shows an explicit empty state rather than a blank page; the
-drawer carries the item's preset label, workflow, gate, legal next states,
-applicable actions and focus breadcrumb.
+| Surface | Command | For |
+|---|---|---|
+| CLI | `rail` / `ctx-rail` | agents + humans |
+| MCP | `rail serve mcp` | any MCP client (one stdio tool table) |
+| Loopback UI | `rail serve ui` | humans — Flow/Plan/Records, token-gated, loopback-only |
+| Daemon | `rail serve daemon` | one warm model per store; CLI auto-connects |
 
-No React module branches on a pack name. Relabelling a pack (`surface.yaml`)
-relabels the UI without a new approval; changing the operating model or a
-workflow changes the semantic digest and requires reapproval.
-
-Build the shell with `npm --prefix web install` once, then
-`npm --prefix web run build`; the bundle lands in the Python package and is
-served by `rail serve ui`. A pack that declares only a subset of screens
-shows only those, in its order; nothing is guessed from what a pack leaves
-undeclared.
-
-Every former flat command name remains accepted, including `status`, `dispatch`,
-`review`, `merge`, `check`, `verify`, `relocate`, `ci`, `pack`, `sync`,
-`adapters sync`, `cto brief`, `cto tick`, `mcp serve` and `ui serve`. The
-grouped names are the documented surface; the flat names are compatibility
-aliases.
-
-`rail <command> --help` is the authoritative list. The CLI, MCP server and UI
-are generated from one canonical tool table
-(`src/context_rail/gateway/tools.py`); the grouped names live in
-`src/context_rail/core/tool_names.py`.
-
-## Testing
-
-From a checkout, install it in editable mode with the test dependencies:
-
-```bash
-python -m pip install -e .[test]
-```
-
-Then run one lane at a time (on Windows use `py -m pytest`):
-
-```bash
-python -m pytest -q -m "not slow and not perf"          # functional lane
-python -m pytest -q -m "perf and not slow" -p no:xdist  # speed budgets, serial
-python -m pytest -q -m slow -p no:xdist                 # 10k-document stores
-```
-
-The speed budgets are fixed: a change that needs more time is a bug in the
-change, never a reason to raise the budget. A bare `pytest -q` on its own also
-collects the perf tests, so use the lanes above when the machine is busy.
+The UI carries the pack's labels and titles, renders the pinned populations,
+and an empty screen says so instead of showing a blank page. No React module
+branches on a pack name.
 
 ## Layout
 
-```text
-src/context_rail/
-  kernel/     pure rules: structure, budgets, gates, timestamps (no I/O)
-  model/      manifest, pack, policy and field validation
-  core/       result, util, fixed primitive and grouped command names
-  store/      the only write path, the SQLite cache, queries, sync
-  runner/     dispatch, review, merge, droid protocol, control files
-  gateway/    tool table, handlers, permissions, JSON envelope
-  context/    the computed CTO views (brief, status, digest)
-  doctor/     integrity checks
-  packs/      the built-in pack with its profiles, skills and templates
-  ui/         the loopback HTTP UI
-  cli.py      thin argparse surface: stdlib plus the tool table at import
-```
+| Path | Owns |
+|---|---|
+| `src/context_rail/kernel/` | pure rules — no I/O |
+| `src/context_rail/store/` | the only write path + SQLite cache |
+| `src/context_rail/gateway/` | tool table, permissions, envelope |
+| `src/context_rail/model/` | compiler, placement, operating model |
+| `src/context_rail/packs/` | `basic`, `flow`, `scrum`, `waterfall`, `video` |
+| `web/` | React shell; built into `ui/static` and served by `rail serve ui` |
+| `docs/agent-onboarding/` | portable onboarding kit for any harness |
+| `skills/` | operator skills (`context-rail-v3*`) for agent skill directories |
 
 ## Design
 
-- Visual guide (diagrams and a from-zero-to-daily walkthrough):
-  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/context-rail-v3-guide.html>
-- Interactive engine graph (primitives, relations, one write path and the agent
-  loop):
-  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/context-rail-v3-engine-graph.html>
-- Working rules and engine invariants:
-  <https://github.com/nguyenhoanhson797/Context-Rail/blob/master/AGENTS.md>
+- User guide (diagrams, zero-to-daily walkthrough): [context-rail-v3-guide.html](https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/context-rail-v3-guide.html)
+- Interactive engine graph: [context-rail-v3-engine-graph.html](https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/context-rail-v3-engine-graph.html)
+- Working rules and invariants: [AGENTS.md](https://github.com/nguyenhoanhson797/Context-Rail/blob/master/AGENTS.md)
 
-The design spec, the stage plans and the architecture records are working
-material and stay out of the published repository.
+Engine invariants: every mutation goes through `store.write.commit`; reads
+never execute commands or hash source trees; `kernel` is pure; unknown pack
+version, schema, policy field → refused, never guessed.
 
-Engine invariants worth knowing before changing code:
+## Development
 
-- Every store mutation goes through `context_rail.store.write.commit`.
-- Reads never execute commands and never hash source trees.
-- `context_rail.kernel` is pure: no file, git, process or index access.
-- Unknown manifest schema, pack version, key or policy field is refused, never
-  guessed.
+```bash
+python -m pip install -e .[test]
+python -m pytest -q -m "not slow and not perf"          # functional lane
+python -m pytest -q -m "perf and not slow" -p no:xdist  # speed budgets (serial)
+python -m pytest -q -m slow -p no:xdist                 # 10k-document stores
+```
+
+Speed budgets are fixed; a change that needs more time is a bug in the change.
+On Windows use `py` for `python`.
 
 ## License
 
-MIT. See the `LICENSE` file, or
-<https://github.com/nguyenhoanhson797/Context-Rail/blob/master/LICENSE>.
+MIT — see [LICENSE](https://github.com/nguyenhoanhson797/Context-Rail/blob/master/LICENSE).
