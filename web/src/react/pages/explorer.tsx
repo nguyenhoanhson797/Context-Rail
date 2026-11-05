@@ -1,9 +1,10 @@
 /* The Hierarchy Explorer: one tree per pack hierarchy level.
    A container preset (scene, sprint, phase, epic…) groups the work items
-   that name it through part_of / phase. A record without a container link is
-   listed under "outside the chain" with its reason, never guessed into it.
+   that reach it through part_of — directly or through any number of hops —
+   never by guessing. An item with no route to a declared container is listed
+   under "outside the chain" with its reason.
    It renders snapshot.phases + snapshot.tasks only — the same snapshot the
-   board uses — grouped by the container each task actually references. */
+   board uses — grouped by the container each item actually reaches. */
 import { useMemo, type CSSProperties } from 'react';
 import { object, text, type Data, type PageProps } from '../contracts';
 import { Badge, Empty, PageHeading, Panel } from '../ui';
@@ -32,15 +33,31 @@ export function ExplorerPage({ snapshot, openDoc }: PageProps) {
 
   const grouped = useMemo(() => {
     const containers = snapshot.phases;
+    const containerIds = new Set(containers.map(idOf));
+    const parentById = new Map<string, string>();
+    for (const task of snapshot.tasks) {
+      const parent = phaseOf(task);
+      if (parent) parentById.set(idOf(task), parent);
+    }
+    /* A doc belongs to the nearest declared container reachable upwards.
+       Irregular chains (cycles, missing parents) stop at the boundary and
+       the item stays outside the chain — never assigned by guess. */
+    const chainOf = (id: string): string | null => {
+      const seen = new Set<string>();
+      let current = parentById.get(id) ?? '';
+      while (current && !seen.has(current)) {
+        if (containerIds.has(current)) return current;
+        seen.add(current);
+        current = parentById.get(current) ?? '';
+      }
+      return null;
+    };
     const byContainer = new Map<string, Data[]>();
     const orphans: Data[] = [];
     for (const task of snapshot.tasks) {
-      const parent = phaseOf(task);
-      if (parent && containers.some((c) => idOf(c) === parent)) {
-        byContainer.set(parent, [...(byContainer.get(parent) ?? []), task]);
-      } else {
-        orphans.push(task);
-      }
+      const home = chainOf(idOf(task));
+      if (home) byContainer.set(home, [...(byContainer.get(home) ?? []), task]);
+      else orphans.push(task);
     }
     return { containers, byContainer, orphans };
   }, [snapshot.phases, snapshot.tasks]);
