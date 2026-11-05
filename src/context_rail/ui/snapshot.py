@@ -103,6 +103,28 @@ def _workflows(pack: Pack) -> list[dict[str, Any]]:
     return out
 
 
+def _actions(pack: Pack) -> list[dict[str, Any]]:
+    """The pack's declarative verbs, with the preconditions the UI must show."""
+    return [
+        {
+            "name": action.name,
+            "on": action.on,
+            "from": list(action.from_states),
+            "requires": {
+                "children": action.requires.children,
+                "check": action.requires.check,
+                "review": action.requires.review,
+                "field": action.requires.field,
+            },
+            "tool": action.tool,
+            "args": dict(action.args),
+            "use_when": action.use_when,
+            "version": action.version,
+        }
+        for action in sorted(pack.actions.values(), key=lambda entry: entry.name)
+    ]
+
+
 def _presets(pack: Pack) -> list[dict[str, Any]]:
     return [
         {
@@ -347,6 +369,7 @@ def _operating(context: Any, model: Any) -> dict[str, Any]:
     )
     presentation = model.presentation
     queue_policy = model.operating.queue
+    focus_policy = model.operating.focus
     return {
         "unit": None if unit is None else unit.as_dict(),
         "hierarchy": [
@@ -359,6 +382,14 @@ def _operating(context: Any, model: Any) -> dict[str, Any]:
             for level in model.operating.hierarchy
         ],
         "focus": focus,
+        "focus_policy": None
+        if focus_policy is None
+        else {
+            "preset": focus_policy.preset,
+            "category": focus_policy.category,
+            "resolve": focus_policy.resolve,
+            "order": focus_policy.order,
+        },
         "queue": queue,
         "queue_policy": {
             "presets": list(queue_policy.presets),
@@ -366,6 +397,7 @@ def _operating(context: Any, model: Any) -> dict[str, Any]:
             "focus": queue_policy.focus,
         },
         "execution": {"actions": list(model.operating.execution_actions)},
+        "actions": _actions(context.pack),
         "progress": progress,
         "labels": {
             name: {"one": value.one, "many": value.many}

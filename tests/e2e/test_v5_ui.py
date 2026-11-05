@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 from context_rail.ui import api
-from helpers import write_pack
+from helpers import init_store, write_pack
 
 _SCREEN_TITLES = {
     "scrum": ("Sprint board", "Sprints"),
@@ -68,6 +68,83 @@ def test_the_pack_screen_has_every_gate(
 
     assert gate in gates
     assert document["digests"]["semantic"]
+
+
+@pytest.mark.parametrize(
+    ("pack", "board_preset", "plan_preset"),
+    [
+        ("scrum", "story", "sprint"),
+        ("video", "shot", "scene"),
+        ("waterfall", "deliverable", "phase"),
+        ("flow", "story", "epic"),
+        ("basic", "task", "milestone"),
+    ],
+)
+def test_a_screen_pins_its_population_and_grouping(
+    tmp_path, pack: str, board_preset: str, plan_preset: str
+) -> None:
+    store = init_store(tmp_path / pack, pack)
+    document = api.context_document(store)
+    screens = {screen["id"]: screen for screen in document["operating"]["screens"]}
+
+    assert screens["board"]["preset"] == board_preset
+    assert screens["board"]["group_by"] == "status"
+    assert screens["plan"]["preset"] == plan_preset
+
+
+def test_declared_actions_expose_their_preconditions(
+    operating_scrum_store: SimpleNamespace,
+) -> None:
+    document = api.context_document(operating_scrum_store.store)
+    actions = {action["name"]: action for action in document["operating"]["actions"]}
+
+    assert actions["close-sprint"]["requires"]["children"] is True
+    assert actions["start-sprint"]["requires"]["children"] is False
+    assert actions["file-bug"]["on"] == "*"
+
+
+def test_only_the_video_pack_declares_execution(
+    operating_video_store: SimpleNamespace,
+    operating_scrum_store: SimpleNamespace,
+) -> None:
+    video = api.context_document(operating_video_store.store)
+    assert video["operating"]["execution"]["actions"] == ["render"]
+    assert any(action["name"] == "render" for action in video["operating"]["actions"])
+
+    scrum = api.context_document(operating_scrum_store.store)
+    assert scrum["operating"]["execution"]["actions"] == []
+
+
+@pytest.mark.parametrize("pack", ["flow", "basic"])
+def test_the_absence_packs_have_no_gate_execution_or_focus(
+    tmp_path, pack: str
+) -> None:
+    store = init_store(tmp_path / pack, pack)
+    document = api.context_document(store)
+    operating = document["operating"]
+
+    assert all(not (workflow.get("quality") or {}) for workflow in document["workflows"])
+    assert operating["execution"]["actions"] == []
+    assert operating["focus_policy"] is None
+    assert any(level["required"] is False for level in operating["hierarchy"])
+
+
+@pytest.mark.parametrize(
+    ("fixture", "ordered"),
+    [
+        ("operating_video_store", True),
+        ("operating_waterfall_store", True),
+        ("operating_scrum_store", False),
+    ],
+)
+def test_ordered_hierarchy_is_a_declared_fact(
+    request: pytest.FixtureRequest, fixture: str, ordered: bool
+) -> None:
+    case: SimpleNamespace = request.getfixturevalue(fixture)
+    document = api.context_document(case.store)
+    levels = document["operating"]["hierarchy"]
+
+    assert bool(levels[0].get("order")) is ordered
 
 
 def test_a_label_only_change_relabels_the_ui(

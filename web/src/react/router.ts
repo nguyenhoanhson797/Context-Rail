@@ -2,7 +2,7 @@ import { type Route } from './contracts';
 import { docValid } from './transport';
 const ROUTES = new Set(['summary','now','board','roadmap','scope','catalog','decisions','doctor','pack','settings','timeline','workflow','execution','overview','atlas','outcomes','traceability','impact','lens','graph','rules','activity','portfolio']);
 const ALIASES: Record<string,string> = { home:'summary',tasks:'board',health:'doctor' };
-const PARAMS = new Set(['project','sec','alt','task','focus','phase','workflow','depth','types','fields','all','doc','goal','item','files','since','limit','correction']);
+const PARAMS = new Set(['project','sec','alt','task','focus','phase','workflow','depth','types','fields','all','doc','goal','item','files','since','limit','correction','overlay','lens','attention','record']);
 export function parseAddress(hash: string): {route: string; params: URLSearchParams} {
   const raw=hash.replace(/^#/,'');const cut=raw.indexOf('?');const head=(cut<0?raw:raw.slice(0,cut)).trim();
   const input=new URLSearchParams(cut<0?'':raw.slice(cut+1));const params=new URLSearchParams();

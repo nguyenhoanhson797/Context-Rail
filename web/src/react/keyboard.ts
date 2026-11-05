@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Route } from './contracts';
-const G_KEYS: Record<string,Route> = {u:'summary',o:'overview',t:'traceability',i:'impact',n:'now',b:'board',r:'roadmap',s:'scope',d:'decisions',h:'doctor',a:'activity',p:'portfolio',g:'graph'};
+const G_KEYS: Record<string,Route> = {b:'board',r:'roadmap',d:'decisions'};
 export function useRailKeyboard({navigate,togglePalette,toggleTheme,toggleSidebar,dialogOpen,paletteOpen,sidebarOpen=false}:{navigate:(route:Route,params?:Record<string,string>)=>void;togglePalette:()=>void;toggleTheme:()=>void;toggleSidebar:()=>void;dialogOpen:boolean;paletteOpen:boolean;sidebarOpen?:boolean}) {
   const pending=useRef(0);
   useEffect(()=>{

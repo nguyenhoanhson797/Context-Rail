@@ -22,7 +22,7 @@ export function LinkedValue({value,openDoc}:{value:unknown;openDoc:(id:string)=>
  }
  parts.push(body.slice(last));return <>{parts}</>;
 }
-export function DocumentContent({id,data,task,status='',statuses=[],busy=false,loading=false,error='',navigate,openDoc,onMoveStatus}:{id:string;data:Data;task:boolean;context:unknown;contextLoading?:boolean;contextError?:string;status?:string;statuses?:string[];busy?:boolean;loading?:boolean;error?:string;navigate:PageProps['navigate'];openDoc:PageProps['openDoc'];onMoveStatus?:(status:string)=>void}) {
+export function DocumentContent({id,data,task,bodyOnly=false,status='',statuses=[],busy=false,loading=false,error='',navigate,openDoc,onMoveStatus}:{id:string;data:Data;task:boolean;bodyOnly?:boolean;context:unknown;contextLoading?:boolean;contextError?:string;status?:string;statuses?:string[];busy?:boolean;loading?:boolean;error?:string;navigate:PageProps['navigate'];openDoc:PageProps['openDoc'];onMoveStatus?:(status:string)=>void}) {
  const doc=Object.keys(object(data.doc)).length?object(data.doc):data;
  const hasDoc=Object.keys(doc).length>0;
  const title=text(doc.title,id);
@@ -32,7 +32,7 @@ export function DocumentContent({id,data,task,status='',statuses=[],busy=false,l
  const cardFocus=object(card.focus);
  const cardActions=Array.isArray(card.actions)?card.actions.filter((entry):entry is string=>typeof entry==='string'):[];
  const presetLabel=text(card.preset_label);
- return <><h1 id="d-h" style={{fontSize:20,margin:'0 0 6px'}}>{title}</h1>
+ return <>{!bodyOnly&&<><h1 id="d-h" style={{fontSize:20,margin:'0 0 6px'}}>{title}</h1>
  {presetLabel||text(cardFocus.slug)||cardActions.length?<p className="faint" style={{fontSize:12,margin:'0 0 8px'}} data-operating="card">
    {presetLabel?<span>{presetLabel}</span>:null}
    {text(cardFocus.slug)?<span>{' · focus '}<button type="button" className="link" onClick={()=>openDoc(text(cardFocus.slug))}>{text(cardFocus.title,text(cardFocus.slug))}</button></span>:null}
@@ -40,6 +40,7 @@ export function DocumentContent({id,data,task,status='',statuses=[],busy=false,l
  </p>:null}
  {task&&<div className="row" style={{gap:6,flexWrap:'wrap',margin:'8px 0 14px'}}>{states.map(state=><Button key={state} className={status===state?'btn-sm rail-status-current':'btn-sm'} variant={status===state?'primary':'secondary'} disabled={busy||status===state} aria-current={status===state?'true':undefined} onClick={()=>onMoveStatus?.(state)}><StatusGlyph status={state} statuses={states}/>{titleCase(state)}</Button>)}</div>}
  {task&&<Button className="btn-sm btn-secondary" style={{marginBottom:12}} onClick={()=>navigate('board')}><Layers size={14}/>Open the board</Button>}
+ </>}
  {error?<div className="alert" role="alert"><span>{error}</span></div>:null}
  {loading?<p className="faint" role="status">Loading...</p>:null}
  {fm.length>0&&<dl className="kv" style={{marginTop:8}}>{fm.map(([key,value])=><Fragment key={key}><dt>{key}</dt><dd className="trunc" style={{whiteSpace:'normal',overflowWrap:'anywhere'}}><LinkedValue value={value} openDoc={openDoc}/></dd></Fragment>)}</dl>}

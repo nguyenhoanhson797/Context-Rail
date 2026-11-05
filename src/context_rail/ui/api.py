@@ -86,6 +86,7 @@ def health_document(store: Path, actor: str = "human") -> dict[str, Any]:
         "doctor": {
             "by_severity": counts,
             "total": sum(int(count) for count in counts.values()),
+            "issues": value.get("issues") or [],
         },
         "cache": None,
         "error": None,
@@ -128,6 +129,7 @@ def doc_document(store: Path, slug: str, actor: str = "human") -> dict[str, Any]
             "body": value.get("body") or "",
         },
         "card": value.get("card"),
+        "checks": value.get("checks") or [],
         "out": value.get("out") or {},
         "in": value.get("in") or {},
     }

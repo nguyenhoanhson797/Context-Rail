@@ -60,6 +60,15 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             shown["card"] = surface.card(ctx, doc["slug"])
         except surface.SurfaceError:
             pass
+        shown["checks"] = [
+            {
+                "id": row.get("slug"),
+                "item": row.get("item"),
+                "passed": row.get("passed"),
+                "freshness": recipes.freshness(ctx, row),
+            }
+            for row in query.check_states(index, doc["slug"])
+        ]
     if doc["primitive"] == "check":
         shown["freshness"] = recipes.freshness(
             ctx, query.check_state(index, doc["slug"])

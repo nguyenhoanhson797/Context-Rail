@@ -19,7 +19,13 @@ export class RailClient {
     const global = ['/api/projects', '/api/portfolio', '/api/tools'].includes(path);
     const address = new URL(path, window.location.origin);
     if (!global && this.project) address.searchParams.set('project', this.project);
-    const response = await fetch(address, { credentials: 'same-origin', cache: 'no-store', ...init });
+    /* The launch page carries the token for this server. Send it on every
+       request: the cookie is host-wide, so a second local UI on another port
+       must not be able to shadow this one. A caller-supplied header wins. */
+    const headers = new Headers(init.headers);
+    const launchToken = typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name="ctx-rail-token"]')?.content || '';
+    if (launchToken && !headers.has('X-Rail-Token') && !headers.has('X-Context-Rail-Token')) headers.set('X-Rail-Token', launchToken);
+    const response = await fetch(address, { credentials: 'same-origin', cache: 'no-store', ...init, headers });
     if ([401, 403].includes(response.status)) throw new Error('Access refused. Reopen the link printed by ctx-rail ui.');
     let value: unknown;
     try { value = await response.json(); } catch { throw new Error(`Unexpected response (${response.status})`); }

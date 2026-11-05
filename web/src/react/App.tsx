@@ -5,25 +5,57 @@ import { RailClient, docValid, projectValid, refusal } from './transport';
 import { RefreshGeneration, projectKey, readKey, refreshProject } from './refresh';
 import { ACTIVE_STATUSES, object, rows, text, type Data, type PageProps, type Route } from './contracts';
 import { Button, ErrorState, Loading, PageHeading } from './ui';
-import { SummaryPage } from './pages/summary';
-import { NowPage, BoardPage, RoadmapPage, ScopePage, DecisionsPage, DoctorPage, SettingsPage } from './pages/workspace';
-import { PackPage } from './pages/pack';
-import { CatalogPage } from './pages/catalog';
-import { WorkflowPage } from './pages/workflow';
-import { ExecutionPage } from './pages/execution';
-import { TimelinePage } from './pages/timeline';
-import { allWorkItems, focusName, labelOf, progressOf, screenTitleForRoute, screensOf, screenHasData, unitLabel } from './pages/operating';
-const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = { summary: SummaryPage, now: NowPage, board: BoardPage, roadmap: RoadmapPage, scope: ScopePage, catalog: CatalogPage, decisions: DecisionsPage, doctor: DoctorPage, pack: PackPage, settings: SettingsPage, timeline: TimelinePage, workflow: WorkflowPage, execution: ExecutionPage };
-const labels: Record<Route, string> = { summary: 'Summary', overview: 'Overview', atlas: 'Atlas', outcomes: 'Outcomes', traceability: 'Traceability', impact: 'Impact', activity: 'Catch up', now: 'Now', board: 'Board', roadmap: 'Plan', scope: 'Scope', catalog: 'Catalog', decisions: 'Records', rules: 'Rules', lens: 'Lens', graph: 'Graph', doctor: 'Doctor', pack: 'Pack', portfolio: 'Projects', settings: 'Settings', timeline: 'Timeline', workflow: 'Workflow', execution: 'Progress' };
-/* Pack-driven nav: screens the pack declares, in the pack's order. A route
-   not in the pack's screens is hidden from nav (it stays reachable by URL for
-   the legacy routes that pre-date surface.yaml). */
-const KIND_ROUTE: Record<string, Route> = { summary: 'summary', board: 'board', plan: 'roadmap', timeline: 'roadmap', catalog: 'catalog', records: 'decisions', pack: 'pack', workflow: 'workflow', execution: 'execution' };
-const screenRoute = (kind: string): Route | null => KIND_ROUTE[kind] ?? null;
+import { SettingsPage } from './pages/workspace';
+import { FlowPage } from './pages/flow';
+import { PlanPage } from './pages/plan';
+import { RecordsPage } from './pages/records';
+import { ItemSheet } from './pages/item';
+import { HealthSheet, ProgressSheet, RulesSheet } from './pages/sheets';
+import { allItems, attentionOf, flowScreen, focusState, hasFocus, ledgerScreen, planScreen } from './capabilities';
+import { allWorkItems, focusName, labelOf, progressOf, screenTitleForRoute, unitLabel } from './pages/operating';
+/* The shell keeps three tracking slots and one utility route. A legacy route
+   lands on the slot or overlay that answers its question; it never keeps a
+   second navigation row alive. */
+function redirectPage(to: Route, extra: Record<string, string> = {}) {
+  return function RedirectPage({ params, navigate }: PageProps) {
+    useEffect(() => {
+      const next: Record<string, string> = { ...extra };
+      for (const [key, value] of params) next[key] = value;
+      navigate(to, next);
+    }, [navigate, params]);
+    return null;
+  };
+}
+const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = {
+  board: FlowPage,
+  roadmap: PlanPage,
+  decisions: RecordsPage,
+  settings: SettingsPage,
+  summary: redirectPage('board'),
+  now: redirectPage('board'),
+  scope: redirectPage('board'),
+  catalog: redirectPage('board', { lens: 'grid' }),
+  workflow: redirectPage('board', { overlay: 'rules' }),
+  execution: redirectPage('board', { overlay: 'progress' }),
+  pack: redirectPage('board', { overlay: 'rules' }),
+  doctor: redirectPage('board', { overlay: 'health' }),
+  rules: redirectPage('board', { overlay: 'rules' }),
+  timeline: redirectPage('roadmap'),
+  lens: redirectPage('board', { lens: 'map' }),
+  graph: redirectPage('board', { lens: 'map' }),
+  overview: redirectPage('board'),
+  outcomes: redirectPage('board'),
+  traceability: redirectPage('board'),
+  impact: redirectPage('board'),
+  activity: redirectPage('board'),
+  portfolio: redirectPage('board'),
+  atlas: redirectPage('board'),
+};
+const labels: Record<Route, string> = { summary: 'Summary', overview: 'Overview', atlas: 'Atlas', outcomes: 'Outcomes', traceability: 'Traceability', impact: 'Impact', activity: 'Catch up', now: 'Now', board: 'Flow', roadmap: 'Plan', scope: 'Scope', catalog: 'Catalog', decisions: 'Records', rules: 'Rules', lens: 'Map', graph: 'Map', doctor: 'Health', pack: 'Rules', portfolio: 'Projects', settings: 'Settings', timeline: 'Plan', workflow: 'Rules', execution: 'Progress' };
 import { parseAddress, routeHash } from './router';
 import { crumbModel, trailOf, TRAIL_ROUTES } from './crumbs';
 import { ToolForm } from './ToolForm';
-import { DocumentContent } from './DocumentContent';
+
 import { DocumentNavigation } from './wikiLinks';
 import { useRailKeyboard } from './keyboard';
 import { restorePreferences } from './preferences';
@@ -31,8 +63,8 @@ import { CommandPalette, ConfirmDialog, DocDrawer, StatusGlyph, WrenchIcon, type
 const address = () => parseAddress(location.hash);
 const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,catalog:Folders,decisions:GitBranch,doctor:Stethoscope,pack:FileText,settings:Settings,workflow:RouteIcon,execution:GitBranch,timeline:RouteIcon};
 /* The legacy palette order and its G-key labels (web/src/core/palette.js). */
-const paletteRoutes: Route[] = ['summary','now','board','roadmap','scope','catalog','decisions','doctor','pack','settings'];
-const navKeys: Partial<Record<Route,string>> = {summary:'U',now:'N',board:'B',roadmap:'R',scope:'S',decisions:'D',doctor:'H'};
+const paletteRoutes: Route[] = ['board','roadmap','decisions','settings'];
+const navKeys: Partial<Record<Route,string>> = {board:'B',roadmap:'R',decisions:'D'};
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD = isMac ? '⌘' : 'Ctrl';
 const CONFIRM_TEXT: Record<string, [string, string]> = {
@@ -225,28 +257,19 @@ export default function App() {
     :healthState==='ok'?`${text(object(healthDoctor.by_severity).error,'0')} errors, ${text(object(healthDoctor.by_severity).warning,'0')} warnings`
     :healthState==='error'?`Health unavailable: ${health.isError?health.error.message:text(health.data?.error,'the health read failed')}`
     :`Health unknown${healthReason?' — '+healthReason:''}`;
-  /* The nav is the pack's screens, in the pack's order. Legacy shell routes
-     (now/scope/doctor/settings) stay in the shell but out of the pack nav;
-     Pack is demoted below Doctor — it answers "what are the rules", not a
-     daily tracking question. */
-  const packNav: Route[] = (() => {
-    const screens = snapshot.data ? screensOf(snapshot.data) : [];
-    const fromPack = (screens.length
-      ? screens.map((screen) => screenRoute(text(screen.kind)))
-      : paletteRoutes.filter((route) => !['doctor', 'settings'].includes(route)))
-      .filter((route): route is Route => route !== null && route !== 'pack');
-    const base = [...new Set(fromPack)];
-    const tail = (['doctor', 'pack', 'settings'] as Route[]).filter((route) => !base.includes(route));
-    return [...base, ...tail];
-  })();
-  const visible=(r:Route)=>{
-    if (!snapshot.data) return true;
-    if (['now', 'scope', 'doctor', 'settings'].includes(r)) return true;
-    const declared = screensOf(snapshot.data).some((screen) => screenRoute(text(screen.kind)) === r);
-    if (declared) return screenHasData(snapshot.data, r);
-    return false;
-  };
-  const navItem=(r:Route)=>{const Icon=routeIcons[r]??FileText;const title=screenTitleForRoute(snapshot.data,r,labels[r]);return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{title}</span></button>;};
+  /* Three intent slots, not a screen list. The pack's declared view titles
+     name the slots; a legacy view becomes a lens or an overlay inside them. */
+  const flowScreenDef = snapshot.data ? flowScreen(snapshot.data) : null;
+  const planScreenDef = snapshot.data ? planScreen(snapshot.data) : null;
+  const ledgerScreenDef = snapshot.data ? ledgerScreen(snapshot.data) : null;
+  const slots: { route: Route; title: string }[] = [
+    { route: 'board', title: flowScreenDef?.title ?? labels.board },
+    { route: 'roadmap', title: planScreenDef?.title ?? labels.roadmap },
+    { route: 'decisions', title: ledgerScreenDef?.title ?? labels.decisions },
+  ];
+  const slotRoutes = slots.map((slot) => slot.route);
+  const navRoutes: Route[] = [...slotRoutes, 'settings'];
+  const navItem=(r:Route,title?:string)=>{const Icon=routeIcons[r]??FileText;const label=title??screenTitleForRoute(snapshot.data,r,labels[r]);const selectedDoc=locationState.params.get('doc');const params:Record<string,string>=selectedDoc?{doc:selectedDoc}:{};return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r,params)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{label}</span></button>;};
   /* ---------- command palette items (legacy groups: Navigate, Run a tool, Docs) ---------- */
   /* A group that shows only its first matches says so and offers the rest: a
      truncated list must never hide work without a way to reach it. */
@@ -264,12 +287,16 @@ export default function App() {
   const pagination=(group:string,shown:number,total:number,what:string):PaletteItem|undefined=>total<=shown?undefined:{ key:'more-'+group, name:'Show all '+String(total)+' '+what, sub:String(shown)+' shown', icon:<Search size={15}/>, keepOpen:true, run:()=>expandGroup(group) };
   const paletteGroups: PaletteGroup[] = (() => {
     const list: PaletteGroup[] = [];
-    const navRoutes = snapshot.data ? packNav : paletteRoutes;
-    const pages=[...navRoutes].filter(r=>match(labels[r],screenTitleForRoute(snapshot.data,r,''),'go to '+r, r)).map((r):PaletteItem => { const Icon=routeIcons[r]??FileText; return { key:'page-'+r, name:'Go to '+screenTitleForRoute(snapshot.data,r,labels[r]), icon:<Icon size={15}/>, kbd:navKeys[r]?['G',navKeys[r] as string]:undefined, run:()=>navigate(r) }; });
+    const routes = snapshot.data ? navRoutes : paletteRoutes;
+    const selectedDoc=locationState.params.get('doc');
+    const pages=[...routes].filter(r=>match(labels[r],screenTitleForRoute(snapshot.data,r,''),'go to '+r, r)).map((r):PaletteItem => { const Icon=routeIcons[r]??FileText; return { key:'page-'+r, name:'Go to '+screenTitleForRoute(snapshot.data,r,labels[r]), icon:<Icon size={15}/>, kbd:navKeys[r]?['G',navKeys[r] as string]:undefined, run:()=>navigate(r,selectedDoc?{doc:selectedDoc}:{}) }; });
     const extras:PaletteItem[] = [
       { key:'theme', name:'Toggle dark mode', icon:<Sun size={15}/>, kbd:[MOD,'Shift','L'], run:toggleTheme },
       { key:'side', name:'Toggle sidebar', icon:<PanelLeft size={15}/>, kbd:['['], run:toggleSidebar },
       { key:'reload', name:'Reload from the store', icon:<RotateCcw size={15}/>, run:()=>void refresh() },
+      { key:'overlay-progress', name:'Open progress', icon:<GitBranch size={15}/>, run:()=>navigate('board',{overlay:'progress'}) },
+      { key:'overlay-health', name:'Open health', icon:<Stethoscope size={15}/>, run:()=>navigate('board',{overlay:'health'}) },
+      { key:'overlay-rules', name:'Open rules', icon:<FileText size={15}/>, run:()=>navigate('board',{overlay:'rules'}) },
     ].filter(item=>match(item.name));
     const navAll=[...pages,...extras];
     const nav=isExpanded('Navigate')?navAll:navAll.slice(0,query?NAV_LIMIT_QUERY:NAV_LIMIT);
@@ -294,41 +321,62 @@ export default function App() {
     }
     return list;
   })();
-  const docRow=rows(snapshot.data?.tasks).find(taskRow=>text(taskRow.id)===doc);
-  const docWorkflow=text(docRow?.workflow);
-  const docWorkflowDoc=rows(snapshot.data?.workflows).find(workflowRow=>text(workflowRow.name)===docWorkflow);
-  const docCard=object(object(documentQuery.data).card);
-  const docNext=Array.isArray(docCard.next)?docCard.next.filter((state):state is string=>typeof state==='string'):[];
-  const docStates=docNext.length?docNext:(Array.isArray(docWorkflowDoc?.states)?docWorkflowDoc!.states.filter((s):s is string=>typeof s==='string'):(snapshot.data?.statuses??[]));
   const docData=documentQuery.data??{};
-  const docObject=Object.keys(object(docData.doc)).length?object(docData.doc):docData;
-  const docType=text(docObject.type,docRow?'task':'');
-  const claimRow=rows(snapshot.data?.claims).find(claim=>text(claim.task)===doc);
-  const claimText=claimRow?text(claimRow.actor,text(claimRow.holder,'claimed')):'';
   const crumbTitle=(r:string)=>screenTitleForRoute(snapshot.data,r,Object.hasOwn(labels,r)?labels[r as Route]:'Not found');
-  /* The pulse keeps the project's story in sight on every screen: where it
-     stands, what is moving. Summary and Settings lead with their own reading
-     of it, so the strip is quiet there. It reads the same operating model the
-     pages read, in the pack's own vocabulary — never a second copy. */
-  const pulse=(() => {
+  /* The pulse is the one cross-screen reading: where the project stands, what
+     is moving, and what is waiting on a person. Every chip opens the read that
+     supports it; none is a second copy of the page. */
+  const pulse=useMemo(() => {
     const data=snapshot.data;
-    if (!data || route==='summary' || route==='settings') return null;
-    const dataTasks=rows(data.tasks);
-    const active=dataTasks.filter((t)=>text(t.category)==='active').length;
-    const blocked=dataTasks.filter((t)=>text(t.category)==='blocked').length;
-    const open=dataTasks.filter((t)=>!['done','dropped'].includes(text(t.category))).length;
-    const focus=focusName(data);
+    if (!data || route==='settings') return null;
+    const items=allItems(data);
+    const active=items.filter((t)=>text(t.category)==='active').length;
+    const blocked=items.filter((t)=>text(t.category)==='blocked').length;
+    const attention=attentionOf(data);
+    const focus=hasFocus(data)?focusName(data):'';
     const progress=progressOf(data);
     const unitMany=unitLabel(data,true);
-    const position=focus?`Focus ${focus}`:'Project-wide';
+    const complete=text(progress.complete,'0');
+    const total=text(progress.total,'0');
     return {
       goal:text(object(data.project).goal),
-      progress:`${position} · ${text(progress.complete,'0')}/${text(progress.total,'0')} ${unitMany} done`,
-      open,
+      focus,
+      focusAmbiguous:hasFocus(data)&&focusState(data)==='ambiguous',
+      progress:`${complete}/${total}`,
+      progressDetail:`${complete}/${total} ${unitMany}`,
+      hasProgress:Number(total)>0,
       active,
       blocked,
+      attention:attention.length,
+      blockedCount:attention.filter((entry)=>entry.kind==='blocked').length,
+      gateCount:attention.filter((entry)=>entry.kind==='gate').length,
+      focusCount:attention.filter((entry)=>entry.kind==='focus').length,
     };
-  })();
+  }, [snapshot.data, route]);
+  const overlay=locationState.params.get('overlay')??'';
+  const openOverlay=(name:string)=>{
+    const next:Record<string,string>={};
+    for(const [key,value] of locationState.params) next[key]=value;
+    next.overlay=name;
+    navigate(route as Route,next);
+  };
+  const closeOverlay=()=>{
+    const next:Record<string,string>={};
+    for(const [key,value] of locationState.params) if(key!=='overlay') next[key]=value;
+    navigate(route as Route,next);
+  };
+  const attentionOn=locationState.params.get('attention')==='1';
+  const toggleAttention=()=>{
+    const next:Record<string,string>={};
+    for(const [key,value] of locationState.params) next[key]=value;
+    if(attentionOn) delete next.attention;
+    else next.attention='1';
+    navigate('board',next);
+  };
+  const healthCounts=object(healthDoctor.by_severity);
+  const healthErrors=Number(text(healthCounts.error,'0'));
+  const healthWarnings=Number(text(healthCounts.warning,'0'));
+  const healthTone=contextFailure||health.isError||health.data?.state==='error'?'bad':health.isPending?'unknown':healthErrors?'bad':healthWarnings?'warn':'ok';
   /* The trail of the current address. A route outside the drill-down keeps the
      single crumb it always had: the page's own name. */
   const crumbs=trail.length?trail:[{key:'page',label:crumbTitle(route),route:route as Route,params:{},current:true,hint:undefined}];
@@ -337,15 +385,32 @@ export default function App() {
   return <DocumentNavigation.Provider value={openDoc}><div className={`rail-app shell ${collapsed&&!mnav?'collapsed':''} ${mnav?'mnav':''}`}><a href="#main" className="skip rail-skip" onClick={e=>{e.preventDefault();main.current?.focus();}}>Skip to content</a>
     {mnav&&<button type="button" className="side-scrim" aria-label="Close navigation" onClick={()=>setMnav(false)}/>}
     <aside className="side rail-sidebar" data-open={mnav} data-collapsed={collapsed&&!mnav} inert={narrow&&!mnav?true:undefined}><div className="side-top"><div className="row" style={{gap:2}}><div className="ws grow rail-brand"><span className="ws-logo rail-brand-logo" style={{width:22,height:22}}>{projectName[0]||'C'}</span><span className="ws-name trunc">{projectName}</span></div>{!collapsed&&<button type="button" className="ibtn ibtn-sm hide-m" aria-label="Collapse sidebar" onClick={()=>setCollapsed(true)}><PanelLeft className="i" strokeWidth={1.8} size={15}/></button>}</div></div><nav className="side-scroll" aria-label="Main navigation">{collapsed&&!mnav&&<button type="button" className="sitem" aria-label="Expand sidebar" onClick={()=>setCollapsed(false)}><PanelLeft className="i" strokeWidth={1.8} size={16}/></button>}{rows(registry.data?.projects).some(p=>p.exists&&p.id!==registry.data?.current)&&<div className="side-projects" role="group" aria-label="Projects">{!(collapsed&&!mnav)&&<div className="side-label">Projects</div>}{[{id:text(registry.data?.current),label:projectName,isCurrent:true},...rows(registry.data?.projects).filter(p=>p.exists&&p.id!==registry.data?.current).map(p=>({id:text(p.id),label:text(p.name,text(p.id)),isCurrent:false}))].map(p=>{const on=p.isCurrent?!project||project===p.id:project===p.id;return <button type="button" key={p.isCurrent?'current':p.id} className={`sitem rail-project-link ${on?'on':''}`} aria-current={on?'true':undefined} disabled={busy} title={p.id&&p.id!==p.label?p.id:undefined} onClick={()=>switchProject(p.isCurrent?'':p.id)}><Folders className="i" strokeWidth={1.8} size={16}/><span className="trunc">{p.label}</span></button>;})}</div>}
-      <section role="group" aria-label="Pack"><div className="side-label">Pack</div>{packNav.filter(visible).map(navItem)}</section>
-      <section role="group" aria-label="Shell"><div className="side-label">Shell</div>{['now', 'scope'].filter((r) => visible(r as Route)).map((r) => navItem(r as Route))}</section>
-      </nav><div className="side-bot">{navItem('settings')}</div></aside>
-    <div className="main rail-main-wrap"><header className="topbar rail-topbar"><button type="button" className="ibtn" id="mnav-btn" aria-label="Toggle navigation" aria-expanded={mnav} onClick={()=>setMnav(v=>!v)}><Menu className="i" strokeWidth={1.8} size={17}/></button><nav className="crumbs trunc" aria-label="Breadcrumb">{crumbs.map((crumb,index)=><Fragment key={crumb.key}>{index>0?<span className="sep" aria-hidden="true">/</span>:null}<button type="button" className={crumb.current?'cur':undefined} aria-current={crumb.current?'page':undefined} title={crumb.hint} onClick={crumb.current?undefined:()=>navigate(crumb.route,crumb.params)}>{crumb.label}</button></Fragment>)}</nav><span className="sp"/><span className="faint hide-m" style={{fontSize:12}}>{snapshot.data?'store v'+snapshot.data.schema:''}</span><span className="faint hide-m" data-health={contextFailure?'error':healthState} style={{fontSize:11}} title="the diagnostics read">{healthLabel}</span>{readTimes[project+'|'+route] && <span className="faint hide-m" style={{fontSize:11}} title="the time of the last read">{'as of '+new Date(readTimes[project+'|'+route]).toLocaleTimeString().replace(/\u202f/g,' ')}</span>}<button type="button" className="ibtn" disabled={busy||invalid} aria-label="Reload" onClick={()=>void refresh()}><RotateCcw className="i" strokeWidth={1.8} size={15}/></button><button type="button" className="topsearch" aria-label="Search and commands" onClick={()=>setPalette(true)}><Search className="i" strokeWidth={1.8} size={14}/><span className="lbltxt">Search or run a tool...</span><span className="kbd">{MOD}{isMac?'':' '}K</span></button></header>{pulse&&<button type="button" className="pulse" onClick={()=>navigate('summary')} aria-label="Open the project summary">{pulse.goal?<span className="pulse-goal trunc">{pulse.goal}</span>:<span className="pulse-goal trunc">{text(object(snapshot.data?.project).name,'Project')}</span>}<span className="pulse-sep" aria-hidden="true">·</span><span className="pulse-progress">{pulse.progress}</span><span className="pulse-sep hide-m" aria-hidden="true">·</span><span className="pulse-stat hide-m">Open {pulse.open}</span><span className="pulse-stat pulse-active hide-m">In motion {pulse.active}</span><span className="pulse-stat hide-m">Blocked {pulse.blocked}</span><span className="pulse-spacer"/><span className="pulse-cta">Summary</span></button>}
+      <section role="group" aria-label="Track"><div className="side-label">Track</div>{slots.map((slot) => navItem(slot.route, slot.title))}</section>
+      </nav><div className="side-bot">
+        <button type="button" className="sitem rail-util-link" onClick={()=>openOverlay('health')} title={healthLabel}><span className={`rail-health-dot ${healthTone}`} aria-hidden="true"/><span className="trunc">{healthTone==='ok'?'Healthy':healthTone==='bad'?'Health needs attention':healthTone==='warn'?'Health warnings':'Health unknown'}</span></button>
+        <button type="button" className="sitem rail-util-link" onClick={()=>openOverlay('rules')}><FileText className="i" strokeWidth={1.8} size={15}/><span className="trunc">Rules</span></button>
+        {navItem('settings')}
+      </div></aside>
+    <div className="main rail-main-wrap"><header className="topbar rail-topbar"><button type="button" className="ibtn" id="mnav-btn" aria-label="Toggle navigation" aria-expanded={mnav} onClick={()=>setMnav(v=>!v)}><Menu className="i" strokeWidth={1.8} size={17}/></button><nav className="crumbs trunc" aria-label="Breadcrumb">{crumbs.map((crumb,index)=><Fragment key={crumb.key}>{index>0?<span className="sep" aria-hidden="true">/</span>:null}<button type="button" className={crumb.current?'cur':undefined} aria-current={crumb.current?'page':undefined} title={crumb.hint} onClick={crumb.current?undefined:()=>navigate(crumb.route,crumb.params)}>{crumb.label}</button></Fragment>)}</nav><span className="sp"/><span className="faint hide-m" style={{fontSize:12}}>{snapshot.data?'store v'+snapshot.data.schema:''}</span>{readTimes[project+'|'+route] && <span className="faint hide-m" style={{fontSize:11}} title="the time of the last read">{'as of '+new Date(readTimes[project+'|'+route]).toLocaleTimeString().replace(/\u202f/g,' ')}</span>}<button type="button" className="ibtn" disabled={busy||invalid} aria-label="Reload" onClick={()=>void refresh()}><RotateCcw className="i" strokeWidth={1.8} size={15}/></button><button type="button" className="topsearch" aria-label="Search and commands" onClick={()=>setPalette(true)}><Search className="i" strokeWidth={1.8} size={14}/><span className="lbltxt">Search or run a tool...</span><span className="kbd">{MOD}{isMac?'':' '}K</span></button></header>{pulse&&<div className="rail-pulse" aria-label="Project pulse">
+      {pulse.goal?<span className="rail-pulse-goal trunc" title={pulse.goal}>{pulse.goal}</span>:<span className="rail-pulse-goal trunc">{text(object(snapshot.data?.project).name,'Project')}</span>}
+      {pulse.focus?<button type="button" className="rail-pchip" onClick={()=>navigate('roadmap')} title={`Focus ${pulse.focus}`}><span>Focus</span><b className="trunc">{pulse.focus}</b></button>:null}
+      {pulse.focusAmbiguous?<button type="button" className="rail-pchip rail-pchip-attn" onClick={()=>navigate('roadmap')}><span>Focus</span><b>ambiguous</b></button>:null}
+      {pulse.hasProgress?<button type="button" className="rail-pchip" onClick={()=>openOverlay('progress')} title={pulse.progressDetail}><span>Progress</span><b>{pulse.progress}</b></button>:null}
+      {pulse.active>0?<span className="rail-pchip rail-pchip-muted"><span>In motion</span><b>{pulse.active}</b></span>:null}
+      {pulse.blocked>0?<span className="rail-pchip rail-pchip-danger"><span>Blocked</span><b>{pulse.blocked}</b></span>:null}
+      {pulse.attention>0?<button type="button" className="rail-pchip rail-pchip-attn" onClick={toggleAttention} aria-pressed={attentionOn}><TriangleAlert size={11}/><span>Needs you</span><b>{pulse.attention}</b></button>:null}
+      <span className="rail-pulse-spacer"/>
+      <button type="button" className="rail-pulse-cta" onClick={()=>void refresh()}>Refresh</button>
+    </div>}
+    {pulse&&pulse.attention>0&&route!=='settings'?<div className="rail-attention-band" role="status"><b>{pulse.attention} need you</b><span>{[pulse.blockedCount?`${pulse.blockedCount} blocked`:'',pulse.gateCount?`${pulse.gateCount} proof owed`:'',pulse.focusCount?`${pulse.focusCount} focus candidates`:''].filter(Boolean).join(' · ')}</span><button type="button" className="rail-band-cta" onClick={toggleAttention}>{attentionOn?'Show all':'Review →'}</button></div>:null}
     {routeErrors.length>0&&<div className="offline-bar" role="alert"><TriangleAlert size={15}/><span><b>{crumbTitle(route)+" could not load."}</b> {routeErrors.join(" ")}{readTimes[project+"|"+route]&&(" Last good read "+new Date(readTimes[project+"|"+route]).toLocaleTimeString()+".")}</span><span className="sp"/><button type="button" className="btn btn-sm btn-secondary" onClick={()=>void refresh()}>Try again</button></div>}
-    <main id="main" ref={main} tabIndex={-1} className="content">{notice&&<div role="alert" className="offline-bar rail-error">{notice}</div>}<div className={route==='settings'?'rail-settings-wrap rail-main':route==='board'?'page flush wide rail-main':route==='atlas'?'rail-main':'page understanding rail-main'}>{invalid?<ErrorState error="This project is invalid or not registered. No project data was requested."/>:registry.isError?<ErrorState error={registry.error.message} retry={()=>void registry.refetch()}/>:snapshot.isError?<ErrorState error={snapshot.error.message} retry={()=>void snapshot.refetch()}/>:!snapshot.data?<Loading/>:Page?<Page snapshot={snapshot.data} project={project} params={locationState.params} navigate={navigate} openDoc={openDoc} read={readPage} mutate={mutate} busy={busy} refresh={()=>refresh()} request={(path,init)=>client.request(path,init)} theme={theme} setTheme={setTheme}/>:<><PageHeading title="Page not found" description="This address does not name a screen in Context Rail." action={<Button onClick={()=>navigate('summary')}>Go to Summary</Button>}/></>}</div></main></div>
-    {doc&&<DocDrawer id={doc} type={docType} claim={claimText} full={docFull} onToggleFull={()=>setDocFull(value=>!value)} onClose={closeDoc}><DocumentContent id={doc} data={docData} task={rows(snapshot.data?.tasks).some(taskRow=>text(taskRow.id)===doc)} context={understanding.data} contextLoading={understanding.isFetching} contextError={understanding.isError?understanding.error.message:''} status={text(docRow?.status)} statuses={docStates} busy={busy} loading={documentQuery.isPending} error={documentQuery.isError?documentQuery.error.message:''} navigate={navigate} openDoc={openDoc} onMoveStatus={moveDocStatus}/></DocDrawer>}
+    <main id="main" ref={main} tabIndex={-1} className="content">{notice&&<div role="alert" className="offline-bar rail-error">{notice}</div>}<div className={route==='settings'?'rail-settings-wrap rail-main':'rail-main rail-screen'}>{invalid?<ErrorState error="This project is invalid or not registered. No project data was requested."/>:registry.isError?<ErrorState error={registry.error.message} retry={()=>void registry.refetch()}/>:snapshot.isError?<ErrorState error={snapshot.error.message} retry={()=>void snapshot.refetch()}/>:!snapshot.data?<Loading/>:Page?<Page snapshot={snapshot.data} project={project} params={locationState.params} navigate={navigate} openDoc={openDoc} read={readPage} mutate={mutate} busy={busy} refresh={()=>refresh()} request={(path,init)=>client.request(path,init)} theme={theme} setTheme={setTheme}/>:<><PageHeading title="Page not found" description="This address does not name a screen in Context Rail." action={<Button onClick={()=>navigate('board')}>Go to Flow</Button>}/></>}</div></main></div>
+    {doc&&snapshot.data&&<DocDrawer id={doc} type="" claim="" full={docFull} onToggleFull={()=>setDocFull(value=>!value)} onClose={closeDoc}><ItemSheet id={doc} snapshot={snapshot.data} document={docData} busy={busy} navigate={navigate} openDoc={openDoc} mutate={mutate} onMove={moveDocStatus} loading={documentQuery.isPending} error={documentQuery.isError?documentQuery.error.message:''}/></DocDrawer>}
     {activeTool&&<ToolForm tool={activeTool} confirmTools={confirmTools} busy={busy} hidden={!!confirmation} onClose={()=>setActiveTool(null)} mutate={mutate} onConfirm={requestConfirm}/>}
     {confirmation&&<ConfirmDialog title={confirmation.title} body={confirmation.body} ok={confirmation.ok} busy={busy} onRun={confirmation.run} onClose={()=>setConfirmation(null)}/>}
+    {overlay==='progress'&&snapshot.data?<ProgressSheet snapshot={snapshot.data} onClose={closeOverlay}/>:null}
+    {overlay==='health'?<HealthSheet health={health.data} onClose={closeOverlay}/>:null}
+    {overlay==='rules'&&snapshot.data?<RulesSheet snapshot={snapshot.data} onClose={closeOverlay}/>:null}
     {palette&&<CommandPalette query={search} onQueryChange={setSearch} groups={paletteGroups} onClose={()=>setPalette(false)} onRun={item=>{if(!item.keepOpen) setPalette(false);item.run();}}/>}
     <div className="sr-only" role="status" aria-live="polite">{busy?'Applying change and reconciling the store...':''}</div>
   </div></DocumentNavigation.Provider>;
