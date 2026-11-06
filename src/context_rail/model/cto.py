@@ -147,7 +147,7 @@ USAGE_KEYS = (
 )
 
 PROFILE_RECIPES = ("cto", "implementer", "reviewer")
-PROFILE_RUNNERS = ("droid", "claude", "codex", "local")
+PROFILE_RUNNERS = ("droid", "claude", "codex", "local", "gemini", "opencode", "grok")
 PROFILE_AUTO = (None, "low", "medium", "high")
 PROFILE_EFFORTS = (None, "low", "medium", "high")
 PROFILE_KEYS = (

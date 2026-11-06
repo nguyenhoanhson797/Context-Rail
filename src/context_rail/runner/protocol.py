@@ -74,6 +74,43 @@ RUNNER_BIN = {
     "claude": "claude",
     "codex": "codex",
     "local": "local",
+    "gemini": "gemini",
+    "opencode": "opencode",
+    "grok": "grok",
+}
+
+#: Adapters that take one combined prompt argument instead of a prompt file.
+#: The role prompt and the work order are joined, capped, and placed where
+#: ``{prompt}`` sits. ``RAIL_<NAME>_ARGS`` replaces the template as a JSON
+#: array, so an installed CLI whose flags differ needs no code change.
+_PROMPT_TEMPLATES = {
+    "gemini": [
+        "gemini",
+        "--model",
+        "{model}",
+        "--output-format",
+        "json",
+        "--prompt",
+        "{prompt}",
+    ],
+    "opencode": [
+        "opencode",
+        "run",
+        "--model",
+        "{model}",
+        "--format",
+        "json",
+        "{prompt}",
+    ],
+    "grok": [
+        "grok",
+        "--model",
+        "{model}",
+        "--output-format",
+        "json",
+        "--prompt",
+        "{prompt}",
+    ],
 }
 
 _LAUNCHERS = {
@@ -112,6 +149,14 @@ class _Adapter:
         tools = tuple(profile.tools)
         if not tools:
             raise WriteRefused("INTEGRATION_FAILURE", "the profile names no tools")
+        if self.name in _PROMPT_TEMPLATES:
+            return self._prompt_argv(
+                binary=binary,
+                model_id=model_id,
+                worktree=Path(worktree),
+                role_file=Path(role_file),
+                order_file=Path(order_file),
+            )
         argv: list[str] = [binary, *_LAUNCHERS[self.name][1:]]
         if session_id is not None:
             if not isinstance(session_id, str) or not session_id.strip():
@@ -133,6 +178,45 @@ class _Adapter:
                 argv += ["-r", profile.effort]
         else:
             argv += ["--tools", ",".join(tools), "-f", str(Path(order_file).resolve())]
+        return argv
+
+    def _prompt_argv(
+        self,
+        *,
+        binary: str,
+        model_id: str,
+        worktree: Path,
+        role_file: Path,
+        order_file: Path,
+    ) -> list[str]:
+        """The argv for an adapter that takes one combined prompt argument."""
+        prompt = _combined_prompt(role_file, order_file)
+        raw = os.environ.get(f"RAIL_{self.name.upper()}_ARGS")
+        template: list[str]
+        if raw:
+            import json
+
+            try:
+                parsed = json.loads(raw)
+            except ValueError:
+                parsed = None
+            if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
+                from context_rail.store.write import WriteRefused
+
+                raise WriteRefused(
+                    "VALIDATION_FAILED",
+                    f"RAIL_{self.name.upper()}_ARGS must be a JSON array of strings",
+                )
+            template = parsed
+        else:
+            template = _PROMPT_TEMPLATES[self.name]
+        values = {
+            "{model}": model_id,
+            "{prompt}": prompt,
+            "{worktree}": str(worktree.resolve()),
+        }
+        argv = [values.get(token, token) for token in template]
+        argv[0] = binary
         return argv
 
     def parse_output(
@@ -164,7 +248,12 @@ class _Adapter:
             return None, f"{self.name} output is not a result", "", dict.fromkeys(USAGE_KEYS, UNKNOWN), None, False
         if payload.get("is_error") is True:
             return None, f"{self.name} reported is_error", "", dict.fromkeys(USAGE_KEYS, UNKNOWN), None, False
-        result_text = payload.get("result") or payload.get("output") or ""
+        result_text = (
+            payload.get("result")
+            or payload.get("output")
+            or payload.get("response")
+            or ""
+        )
         if not isinstance(result_text, str):
             result_text = str(result_text)
         usage_raw = payload.get("usage") or {}
@@ -195,6 +284,15 @@ class _Adapter:
 _ADAPTERS: dict[str, _Adapter] = {}
 _SESSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$")
 _FAILURE_PROMPT_MAX_CHARS = 4000
+_PROMPT_MAX_CHARS = 32000
+
+
+def _combined_prompt(role_file: Path, order_file: Path) -> str:
+    """The role prompt and the work order as one bounded argument."""
+    role = role_file.read_text(encoding="utf-8")
+    order = order_file.read_text(encoding="utf-8")
+    text = role.rstrip() + "\n\n" + order.lstrip()
+    return text[:_PROMPT_MAX_CHARS]
 
 
 def get_runner(name: str) -> _Adapter:
