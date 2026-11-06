@@ -2314,7 +2314,7 @@ const THEMES: ['light' | 'dark' | 'system', string, ReactNode][] = [
   ['system', 'System', <Monitor className="i" size={13} strokeWidth={1.8} aria-hidden="true" key="system" />],
 ];
 
-export function SettingsPage({ params, navigate, theme, setTheme, request, mutate, busy, project, refresh }: PageProps) {
+export function SettingsPage({ params, navigate, theme, setTheme, request, mutate, busy, project, refresh, snapshot, read, openDoc }: PageProps) {
   const section = params.get('sec') === 'shortcuts' ? 'shortcuts' : 'appearance';
   /* The automation/config sections are local state, not a URL section: the shell's router
      only validates sec=appearance|shortcuts, and this section must not change
