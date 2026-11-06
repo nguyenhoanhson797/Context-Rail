@@ -101,11 +101,13 @@ class _Adapter:
         role_file: Path,
         order_file: Path,
         session_id: str | None = None,
+        model: str | None = None,
     ) -> list[str]:
         from context_rail.store.write import WriteRefused
 
         binary = os.environ.get(self.bin_env) or RUNNER_BIN[self.name]
-        if not isinstance(profile.model, str) or not profile.model.strip():
+        model_id = model if model is not None else profile.model
+        if not isinstance(model_id, str) or not model_id.strip():
             raise WriteRefused("INTEGRATION_FAILURE", "the profile names no model")
         tools = tuple(profile.tools)
         if not tools:
@@ -115,7 +117,7 @@ class _Adapter:
             if not isinstance(session_id, str) or not session_id.strip():
                 raise WriteRefused("VALIDATION_FAILED", "a continued session needs a session id")
             argv += ["-s", session_id] if self.name == "droid" else ["--session", session_id]
-        argv += ["--cwd", str(Path(worktree).resolve()), "-m", profile.model]
+        argv += ["--cwd", str(Path(worktree).resolve()), "-m", model_id]
         if self.name == "droid":
             argv += [
                 "--restrict-tools",
@@ -232,6 +234,27 @@ def runner_name(profile: Profile, override: str | None = None) -> str:
     return name
 
 
+def resolve_model(profile: Profile, runner: str) -> str:
+    """The model id a launch sends: environment, then the runner's mapping,
+    then the profile's single ``model``. Model names belong to the harness,
+    so a profile may map each adapter to its own id.
+    """
+    from context_rail.store.write import WriteRefused
+
+    model = (
+        os.environ.get("RAIL_MODEL")
+        or getattr(profile, "runner_models", {}).get(runner)
+        or getattr(profile, "model", "")
+    )
+    if not isinstance(model, str) or not model.strip():
+        raise WriteRefused(
+            "INTEGRATION_FAILURE",
+            f"runner {runner!r} has no model: set profile.model, "
+            f"profile.runner_models.{runner}, or RAIL_MODEL",
+        )
+    return model
+
+
 def run_runner(
     *,
     profile: Profile,
@@ -258,6 +281,7 @@ def run_runner(
         role_file=Path(role_file),
         order_file=Path(order_file),
         session_id=session_id,
+        model=resolve_model(profile, adapter.name),
     )
     launched = _run(
         argv,
@@ -315,7 +339,7 @@ def run_worker(
 
         return run_droid(
             context=context,
-            profile=droid_profile(profile),
+            profile=droid_profile(profile, model=resolve_model(profile, name)),
             worktree=Path(worktree),
             confine_to=Path(confine_to),
             role_file=Path(role_file),

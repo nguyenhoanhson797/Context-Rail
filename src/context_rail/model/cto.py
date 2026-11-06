@@ -163,6 +163,7 @@ PROFILE_KEYS = (
     "skills",
     "budgets",
     "runner",
+    "runner_models",
     "runner_options",
 )
 PROFILE_BUDGET_KEYS = ("max_chars", "max_docs")
@@ -365,6 +366,7 @@ class Profile:
     budgets: dict[str, Any]
     body: str = ""
     runner: str = "droid"
+    runner_models: dict[str, str] = field(default_factory=dict)
     runner_options: dict[str, Any] = field(default_factory=dict)
 
 
@@ -593,6 +595,18 @@ def parse_profile(fields: dict[str, Any], *, body: str | None = None) -> Profile
             if not isinstance(value, (str, int, float, bool)) or not str(value):
                 refuse(f"profile.runner_options.{key} must be a non-empty scalar")
         runner_options = dict(opts)
+    runner_models: dict[str, str] = {}
+    if "runner_models" in data:
+        models = mapping(data["runner_models"], "profile.runner_models")
+        for name, value in models.items():
+            if name not in PROFILE_RUNNERS:
+                refuse(
+                    "profile.runner_models names unknown runner "
+                    + repr(name)
+                    + "; one of "
+                    + ", ".join(PROFILE_RUNNERS)
+                )
+            runner_models[name] = string(value, f"profile.runner_models.{name}")
 
     return Profile(
         schema=schema,
@@ -608,6 +622,7 @@ def parse_profile(fields: dict[str, Any], *, body: str | None = None) -> Profile
         budgets=budgets,
         body=prompt,
         runner=runner,
+        runner_models=runner_models,
         runner_options=runner_options,
     )
 

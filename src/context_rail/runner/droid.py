@@ -153,13 +153,15 @@ class DroidRun:
 # â”€â”€ Profiles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
-def droid_profile(profile: Profile, *, name: str | None = None) -> DroidProfile:
+def droid_profile(
+    profile: Profile, *, name: str | None = None, model: str | None = None
+) -> DroidProfile:
     """The launch facts of a validated profile; the actor name is its recipe."""
     if not isinstance(profile, Profile):
         raise WriteRefused("VALIDATION_FAILED", "a droid profile needs a validated profile")
     return DroidProfile(
         name=name or profile.recipe,
-        model=profile.model,
+        model=model if model is not None else profile.model,
         effort=profile.effort,
         auto=profile.auto,
         tools=tuple(profile.tools),

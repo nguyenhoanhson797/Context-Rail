@@ -154,9 +154,13 @@ function ProfileForm({ doc, options, busy, run }: {
   const f = object(doc.fields);
   const b = budgetOf(doc);
 
-  const [model, setModel] = useState(text(f.model));
+  const [baseModel, setBaseModel] = useState(text(f.model));
+  const [runnerModels, setRunnerModels] = useState<Record<string, string>>(
+    Object.fromEntries(Object.entries(object(f.runner_models)).map(([k, v]) => [k, text(v)]).filter(([, v]) => v)),
+  );
   const [auto, setAuto] = useState(text(f.auto));
   const [runner, setRunner] = useState(text(f.runner, runners[0] ?? 'droid'));
+  const effectiveModel = runnerModels[runner] ?? baseModel;
   const [selectedTools, setSelectedTools] = useState<string[]>(strings(f.tools));
   const [selectedMethods, setSelectedMethods] = useState<string[]>(strings(f.allowed_methods));
   const [attempts, setAttempts] = useState(num(b.attempts));
@@ -168,7 +172,8 @@ function ProfileForm({ doc, options, busy, run }: {
 
   const save = () => {
     const set: string[] = [];
-    if (model) set.push(`model=${model}`);
+    if (baseModel) set.push(`model=${baseModel}`);
+    if (Object.keys(runnerModels).length) set.push(`runner_models=${JSON.stringify(runnerModels)}`);
     set.push(`auto=${auto || 'null'}`);
     if (runner) set.push(`runner=${runner}`);
     set.push(`tools=${JSON.stringify(selectedTools)}`);
@@ -189,11 +194,19 @@ function ProfileForm({ doc, options, busy, run }: {
           The profile declares a default; the harness decides at launch. <span className="mono">RAIL_RUNNER</span> overrides the runner for every launch in this environment
           {text(options.runner_override) ? <> (currently <span className="mono">{text(options.runner_override)}</span>)</> : ' (none set)'}, and the argv that actually ran is kept in the run record.
         </div>
-        <Row title="Model" description="The model id this profile asks its runner for; model names belong to the harness.">
-          <input className="input" aria-label="Model" value={model} onChange={e => setModel(e.target.value)} />
-        </Row>
         <Row title="Runner" description="Declared default adapter; a launch-time override wins.">
           <Segmented label="Runner" options={runners} value={runner} onChange={setRunner} />
+        </Row>
+        <Row title={`Model for ${runner}`} description="Model ids belong to the runner; this keeps one id per adapter.">
+          <input
+            className="input"
+            aria-label="Model"
+            value={effectiveModel}
+            onChange={e => setRunnerModels(current => ({ ...current, [runner]: e.target.value }))}
+          />
+        </Row>
+        <Row title="Fallback model" description="Used when the runner has no mapped model.">
+          <input className="input" aria-label="Fallback model" value={baseModel} onChange={e => setBaseModel(e.target.value)} />
         </Row>
       </details>
       <Row title="Tools" description="The tool ids this worker may use; the reviewer may hold only read tools.">

@@ -1,17 +1,22 @@
-"""The runner a launch resolves to: override, then environment, then profile."""
+"""The runner and model a launch resolves to: override, then environment, then profile."""
 
 from __future__ import annotations
 
 import pytest
 
 from context_rail.model.cto import Profile
-from context_rail.runner.protocol import runner_for_profile, runner_name
+from context_rail.runner.protocol import (
+    get_runner,
+    resolve_model,
+    runner_for_profile,
+    runner_name,
+)
 from context_rail.store.write import WriteRefused
 
 _RECIPE = "implementer"
 
 
-def _profile(runner: str = "droid") -> Profile:
+def _profile(runner: str = "droid", models: dict[str, str] | None = None) -> Profile:
     return Profile(
         schema=1,
         version=1,
@@ -26,6 +31,7 @@ def _profile(runner: str = "droid") -> Profile:
         budgets={},
         body="body",
         runner=runner,
+        runner_models=models or {},
         runner_options={},
     )
 
@@ -60,3 +66,55 @@ def test_an_unknown_runner_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RAIL_RUNNER", "made-up")
     with pytest.raises(WriteRefused):
         runner_name(_profile("droid"))
+
+
+def test_the_model_follows_the_resolved_runner() -> None:
+    profile = _profile("droid", {"droid": "droid-model", "codex": "codex-model"})
+    assert resolve_model(profile, "droid") == "droid-model"
+    assert resolve_model(profile, "codex") == "codex-model"
+    # No mapping for that adapter: the single declared model is the fallback.
+    assert resolve_model(profile, "claude") == "model-1"
+
+
+def test_an_environment_model_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAIL_MODEL", "env-model")
+    profile = _profile("droid", {"droid": "droid-model"})
+    assert resolve_model(profile, "droid") == "env-model"
+
+
+def test_a_launch_refuses_a_runner_with_no_model() -> None:
+    profile = _profile("droid", {"droid": "droid-model"})
+    empty = Profile(
+        schema=profile.schema,
+        version=profile.version,
+        allowed_methods=profile.allowed_methods,
+        recipe=profile.recipe,
+        budget=profile.budget,
+        model="",
+        effort=None,
+        auto=None,
+        tools=profile.tools,
+        skills=profile.skills,
+        budgets=profile.budgets,
+        body=profile.body,
+        runner=profile.runner,
+        runner_models={},
+        runner_options={},
+    )
+    with pytest.raises(WriteRefused) as refused:
+        resolve_model(empty, "codex")
+    assert refused.value.code == "INTEGRATION_FAILURE"
+
+
+def test_the_argv_carries_the_resolved_model() -> None:
+    from pathlib import Path
+
+    profile = _profile("codex", {"codex": "codex-model"})
+    argv = get_runner("codex").build_argv(
+        profile=profile,
+        worktree=Path("."),
+        role_file=Path("role.md"),
+        order_file=Path("order.md"),
+        model=resolve_model(profile, "codex"),
+    )
+    assert argv[argv.index("-m") + 1] == "codex-model"
