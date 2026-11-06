@@ -114,3 +114,26 @@ def test_the_cursor_and_counts_follow_categories(tmp_path: Path) -> None:
     assert value["project"]["status_summary"] == "1 not started · 1 in motion"
     assert "Started" in value["cursor"]["in_progress"]
     assert "Waiting" in value["cursor"]["next"]
+
+
+def test_the_snapshot_carries_actors_skills_and_charter(tmp_path: Path) -> None:
+    store = init_store(tmp_path, "basic")
+    context = Context(
+        store=store,
+        manifest=load_manifest(store),
+        pack=load_pack("basic", store),
+        actor="cto",
+    )
+    try:
+        value = snapshot.build(context)
+    finally:
+        context.close()
+
+    assert isinstance(value["actors"], list)
+    assert isinstance(value["skills"], list)
+    assert value["charter"] is None or isinstance(value["charter"], dict)
+    for doc in value["actors"]:
+        assert doc["primitive"] == "actor"
+        assert "fields" in doc and "etag" in doc
+    for doc in value["skills"]:
+        assert doc["preset"] == "skill"
