@@ -241,6 +241,25 @@ def _send(port: int, payload: dict[str, Any]) -> dict[str, Any]:
     return json.loads(data.decode("utf-8"))
 
 
+@pytest.mark.parametrize("token", ["tökén", "", "x" * 5000])
+def test_an_unusable_token_is_refused_not_an_internal_error(store: Path, token: str) -> None:
+    with serving_daemon(store):
+        descriptor = daemon_endpoint(store)
+        assert descriptor is not None
+        held = json.loads(descriptor.read_text(encoding="utf-8"))
+        refused = _send(held["port"], {"tool": "status", "params": {}, "token": token})
+    assert refused["error"]["code"] == "PERMISSION_DENIED"
+    assert refused["error"]["details"]["reason"] == "daemon_token"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows has no owner-only mode bits")
+def test_the_descriptor_holding_the_token_is_readable_only_by_its_owner(store: Path) -> None:
+    with serving_daemon(store):
+        descriptor = daemon_endpoint(store)
+        assert descriptor is not None
+        assert descriptor.stat().st_mode & 0o077 == 0
+
+
 def test_the_stop_op_requires_the_token(store: Path) -> None:
     with serving_daemon(store):
         descriptor = daemon_endpoint(store)

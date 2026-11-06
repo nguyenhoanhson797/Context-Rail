@@ -143,9 +143,10 @@ def call_daemon(
 ) -> dict[str, Any] | None:
     """Serve one call from the store's daemon; ``None`` means run it direct.
 
-    Before the request is fully sent, every failure is a miss. After it,
-    a read may still be run direct, but a write may already have happened:
-    it is reported as unknown and never repeated here.
+    A descriptor that is missing, stale, from another version or refused, and a
+    connection that fails, are all misses with nothing sent. Once the request
+    may have reached the daemon, a read can still be run direct, but a write may
+    already have happened: it is reported as unknown and never repeated here.
     """
     if os.environ.get(NO_DAEMON_ENV):
         return None
@@ -396,7 +397,12 @@ def write_daemon_descriptor(store: Path, *, port: int, pid: int | None = None) -
         },
         sort_keys=True,
     )
-    descriptor.write_text(payload, encoding="utf-8", newline="\n")
+    # The token lets its holder act as any actor, so only the owner may read it.
+    handle = os.open(descriptor, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as written:
+        written.write(payload)
+    if os.name != "nt":
+        os.chmod(descriptor, 0o600)
     (descriptor.parent / _PID_FILE).write_text(str(pid or os.getpid()), encoding="utf-8")
     return descriptor
 
@@ -602,7 +608,7 @@ class _DaemonServer:
             conn.sendall(b'{"ok": false}\n')
             return
         token = str(payload.get("token") or "")
-        if not hmac.compare_digest(token, self._token):
+        if not hmac.compare_digest(token.encode("utf-8"), self._token.encode("utf-8")):
             self._reply(
                 conn,
                 fail(
