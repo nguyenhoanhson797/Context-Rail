@@ -109,6 +109,8 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | The index is corrupt or missing | Cache only | `rail ops reindex --full` |
 | Two CTOs at once | Single-instance lock | Let the running tick finish |
 | A command seems to act on old data | None expected: every daemon call reads the files afresh | Run it as `rail --no-daemon <command>`; if the answer differs, report it |
+| A write says `outcome unknown` | The daemon did not answer after the request may have reached it | Re-read the item to see whether it applied; repeat only a command that carries a `--key` |
+| Every command waits about 2 s | A warm daemon is stuck inside a call and `serve daemon --stop` gets no answer | End that `serve daemon` process by hand; commands run direct meanwhile and the next one starts a fresh daemon |
 
 ## Surfaces and interop
 
