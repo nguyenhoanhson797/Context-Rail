@@ -234,7 +234,18 @@ Former flat names (`status`, `dispatch`, `review`, `merge`, `ci`, …) still wor
 | CLI | `rail` / `ctx-rail` | agents + humans |
 | MCP | `rail serve mcp` | any MCP client (one stdio tool table) |
 | Loopback UI | `rail serve ui` | humans — Flow/Plan/Records, token-gated, loopback-only |
-| Daemon | `rail serve daemon` | one warm model per store; CLI auto-connects |
+| Daemon | `rail serve daemon` | one warm process per store; the CLI starts it, uses it and stops it after 10 idle minutes |
+
+The daemon serves the everyday reads (`overview`, `read`, `next`, `types`,
+`model`, `explain`, `why`, `gate`) and `change add|update|move|link`. A served
+command skips loading the engine, which keeps it within 150 ms of bare Python
+startup. Anything else, and any call that names a file or folder
+(`--body-file`, `--spec-file`, ...), runs in your own process. Every call reads
+the files afresh and acts as its caller (`--actor`, `RAIL_ACTOR`), never as the
+process that started the daemon, so a result, a refusal and the actor on a
+record match a direct call. Opt out with `RAIL_NO_DAEMON=1` or `--no-daemon`;
+end it with `rail serve daemon --stop`; `RAIL_DAEMON_IDLE_S` changes the idle
+time.
 
 The UI carries the pack's labels and titles, renders the pinned populations,
 and an empty screen says so instead of showing a blank page. No React module

@@ -155,7 +155,7 @@ Read `error.code` and `error.details`; a refusal names the reason and the fix.
 ```bash
 rail --actor cto serve mcp      # the same tool table over MCP stdio
 rail serve ui                   # loopback, token-gated UI
-rail serve daemon               # one warm process for many CLI calls
+rail serve daemon --stop        # the CLI starts its warm daemon itself; this ends it
 ```
 
 MCP keeps the canonical tool names (`status`, `next`, `show`, `add`, `move`,

@@ -23,7 +23,8 @@ rail [--store PATH] [--actor NAME] [--no-daemon] <command> [flags]
 - `--actor` defaults to `RAIL_ACTOR`, then `human`; human-only tools require an
   explicitly named human (`--actor human` or `RAIL_ACTOR=human`).
 - `--no-daemon` (or `RAIL_NO_DAEMON=1`) bypasses the loopback RPC daemon.
-  `RAIL_DAEMON_TIMEOUT_MS` tunes the wait (default 2000 ms).
+  `RAIL_DAEMON_TIMEOUT_MS` tunes the wait (default 2000 ms) and
+  `RAIL_DAEMON_IDLE_S` the idle time before it exits (default 600 s).
 - Every command prints one JSON envelope and exits `0` success, `1` refusal,
   `2` infrastructure failure.
 
@@ -146,9 +147,17 @@ per workspace skill.
 ```text
 rail serve mcp
 rail serve ui [--port N]
-rail serve daemon [--port N]
+rail serve daemon [--port N] [--idle SECONDS] [--stop]
 rail sync driver <kind> <base> <ours> <theirs> <path>   # internal Git driver
 ```
+
+The CLI starts `serve daemon` on its own after the first eligible command, so
+running it by hand is rarely needed. It serves the everyday reads (`overview`,
+`read`, `next`, `types`, `model`, `explain`, `why`, `gate`) and `change
+add|update|move|link`; any other command, and any call that names a file or
+folder, runs in your own process. It exits after `--idle` seconds (default 600) without a request, and
+`--stop` ends the one running for this store. If a command seems to act on old
+data, run it with `--no-daemon` and report any difference.
 
 `serve mcp` pins its actor from `--actor`, then `RAIL_ACTOR`, then `cto`.
 Launch with `--actor human` only when that session must perform a human-only

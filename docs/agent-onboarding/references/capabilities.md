@@ -225,11 +225,14 @@ gets one rebase retry, then escalation.
 | CLI | `rail ...` | grouped surface; flat aliases still accepted |
 | MCP stdio | `rail --actor cto serve mcp` | canonical tool names, one JSON envelope per call |
 | UI | `rail serve ui` | loopback, token-gated, reads one compiled snapshot |
-| Daemon | `rail serve daemon` | one warm process; CLI auto-connects over 127.0.0.1 |
+| Daemon | `rail serve daemon` | one warm process per store; the CLI starts it and connects over 127.0.0.1 |
 | Git | `rail ops sync` | integrates and publishes store-only clone changes |
 
-The CLI auto-connects to a live daemon and falls back to a direct call.
-`--no-daemon` or `RAIL_NO_DAEMON=1` bypasses it.
+The CLI starts a daemon on demand, sends it the everyday reads and `change
+add|update|move|link`, and falls back to a direct call on any miss. The daemon
+acts as the caller, never as the process that started it, and exits after 10
+idle minutes. `--no-daemon` or `RAIL_NO_DAEMON=1` bypasses it;
+`rail serve daemon --stop` ends it.
 
 ## Digests and approval
 

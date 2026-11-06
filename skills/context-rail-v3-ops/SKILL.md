@@ -108,12 +108,14 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | `doctor` flags approval drift | A protected file changed after approval | Re-approve the target |
 | The index is corrupt or missing | Cache only | `rail ops reindex --full` |
 | Two CTOs at once | Single-instance lock | Let the running tick finish |
+| A command seems to act on old data | None expected: every daemon call reads the files afresh | Run it as `rail --no-daemon <command>`; if the answer differs, report it |
 
 ## Surfaces and interop
 
 ```powershell
 rail serve mcp                  # the same tool table over MCP stdio
 rail serve ui                   # loopback web UI
+rail serve daemon --stop        # end this store's warm daemon (the CLI restarts it on demand)
 rail ops sync install           # git merge drivers for store-only clones
 rail ops sync                   # integrate and publish clone changes
 rail --actor human ops migrate ...  # import a v1/v2 legacy store
