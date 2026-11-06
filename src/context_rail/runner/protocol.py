@@ -206,9 +206,30 @@ def get_runner(name: str) -> _Adapter:
     return _ADAPTERS[name]
 
 
-def runner_for_profile(profile: Profile) -> _Adapter:
-    """The adapter a profile declares, defaulting to ``droid``."""
-    return get_runner(getattr(profile, "runner", "droid") or "droid")
+def runner_for_profile(profile: Profile, override: str | None = None) -> _Adapter:
+    """The adapter for one launch: a launch-time override, then the
+    environment, then what the profile declared, then ``droid``.
+
+    The profile carries a *declared default*, not a lock: a person switching
+    harness sets ``RAIL_RUNNER`` (or passes an override) for that launch, and
+    the run record keeps the argv that actually ran.
+    """
+    return get_runner(runner_name(profile, override))
+
+
+def runner_name(profile: Profile, override: str | None = None) -> str:
+    """The runner name a launch resolves to, refusing anything unknown."""
+    from context_rail.store.write import WriteRefused
+
+    name = (
+        override
+        or os.environ.get("RAIL_RUNNER")
+        or getattr(profile, "runner", "droid")
+        or "droid"
+    )
+    if not isinstance(name, str) or name not in RUNNER_BIN:
+        raise WriteRefused("VALIDATION_FAILED", f"unknown runner {name!r}")
+    return name
 
 
 def run_runner(
@@ -220,6 +241,7 @@ def run_runner(
     order_file: Path,
     timeout: float,
     session_id: str | None = None,
+    runner: str | None = None,
 ) -> RunnerResult:
     """Launch one bounded run through the profile's runner and parse it."""
     from context_rail.store.write import WriteRefused
@@ -229,7 +251,7 @@ def run_runner(
     for label, path in (("role", role_file), ("order", order_file)):
         if not Path(path).is_file():
             raise WriteRefused("VALIDATION_FAILED", f"the {label} prompt file is missing")
-    adapter = runner_for_profile(profile)
+    adapter = runner_for_profile(profile, runner)
     argv = adapter.build_argv(
         profile=profile,
         worktree=Path(worktree),
@@ -237,7 +259,7 @@ def run_runner(
         order_file=Path(order_file),
         session_id=session_id,
     )
-    runner = _run(
+    launched = _run(
         argv,
         cwd=Path(worktree),
         confine_to=Path(confine_to),
@@ -246,10 +268,10 @@ def run_runner(
         extra_env={"RAIL_ACTOR": profile.recipe, f"RAIL_{adapter.name.upper()}_BIN": argv[0]},
     )
     payload, failure, text, usage, session, malformed = adapter.parse_output(
-        runner["stdout"],
-        exit=runner["exit"],
-        timed_out=runner["timed_out"],
-        omitted_bytes=runner["omitted_bytes"],
+        launched["stdout"],
+        exit=launched["exit"],
+        timed_out=launched["timed_out"],
+        omitted_bytes=launched["omitted_bytes"],
     )
     if malformed and failure is None:
         failure = "malformed usage"
@@ -258,9 +280,9 @@ def run_runner(
         text=text,
         usage=usage,
         session_id=session if isinstance(session, str) and _SESSION_RE.match(session) else None,
-        exit=runner["exit"],
-        timed_out=runner["timed_out"],
-        runner=runner,
+        exit=launched["exit"],
+        timed_out=launched["timed_out"],
+        runner=launched,
         failure=failure,
     )
 
@@ -276,16 +298,19 @@ def run_worker(
     timeout: float,
     session_id: str | None = None,
     failure_text: str | None = None,
+    runner: str | None = None,
 ) -> Any:
     """Launch one bounded worker run: the profile's runner, droid by default.
 
     The default is byte-identical to the pre-protocol path: the same pinned
     argv, the same environment and the same result type. Any other adapter
     returns a ``RunnerResult`` with the same fields, so dispatch and review
-    judge the run without branching on the runner.
+    judge the run without branching on the runner. ``runner`` and
+    ``RAIL_RUNNER`` override the profile's declared default for this launch;
+    the argv the child actually ran stays in the run record.
     """
-    runner = getattr(profile, "runner", "droid") or "droid"
-    if runner == "droid":
+    name = runner_name(profile, runner)
+    if name == "droid":
         from context_rail.runner.droid import droid_profile, run_droid
 
         return run_droid(
@@ -309,6 +334,7 @@ def run_worker(
         order_file=Path(order_file),
         timeout=timeout,
         session_id=session_id,
+        runner=name,
     )
 
 

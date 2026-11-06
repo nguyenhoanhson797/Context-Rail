@@ -170,18 +170,25 @@ function Profiles({ actors, options, busy, run }: {
             {actors.map(a => <option key={text(a.id)} value={text(a.id)}>{text(a.title, text(a.id))}</option>)}
           </select>
         </Row>
-        <Row title="Model" description="The model id this profile asks its runner for.">
-          <input className="input" aria-label="Model" value={model} onChange={e => setModel(e.target.value)} />
-        </Row>
-        <Row title="Runner" description="Which agent CLI the engine launches for this profile.">
-          <Segmented label="Runner" options={runners} value={runner} onChange={setRunner} />
-        </Row>
         <Row title="Effort" description="Passed through to the runner when it supports it.">
           <Segmented label="Effort" options={efforts} value={effort} onChange={setEffort} allowEmpty />
         </Row>
         <Row title="Autonomy" description="Only the CTO recipe may run at high.">
           <Segmented label="Autonomy" options={autos} value={auto} onChange={setAuto} allowEmpty />
         </Row>
+        <details className="sblock" style={{ padding: 12 }}>
+          <summary className="t rail-settings-label">Advanced: launch defaults (model and runner)</summary>
+          <div className="d rail-list-sub" style={{ margin: '6px 0 10px' }}>
+            The profile declares a default; the harness decides at launch. <span className="mono">RAIL_RUNNER</span> overrides the runner for every launch in this environment
+            {text(options.runner_override) ? <> (currently <span className="mono">{text(options.runner_override)}</span>)</> : ' (none set)'}, and the argv that actually ran is kept in the run record.
+          </div>
+          <Row title="Model" description="The model id this profile asks its runner for; model names belong to the harness.">
+            <input className="input" aria-label="Model" value={model} onChange={e => setModel(e.target.value)} />
+          </Row>
+          <Row title="Runner" description="Declared default adapter; a launch-time override wins.">
+            <Segmented label="Runner" options={runners} value={runner} onChange={setRunner} />
+          </Row>
+        </details>
         <Row title="Tools" description="The tool ids this worker may use; the reviewer may hold only read tools.">
           <Chips label="Tools" options={tools} selected={selectedTools} onToggle={item => setSelectedTools(current => toggle(current, item))} />
         </Row>

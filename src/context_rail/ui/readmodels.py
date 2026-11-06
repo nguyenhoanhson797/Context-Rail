@@ -8,6 +8,7 @@ an empty success.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from context_rail.store import query
@@ -199,4 +200,5 @@ def _config_options(context: Any) -> dict[str, Any]:
         "autos": [value for value in PROFILE_AUTO if value is not None],
         "tools": list(TOOL_IDS),
         "methods": list(PROFILE_METHODS),
+        "runner_override": os.environ.get("RAIL_RUNNER") or None,
     }
