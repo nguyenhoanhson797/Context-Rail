@@ -1,7 +1,7 @@
 /* Configuration: profiles, skills, charter, packs and measurement.
  * A sibling of Appearance/Keyboard shortcuts: the same nav, section, row and
  * segmented-control idioms. Options come from the engine's own vocabularies
- * (snapshot.profile_options), never from a hard-coded list in a component.
+ * (the config_options read), never from a hard-coded list in a component.
  * Every save goes through the gateway with the current etag. */
 import { useEffect, useState } from 'react';
 import { rows, object, text, type Data, type PageProps } from '../contracts';
@@ -20,6 +20,20 @@ const TABS: Array<{ key: Tab; label: string; icon: typeof Users }> = [
 const num = (v: unknown): string => (typeof v === 'number' ? String(v) : v === null || v === undefined ? '' : text(v));
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(item => text(item)).filter(Boolean) : []);
 const budgetOf = (doc: Data) => object(object(doc.fields).budgets);
+const capValue = (value: string): number | null | undefined => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+/* ``workspace/<scope>/skills/*`` are generated copies rendered by
+   ``adapters sync``; editing one is overwritten. Only canonical skill
+   documents are editable. */
+const canonicalSkills = (skills: Data[]): Data[] => skills.filter(s => {
+  const parts = text(s.path).split('/').filter(Boolean);
+  const scoped = parts.length > 3 && parts[0] === 'workspace' && parts[parts.length - 2] === 'skills';
+  return !scoped;
+});
 
 export function ConfigSettings({ snapshot, mutate, read, busy, refresh }: PageProps) {
   const [tab, setTab] = useState<Tab>('profiles');
@@ -78,8 +92,8 @@ export function ConfigSettings({ snapshot, mutate, read, busy, refresh }: PagePr
       {tab === 'profiles' ? <Profiles actors={rows(snapshot.actors)} options={options} busy={busy} run={run} /> : null}
       {tab === 'skills' ? <Skills skills={rows(snapshot.skills)} options={options} busy={busy} run={run} /> : null}
       {tab === 'charter' ? <Charter charter={object(snapshot.charter)} busy={busy} run={run} /> : null}
-      {tab === 'packs' ? <Packs busy={busy} run={run} read={read} /> : null}
-      {tab === 'measure' ? <Measure busy={busy} run={run} /> : null}
+      {tab === 'packs' ? <Packs snapshot={snapshot} busy={busy} run={run} read={read} /> : null}
+      {tab === 'measure' ? <Measure snapshot={snapshot} busy={busy} run={run} /> : null}
     </>
   );
 }
@@ -165,12 +179,16 @@ function ProfileForm({ doc, options, busy, run }: {
   const [selectedMethods, setSelectedMethods] = useState<string[]>(strings(f.allowed_methods));
   const [attempts, setAttempts] = useState(num(b.attempts));
   const [seconds, setSeconds] = useState(num(b.seconds));
+  const [confirmation, setConfirmation] = useState('');
   const [notice, setNotice] = useState('');
 
-  const toggle = (list: string[], item: string) =>
-    list.includes(item) ? list.filter(entry => entry !== item) : [...list, item];
-
   const save = () => {
+    const attemptCap = capValue(attempts);
+    const secondCap = capValue(seconds);
+    if (attemptCap === undefined || secondCap === undefined) {
+      setNotice('Attempts and seconds must be numbers, or empty for no cap.');
+      return;
+    }
     const set: string[] = [];
     if (baseModel) set.push(`model=${baseModel}`);
     if (Object.keys(runnerModels).length) set.push(`runner_models=${JSON.stringify(runnerModels)}`);
@@ -178,9 +196,12 @@ function ProfileForm({ doc, options, busy, run }: {
     if (runner) set.push(`runner=${runner}`);
     set.push(`tools=${JSON.stringify(selectedTools)}`);
     set.push(`allowed_methods=${JSON.stringify(selectedMethods)}`);
-    set.push(`budgets={ attempts: ${attempts || 'null'}, seconds: ${seconds || 'null'} }`);
+    // Keep every cap this form does not edit (tokens, credits, and any future one).
+    set.push(`budgets=${JSON.stringify({ ...b, attempts: attemptCap, seconds: secondCap })}`);
     setNotice('');
-    run('update', { slug: text(doc.id), set, expect: text(doc.etag) });
+    const args: Record<string, unknown> = { slug: text(doc.id), set, expect: text(doc.etag) };
+    if (confirmation.trim()) args.confirm = confirmation.trim();
+    run('update', args);
   };
 
   return (
@@ -191,8 +212,8 @@ function ProfileForm({ doc, options, busy, run }: {
       <details className="sblock" style={{ padding: 12 }}>
         <summary className="t rail-settings-label">Advanced: launch defaults (model and runner)</summary>
         <div className="d rail-list-sub" style={{ margin: '6px 0 10px' }}>
-          The profile declares a default; the harness decides at launch. <span className="mono">RAIL_RUNNER</span> overrides the runner for every launch in this environment
-          {text(options.runner_override) ? <> (currently <span className="mono">{text(options.runner_override)}</span>)</> : ' (none set)'}, and the argv that actually ran is kept in the run record.
+          The profile declares a default; the harness decides at launch. <span className="mono">RAIL_RUNNER</span> overrides the runner for every worker launch in this environment
+          {text(options.runner_override) ? <> (currently <span className="mono">{text(options.runner_override)}</span>)</> : ' (none set)'}, and the runner, model and argv digest that actually ran are kept in the run record.
         </div>
         <Row title="Runner" description="Declared default adapter; a launch-time override wins.">
           <Segmented label="Runner" options={runners} value={runner} onChange={setRunner} />
@@ -210,18 +231,21 @@ function ProfileForm({ doc, options, busy, run }: {
         </Row>
       </details>
       <Row title="Tools" description="The tool ids this worker may use; the reviewer may hold only read tools.">
-        <Chips label="Tools" options={tools} selected={selectedTools} onToggle={item => setSelectedTools(current => toggle(current, item))} />
+        <Chips label="Tools" options={tools} selected={selectedTools} onToggle={item => setSelectedTools(current => toggleItem(current, item))} />
       </Row>
       <details className="sblock" style={{ padding: 12 }}>
         <summary className="t rail-settings-label">Advanced: allowed methods ({selectedMethods.length} selected)</summary>
         <div className="d rail-list-sub" style={{ margin: '6px 0 8px' }}>Narrowing only: a profile can shrink its actor&apos;s methods, never widen them.</div>
-        <Chips label="Allowed methods" options={methods} selected={selectedMethods} onToggle={item => setSelectedMethods(current => toggle(current, item))} />
+        <Chips label="Allowed methods" options={methods} selected={selectedMethods} onToggle={item => setSelectedMethods(current => toggleItem(current, item))} />
       </details>
       <Row title="Attempts" description="Worker attempts this profile allows; raising a budget needs a human.">
         <input className="input" aria-label="Attempts" value={attempts} onChange={e => setAttempts(e.target.value)} />
       </Row>
       <Row title="Seconds" description="Worker runtime this profile allows; raising a budget needs a human.">
         <input className="input" aria-label="Seconds" value={seconds} onChange={e => setSeconds(e.target.value)} />
+      </Row>
+      <Row title="Confirmation" description={`A budget increase needs the typed phrase APPROVE ${text(doc.id)}.`}>
+        <input className="input" aria-label="Confirmation" placeholder={`APPROVE ${text(doc.id)}`} value={confirmation} onChange={e => setConfirmation(e.target.value)} />
       </Row>
       {notice ? <p className="faint" style={{ fontSize: 12 }}>{notice}</p> : null}
       <Row title="Save profile" description="Version bumps once; the change is one gateway write.">
@@ -236,14 +260,7 @@ function Skills({ skills, options, busy, run }: {
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
   const toolIds = strings(options.tools);
-  /* ``workspace/<scope>/skills/*`` are generated copies rendered by
-     ``adapters sync``; editing one is overwritten. Only canonical skill
-     documents are editable here. */
-  const canonical = skills.filter(s => {
-    const parts = text(s.path).split('/').filter(Boolean);
-    const scoped = parts.length > 3 && parts[0] === 'workspace' && parts[parts.length - 2] === 'skills';
-    return !scoped;
-  });
+  const canonical = canonicalSkills(skills);
   const [sel, setSel] = useState('');
   const doc = canonical.find(d => text(d.id) === sel) ?? canonical[0];
   return (
@@ -323,12 +340,21 @@ function CharterForm({ charter, busy, run }: {
   const item = object(budgets.item);
   const [attempts, setAttempts] = useState(num(item.attempts));
   const [seconds, setSeconds] = useState(num(item.seconds));
+  const [notice, setNotice] = useState('');
   const save = () => {
-    // Keep every cap this form does not edit (tokens, credits, and any future one).
-    const merged = { ...item, attempts: attempts || null, seconds: seconds || null };
+    const attemptCap = capValue(attempts);
+    const secondCap = capValue(seconds);
+    if (attemptCap === undefined || secondCap === undefined) {
+      setNotice('Attempts and seconds must be numbers, or empty for no cap.');
+      return;
+    }
+    // Keep every cap and scope this form does not edit.
+    const mergedItem = { ...item, attempts: attemptCap, seconds: secondCap };
+    const mergedBudgets = { ...budgets, item: mergedItem };
+    setNotice('');
     run('update', {
       slug: 'charter',
-      set: [`budgets={"item": ${JSON.stringify(merged)}}`],
+      set: [`budgets=${JSON.stringify(mergedBudgets)}`],
       expect: text(charter.etag),
       confirm: 'APPROVE charter',
     }, true);
@@ -341,6 +367,7 @@ function CharterForm({ charter, busy, run }: {
       <Row title="Item seconds" description="The runtime cap every worker run is measured against.">
         <input className="input" aria-label="Item seconds" value={seconds} onChange={e => setSeconds(e.target.value)} />
       </Row>
+      {notice ? <p className="faint" style={{ fontSize: 12 }}>{notice}</p> : null}
       <Row title="Save charter" description="Goal, scope and gates stay human-only; this form edits budgets.">
         <Button disabled={busy} onClick={save}>Save charter</Button>
       </Row>
@@ -348,12 +375,13 @@ function CharterForm({ charter, busy, run }: {
   );
 }
 
-function Packs({ busy, run, read }: {
-  busy: boolean;
+function Packs({ snapshot, busy, run, read }: {
+  snapshot: Data; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
   read: (tool: string, args?: Record<string, string>, signal?: AbortSignal) => Promise<Data>;
 }) {
   const [name, setName] = useState('');
+  const [from, setFrom] = useState(text(snapshot.pack));
   const [out, setOut] = useState<Data | null>(null);
   const show = async (tool: string, args: Record<string, string>) => {
     try { setOut(await read(tool, args)); } catch (e) { setOut({ error: e instanceof Error ? e.message : String(e) }); }
@@ -362,42 +390,60 @@ function Packs({ busy, run, read }: {
     <section className="sblock" style={{ marginTop: 0 }}>
       <h2>Packs</h2>
       <Row title="Pack name" description="The installed pack to inspect.">
-        <input className="input" aria-label="Pack name" placeholder="basic" value={name} onChange={e => setName(e.target.value)} />
+        <input className="input" aria-label="Pack name" placeholder={text(snapshot.pack)} value={name} onChange={e => setName(e.target.value)} />
+      </Row>
+      <Row title="Source pack" description="The pack a new draft copies.">
+        <input className="input" aria-label="Source pack" value={from} onChange={e => setFrom(e.target.value)} />
       </Row>
       <Row title="Inspect" description="Show and validate are reads; create writes a draft without switching.">
         <Button variant="secondary" disabled={busy || !name} onClick={() => void show('pack show', { name })}>Show</Button>
         <Button variant="secondary" disabled={busy || !name} onClick={() => void show('pack validate', { name })}>Validate</Button>
-        <Button variant="secondary" disabled={busy || !name} onClick={() => run('pack create', { name, from: 'basic' })}>Create draft</Button>
+        <Button variant="secondary" disabled={busy || !name || !from} onClick={() => run('pack create', { name, from })}>Create draft</Button>
       </Row>
       {out ? <Panel title="Result"><pre className="mono" style={{ fontSize: 11, whiteSpace: 'pre-wrap' }}>{JSON.stringify(out, null, 2)}</pre></Panel> : null}
     </section>
   );
 }
 
-function Measure({ busy, run }: {
-  busy: boolean;
+function Measure({ snapshot, busy, run }: {
+  snapshot: Data; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
   const [targetClass, setTargetClass] = useState('profile');
-  const [target, setTarget] = useState('');
+  const [sel, setSel] = useState('');
   const [before, setBefore] = useState('1');
   const [after, setAfter] = useState('2');
+  const docs = targetClass === 'profile' ? rows(snapshot.actors) : canonicalSkills(rows(snapshot.skills));
+  const target = docs.find(d => text(d.id) === sel) ?? docs[0];
+  const targetName = text(target?.id);
+  const targetPath = text(target?.path);
+  const targetEtag = text(target?.etag);
+  const beforeVersion = Number(before);
+  const afterVersion = Number(after);
+  const versionsValid = Number.isInteger(beforeVersion) && beforeVersion > 0
+    && Number.isInteger(afterVersion) && afterVersion > 0;
   return (
     <section className="sblock" style={{ marginTop: 0 }}>
       <h2>Measure and rollback</h2>
       <Row title="Target class" description="A profile or a skill.">
         <Segmented label="Target class" options={['profile', 'skill']} value={targetClass} onChange={setTargetClass} />
       </Row>
-      <Row title="Target" description="The profile or skill name.">
-        <input className="input" aria-label="Target" value={target} onChange={e => setTarget(e.target.value)} />
+      <Row title="Target" description="The profile or skill document.">
+        <select className="input" aria-label="Target" value={targetName} onChange={e => setSel(e.target.value)} disabled={!docs.length}>
+          {docs.length ? docs.map(d => <option key={text(d.id)} value={text(d.id)}>{text(d.title, text(d.id))}</option>)
+            : <option value="">No documents</option>}
+        </select>
+      </Row>
+      <Row title="Target path" description="The canonical path a rollback restores; the current etag is sent with it.">
+        <span className="mono" style={{ fontSize: 11 }}>{targetPath || '—'}</span>
       </Row>
       <Row title="Versions" description="The earlier and later version to compare.">
         <input className="input" aria-label="Before version" style={{ width: 80 }} value={before} onChange={e => setBefore(e.target.value)} />
         <input className="input" aria-label="After version" style={{ width: 80 }} value={after} onChange={e => setAfter(e.target.value)} />
       </Row>
       <Row title="Compare" description="Observational only; never an automatic rollout.">
-        <Button variant="secondary" disabled={busy || !target} onClick={() => run('measure versions', { target_class: targetClass, target, before: Number(before), after: Number(after) })}>Compare versions</Button>
-        <Button variant="secondary" disabled={busy || !target} onClick={() => run('rollback', { target_class: targetClass, target, version: Number(before) })}>Rollback to version {before}</Button>
+        <Button variant="secondary" disabled={busy || !targetName || !versionsValid} onClick={() => run('measure versions', { target_class: targetClass, target: targetName, before: beforeVersion, after: afterVersion })}>Compare versions</Button>
+        <Button variant="secondary" disabled={busy || !targetPath || !targetEtag || !versionsValid} onClick={() => run('rollback', { target_class: targetClass, target: targetPath, version: beforeVersion, expect: targetEtag })}>Rollback to version {before}</Button>
       </Row>
     </section>
   );

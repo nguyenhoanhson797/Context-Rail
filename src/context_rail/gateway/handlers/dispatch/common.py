@@ -73,6 +73,9 @@ class _Plan:
     used_seconds: float
     max_attempts: int
     session: str | None = None
+    runner: str | None = None
+    model: str | None = None
+    intent: str = ""
 
 
 def _optional(value: Any) -> str | None:

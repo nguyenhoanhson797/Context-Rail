@@ -2315,12 +2315,11 @@ const THEMES: ['light' | 'dark' | 'system', string, ReactNode][] = [
 ];
 
 export function SettingsPage({ params, navigate, theme, setTheme, request, mutate, busy, project, refresh, snapshot, read, openDoc }: PageProps) {
-  const section = params.get('sec') === 'shortcuts' ? 'shortcuts' : 'appearance';
-  /* The automation/config sections are local state, not a URL section: the shell's router
-     only validates sec=appearance|shortcuts, and this section must not change
-     that contract (it is reachable from the nav and by keyboard). */
+  const rawSection = params.get('sec');
+  const section = rawSection === 'shortcuts' || rawSection === 'config' ? rawSection : 'appearance';
+  /* Automation is local state, not a URL section: it is reachable from the nav
+     and by keyboard, and the router only validates the three addressable sections. */
   const [automation, setAutomation] = useState(false);
-  const [config, setConfig] = useState(false);
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   useEffect(() => {
     applyPrefs(prefs);
@@ -2343,24 +2342,24 @@ export function SettingsPage({ params, navigate, theme, setTheme, request, mutat
   return (
     <div className="set rail-settings">
       <nav className="set-nav rail-settings-nav" aria-label="Settings">
-        <button type="button" className={cn("sitem rail-nav-link", !automation && !config && section === 'appearance' && "on")} aria-current={!automation && !config && section === 'appearance' ? 'page' : undefined} onClick={() => { setAutomation(false); setConfig(false); navigate('settings', { sec: 'appearance' }); }}>
+        <button type="button" className={cn("sitem rail-nav-link", section === 'appearance' && "on")} aria-current={section === 'appearance' ? 'page' : undefined} onClick={() => { setAutomation(false); navigate('settings', { sec: 'appearance' }); }}>
           <Palette className="i" size={15} strokeWidth={1.8} aria-hidden="true" />
           <span>Appearance</span>
         </button>
-        <button type="button" className={cn("sitem rail-nav-link", !automation && !config && section === 'shortcuts' && "on")} aria-current={!automation && !config && section === 'shortcuts' ? 'page' : undefined} onClick={() => { setAutomation(false); setConfig(false); navigate('settings', { sec: 'shortcuts' }); }}>
+        <button type="button" className={cn("sitem rail-nav-link", section === 'shortcuts' && "on")} aria-current={section === 'shortcuts' ? 'page' : undefined} onClick={() => { setAutomation(false); navigate('settings', { sec: 'shortcuts' }); }}>
           <KeyboardGlyph className="i" size={15} strokeWidth={1.8} aria-hidden="true" />
           <span>Keyboard shortcuts</span>
         </button>
-        <button type="button" className={cn("sitem rail-nav-link", config && "on")} aria-current={config ? 'page' : undefined} onClick={() => { setAutomation(false); setConfig(true); }}>
+        <button type="button" className={cn("sitem rail-nav-link", section === 'config' && "on")} aria-current={section === 'config' ? 'page' : undefined} onClick={() => { setAutomation(false); navigate('settings', { sec: 'config' }); }}>
           <Palette className="i" size={15} strokeWidth={1.8} aria-hidden="true" />
           <span>Configuration</span>
         </button>
       </nav>
       <div className="set-body rail-settings-body"><div className="set-in">
-        {config ? (
-          <ConfigSettings snapshot={snapshot} project={project} params={params} navigate={navigate} openDoc={openDoc} read={read} mutate={mutate} busy={busy} refresh={refresh} request={request} theme={theme} setTheme={setTheme} />
-        ) : automation ? (
+        {automation ? (
           <AutomationSettings request={request} mutate={mutate} busy={busy} project={project} refresh={refresh} />
+        ) : section === 'config' ? (
+          <ConfigSettings snapshot={snapshot} project={project} params={params} navigate={navigate} openDoc={openDoc} read={read} mutate={mutate} busy={busy} refresh={refresh} request={request} theme={theme} setTheme={setTheme} />
         ) : section === 'shortcuts' ? (
           <>
             <PageHeading title="Keyboard shortcuts" description="Move without the mouse." />

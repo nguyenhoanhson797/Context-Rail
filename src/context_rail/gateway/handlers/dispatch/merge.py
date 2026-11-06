@@ -19,6 +19,7 @@ from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner import git as git_runner
 from context_rail.runner import merge as local_merge
 from context_rail.runner.droid import droid_profile
+from context_rail.runner.protocol import resolve_model, runner_name
 from context_rail.store import query
 from context_rail.store.write import WriteRefused, resolve_unique
 
@@ -606,17 +607,19 @@ def _review_for_merge(
             "INVALID_STATE", "the charter is not approved", {"reason": "approval_missing"}
         )
     _profile_rel, profile_etag, profile = profile_document(ctx, REVIEW_ROLE)
+    review_runner = runner_name(profile)
+    review_model = resolve_model(profile, review_runner)
     separation = _separation_reason(
         policy,
         implementer=str(run["actor"] or ""),
         implementer_model=str(run["model"] or ""),
         reviewer=REVIEW_ROLE,
-        reviewer_model=profile.model,
+        reviewer_model=review_model,
         invoking=actor,
     )
     if separation is not None:
         raise separation
-    droid = droid_profile(profile, name=REVIEW_ROLE)
+    droid = droid_profile(profile, name=REVIEW_ROLE, model=review_model)
     budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     _facts, used_seconds, _attempts = _run_facts(ctx.index, slug)
     remaining = effective_seconds(budget) - used_seconds
@@ -639,6 +642,8 @@ def _review_for_merge(
         profile=profile,
         profile_etag=profile_etag,
         droid=droid,
+        runner=review_runner,
+        model=review_model,
         actor=actor,
         key=f"merge:{merge_id}:{candidate[:12]}",
         timeout=remaining,

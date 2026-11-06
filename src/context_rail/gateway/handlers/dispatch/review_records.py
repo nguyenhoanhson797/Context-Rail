@@ -76,6 +76,7 @@ def _review_verdict_record(
     run: dict[str, Any],
     profile_name: str,
     profile: Profile,
+    reviewer_model: str,
     outcome: dict[str, Any],
 ) -> str | None:
     data = {
@@ -85,7 +86,7 @@ def _review_verdict_record(
         "implementer_actor": str(run["actor"] or ""),
         "reviewer_actor": profile_name,
         "implementer_model": str(run["model"] or ""),
-        "reviewer_model": profile.model,
+        "reviewer_model": reviewer_model,
         "candidate_commit": candidate,
         "verdict": outcome["verdict"],
         "findings": list(outcome["findings"]),
@@ -225,6 +226,7 @@ def _review_run_record(
     profile: Profile,
     profile_etag: str,
     droid_model: str,
+    runner: str,
     candidate: str,
     report_id: str | None,
     ran: Any,
@@ -244,6 +246,7 @@ def _review_run_record(
         "timed_out": bool(ran.timed_out),
         "usage": dict(ran.usage),
         "runner_digest": ran.runner.get("digest"),
+        "argv_digest": ran.runner.get("argv_digest"),
         "verdicts": verdicts,
         "status": "verified" if verified else "failed",
     }
@@ -257,6 +260,7 @@ def _review_run_record(
         "profile_etag": profile_etag,
         "skills": skill_pins(ctx, profile),
         "model": droid_model,
+        "runner": runner,
         "item": slug,
         "session_id": ran.session_id,
         "started_at": started_at,
@@ -276,6 +280,7 @@ def _review_run_record(
         ),
         "usage": aggregate_usage([attempt]),
         "runner_digest": ran.runner.get("digest"),
+        "argv_digest": ran.runner.get("argv_digest"),
         "report": report_id,
     }
     parse_run(data)

@@ -249,12 +249,17 @@ def _add_facts(context: Context, params: dict[str, Any]) -> rights.ChangeFacts:
         and preset.primitive == "check"
         and fields.get("acceptance") is True
     )
+    budget_increase = (
+        preset is not None
+        and preset.primitive == "actor"
+        and ("budget" in fields or "budgets" in fields)
+    )
     return rights.ChangeFacts(
         method="add",
         protected=False,
         acceptance=acceptance,
         decision_id=None,
-        budget_increase=False,
+        budget_increase=budget_increase,
     )
 
 
@@ -294,11 +299,13 @@ def _budget_increase(
         "SELECT key, value_json FROM fields WHERE path = ?", (rel,)
     ):
         stored[key] = value
+
     def _json(raw: str) -> Any:
         try:
             return json.loads(raw)
         except ValueError:
             return None
+
     def _increased(before: Any, after: Any) -> bool:
         if after is None and before is not None:
             return True
@@ -309,16 +316,25 @@ def _budget_increase(
                 return False
             return after > before
         return False
-    for group in ("budgets", "budget"):
+
+    for group, caps in (
+        ("budgets", ("attempts", "seconds", "tokens", "credits")),
+        ("budget", ("max_chars", "max_docs")),
+    ):
         if group not in requested:
             continue
-        new_group = requested.get(group)
+        new_raw = requested.get(group)
         old_raw = stored.get(group)
         old_group = _json(old_raw) if isinstance(old_raw, str) else old_raw
-        if not isinstance(new_group, dict) or not isinstance(old_group, dict):
-            continue
-        for cap in ("attempts", "seconds", "tokens", "credits", "max_chars", "max_docs"):
-            if cap in new_group and _increased(old_group.get(cap), new_group.get(cap)):
+        old_group = old_group if isinstance(old_group, dict) else {}
+        # A partial `budgets` map is a real request: `parse_profile` fills the
+        # omitted caps with None, so every old cap must be compared to it.
+        new_group = new_raw if isinstance(new_raw, dict) else {}
+        for cap in caps:
+            if group == "budget" and cap not in new_group:
+                continue
+            after = new_group.get(cap) if cap in new_group else None
+            if _increased(old_group.get(cap), after):
                 return True
     return False
 

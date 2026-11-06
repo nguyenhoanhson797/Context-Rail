@@ -153,6 +153,8 @@ def run(
         "stderr": bounded["stderr"],
         "omitted_bytes": bounded["omitted_bytes"],
         "digest": "sha256:" + digest.hexdigest(),
+        "argv_digest": "sha256:"
+        + hashlib.sha256("\0".join(command).encode("utf-8")).hexdigest(),
     }
 
 

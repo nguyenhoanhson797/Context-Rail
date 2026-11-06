@@ -18,7 +18,7 @@ from context_rail.runner.droid import (
     write_order_file,
     write_role_file,
 )
-from context_rail.runner.protocol import run_worker
+from context_rail.runner.protocol import resolve_model, runner_name, run_worker
 from context_rail.store import query
 from context_rail.store.doc import Doc, etag
 from context_rail.store.write import commit
@@ -46,7 +46,9 @@ def _continue_conflict(
     """One implementer session continuation that may resolve only the conflict."""
     profile_name = str(run["profile"] or IMPL_ROLE)
     _profile_rel, profile_etag, profile = profile_document(ctx, profile_name)
-    droid = droid_profile(profile, name=profile_name)
+    conflict_runner = runner_name(profile)
+    conflict_model = resolve_model(profile, conflict_runner)
+    droid = droid_profile(profile, name=profile_name, model=conflict_model)
     budget = _effective_budget(
         ctx.policy.budgets.get("item") or {} if ctx.policy else {},
         profile.budgets,
@@ -94,6 +96,7 @@ def _continue_conflict(
         order_file=order_file,
         timeout=remaining,
         session_id=str(run["data"].get("session_id") or "") or None,
+        runner=conflict_runner,
     )
     duration = round(time.monotonic() - clock, 3)
     still_running = git_runner.rebase_in_progress(worktree, worktree)
@@ -125,6 +128,7 @@ def _continue_conflict(
         "timed_out": bool(ran.timed_out),
         "usage": dict(ran.usage),
         "runner_digest": ran.runner.get("digest"),
+        "argv_digest": ran.runner.get("argv_digest"),
         "verdicts": [],
         "status": "verified" if resolved else "failed",
     }
@@ -137,7 +141,8 @@ def _continue_conflict(
         "profile_version": profile.version,
         "profile_etag": profile_etag,
         "skills": skill_pins(ctx, profile),
-        "model": profile.model,
+        "model": conflict_model,
+        "runner": conflict_runner,
         "item": slug,
         "session_id": attempt["session_id"],
         "started_at": started_at,
@@ -157,6 +162,7 @@ def _continue_conflict(
         ),
         "usage": aggregate_usage([attempt]),
         "runner_digest": ran.runner.get("digest"),
+        "argv_digest": ran.runner.get("argv_digest"),
         "report": report_id,
     }
     parse_run(run_data)

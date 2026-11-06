@@ -447,6 +447,43 @@ def test_cto_cannot_increase_a_profile_budget(approved_store: Path) -> None:
     assert is_ok(human), human
 
 
+def test_cto_cannot_drop_a_profile_budget_cap(approved_store: Path) -> None:
+    store = approved_store
+    shown = invoke("show", {"slug": "implementer"}, store=store, actor="human")
+    assert is_ok(shown), shown
+    before = shown["value"]["doc"]["fields"].get("budgets")
+    if not isinstance(before, dict):
+        before = {"attempts": 2, "seconds": 3600, "tokens": None, "credits": None}
+    bounded = {**before, "tokens": 100, "credits": 10}
+    grown = invoke(
+        "update",
+        {
+            "slug": "implementer",
+            "set": [f"budgets={bounded}"],
+            "expect": _etag(store, "implementer"),
+            "confirm": "APPROVE implementer",
+        },
+        store=store,
+        actor="human",
+    )
+    assert is_ok(grown), grown
+
+    partial = {
+        key: bounded[key] for key in ("attempts", "seconds") if key in bounded
+    }
+    refused = invoke(
+        "update",
+        {
+            "slug": "implementer",
+            "set": [f"budgets={partial}"],
+            "expect": _etag(store, "implementer"),
+        },
+        store=store,
+        actor="cto",
+    )
+    assert refused["error"]["code"] == "PERMISSION_DENIED", refused
+
+
 def test_cto_may_lower_a_profile_budget(approved_store: Path) -> None:
     store = approved_store
     shown = invoke("show", {"slug": "implementer"}, store=store, actor="human")

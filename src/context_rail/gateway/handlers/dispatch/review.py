@@ -18,7 +18,7 @@ from context_rail.runner.droid import (
     write_order_file,
     write_role_file,
 )
-from context_rail.runner.protocol import run_worker
+from context_rail.runner.protocol import resolve_model, runner_name, run_worker
 from context_rail.store import query
 from context_rail.store.write import WriteRefused
 
@@ -94,12 +94,14 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
 
     _profile_rel, profile_etag, profile = profile_document(ctx, profile_name)
+    review_runner = runner_name(profile)
+    review_model = resolve_model(profile, review_runner)
     separation = _separation_reason(
         policy,
         implementer=str(run["actor"] or ""),
         implementer_model=str(run["model"] or ""),
         reviewer=profile_name,
-        reviewer_model=profile.model,
+        reviewer_model=review_model,
         invoking=actor,
     )
     if separation is not None:
@@ -110,7 +112,7 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             f"profile {profile_name!r} is a {profile.recipe!r}, not a reviewer",
             {"profile": profile_name, "recipe": profile.recipe},
         )
-    droid = droid_profile(profile, name=profile_name)
+    droid = droid_profile(profile, name=profile_name, model=review_model)
     budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     _facts, used_seconds, _used_attempts = _run_facts(index, slug)
     remaining = effective_seconds(budget) - used_seconds
@@ -134,6 +136,8 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         profile=profile,
         profile_etag=profile_etag,
         droid=droid,
+        runner=review_runner,
+        model=review_model,
         actor=actor,
         key=key,
         timeout=remaining,
@@ -154,6 +158,8 @@ def _review_candidate(
     profile: Profile,
     profile_etag: str,
     droid: DroidProfile,
+    runner: str,
+    model: str,
     actor: str,
     key: str,
     timeout: float,
@@ -230,6 +236,7 @@ def _review_candidate(
             role_file=role_file,
             order_file=order_file,
             timeout=timeout,
+            runner=runner,
         )
 
     duration = round(time.monotonic() - flight_started, 3)
@@ -248,6 +255,7 @@ def _review_candidate(
             run=run,
             profile_name=profile_name,
             profile=profile,
+            reviewer_model=model,
             outcome=outcome,
         )
         check_verdict = _verify_review_check(ctx, slug, review_id, actor)
@@ -266,7 +274,8 @@ def _review_candidate(
         profile_name=profile_name,
         profile=profile,
         profile_etag=profile_etag,
-        droid_model=profile.model,
+        droid_model=model,
+        runner=runner,
         candidate=candidate,
         report_id=report_id,
         ran=ran,

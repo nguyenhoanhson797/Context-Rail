@@ -62,8 +62,9 @@ def merge_control(
     """Merge ``values`` into one control object, preserving the shared schema."""
     current = read_control(path, identity=identity, key=key) or {}
     if current.get("corrupt"):
-        current = {key: identity, "corrupt": True}
+        current = {key: identity}
     merged = {**current, **values, "schema": schema, key: identity}
+    merged.pop("corrupt", None)
     return write_control(path, merged)
 
 

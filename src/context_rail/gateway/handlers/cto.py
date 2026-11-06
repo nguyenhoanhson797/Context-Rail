@@ -44,6 +44,7 @@ from context_rail.runner.droid import (
     write_order_file,
     write_role_file,
 )
+from context_rail.runner.protocol import resolve_model
 from context_rail.store import approval as store_approval
 from context_rail.store.write import ABSENT, WriteRefused, commit
 
@@ -174,7 +175,9 @@ def tick(context: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             f"profile {CTO_ROLE!r} is a {profile.recipe!r}, not a cto profile",
             {"profile": CTO_ROLE, "recipe": profile.recipe},
         )
-    droid = droid_profile(profile, name=CTO_ROLE)
+    droid = droid_profile(
+        profile, name=CTO_ROLE, model=resolve_model(profile, "droid")
+    )
     timeout = _timeout(args.get("timeout"), profile, context)
 
     checkout, _git_dir = canonical_checkout(context, action="a tick")
@@ -318,6 +321,7 @@ def _execute(
         "timed_out": bool(ran.timed_out),
         "usage": dict(ran.usage),
         "runner_digest": ran.runner.get("digest"),
+        "argv_digest": ran.runner.get("argv_digest"),
         "verdicts": [],
         "status": status,
     }
@@ -333,7 +337,8 @@ def _execute(
         "profile_version": profile.version,
         "profile_etag": profile_etag,
         "skills": skill_pins(context, profile),
-        "model": profile.model,
+        "model": droid.model,
+        "runner": "droid",
         "item": None,
         "session_id": ran.session_id,
         "started_at": started_at,
@@ -350,6 +355,7 @@ def _execute(
         "capture": _capture(ran),
         "usage": aggregate_usage([attempt]),
         "runner_digest": ran.runner.get("digest"),
+        "argv_digest": ran.runner.get("argv_digest"),
         "report": report_id,
     }
     parse_run(run_data)

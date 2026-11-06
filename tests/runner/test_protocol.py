@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from context_rail.model.cto import Profile
@@ -178,6 +180,133 @@ def test_a_file_adapter_prompt_carries_the_role_ahead_of_the_order(tmp_path) -> 
     assert text.startswith("ROLE PROMPT")
     assert text.endswith("ORDER BODY")
     assert combined.parent == order.parent
+
+
+def test_run_worker_does_not_prepend_the_role_twice(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from context_rail.runner import protocol
+
+    role = tmp_path / "role.md"
+    order = tmp_path / "order.md"
+    role.write_text("ROLE PROMPT", encoding="utf-8")
+    order.write_text("ORDER BODY", encoding="utf-8")
+    captured: dict = {}
+
+    def fake_run_runner(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(protocol, "run_runner", fake_run_runner)
+    profile = _profile("gemini", {"gemini": "gemini-model"})
+    protocol.run_worker(
+        context=None,
+        profile=profile,
+        worktree=tmp_path,
+        confine_to=tmp_path,
+        role_file=role,
+        order_file=order,
+        timeout=1,
+    )
+    assert captured["order_file"] == order
+    prompt = protocol._combined_prompt(role, captured["order_file"], tools=profile.tools)
+    assert prompt.count("ROLE PROMPT") == 1
+    assert "Tool contract" in prompt
+    assert "read-cli" in prompt
+
+
+def test_opencode_jsonl_events_are_parsed() -> None:
+    stdout = "\n".join(
+        [
+            '{"type":"step_start","sessionID":"ses_1","part":{"type":"step-start"}}',
+            '{"type":"text","sessionID":"ses_1","part":{"type":"text","text":"hello"}}',
+            '{"type":"step_finish","sessionID":"ses_1","part":{"tokens":'
+            '{"input":7,"output":3,"cache":{"read":2,"write":1}}}}',
+            '{"type":"step_finish","sessionID":"ses_1","part":{"tokens":'
+            '{"input":5,"output":1,"cache":{"read":4,"write":0}}}}',
+        ]
+    )
+    payload, failure, text, usage, session, malformed = get_runner(
+        "opencode"
+    ).parse_output(stdout, exit=0, timed_out=False, omitted_bytes=0)
+    assert failure is None
+    assert text == "hello"
+    assert session == "ses_1"
+    assert malformed is False
+    assert usage["input_tokens"] == 12
+    assert usage["output_tokens"] == 4
+    assert usage["cache_read_input_tokens"] == 6
+    assert usage["cache_creation_input_tokens"] == 1
+    assert payload is not None and payload["result"] == "hello"
+
+
+def test_an_opencode_error_event_fails_the_run() -> None:
+    stdout = (
+        '{"type":"error","sessionID":"ses_9","error":'
+        '{"name":"APIError","data":{"message":"rate limited"}}}'
+    )
+    _payload, failure, _text, _usage, session, _malformed = get_runner(
+        "opencode"
+    ).parse_output(stdout, exit=0, timed_out=False, omitted_bytes=0)
+    assert failure == "opencode reported rate limited"
+    assert session == "ses_9"
+
+
+def test_gemini_json_reports_usage_and_session() -> None:
+    stdout = json.dumps(
+        {
+            "session_id": "gemini-session",
+            "response": "done",
+            "stats": {
+                "models": {
+                    "gemini-flash": {
+                        "tokens": {
+                            "prompt": 11,
+                            "candidates": 5,
+                            "cached": 3,
+                        }
+                    }
+                }
+            },
+        }
+    )
+    _payload, failure, text, usage, session, malformed = get_runner(
+        "gemini"
+    ).parse_output(stdout, exit=0, timed_out=False, omitted_bytes=0)
+    assert failure is None
+    assert text == "done"
+    assert session == "gemini-session"
+    assert malformed is False
+    assert usage["input_tokens"] == 11
+    assert usage["output_tokens"] == 5
+    assert usage["cache_read_input_tokens"] == 3
+
+
+def test_a_gemini_error_is_not_a_success() -> None:
+    stdout = json.dumps({"response": "", "error": {"message": "auth failed"}})
+    _payload, failure, _text, _usage, _session, _malformed = get_runner(
+        "gemini"
+    ).parse_output(stdout, exit=0, timed_out=False, omitted_bytes=0)
+    assert failure == "gemini reported auth failed"
+
+
+def test_an_empty_args_override_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    role = tmp_path / "role.md"
+    order = tmp_path / "order.md"
+    role.write_text("ROLE", encoding="utf-8")
+    order.write_text("ORDER", encoding="utf-8")
+    monkeypatch.setenv("RAIL_GEMINI_ARGS", "[]")
+    profile = _profile("gemini", {"gemini": "gemini-model"})
+    with pytest.raises(WriteRefused) as refused:
+        get_runner("gemini").build_argv(
+            profile=profile,
+            worktree=tmp_path,
+            role_file=role,
+            order_file=order,
+        )
+    assert refused.value.code == "VALIDATION_FAILED"
 
 
 def test_a_malformed_args_override_is_refused(

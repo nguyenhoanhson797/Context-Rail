@@ -12,7 +12,7 @@ export function parseAddress(hash: string): {route: string; params: URLSearchPar
     if(key==='project') {params.set(key,value);continue;}
     if(value.length>(key==='files'?8000:200)||/\p{Cc}/u.test(value)) continue;
     if(['doc','task','focus','phase'].includes(key)&&!docValid(value)) continue;
-    if(key==='sec'&&!['appearance','shortcuts'].includes(value)) continue;
+    if(key==='sec'&&!['appearance','shortcuts','config'].includes(value)) continue;
     if(key==='depth'&&!['1','2'].includes(value)) continue;
     if(key==='limit'&&(!/^[1-9]\d{0,3}$/.test(value)||Number(value)>1000)) continue;
     params.set(key,value);

@@ -257,6 +257,7 @@ ATTEMPT_KEYS = (
     "timed_out",
     "usage",
     "runner_digest",
+    "argv_digest",
     "verdicts",
     "status",
 )
@@ -285,7 +286,10 @@ RUN_KEYS = (
     "commits_changed",
     "capture",
     "usage",
+    "runner",
     "runner_digest",
+    "argv_digest",
+    "intent",
     "report",
 )
 _RUN_REQUIRED = (
@@ -842,7 +846,14 @@ def parse_run(data: dict[str, Any]) -> Run:
     _optional_int(payload.get("exit"), "run.exit")
     if "accepted" in payload and payload["accepted"] is not None:
         boolean(payload["accepted"], "run.accepted")
-    for key in ("candidate_commit", "runner_digest", "report"):
+    for key in (
+        "candidate_commit",
+        "runner",
+        "runner_digest",
+        "argv_digest",
+        "intent",
+        "report",
+    ):
         _optional_string(payload.get(key), f"run.{key}")
     for key in ("verdicts", "files_changed", "commits_changed"):
         string_list(payload.get(key, []), f"run.{key}", allow_empty=True)
@@ -900,6 +911,11 @@ def _attempt(raw: Any, index: int) -> dict[str, Any]:
     normalized["runner_digest"] = _optional_string(
         data.get("runner_digest"), f"run.attempts[{index}].runner_digest"
     )
+    argv_digest = _optional_string(
+        data.get("argv_digest"), f"run.attempts[{index}].argv_digest"
+    )
+    if argv_digest is not None:
+        normalized["argv_digest"] = argv_digest
     normalized["exit"] = _optional_int(data.get("exit"), f"run.attempts[{index}].exit")
     normalized["verdicts"] = list(
         string_list(

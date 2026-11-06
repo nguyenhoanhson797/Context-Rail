@@ -48,6 +48,7 @@ __all__ = [
     "read_progress",
     "read_review_binding",
     "read_review_progress",
+    "read_session",
     "read_tick_binding",
     "read_tick_progress",
     "register_review_worktree",
@@ -58,6 +59,7 @@ __all__ = [
     "review_binding_path",
     "review_paths",
     "review_progress_path",
+    "session_path",
     "tick_binding_path",
     "tick_lock_path",
     "tick_progress_path",
@@ -65,6 +67,7 @@ __all__ = [
     "write_progress",
     "write_review_binding",
     "write_review_progress",
+    "write_session",
     "write_tick_binding",
     "write_tick_progress",
     "worktree_root",
@@ -79,6 +82,7 @@ LOCK_DIR = "locks"
 WORKTREE_PARENT = "context-rail-worktrees"
 PROGRESS_STATES = ("started", "worktree", "running", "verifying", "completed")
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$")
 _DISPATCH_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _BRANCH = re.compile(r"^rail/([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/([A-Za-z0-9][A-Za-z0-9_-]{0,63})$")
 _REVIEW_BRANCH = re.compile(
@@ -158,7 +162,9 @@ def read_session(store: Path, item: str, runner: str) -> str | None:
     if payload.get("runner") != runner:
         return None
     session = payload.get("session")
-    return session if isinstance(session, str) and session else None
+    if not isinstance(session, str) or not _SESSION_ID.match(session):
+        return None
+    return session
 
 
 def write_session(store: Path, item: str, runner: str, session: str | None) -> None:

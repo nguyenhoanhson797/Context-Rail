@@ -43,7 +43,7 @@ from context_rail.runner.droid import (
     write_order_file,
     write_role_file,
 )
-from context_rail.runner.protocol import run_worker
+from context_rail.runner.protocol import resolve_model, runner_name, run_worker
 from context_rail.store import query
 from context_rail.store.doc import Doc, etag, parse_doc
 from context_rail.store.write import WriteRefused, commit, resolve_unique
@@ -80,6 +80,8 @@ from .records import _escalation_record, _failure_report, _started_record
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
+INTENT_MAX_CHARS = 2000
+
 
 def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Create the isolated worktree, run the implementer, verify its candidate."""
@@ -89,6 +91,12 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     key = required(args.get("key"), "a dispatch key", action="dispatch")
     profile_name = _optional(args.get("profile")) or IMPL_ROLE
     intent = _optional(args.get("intent")) or ""
+    if len(intent) > INTENT_MAX_CHARS:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"the dispatch intent exceeds {INTENT_MAX_CHARS} characters",
+            {"intent_chars": len(intent), "max_chars": INTENT_MAX_CHARS},
+        )
     replayed = _replayed(store, key, item, profile_name, expect)
     if replayed is not None:
         return replayed
@@ -114,10 +122,9 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             f"profile {profile_name!r} is a {profile.recipe!r}, not an implementer",
             {"profile": profile_name, "recipe": profile.recipe},
         )
-    droid = droid_profile(profile, name=profile_name)
-    from context_rail.runner.protocol import runner_name
-
     current_runner = runner_name(profile)
+    launch_model = resolve_model(profile, current_runner)
+    droid = droid_profile(profile, name=profile_name, model=launch_model)
     prior_session = local_dispatch.read_session(store, slug, current_runner)
     budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     facts, used_seconds, used_attempts = _run_facts(index, slug)
@@ -222,6 +229,9 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             used_seconds=used_seconds,
             max_attempts=max(1, effective_attempts(budget) - used_attempts),
             session=prior_session,
+            runner=current_runner,
+            model=launch_model,
+            intent=intent,
         )
         role_file, order_file = _write_prompts(ctx, plan, rel, intent)
         return _execute(plan, role_file, order_file)
@@ -368,6 +378,7 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
             timeout=min(remaining, deadline),
             session_id=session,
             failure_text=retry_text,
+            runner=plan.runner,
         )
         duration = round(time.monotonic() - clock, 3)
         if ran.session_id:
@@ -392,6 +403,7 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
             "timed_out": bool(ran.timed_out),
             "usage": dict(ran.usage),
             "runner_digest": ran.runner.get("digest"),
+            "argv_digest": ran.runner.get("argv_digest"),
             "verdicts": attempt_verdicts,
             "status": "verified" if not reasons else "failed",
         }
@@ -409,9 +421,12 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
 
     verified = bool(attempts) and attempts[-1]["status"] == "verified"
     status = "verified" if verified else "failed"
-    from context_rail.runner.protocol import runner_name
-
-    local_dispatch.write_session(plan.store, plan.slug, runner_name(plan.profile), session)
+    local_dispatch.write_session(
+        plan.store,
+        plan.slug,
+        plan.runner or runner_name(plan.profile),
+        session,
+    )
     ended_at = now_iso()
     total_seconds = round(time.monotonic() - flight_started, 3)
     candidate = _candidate(plan)
@@ -427,7 +442,8 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
         "profile_version": plan.profile.version,
         "profile_etag": plan.profile_etag,
         "skills": plan.skill_pins,
-        "model": plan.profile.model,
+        "model": plan.model or plan.profile.model,
+        "runner": plan.runner or "droid",
         "item": plan.slug,
         "session_id": session,
         "started_at": started_at,
@@ -444,6 +460,8 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
         "capture": public_capture,
         "usage": aggregate_usage(attempts),
         "runner_digest": attempts[-1]["runner_digest"] if attempts else None,
+        "argv_digest": attempts[-1].get("argv_digest") if attempts else None,
+        "intent": plan.intent or None,
         "report": report_id,
     }
     parse_run(run_data)

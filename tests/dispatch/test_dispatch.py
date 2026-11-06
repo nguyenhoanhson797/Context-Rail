@@ -235,6 +235,28 @@ def test_a_dispatch_without_intent_has_no_intent_section(
     assert "Intent from the CTO" not in prompt
 
 
+def test_an_oversized_intent_is_refused(leaf_item) -> None:
+    r = dispatch(leaf_item, "long-intent", intent="x" * 2001)
+    assert r["error"]["code"] == "VALIDATION_FAILED", r
+
+
+def test_a_run_records_the_runner_and_resolved_model(
+    leaf_item, fake_droid, droid_env, monkeypatch
+) -> None:
+    monkeypatch.setenv("RAIL_MODEL", "override-model")
+    r = dispatch(leaf_item, "resolved-model")
+    assert r["ok"], r
+    data = latest_record(leaf_item.store, "run.completed")["data"]
+    assert data["runner"] == "droid"
+    assert data["model"] == "override-model"
+    assert data["argv_digest"].startswith("sha256:")
+    assert data["attempts"][0]["argv_digest"].startswith("sha256:")
+    assert "-m" in fake_droid.log()[0]["argv"]
+    assert fake_droid.log()[0]["argv"][
+        fake_droid.log()[0]["argv"].index("-m") + 1
+    ] == "override-model"
+
+
 # ── retries and escalation ────────────────────────────────────────────────
 
 
