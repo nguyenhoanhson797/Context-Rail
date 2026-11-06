@@ -205,9 +205,11 @@ def test_a_token_the_daemon_refuses_is_a_miss(store: Path) -> None:
 
 def test_a_request_larger_than_one_read_matches_direct(store: Path) -> None:
     params = {"preset": "task", "title": "x" * 100_000}
+    before = _find_count(store)
     with serving_daemon(store):
         served = _call(store, "add", params, read_only=False)
     assert served is not None
+    assert _find_count(store) == before + (1 if served["ok"] else 0)
     direct = invoke("add", dict(params), store=store, actor="human")
     assert served["ok"] == direct["ok"]
     assert (served.get("error") or {}).get("code") == (direct.get("error") or {}).get(
@@ -258,6 +260,105 @@ def test_the_descriptor_holding_the_token_is_readable_only_by_its_owner(store: P
         descriptor = daemon_endpoint(store)
         assert descriptor is not None
         assert descriptor.stat().st_mode & 0o077 == 0
+
+
+def _held(store: Path) -> dict[str, Any]:
+    descriptor = daemon_endpoint(store)
+    assert descriptor is not None
+    return json.loads(descriptor.read_text(encoding="utf-8"))
+
+
+def test_a_request_past_its_deadline_is_declined_and_not_run(store: Path) -> None:
+    before = _find_count(store)
+    with serving_daemon(store):
+        held = _held(store)
+        declined = _send(
+            held["port"],
+            {
+                "tool": "add",
+                "params": {"preset": "task", "title": "Too late"},
+                "actor": "human",
+                "actor_env": None,
+                "token": held["token"],
+                "deadline": time.time() - 5,
+            },
+        )
+    assert declined["error"]["details"]["reason"] == "daemon_expired"
+    assert _find_count(store) == before
+
+
+def test_a_write_that_gave_up_waiting_never_runs_later(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from context_rail.gateway import gateway
+
+    real = gateway.invoke
+
+    def slow(tool: str, params: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        if tool == "status":
+            time.sleep(1.0)
+        return real(tool, params, **kwargs)
+
+    monkeypatch.setattr(gateway, "invoke", slow)
+    monkeypatch.setenv("RAIL_DAEMON_TIMEOUT_MS", "300")
+    before = _find_count(store)
+    with serving_daemon(store):
+        held = _held(store)
+        busy = threading.Thread(
+            target=_send,
+            args=(held["port"], {"tool": "status", "params": {}, "token": held["token"]}),
+        )
+        busy.start()
+        time.sleep(0.2)
+        result = _call(store, "add", {"preset": "task", "title": "Gave up"}, read_only=False)
+        busy.join(10)
+        time.sleep(0.5)
+    assert result is not None and result["error"]["details"]["reason"] == "daemon_no_answer"
+    assert _find_count(store) == before
+
+
+def test_a_request_the_daemon_declined_to_start_is_a_miss(store: Path) -> None:
+    declined = {
+        "ok": False,
+        "error": {
+            "code": "PROCESS_ERROR",
+            "message": "expired",
+            "details": {"reason": "daemon_expired"},
+        },
+    }
+    with _fake_daemon(store, reply=json.dumps(declined).encode("utf-8") + b"\n"):
+        assert _call(store, "add", {"preset": "task", "title": "Nope"}, read_only=False) is None
+
+
+def test_the_descriptor_is_not_the_one_an_older_client_reads(store: Path) -> None:
+    with serving_daemon(store):
+        descriptor = daemon_endpoint(store)
+        assert descriptor is not None
+        assert descriptor.name != "daemon.json"
+        assert not (descriptor.parent / "daemon.json").exists()
+
+
+def test_a_result_that_cannot_be_sent_after_a_write_ran_is_unknown_not_internal(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from context_rail.gateway import gateway
+
+    monkeypatch.setattr(gateway, "invoke", lambda *a, **k: {"ok": True, "value": object()})
+    with serving_daemon(store):
+        result = _call(store, "add", {"preset": "task", "title": "Ran"}, read_only=False)
+    assert result is not None and result["ok"] is False
+    assert result["error"]["code"] == "PROCESS_ERROR"
+    assert result["error"]["details"]["reason"] == "daemon_no_answer"
+
+
+@pytest.mark.parametrize(
+    ("port", "pid"), [(99_999_999, None), (-1, None), (None, 2**40), (None, -7)]
+)
+def test_a_descriptor_with_impossible_numbers_is_a_miss(
+    store: Path, port: int | None, pid: int | None
+) -> None:
+    write_daemon_descriptor(store, port=port or 5, pid=pid or os.getpid())
+    assert _call(store) is None
 
 
 def test_the_stop_op_requires_the_token(store: Path) -> None:

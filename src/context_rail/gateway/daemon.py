@@ -41,11 +41,13 @@ __all__ = [
     "clear_daemon_descriptor",
     "daemon_alive",
     "daemon_endpoint",
+    "drop_unreachable",
     "process_alive",
     "serve",
     "spawn_daemon",
     "stop_daemon",
     "store_hash",
+    "write_daemon_descriptor",
 ]
 
 DAEMON_TIMEOUT_MS = 2000
@@ -53,8 +55,11 @@ DAEMON_IDLE_S = 600
 DAEMON_ENV_TIMEOUT = "RAIL_DAEMON_TIMEOUT_MS"
 DAEMON_ENV_IDLE = "RAIL_DAEMON_IDLE_S"
 NO_DAEMON_ENV = "RAIL_NO_DAEMON"
-_DAEMON_FILE = "daemon.json"
-_PID_FILE = "daemon.pid"
+#: Bumped when a request must mean something new. The descriptor is named for it,
+#: so a client or daemon from another protocol never finds the other: an older
+#: client would otherwise send no ``actor_env`` and run a worker as unnamed human.
+_PROTOCOL = 2
+_DAEMON_FILE = f"daemon-{_PROTOCOL}.json"
 _SPAWN_FILE = "daemon.spawn"
 _SPAWN_LOCK_STALE_S = 30
 _STOP_WAIT_S = 5.0
@@ -65,7 +70,11 @@ _MAX_FRAME = 16 * 1024 * 1024
 #: port, while a live listener completes the connect at once (even when it is
 #: busy: the kernel queues it), so a short cap loses nothing.
 _CONNECT_CAP_S = 0.25
+#: Long enough for that refusal to arrive, so a dead descriptor is told from a busy daemon.
+_REACH_CHECK_S = 3.0
+_MAX_PID = 2**31 - 1
 _TOKEN_REFUSED = "daemon_token"
+_EXPIRED = "daemon_expired"
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _STILL_ACTIVE = 259
 _ERROR_ACCESS_DENIED = 5
@@ -120,16 +129,48 @@ def _windows_process_alive(pid: int) -> bool:
 
 def daemon_alive(store: Path) -> bool:
     """Whether a daemon descriptor exists and names a running process."""
-    descriptor = daemon_endpoint(store)
-    if descriptor is None or not descriptor.is_file():
+    held = _held_descriptor(store)
+    return held is not None and process_alive(held[0])
+
+
+def drop_unreachable(store: Path) -> bool:
+    """Clear a descriptor whose process is alive but does not answer; True when cleared.
+
+    A pid recorded before a reboot can belong to an unrelated process now, and
+    the descriptor would then keep a new daemon from ever starting. A daemon
+    that is merely busy still accepts the connection, so only a refusal counts.
+    """
+    held = _held_descriptor(store)
+    if held is None:
         return False
-    payload = _read_descriptor(descriptor)
+    _, port, token, _ = held
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=_REACH_CHECK_S).close()
+    except TimeoutError:
+        return False
+    except OSError:
+        _release_descriptor(Path(store), token)
+        return True
+    return False
+
+
+def _held_descriptor(store: Path) -> tuple[int, int, str, object] | None:
+    """``(pid, port, token, version)`` from a well-formed descriptor, else None."""
+    try:
+        descriptor = daemon_endpoint(Path(store))
+    except (PathEscape, OSError):
+        return None
+    payload = _read_descriptor(descriptor) if descriptor is not None else None
     if payload is None:
-        return False
-    pid = payload.get("pid")
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    return process_alive(pid)
+        return None
+    pid, port, token = payload.get("pid"), payload.get("port"), payload.get("token")
+    if not (_whole(pid, _MAX_PID) and _whole(port, 65535) and isinstance(token, str) and token):
+        return None
+    return pid, port, token, payload.get("version")
+
+
+def _whole(value: object, high: int) -> bool:
+    return type(value) is int and 0 < value <= high
 
 
 def call_daemon(
@@ -154,6 +195,8 @@ def call_daemon(
     if target is None:
         return None
     port, token = target
+    budget = _timeout_ms() / 1000.0
+    deadline = time.monotonic() + budget
     try:
         request = json.dumps(
             {
@@ -162,12 +205,14 @@ def call_daemon(
                 "actor": actor,
                 "actor_env": actor_env,
                 "token": token,
+                # A busy daemon may reach this request after the caller has
+                # stopped waiting; the daemon declines it rather than run a
+                # write nobody is waiting for and the caller may repeat.
+                "deadline": time.time() + budget,
             }
         ).encode("utf-8")
     except (TypeError, ValueError):
         return None
-    budget = _timeout_ms() / 1000.0
-    deadline = time.monotonic() + budget
     try:
         client = socket.create_connection(
             ("127.0.0.1", port), timeout=min(budget, _CONNECT_CAP_S)
@@ -176,6 +221,7 @@ def call_daemon(
         return None
     with client:
         try:
+            client.settimeout(max(deadline - time.monotonic(), 0.05))
             client.sendall(request + b"\n")
             client.shutdown(socket.SHUT_WR)
         except OSError:
@@ -183,31 +229,21 @@ def call_daemon(
         envelope = _parse_reply(_read_reply(client, deadline))
     if envelope is None:
         return None if read_only else _unknown_outcome(params)
-    if _refused_token(envelope):
+    if _declined(envelope):
         return None
     return envelope
 
 
 def _live_target(store: Path) -> tuple[int, str] | None:
     """``(port, token)`` of a live, current daemon, else None and nothing sent."""
-    try:
-        descriptor = daemon_endpoint(store)
-    except (PathEscape, OSError):
+    held = _held_descriptor(store)
+    if held is None:
         return None
-    if descriptor is None:
-        return None
-    payload = _read_descriptor(descriptor)
-    if payload is None:
-        return None
-    pid, port, token = payload.get("pid"), payload.get("port"), payload.get("token")
-    if not (isinstance(pid, int) and isinstance(port, int) and isinstance(token, str)):
-        return None
-    if pid <= 0 or port <= 0 or not token:
-        return None
+    pid, port, token, version = held
     if not process_alive(pid):
-        clear_daemon_descriptor(store)
+        _release_descriptor(store, token)
         return None
-    if payload.get("version") != __version__:
+    if version != __version__:
         _ask_to_stop(port, token)
         return None
     return port, token
@@ -248,6 +284,9 @@ def spawn_daemon(store: Path) -> bool:
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
     }
+    # The daemon serves every caller and takes each one's identity from the
+    # request, so it must not run as whichever actor happened to start it.
+    options["env"] = {k: v for k, v in os.environ.items() if k != "RAIL_ACTOR"}
     if os.name == "nt":
         options["creationflags"] = _DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP
     else:
@@ -296,16 +335,10 @@ def _drop_spawn_lock(lock: Path) -> None:
 
 def stop_daemon(store: Path) -> bool:
     """Stop the store's daemon; True when a live one was running and is now gone."""
-    try:
-        descriptor = daemon_endpoint(Path(store))
-    except (PathEscape, OSError):
-        return False
-    held = _read_descriptor(descriptor) if descriptor is not None else None
+    held = _held_descriptor(store)
     if held is None:
         return False
-    pid, port, token = held.get("pid"), held.get("port"), held.get("token")
-    if not (isinstance(pid, int) and isinstance(port, int) and isinstance(token, str)):
-        return False
+    pid, port, token, _ = held
     if not process_alive(pid):
         _release_descriptor(Path(store), token)
         return False
@@ -353,12 +386,13 @@ def _parse_reply(raw: bytes | None) -> dict[str, Any] | None:
     return envelope
 
 
-def _refused_token(envelope: dict[str, Any]) -> bool:
+def _declined(envelope: dict[str, Any]) -> bool:
+    """Whether the daemon refused the request before running anything."""
     error = envelope.get("error")
     if not isinstance(error, dict):
         return False
     details = error.get("details")
-    return isinstance(details, dict) and details.get("reason") == _TOKEN_REFUSED
+    return isinstance(details, dict) and details.get("reason") in (_TOKEN_REFUSED, _EXPIRED)
 
 
 def _unknown_outcome(params: dict[str, Any]) -> dict[str, Any]:
@@ -403,24 +437,17 @@ def write_daemon_descriptor(store: Path, *, port: int, pid: int | None = None) -
         written.write(payload)
     if os.name != "nt":
         os.chmod(descriptor, 0o600)
-    (descriptor.parent / _PID_FILE).write_text(str(pid or os.getpid()), encoding="utf-8")
     return descriptor
 
 
 def clear_daemon_descriptor(store: Path) -> None:
     """Remove a stale daemon descriptor (doctor --fix safe path)."""
     descriptor = daemon_endpoint(store)
-    if descriptor is not None and descriptor.is_file():
+    if descriptor is not None:
         try:
-            descriptor.unlink()
+            descriptor.unlink(missing_ok=True)
         except OSError:
             pass
-    try:
-        stale = daemon_endpoint(store)
-        if stale is not None:
-            (stale.parent / _PID_FILE).unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def _release_descriptor(store: Path, token: str) -> None:
@@ -584,7 +611,7 @@ class _DaemonServer:
         _release_descriptor(self.store, self._token)
 
     def _reply(self, conn: socket.socket, envelope: dict[str, Any]) -> None:
-        conn.sendall((json.dumps(envelope, ensure_ascii=False) + "\n").encode("utf-8"))
+        conn.sendall((json.dumps(envelope) + "\n").encode("ascii"))
 
     def _handle(self, conn: socket.socket) -> None:
         import hmac
@@ -634,6 +661,18 @@ class _DaemonServer:
         if not isinstance(tool, str) or not tool.strip():
             conn.sendall(b'{"ok": false}\n')
             return
+        deadline = payload.get("deadline")
+        if isinstance(deadline, (int, float)) and not isinstance(deadline, bool):
+            if time.time() > deadline:
+                self._reply(
+                    conn,
+                    fail(
+                        "PROCESS_ERROR",
+                        "the daemon was busy past the request's deadline and did not run it",
+                        {"reason": _EXPIRED},
+                    ),
+                )
+                return
         with caller_identity(actor, actor_env):
             try:
                 result = invoke(tool, params, store=self.store, actor=actor)
@@ -645,4 +684,8 @@ class _DaemonServer:
                         "message": str(exc) or exc.__class__.__name__,
                     },
                 }
-        self._reply(conn, result)
+        try:
+            self._reply(conn, result)
+        except (TypeError, ValueError):
+            # The call has run; a result that cannot be written is not a failure to retry.
+            self._reply(conn, _unknown_outcome(params))

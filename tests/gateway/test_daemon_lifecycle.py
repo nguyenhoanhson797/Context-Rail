@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,7 @@ from context_rail.gateway.daemon import (
     process_alive,
     spawn_daemon,
     stop_daemon,
+    write_daemon_descriptor,
 )
 from helpers import run_cli, run_cli_probe, serving_daemon
 from perf.gen import make_store
@@ -364,6 +366,80 @@ def test_the_suite_switch_prevents_spawning(
     assert cli.main(["--store", str(store), "next"]) == 0
     assert popen_calls == []
     assert not daemon_endpoint(store).exists()
+
+
+def test_the_daemon_does_not_run_as_the_actor_that_started_it(
+    store: Path, popen_calls: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RAIL_ACTOR", "implementer")
+    monkeypatch.setenv("RAIL_KEEP_ME", "yes")
+    assert spawn_daemon(store) is True
+    (_, options), = popen_calls
+    assert "RAIL_ACTOR" not in options["env"]
+    assert options["env"]["RAIL_KEEP_ME"] == "yes"
+
+
+def _closed_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def test_a_reused_process_id_does_not_keep_a_new_daemon_from_starting(
+    store: Path, popen_calls: list[Any], capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_daemon_descriptor(store, port=_closed_port(), pid=os.getpid())
+    assert daemon_alive(store) is True
+    assert cli.main(["--store", str(store), "next"]) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    (command, _), = popen_calls
+    assert command[-2:] == ["serve", "daemon"]
+    assert not daemon_endpoint(store).exists()
+
+
+def test_a_daemon_that_accepts_connections_is_never_dropped(store: Path) -> None:
+    from context_rail.gateway.daemon import drop_unreachable
+
+    with serving_daemon(store):
+        assert drop_unreachable(store) is False
+        assert daemon_endpoint(store).exists()
+
+
+def test_a_listener_that_never_answers_is_not_dropped(store: Path) -> None:
+    from context_rail.gateway.daemon import drop_unreachable
+
+    with socket.socket() as silent:
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(1)
+        write_daemon_descriptor(store, port=int(silent.getsockname()[1]), pid=os.getpid())
+        assert drop_unreachable(store) is False
+        assert daemon_endpoint(store).exists()
+
+
+def test_a_descriptor_nobody_listens_on_is_dropped(store: Path) -> None:
+    from context_rail.gateway.daemon import drop_unreachable
+
+    write_daemon_descriptor(store, port=_closed_port(), pid=os.getpid())
+    assert drop_unreachable(store) is True
+    assert not daemon_endpoint(store).exists()
+
+
+def test_drop_unreachable_with_no_descriptor_does_nothing(store: Path) -> None:
+    from context_rail.gateway.daemon import drop_unreachable
+
+    assert drop_unreachable(store) is False
+
+
+def test_a_broken_git_marker_is_not_a_crash_on_the_fast_path(
+    store: Path, popen_calls: list[Any], capsys: pytest.CaptureFixture[str]
+) -> None:
+    (store.parent / ".git").write_text("gitdir: ../missing\n", encoding="utf-8")
+    code = cli.main(["--store", str(store), "next"])
+    fast = capsys.readouterr().out
+    direct_code = cli.main(["--no-daemon", "--store", str(store), "next"])
+    direct = capsys.readouterr().out
+    assert (code, fast) == (direct_code, direct)
+    assert popen_calls == []
 
 
 def test_stop_daemon_clears_a_descriptor_whose_process_is_gone(store: Path) -> None:

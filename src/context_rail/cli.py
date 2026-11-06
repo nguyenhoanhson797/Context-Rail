@@ -365,7 +365,7 @@ def _fast_path(
         actor_env=(os.environ.get("RAIL_ACTOR") or "").strip() or None,
         read_only=declared.permission == "read",
     )
-    if served is None and not daemon.daemon_alive(store):
+    if served is None and (not daemon.daemon_alive(store) or daemon.drop_unreachable(store)):
         daemon.spawn_daemon(store)
     return served
 
