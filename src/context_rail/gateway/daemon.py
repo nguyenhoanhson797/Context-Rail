@@ -79,7 +79,11 @@ def daemon_alive(store: Path) -> bool:
 
 
 def try_daemon(
-    store: Path | None, tool: str, params: dict[str, Any], actor: str | None
+    store: Path | None,
+    tool: str,
+    params: dict[str, Any],
+    actor: str | None,
+    actor_env: str | None = None,
 ) -> dict[str, Any] | None:
     """Serve one call from the daemon; ``None`` falls back to direct invoke."""
     if os.environ.get(NO_DAEMON_ENV):
@@ -112,7 +116,13 @@ def try_daemon(
         try:
             client.connect(("127.0.0.1", port))
             request = json.dumps(
-                {"tool": canonical, "params": dict(params or {}), "actor": actor, "token": token}
+                {
+                    "tool": canonical,
+                    "params": dict(params or {}),
+                    "actor": actor,
+                    "actor_env": actor_env,
+                    "token": token,
+                }
             ).encode("utf-8")
             client.sendall(request + b"\n")
             client.shutdown(socket.SHUT_WR)
@@ -304,6 +314,7 @@ class _DaemonServer:
                 b'{"ok": false, "error": {"code": "PERMISSION_DENIED", "message": "the daemon token does not match"}}\n'
             )
             return
+        from context_rail.gateway.execution import caller_identity
         from context_rail.gateway.gateway import invoke
         from context_rail.gateway.gateway import _resolve_actor
 
@@ -311,18 +322,26 @@ class _DaemonServer:
         params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
         actor_raw = payload.get("actor")
         actor = actor_raw if isinstance(actor_raw, str) else None
+        env_raw = payload.get("actor_env")
+        actor_env = env_raw if isinstance(env_raw, str) else None
         if not isinstance(tool, str) or not tool.strip():
             conn.sendall(b'{"ok": false}\n')
             return
-        resolved_actor, actor_named = _resolve_actor(actor)
-        context = self._context_for(resolved_actor, actor_named)
-        try:
-            result = invoke(tool, params, store=self.store, actor=actor, context=context)
-        except Exception as exc:
-            result = {
-                "ok": False,
-                "error": {"code": "INTERNAL", "message": str(exc) or exc.__class__.__name__},
-            }
+        with caller_identity(actor, actor_env):
+            resolved_actor, actor_named = _resolve_actor(actor)
+            context = self._context_for(resolved_actor, actor_named)
+            try:
+                result = invoke(
+                    tool, params, store=self.store, actor=actor, context=context
+                )
+            except Exception as exc:
+                result = {
+                    "ok": False,
+                    "error": {
+                        "code": "INTERNAL",
+                        "message": str(exc) or exc.__class__.__name__,
+                    },
+                }
         conn.sendall((json.dumps(result, ensure_ascii=False) + "\n").encode("utf-8"))
 
     def _context_for(self, actor: str, actor_named: bool):

@@ -29,7 +29,7 @@ from typing import Any, Callable
 
 from context_rail.core.result import fail, ok
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
-from context_rail.gateway.execution import ACTOR_NAMED
+from context_rail.gateway.execution import ACTOR_NAMED, caller_actor_env
 from context_rail.core.tool_names import (
     alias_defaults,
     canonical_methods,
@@ -104,7 +104,9 @@ def try_daemon_invoke(
             return None
         from context_rail.gateway.daemon import try_daemon
 
-        return try_daemon(store_path, canonical, dict(args or {}), actor)
+        return try_daemon(
+            store_path, canonical, dict(args or {}), actor, caller_actor_env()
+        )
     except Exception:
         return None
 
@@ -317,8 +319,7 @@ def warm_context(store: Path | str, actor: str, *, actor_named: bool = True) -> 
 
 def _actor_env() -> str | None:
     """The actor ``RAIL_ACTOR`` names, or None when the caller named none."""
-    from_env = os.environ.get("RAIL_ACTOR")
-    return from_env.strip() if isinstance(from_env, str) and from_env.strip() else None
+    return caller_actor_env()
 
 
 def _tick_refusal(actor: str, actor_env: str | None) -> str | None:
@@ -556,8 +557,8 @@ def _resolve_actor(actor: str | None) -> tuple[str, bool]:
     """
     if isinstance(actor, str) and actor.strip():
         return actor, True
-    from_env = os.environ.get("RAIL_ACTOR")
-    if isinstance(from_env, str) and from_env.strip():
+    from_env = caller_actor_env()
+    if from_env is not None:
         return from_env, True
     return "human", False
 
