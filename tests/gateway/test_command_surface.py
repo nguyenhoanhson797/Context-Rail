@@ -88,6 +88,20 @@ def test_legacy_commands_expand_to_the_grouped_surface() -> None:
     ]
 
 
+def test_the_no_daemon_flag_does_not_hide_a_legacy_command() -> None:
+    from context_rail.cli import _expand_legacy
+
+    assert _expand_legacy(["--no-daemon", "status"]) == ["--no-daemon", "read", "status"]
+    assert _expand_legacy(["--store", "s", "--no-daemon", "show", "x"]) == [
+        "--store",
+        "s",
+        "--no-daemon",
+        "read",
+        "show",
+        "x",
+    ]
+
+
 @pytest.mark.parametrize(
     ("alias", "canonical", "args"),
     [

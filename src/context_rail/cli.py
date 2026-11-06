@@ -1,15 +1,18 @@
 """The JSON CLI, generated from the tool table with nothing heavy imported.
 
 Importing this module reads stdlib modules and the pure tool table only; the
-gateway (and with it YAML and SQLite) is imported inside :func:`main`. A
-successful call exits 0, a refusal exits 1, and an infrastructure failure
-exits 2. Parser errors print one VALIDATION_FAILED envelope and exit 1.
+gateway (and with it YAML and SQLite) is imported inside :func:`main`, and not
+at all when a live daemon serves the call. A successful call exits 0, a refusal
+exits 1, and an infrastructure failure exits 2. Parser errors print one
+VALIDATION_FAILED envelope and exit 1.
 """
 
 import argparse
 import json
 import os
 import sys
+from pathlib import Path
+from typing import Any
 
 from context_rail.gateway.tools import (
     GROUP_SUMMARIES,
@@ -20,6 +23,7 @@ from context_rail.gateway.tools import (
     Param,
     Tool,
     canonical_tool,
+    daemon_eligible,
 )
 
 __all__ = ["main"]
@@ -231,12 +235,15 @@ def _emit(result: dict, *, stderr: bool = False) -> None:
 
 
 def _command_index(argv: list[str]) -> int | None:
-    """Where the command starts, after the two global value options."""
+    """Where the command starts, after the global options."""
     index = 0
     while index < len(argv):
         token = argv[index]
         if token in ("-h", "--help"):
             return None
+        if token == "--no-daemon":
+            index += 1
+            continue
         if token in ("--store", "--actor"):
             if index + 1 >= len(argv):
                 return None
@@ -316,24 +323,67 @@ def main(argv: list[str] | None = None) -> int:
         for name, value in vars(namespace).items()
         if name not in reserved and name in names
     }
-    from context_rail.core.result import INFRA_CODES
+    served = _fast_path(namespace, tool, params, declared)
+    if served is not None:
+        return _finish(tool, served)
     from context_rail.gateway.execution import EXPLICIT_ACTOR
-    from context_rail.gateway.gateway import invoke, try_daemon_invoke
+    from context_rail.gateway.gateway import invoke
 
     EXPLICIT_ACTOR.set(namespace.actor)
-    result = try_daemon_invoke(
+    return _finish(
         tool,
-        params,
-        store=namespace.store,
-        actor=namespace.actor,
+        invoke(tool, params, store=namespace.store, actor=namespace.actor),
     )
-    if result is None:
-        result = invoke(
-            tool,
-            params,
-            store=namespace.store,
-            actor=namespace.actor,
-        )
+
+
+def _fast_path(
+    namespace: argparse.Namespace,
+    tool: str,
+    params: dict[str, Any],
+    declared: Tool | None,
+) -> dict[str, Any] | None:
+    """Serve the call from the store's live daemon, or return None to run it direct.
+
+    Nothing here imports the gateway, YAML or SQLite: that is the saving. The
+    caller's own ``RAIL_ACTOR`` travels with the call, because the daemon was
+    started by someone else and its environment says nothing about this caller.
+    """
+    if namespace.no_daemon or os.environ.get("RAIL_NO_DAEMON") or declared is None:
+        return None
+    if not daemon_eligible(declared, params):
+        return None
+    store = _daemon_store(namespace.store)
+    if store is None:
+        return None
+    from context_rail.gateway.daemon import call_daemon
+
+    return call_daemon(
+        store,
+        canonical_tool(tool),
+        params,
+        actor=namespace.actor,
+        actor_env=(os.environ.get("RAIL_ACTOR") or "").strip() or None,
+        read_only=declared.permission == "read",
+    )
+
+
+def _daemon_store(option: str | None) -> Path | None:
+    """The store a direct call would open, or None when it would open none."""
+    from context_rail.core.locate import find_store
+
+    try:
+        if option is None:
+            return find_store(Path.cwd())
+        store = Path(os.path.abspath(option))
+        return store if (store / "rail.yaml").is_file() else None
+    except OSError:
+        return None
+
+
+def _finish(tool: str, result: dict[str, Any]) -> int:
+    """Print one result and return its exit code."""
+    from context_rail.core.result import INFRA_CODES
+
     if canonical_tool(tool) in {"mcp serve", "sync driver", "ui serve", "serve daemon"}:
         if result.get("ok") is True:
             return 0

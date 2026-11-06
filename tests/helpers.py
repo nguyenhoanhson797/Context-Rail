@@ -28,6 +28,66 @@ _JOIN_TIMEOUT = 30.0
 DEFAULT_FAKE_BEHAVIORS = ("success",)
 
 
+def _child_env(env: Mapping[str, str | None] | None) -> dict[str, str]:
+    child = dict(os.environ)
+    child["PYTHONPATH"] = str(_REPO_SRC)
+    child.pop("RAIL_ACTOR", None)
+    for name, value in (env or {}).items():
+        if value is None:
+            child.pop(name, None)
+        else:
+            child[name] = value
+    return child
+
+
+_PROBE = (
+    "import sys\n"
+    "from context_rail import cli\n"
+    "code = cli.main(sys.argv[1:])\n"
+    "sys.stderr.write('GW=%s\\nYAML=%s\\n' % "
+    "('context_rail.gateway.gateway' in sys.modules, 'yaml' in sys.modules))\n"
+    "sys.exit(code)\n"
+)
+
+
+def run_cli_probe(
+    cwd: Path,
+    *args: str,
+    store: Path | None = None,
+    env: Mapping[str, str | None] | None = None,
+) -> tuple[subprocess.CompletedProcess[str], dict[str, bool]]:
+    """Run the CLI as a user would, and report which heavy modules it loaded.
+
+    Returns the process and ``{"GW": ..., "YAML": ...}``: whether the gateway
+    and YAML were imported by the time the command finished. The suite's daemon
+    switch is removed from the child, so a daemon is used when one is live.
+    """
+    child = _child_env({"RAIL_NO_DAEMON": None, **(env or {})})
+    command = [sys.executable, "-c", _PROBE]
+    if store is not None:
+        command += ["--store", str(store)]
+    command += [str(arg) for arg in args]
+    proc = subprocess.run(
+        command,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=child,
+        input="",
+        timeout=600,
+    )
+    flags = {
+        key: value == "True"
+        for key, _, value in (
+            line.partition("=")
+            for line in proc.stderr.splitlines()
+            if line.startswith(("GW=", "YAML="))
+        )
+    }
+    return proc, flags
+
+
 def run_cli(
     cwd: Path,
     *args: str,
@@ -41,14 +101,7 @@ def run_cli(
     never changes which actor a test's records name. ``env`` overrides that:
     a string sets a variable in the child, ``None`` removes it.
     """
-    child = dict(os.environ)
-    child["PYTHONPATH"] = str(_REPO_SRC)
-    child.pop("RAIL_ACTOR", None)
-    for name, value in (env or {}).items():
-        if value is None:
-            child.pop(name, None)
-        else:
-            child[name] = value
+    child = _child_env(env)
     command = [sys.executable, "-m", "context_rail"]
     if store is not None:
         command += ["--store", str(store)]
@@ -120,11 +173,11 @@ def serving_daemon(store: Path) -> Iterator[None]:
         server.stop()
 
 
-def _without_perf(value: Any) -> Any:
+def without_perf(value: Any) -> Any:
     if isinstance(value, dict):
-        return {key: _without_perf(item) for key, item in value.items() if key != "perf"}
+        return {key: without_perf(item) for key, item in value.items() if key != "perf"}
     if isinstance(value, list):
-        return [_without_perf(item) for item in value]
+        return [without_perf(item) for item in value]
     return value
 
 
@@ -141,8 +194,8 @@ def assert_parity(
     served = try_daemon_invoke(tool, dict(params), store=store, actor=actor)
     assert served is not None, "the daemon did not answer"
     direct = invoke(tool, dict(params), store=store, actor=actor)
-    expected = _without_perf(json.loads(json.dumps(direct)))
-    actual = _without_perf(served)
+    expected = without_perf(json.loads(json.dumps(direct)))
+    actual = without_perf(served)
     assert actual == expected, f"daemon: {json.dumps(actual)[:600]}\ndirect: {json.dumps(expected)[:600]}"
     return served
 
