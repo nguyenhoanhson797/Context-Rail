@@ -344,9 +344,10 @@ def _fast_path(
 ) -> dict[str, Any] | None:
     """Serve the call from the store's live daemon, or return None to run it direct.
 
-    Nothing here imports the gateway, YAML or SQLite: that is the saving. The
-    caller's own ``RAIL_ACTOR`` travels with the call, because the daemon was
-    started by someone else and its environment says nothing about this caller.
+    Nothing here imports the gateway, YAML or SQLite: a served call must not pay
+    for them. The caller's own ``RAIL_ACTOR`` travels with the call, because the
+    daemon was started by someone else and its environment says nothing about
+    this caller.
     """
     if namespace.no_daemon or os.environ.get("RAIL_NO_DAEMON") or declared is None:
         return None

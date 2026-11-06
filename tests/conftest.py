@@ -96,8 +96,14 @@ def no_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def daemon_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Let this test reach a daemon: clears the suite-wide switch."""
+    """Let this test reach a daemon: clears the suite-wide switch.
+
+    A call that falls back because a parallel run left the machine busy would
+    fail a test that asks whether the daemon served it, so the reply budget is
+    wide here. The perf lane measures the real default.
+    """
     monkeypatch.delenv("RAIL_NO_DAEMON", raising=False)
+    monkeypatch.setenv("RAIL_DAEMON_TIMEOUT_MS", "30000")
 
 
 @pytest.fixture

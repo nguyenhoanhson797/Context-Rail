@@ -18,13 +18,16 @@ from perf.session_bench import start_daemon
 
 _RUNS = 7
 _READ_BUDGET_MS = 150
-#: 1.5 x the 375 ms a served ``change add`` cost over bare Python when this
-#: test was added, rounded up to 25 ms. The write itself dominates: the commit.
+#: 1.5 x the 375 ms a served ``change add`` costs over bare Python, rounded up
+#: to 25 ms. The write itself dominates: the commit.
 _WRITE_BUDGET_MS = 575
 
 
 @pytest.fixture
-def served_store(tmp_path: Path, daemon_enabled: None) -> Iterator[Path]:
+def served_store(
+    tmp_path: Path, daemon_enabled: None, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Path]:
+    monkeypatch.delenv("RAIL_DAEMON_TIMEOUT_MS", raising=False)
     store = make_store(tmp_path, 20)
     start_daemon(store, child_env({"RAIL_NO_DAEMON": None}))
     try:
@@ -84,3 +87,8 @@ def test_a_daemon_served_write_budget(served_store: Path) -> None:
     )
     assert overhead < _WRITE_BUDGET_MS, f"rail change add cost bare Python + {overhead:.0f} ms"
     assert daemon_alive(served_store)
+    proc, loaded = run_cli_probe(
+        served_store.parent, "change", "add", "task", "Served write probe", store=served_store
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert loaded["GW"] is False, "the write was not served by the daemon"
