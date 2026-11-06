@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from context_rail.gateway.gateway import invoke
-from helpers import run_cli_probe, serving_daemon, without_perf
+from helpers import run_cli_probe, serving_daemon
 from perf.gen import make_store
 
 _STALE_ETAG = "0123456789abcdef"
@@ -103,7 +103,7 @@ def test_exit_codes_match_a_direct_call(store: Path, args: tuple[str, ...], code
         )
     assert served_loaded["GW"] is False and direct_loaded["GW"] is True
     assert served.returncode == direct.returncode == code
-    assert without_perf(json.loads(served.stdout)) == without_perf(json.loads(direct.stdout))
+    assert json.loads(served.stdout) == json.loads(direct.stdout)
 
 
 def test_the_callers_actor_env_reaches_the_daemon(

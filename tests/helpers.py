@@ -178,18 +178,10 @@ def serving_daemon(store: Path) -> Iterator[None]:
         server.stop()
 
 
-def without_perf(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: without_perf(item) for key, item in value.items() if key != "perf"}
-    if isinstance(value, list):
-        return [without_perf(item) for item in value]
-    return value
-
-
 def assert_parity(
     store: Path, tool: str, params: dict[str, Any], actor: str = "human"
 ) -> dict[str, Any]:
-    """The daemon answers exactly as a direct call, apart from timing.
+    """The daemon answers exactly as a direct call.
 
     The daemon is asked first: a direct call syncs the index the two share, which
     would hide a daemon that serves rows it never refreshed.
@@ -199,8 +191,8 @@ def assert_parity(
     served = try_daemon_invoke(tool, dict(params), store=store, actor=actor)
     assert served is not None, "the daemon did not answer"
     direct = invoke(tool, dict(params), store=store, actor=actor)
-    expected = without_perf(json.loads(json.dumps(direct)))
-    actual = without_perf(served)
+    expected = json.loads(json.dumps(direct))
+    actual = served
     assert actual == expected, f"daemon: {json.dumps(actual)[:600]}\ndirect: {json.dumps(expected)[:600]}"
     return served
 

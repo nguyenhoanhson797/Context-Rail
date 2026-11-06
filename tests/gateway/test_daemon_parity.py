@@ -10,6 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke, try_daemon_invoke
 from helpers import assert_parity, run_git, serving_daemon
@@ -34,6 +36,15 @@ def _set_title(path: Path, title: str) -> None:
     text = path.read_text(encoding="utf-8")
     edited = re.sub(r"^title: .*$", f"title: {title}", text, count=1, flags=re.MULTILINE)
     path.write_text(edited, encoding="utf-8", newline="\n")
+
+
+@pytest.mark.parametrize("tool", ["model", "status", "next", "types", "digest", "ledger"])
+def test_a_served_read_carries_nothing_a_direct_one_lacks(
+    store_factory: Callable[..., Path], daemon_enabled: None, tool: str
+) -> None:
+    store = store_factory(20)
+    with _warm_daemon(store, "status", {}):
+        assert_parity(store, tool, {})
 
 
 def test_a_hand_edited_title_is_seen(
