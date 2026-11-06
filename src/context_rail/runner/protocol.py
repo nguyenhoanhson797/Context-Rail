@@ -448,16 +448,30 @@ def run_worker(
         )
     if failure_text:
         _append_failure(Path(order_file), failure_text)
+    combined = _combined_order_file(Path(role_file), Path(order_file))
     return run_runner(
         profile=profile,
         worktree=Path(worktree),
         confine_to=Path(confine_to),
         role_file=Path(role_file),
-        order_file=Path(order_file),
+        order_file=combined,
         timeout=timeout,
         session_id=session_id,
         runner=name,
     )
+
+
+def _combined_order_file(role_file: Path, order_file: Path) -> Path:
+    """A prompt file that carries the role text ahead of the work order.
+
+    droid takes the role as a system-prompt file; the other adapters take one
+    order file, so the role prompt is prepended here instead of being dropped.
+    """
+    role = role_file.read_text(encoding="utf-8").rstrip()
+    order = order_file.read_text(encoding="utf-8")
+    combined = order_file.with_name("order-with-role.md")
+    combined.write_text(role + "\n\n" + order, encoding="utf-8", newline="\n")
+    return combined
 
 
 def _append_failure(order_file: Path, failure_text: str) -> None:

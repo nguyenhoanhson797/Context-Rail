@@ -89,7 +89,6 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     key = required(args.get("key"), "a dispatch key", action="dispatch")
     profile_name = _optional(args.get("profile")) or IMPL_ROLE
     intent = _optional(args.get("intent")) or ""
-
     replayed = _replayed(store, key, item, profile_name, expect)
     if replayed is not None:
         return replayed
@@ -116,6 +115,10 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"profile": profile_name, "recipe": profile.recipe},
         )
     droid = droid_profile(profile, name=profile_name)
+    from context_rail.runner.protocol import runner_name
+
+    current_runner = runner_name(profile)
+    prior_session = local_dispatch.read_session(store, slug, current_runner)
     budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     facts, used_seconds, used_attempts = _run_facts(index, slug)
     refusal = launch_refusal(facts, budget)
@@ -218,6 +221,7 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             skill_pins=skill_pins(ctx, profile),
             used_seconds=used_seconds,
             max_attempts=max(1, effective_attempts(budget) - used_attempts),
+            session=prior_session,
         )
         role_file, order_file = _write_prompts(ctx, plan, rel, intent)
         return _execute(plan, role_file, order_file)
@@ -323,7 +327,7 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
         "commits_changed": [],
         "capture": {"complete": True, "reason": None, "omitted": 0},
     }
-    session: str | None = None
+    session: str | None = plan.session
     started_at = now_iso()
     flight_started = time.monotonic()
     deadline = max(1.0, effective_seconds(plan.budget) - plan.used_seconds)
@@ -362,7 +366,7 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
             role_file=role_file,
             order_file=order_file,
             timeout=min(remaining, deadline),
-            session_id=session if number > 1 else None,
+            session_id=session,
             failure_text=retry_text,
         )
         duration = round(time.monotonic() - clock, 3)
@@ -405,6 +409,9 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
 
     verified = bool(attempts) and attempts[-1]["status"] == "verified"
     status = "verified" if verified else "failed"
+    from context_rail.runner.protocol import runner_name
+
+    local_dispatch.write_session(plan.store, plan.slug, runner_name(plan.profile), session)
     ended_at = now_iso()
     total_seconds = round(time.monotonic() - flight_started, 3)
     candidate = _candidate(plan)

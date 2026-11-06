@@ -137,6 +137,44 @@ def progress_path(store: Path, dispatch_id: str) -> Path:
     return local_dir(Path(store)) / DISPATCH_DIR / f"{_dispatch_id(dispatch_id)}.json"
 
 
+def session_path(store: Path, item: str) -> Path:
+    """The local note that remembers an Item's last agent session."""
+    return local_dir(Path(store)) / "sessions" / f"{_slug(item)}.json"
+
+
+def read_session(store: Path, item: str, runner: str) -> str | None:
+    """The previous session id for this Item and runner, or None.
+
+    A session belongs to the CLI that created it, so a session recorded under
+    another runner is ignored rather than continued into a different tool.
+    """
+    from context_rail.runner.control import read_control
+
+    payload = read_control(
+        session_path(store, item), identity=_slug(item), key="item"
+    )
+    if not payload or payload.get("corrupt"):
+        return None
+    if payload.get("runner") != runner:
+        return None
+    session = payload.get("session")
+    return session if isinstance(session, str) and session else None
+
+
+def write_session(store: Path, item: str, runner: str, session: str | None) -> None:
+    """Remember the session a launch reported, for the next dispatch."""
+    from context_rail.runner.control import merge_control
+
+    if not session:
+        return
+    merge_control(
+        session_path(store, item),
+        identity=_slug(item),
+        key="item",
+        values={"runner": runner, "session": session},
+    )
+
+
 def review_paths(store: Path, item: str, review_id: str) -> DispatchPaths:
     """The validated worktree path and branch name for one review."""
     slug = _slug(item)

@@ -72,6 +72,7 @@ class _Plan:
     skill_pins: list[dict[str, Any]]
     used_seconds: float
     max_attempts: int
+    session: str | None = None
 
 
 def _optional(value: Any) -> str | None:

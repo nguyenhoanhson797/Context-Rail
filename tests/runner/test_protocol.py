@@ -166,6 +166,20 @@ def test_prompt_adapter_args_can_be_overridden(
     assert "ROLE" in argv[4]
 
 
+def test_a_file_adapter_prompt_carries_the_role_ahead_of_the_order(tmp_path) -> None:
+    from context_rail.runner.protocol import _combined_order_file
+
+    role = tmp_path / "role.md"
+    order = tmp_path / "order.md"
+    role.write_text("ROLE PROMPT", encoding="utf-8")
+    order.write_text("ORDER BODY", encoding="utf-8")
+    combined = _combined_order_file(role, order)
+    text = combined.read_text(encoding="utf-8")
+    assert text.startswith("ROLE PROMPT")
+    assert text.endswith("ORDER BODY")
+    assert combined.parent == order.parent
+
+
 def test_a_malformed_args_override_is_refused(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

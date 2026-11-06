@@ -238,6 +238,59 @@ def test_a_dispatch_without_intent_has_no_intent_section(
 # ── retries and escalation ────────────────────────────────────────────────
 
 
+def test_a_second_dispatch_continues_the_items_session(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    from context_rail.gateway.gateway import invoke
+
+    first = dispatch(leaf_item, "session-1")
+    assert first["ok"], first
+    session = fake_droid.session_ids()[0]
+    assert "-s" not in fake_droid.log()[0]["argv"]
+
+    shown = invoke("show", {"slug": leaf_item.slug}, store=leaf_item.store, actor="cto")
+    second = invoke(
+        "dispatch",
+        {
+            "item": leaf_item.slug,
+            "expect": shown["value"]["doc"]["etag"],
+            "key": "session-2",
+        },
+        store=leaf_item.store,
+        actor="cto",
+    )
+    assert second["ok"], second
+    argv = fake_droid.log()[1]["argv"]
+    assert argv[argv.index("-s") + 1] == session
+
+
+def test_a_session_from_another_runner_is_not_continued(
+    leaf_item, fake_droid, droid_env, monkeypatch
+) -> None:
+    from context_rail.gateway.gateway import invoke
+    from context_rail.runner import dispatch as local_dispatch
+
+    first = dispatch(leaf_item, "runner-1")
+    assert first["ok"], first
+    local_dispatch.write_session(leaf_item.store, leaf_item.slug, "codex", "codex-session")
+
+    monkeypatch.setenv("RAIL_RUNNER", "droid")
+    shown = invoke("show", {"slug": leaf_item.slug}, store=leaf_item.store, actor="cto")
+    second = invoke(
+        "dispatch",
+        {
+            "item": leaf_item.slug,
+            "expect": shown["value"]["doc"]["etag"],
+            "key": "runner-2",
+        },
+        store=leaf_item.store,
+        actor="cto",
+    )
+    assert second["ok"], second
+    argv = fake_droid.log()[1]["argv"]
+    assert "-s" not in argv
+
+
 def test_retry_continues_the_same_session(leaf_item, fake_droid, droid_env) -> None:
     fake_droid.set_behaviors(
         [
