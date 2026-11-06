@@ -7,6 +7,7 @@ imported only when a tool is invoked.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, NamedTuple
 
 from context_rail.core.defaults import DEFAULT_PACK
@@ -29,6 +30,7 @@ __all__ = [
     "Param",
     "Tool",
     "canonical_tool",
+    "daemon_eligible",
 ]
 
 
@@ -42,6 +44,8 @@ class Param(NamedTuple):
     help: str = ""
     positional: bool = False
     repeat: bool = False
+    #: Names a location the caller may give relative to its own directory.
+    path: bool = False
 
 
 class Tool(NamedTuple):
@@ -54,6 +58,23 @@ class Tool(NamedTuple):
     handler: str
     decision: str = "cto-alone"
     hidden: bool = False
+    #: A long-lived daemon may serve this tool. Default-deny: a tool is flagged
+    #: only after its handler is shown to read nothing of the caller's
+    #: environment or working directory and to run no process.
+    daemon: bool = False
+
+
+def daemon_eligible(tool: Tool, supplied: Mapping[str, Any]) -> bool:
+    """Whether a daemon may serve this call: a flagged tool with no path argument.
+
+    A daemon's working directory is not the caller's, so a call that names a
+    file or folder runs in the caller's own process instead.
+    """
+    if not tool.daemon:
+        return False
+    return not any(
+        param.path and supplied.get(param.name) is not None for param in tool.params
+    )
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -62,12 +83,12 @@ TOOLS: tuple[Tool, ...] = (
         summary="Reconcile a project to an onboarded store, or enter one picture source.",
         permission="write",
         params=(
-            Param("dir", "str", help="project directory (default: the current one)"),
+            Param("dir", "str", help="project directory (default: the current one)", path=True),
             Param("pack", "str", help="pack name (default: the store's pack, then basic)"),
-            Param("root", "str", default="context-rail", help="store folder inside the project"),
+            Param("root", "str", default="context-rail", help="store folder inside the project", path=True),
             Param("interview", "bool", help="ask the picture questions in a terminal"),
-            Param("answers_file", "str", help="JSON answers written by the human"),
-            Param("draft_file", "str", help="JSON picture proposed by the CTO"),
+            Param("answers_file", "str", help="JSON answers written by the human", path=True),
+            Param("draft_file", "str", help="JSON picture proposed by the CTO", path=True),
             Param("confirm", "str", help="the typed phrase APPROVE charter"),
             Param("scaffold", "bool", help="write only the skeleton, as before"),
             Param("no_approve", "bool", help="leave approval for a later run"),
@@ -84,9 +105,9 @@ TOOLS: tuple[Tool, ...] = (
         summary="Import a v1/v2 legacy store into a fresh v3 store in one commit.",
         permission="human",
         params=(
-            Param("source", "str", required=True, help="v1 or v2 legacy store folder"),
-            Param("dir", "str", required=True, help="project directory for the new store"),
-            Param("root", "str", default="context-rail", help="store folder inside the project"),
+            Param("source", "str", required=True, help="v1 or v2 legacy store folder", path=True),
+            Param("dir", "str", required=True, help="project directory for the new store", path=True),
+            Param("root", "str", default="context-rail", help="store folder inside the project", path=True),
             Param("pack", "str", default=DEFAULT_PACK, help="pack name"),
             Param("dry_run", "bool", default=False, help="plan without writing"),
             Param("key", "str", help="idempotency key"),
@@ -116,7 +137,7 @@ TOOLS: tuple[Tool, ...] = (
         params=(
             Param("slug", "str", required=True, positional=True, help="check slug"),
             Param("target", "str", help="the Item slug this check verifies"),
-            Param("spec_file", "str", required=True, help="strict JSON check spec"),
+            Param("spec_file", "str", required=True, help="strict JSON check spec", path=True),
             Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("expect", "str", required=True, help="current etag, or absent on create"),
             Param("key", "str", help="idempotency key"),
@@ -129,7 +150,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("target", "str", required=True, positional=True, help="check or Item slug"),
-            Param("worktree", "str", help="the project checkout or a dispatch worktree"),
+            Param("worktree", "str", help="the project checkout or a dispatch worktree", path=True),
             Param("verdict", "str", help="pass or fail, for a human check"),
             Param("evidence", "str", repeat=True, help="evidence Record id"),
             Param("confirm", "str", help="the typed phrase PASS or FAIL <check>"),
@@ -183,7 +204,7 @@ TOOLS: tuple[Tool, ...] = (
         params=(
             Param("item", "str", positional=True, help="the Item the run worked on"),
             Param("run", "str", required=True, help="the run's Record id"),
-            Param("report_file", "str", required=True, help="strict JSON report file"),
+            Param("report_file", "str", required=True, help="strict JSON report file", path=True),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.reports:report",
@@ -221,6 +242,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("item_limit", "int", default=20, help="entries per section (1-100)"),
         ),
         handler="context_rail.gateway.handlers.cto:brief",
+        daemon=True,
     ),
     Tool(
         name="cto tick",
@@ -242,6 +264,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("max_chars", "int", default=12000, help="summary budget (100-32000)"),
         ),
         handler="context_rail.gateway.handlers.views:digest",
+        daemon=True,
     ),
     Tool(
         name="ledger",
@@ -254,6 +277,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("limit", "int", default=20, help="rows (1-100)"),
         ),
         handler="context_rail.gateway.handlers.views:ledger",
+        daemon=True,
     ),
     Tool(
         name="adapters sync",
@@ -295,7 +319,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("name", "str", required=True, help="new pack name"),
-            Param("from", "str", default=DEFAULT_PACK, help="pack to copy"),
+            Param("from", "str", default=DEFAULT_PACK, help="pack to copy", path=True),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.packs:pack_create",
@@ -384,7 +408,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("base", "str", required=True, positional=True, help="the merge base file"),
             Param("ours", "str", required=True, positional=True, help="the file Git writes %A into"),
             Param("theirs", "str", required=True, positional=True, help="the incoming file"),
-            Param("path", "str", required=True, positional=True, help="the store-relative path"),
+            Param("path", "str", required=True, positional=True, help="the store-relative path", path=True),
         ),
         handler="context_rail.gateway.handlers.sync:sync_driver",
         decision="cto-alone",
@@ -412,11 +436,12 @@ TOOLS: tuple[Tool, ...] = (
             Param("rel", "str", repeat=True, help="relation as REL=SLUG"),
             Param("tag", "str", repeat=True, help="tag to add"),
             Param("set", "str", repeat=True, help="frontmatter field as KEY=VALUE"),
-            Param("body_file", "str", help="file whose text becomes the body"),
+            Param("body_file", "str", help="file whose text becomes the body", path=True),
             Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.docs:add",
+        daemon=True,
     ),
     Tool(
         name="update",
@@ -427,11 +452,12 @@ TOOLS: tuple[Tool, ...] = (
             Param("expect", "str", required=True, help="current etag"),
             Param("set", "str", repeat=True, help="frontmatter field as KEY=VALUE"),
             Param("tag", "str", repeat=True, help="tag edit as +TAG or -TAG"),
-            Param("body_file", "str", help="file whose text replaces the body"),
+            Param("body_file", "str", help="file whose text replaces the body", path=True),
             Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.docs:update",
+        daemon=True,
     ),
     Tool(
         name="move",
@@ -446,6 +472,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.docs:move",
+        daemon=True,
     ),
     Tool(
         name="link",
@@ -462,6 +489,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.docs:link",
+        daemon=True,
     ),
     Tool(
         name="rename",
@@ -501,6 +529,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("limit", "int", default=50, help="page size (1-100)"),
         ),
         handler="context_rail.gateway.handlers.views:find",
+        daemon=True,
     ),
     Tool(
         name="show",
@@ -511,6 +540,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("body_chars", "int", default=4000, help="body characters to return"),
         ),
         handler="context_rail.gateway.handlers.views:show",
+        daemon=True,
     ),
     Tool(
         name="types",
@@ -521,6 +551,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("limit", "int", default=4000, help="character budget"),
         ),
         handler="context_rail.gateway.handlers.surface:types",
+        daemon=True,
     ),
     Tool(
         name="next",
@@ -533,6 +564,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("focus_only", "bool", help="only items inside the focus"),
         ),
         handler="context_rail.gateway.handlers.surface:next",
+        daemon=True,
     ),
     Tool(
         name="model",
@@ -540,6 +572,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="read",
         params=(),
         handler="context_rail.gateway.handlers.surface:model",
+        daemon=True,
     ),
     Tool(
         name="explain",
@@ -550,6 +583,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("limit", "int", default=8000, help="character budget"),
         ),
         handler="context_rail.gateway.handlers.surface:explain",
+        daemon=True,
     ),
     Tool(
         name="why",
@@ -559,6 +593,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("slug", "str", required=True, positional=True, help="item slug"),
         ),
         handler="context_rail.gateway.handlers.surface:why",
+        daemon=True,
     ),
     Tool(
         name="status",
@@ -566,6 +601,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="read",
         params=(),
         handler="context_rail.gateway.handlers.views:status",
+        daemon=True,
     ),
     Tool(
         name="reindex",
@@ -593,6 +629,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("warnings_as_errors", "bool", help="fail on warnings too"),
         ),
         handler="context_rail.gateway.handlers.maintenance:ci",
+        daemon=True,
     ),
 )
 
