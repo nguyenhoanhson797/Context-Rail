@@ -184,9 +184,11 @@ function Profiles({ actors, options, busy, run }: {
         <Row title="Tools" description="The tool ids this worker may use; the reviewer may hold only read tools.">
           <Chips label="Tools" options={tools} selected={selectedTools} onToggle={item => setSelectedTools(current => toggle(current, item))} />
         </Row>
-        <Row title="Allowed methods" description="Narrowing only: a profile can shrink its actor's methods, never widen them.">
+        <details className="sblock" style={{ padding: 12 }}>
+          <summary className="t rail-settings-label">Advanced: allowed methods ({selectedMethods.length} selected)</summary>
+          <div className="d rail-list-sub" style={{ margin: '6px 0 8px' }}>Narrowing only: a profile can shrink its actor&apos;s methods, never widen them.</div>
           <Chips label="Allowed methods" options={methods} selected={selectedMethods} onToggle={item => setSelectedMethods(current => toggle(current, item))} />
-        </Row>
+        </details>
         <Row title="Attempts" description="Worker attempts this profile allows; raising a budget needs a human.">
           <input className="input" aria-label="Attempts" value={attempts} onChange={e => setAttempts(e.target.value)} />
         </Row>
