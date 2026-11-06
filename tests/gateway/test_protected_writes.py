@@ -413,6 +413,61 @@ def test_an_unprotected_planning_write_stays_cto_alone(approved_store: Path) -> 
     assert is_ok(result), result
 
 
+def test_cto_cannot_increase_a_profile_budget(approved_store: Path) -> None:
+    store = approved_store
+    shown = invoke("show", {"slug": "implementer"}, store=store, actor="human")
+    assert is_ok(shown), shown
+    before = shown["value"]["doc"]["fields"].get("budgets")
+    if not isinstance(before, dict) or not isinstance(before.get("seconds"), int):
+        before = {"attempts": 1, "seconds": 10, "tokens": None, "credits": None}
+    increased = {**before, "seconds": int(before["seconds"]) + 100}
+    refused = invoke(
+        "update",
+        {
+            "slug": "implementer",
+            "set": [f"budgets={increased}"],
+            "expect": _etag(store, "implementer"),
+        },
+        store=store,
+        actor="cto",
+    )
+    assert refused["error"]["code"] == "PERMISSION_DENIED", refused
+
+    human = invoke(
+        "update",
+        {
+            "slug": "implementer",
+            "set": [f"budgets={increased}"],
+            "expect": _etag(store, "implementer"),
+            "confirm": "APPROVE implementer",
+        },
+        store=store,
+        actor="human",
+    )
+    assert is_ok(human), human
+
+
+def test_cto_may_lower_a_profile_budget(approved_store: Path) -> None:
+    store = approved_store
+    shown = invoke("show", {"slug": "implementer"}, store=store, actor="human")
+    assert is_ok(shown), shown
+    before = shown["value"]["doc"]["fields"].get("budgets")
+    if not isinstance(before, dict) or not isinstance(before.get("seconds"), int):
+        before = {"attempts": 4, "seconds": 7200, "tokens": None, "credits": None}
+    lowered = {**before, "seconds": max(1, int(before["seconds"]) - 100)}
+    result = invoke(
+        "update",
+        {
+            "slug": "implementer",
+            "set": [f"budgets={lowered}"],
+            "expect": _etag(store, "implementer"),
+        },
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(result), result
+
+
 def test_a_profile_can_only_use_its_allowed_methods(approved_store: Path) -> None:
     refused = invoke(
         "add", {"preset": "task", "title": "Worker item"}, store=approved_store, actor="reviewer"

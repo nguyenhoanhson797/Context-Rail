@@ -197,15 +197,18 @@ def protected_change(
         )
     rel = _resolved(context, params)
     acceptance = rel is not None and is_acceptance_path(context.index, rel)
+    budget_increase = False
     if op == "update":
-        requested = _requested_fields(params.get("set")).get("acceptance")
-        acceptance = acceptance or requested is True
+        requested = _requested_fields(params.get("set"))
+        acceptance = acceptance or requested.get("acceptance") is True
+        if rel is not None:
+            budget_increase = _budget_increase(context, rel, requested)
     return rights.ChangeFacts(
         method=op,
         protected=rel is not None and rel in protected_paths(context),
         acceptance=acceptance,
         decision_id="dependency" if relation == "depends_on" else None,
-        budget_increase=False,
+        budget_increase=budget_increase,
     )
 
 
@@ -263,6 +266,61 @@ def _resolved(context: Context, params: dict[str, Any]) -> str | None:
         return resolve_unique(context.index, slug)
     except (LookupError, WriteRefused):
         return None
+
+
+def _budget_increase(
+    context: Context, rel: str, requested: dict[str, Any]
+) -> bool:
+    """True when a requested profile update raises any budget cap.
+
+    Only applies to actor (profile) docs. ``None`` means unbounded: a
+    smaller cap becoming ``None`` (or a larger value) is an increase;
+    ``None`` becoming a value is a decrease (stricter). Comparison is
+    value-wise on `attempts`, `seconds`, `tokens`, `credits` under
+    `budgets`, and `max_chars`/`max_docs` under `budget`.
+    """
+    if not requested:
+        return False
+    has_budget_keys = "budgets" in requested or "budget" in requested
+    if not has_budget_keys:
+        return False
+    row = context.index.conn.execute(
+        "SELECT primitive FROM docs WHERE path = ?", (rel,)
+    ).fetchone()
+    if row is None or row[0] != "actor":
+        return False
+    stored: dict[str, Any] = {}
+    for key, value in context.index.conn.execute(
+        "SELECT key, value_json FROM fields WHERE path = ?", (rel,)
+    ):
+        stored[key] = value
+    def _json(raw: str) -> Any:
+        try:
+            return json.loads(raw)
+        except ValueError:
+            return None
+    def _increased(before: Any, after: Any) -> bool:
+        if after is None and before is not None:
+            return True
+        if before is None or after is None:
+            return False
+        if isinstance(before, (int, float)) and isinstance(after, (int, float)):
+            if isinstance(before, bool) or isinstance(after, bool):
+                return False
+            return after > before
+        return False
+    for group in ("budgets", "budget"):
+        if group not in requested:
+            continue
+        new_group = requested.get(group)
+        old_raw = stored.get(group)
+        old_group = _json(old_raw) if isinstance(old_raw, str) else old_raw
+        if not isinstance(new_group, dict) or not isinstance(old_group, dict):
+            continue
+        for cap in ("attempts", "seconds", "tokens", "credits", "max_chars", "max_docs"):
+            if cap in new_group and _increased(old_group.get(cap), new_group.get(cap)):
+                return True
+    return False
 
 
 def _requested_fields(values: Any) -> dict[str, Any]:
