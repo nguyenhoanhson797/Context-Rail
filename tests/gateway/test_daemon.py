@@ -18,7 +18,9 @@ def generated_store(tmp_path: Path) -> Path:
     return make_store(tmp_path, 20)
 
 
-def test_daemon_serves_a_read_and_reuses_the_warm_context(tmp_path: Path) -> None:
+def test_daemon_serves_a_read_and_reuses_the_warm_context(
+    tmp_path: Path, daemon_enabled: None
+) -> None:
     store = make_store(tmp_path, 20)
     server = _DaemonServer(store)
     port = server.start()
@@ -38,7 +40,9 @@ def test_daemon_serves_a_read_and_reuses_the_warm_context(tmp_path: Path) -> Non
     assert daemon_endpoint(store).is_file() is False
 
 
-def test_a_wrong_token_is_refused_and_the_cli_falls_back(tmp_path: Path) -> None:
+def test_a_wrong_token_is_refused_and_the_cli_falls_back(
+    tmp_path: Path, daemon_enabled: None
+) -> None:
     store = make_store(tmp_path, 20)
     server = _DaemonServer(store)
     server.start()

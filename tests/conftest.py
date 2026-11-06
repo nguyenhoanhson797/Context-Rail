@@ -88,6 +88,18 @@ def isolated_worktree_root(
         shutil.rmtree(root, ignore_errors=True)
 
 
+@pytest.fixture(autouse=True)
+def no_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The suite runs direct unless a test asks for the daemon."""
+    monkeypatch.setenv("RAIL_NO_DAEMON", "1")
+
+
+@pytest.fixture
+def daemon_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let this test reach a daemon: clears the suite-wide switch."""
+    monkeypatch.delenv("RAIL_NO_DAEMON", raising=False)
+
+
 @pytest.fixture
 def basic_pack(tmp_path: Path) -> Pack:
     """The built-in ``basic`` pack, loaded for an empty store."""

@@ -11,7 +11,7 @@ import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -29,17 +29,26 @@ DEFAULT_FAKE_BEHAVIORS = ("success",)
 
 
 def run_cli(
-    cwd: Path, *args: str, store: Path | None = None
+    cwd: Path,
+    *args: str,
+    store: Path | None = None,
+    env: Mapping[str, str | None] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run ``py -m context_rail`` in ``cwd`` against the repo's ``src`` tree.
 
     The global ``--store`` goes before the subcommand when ``store`` is given.
     ``RAIL_ACTOR`` is dropped from the child environment so a developer's shell
-    never changes which actor a test's records name.
+    never changes which actor a test's records name. ``env`` overrides that:
+    a string sets a variable in the child, ``None`` removes it.
     """
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(_REPO_SRC)
-    env.pop("RAIL_ACTOR", None)
+    child = dict(os.environ)
+    child["PYTHONPATH"] = str(_REPO_SRC)
+    child.pop("RAIL_ACTOR", None)
+    for name, value in (env or {}).items():
+        if value is None:
+            child.pop(name, None)
+        else:
+            child[name] = value
     command = [sys.executable, "-m", "context_rail"]
     if store is not None:
         command += ["--store", str(store)]
@@ -50,7 +59,7 @@ def run_cli(
         capture_output=True,
         text=True,
         encoding="utf-8",
-        env=env,
+        env=child,
         input="",
         timeout=600,
     )
