@@ -22,6 +22,7 @@ def read(context: Any, view: str) -> dict[str, Any]:
         "scope_score": _scope_score,
         "understanding": _understanding,
         "doctor": _doctor,
+        "config_options": _config_options,
     }
     handler = handlers.get(view)
     if handler is None:
@@ -174,4 +175,28 @@ def _doctor(context: Any) -> dict[str, Any]:
         "status": "ok",
         "issues": issues,
         "counts": report["counts"],
+    }
+
+
+def _config_options(context: Any) -> dict[str, Any]:
+    """The engine's profile vocabularies, so a form offers choices.
+
+    These are engine facts, not pack facts: the same adapters and tool ids
+    exist for every project, and every harness is one of the runners.
+    """
+    from context_rail.model.cto import (
+        PROFILE_AUTO,
+        PROFILE_EFFORTS,
+        PROFILE_METHODS,
+        PROFILE_RUNNERS,
+        TOOL_IDS,
+    )
+
+    return {
+        "status": "ok",
+        "runners": list(PROFILE_RUNNERS),
+        "efforts": [value for value in PROFILE_EFFORTS if value is not None],
+        "autos": [value for value in PROFILE_AUTO if value is not None],
+        "tools": list(TOOL_IDS),
+        "methods": list(PROFILE_METHODS),
     }
