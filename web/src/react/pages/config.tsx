@@ -126,88 +126,95 @@ function Profiles({ actors, options, busy, run }: {
   actors: Data[]; options: Data; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
+  const [sel, setSel] = useState('');
+  const doc = actors.find(d => text(d.id) === sel) ?? actors[0];
+  return (
+    <section className="sblock" style={{ marginTop: 0 }}>
+      <h2>Profile</h2>
+      {actors.length && doc ? <>
+        <Row title="Which actor" description="The document this form edits.">
+          <select className="input" aria-label="Profile" value={text(doc.id)} onChange={e => setSel(e.target.value)}>
+            {actors.map(a => <option key={text(a.id)} value={text(a.id)}>{text(a.title, text(a.id))}</option>)}
+          </select>
+        </Row>
+        <ProfileForm key={text(doc.id)} doc={doc} options={options} busy={busy} run={run} />
+      </> : <p className="faint" style={{ fontSize: 12 }}>No profiles in this store yet.</p>}
+    </section>
+  );
+}
+
+function ProfileForm({ doc, options, busy, run }: {
+  doc: Data; options: Data; busy: boolean;
+  run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
+}) {
   const runners = strings(options.runners);
-  const efforts = strings(options.efforts);
   const autos = strings(options.autos);
   const tools = strings(options.tools);
   const methods = strings(options.methods);
-
-  const [sel, setSel] = useState('');
-  const doc = actors.find(d => text(d.id) === sel) ?? actors[0];
-  const f = object(doc?.fields);
-  const b = budgetOf(doc ?? {});
+  const f = object(doc.fields);
+  const b = budgetOf(doc);
 
   const [model, setModel] = useState(text(f.model));
-  const [effort, setEffort] = useState(text(f.effort));
   const [auto, setAuto] = useState(text(f.auto));
   const [runner, setRunner] = useState(text(f.runner, runners[0] ?? 'droid'));
   const [selectedTools, setSelectedTools] = useState<string[]>(strings(f.tools));
   const [selectedMethods, setSelectedMethods] = useState<string[]>(strings(f.allowed_methods));
   const [attempts, setAttempts] = useState(num(b.attempts));
   const [seconds, setSeconds] = useState(num(b.seconds));
+  const [notice, setNotice] = useState('');
 
   const toggle = (list: string[], item: string) =>
     list.includes(item) ? list.filter(entry => entry !== item) : [...list, item];
 
   const save = () => {
-    if (!doc) return;
     const set: string[] = [];
     if (model) set.push(`model=${model}`);
-    set.push(`effort=${effort || 'null'}`, `auto=${auto || 'null'}`);
+    set.push(`auto=${auto || 'null'}`);
     if (runner) set.push(`runner=${runner}`);
     set.push(`tools=${JSON.stringify(selectedTools)}`);
     set.push(`allowed_methods=${JSON.stringify(selectedMethods)}`);
     set.push(`budgets={ attempts: ${attempts || 'null'}, seconds: ${seconds || 'null'} }`);
+    setNotice('');
     run('update', { slug: text(doc.id), set, expect: text(doc.etag) });
   };
 
   return (
-    <section className="sblock" style={{ marginTop: 0 }}>
-      <h2>Profile</h2>
-      {actors.length ? <>
-        <Row title="Which actor" description="The document this form edits.">
-          <select className="input" aria-label="Profile" value={text(doc?.id)} onChange={e => setSel(e.target.value)}>
-            {actors.map(a => <option key={text(a.id)} value={text(a.id)}>{text(a.title, text(a.id))}</option>)}
-          </select>
+    <>
+      <Row title="Autonomy" description="Only the CTO recipe may run at high.">
+        <Segmented label="Autonomy" options={autos} value={auto} onChange={setAuto} allowEmpty />
+      </Row>
+      <details className="sblock" style={{ padding: 12 }}>
+        <summary className="t rail-settings-label">Advanced: launch defaults (model and runner)</summary>
+        <div className="d rail-list-sub" style={{ margin: '6px 0 10px' }}>
+          The profile declares a default; the harness decides at launch. <span className="mono">RAIL_RUNNER</span> overrides the runner for every launch in this environment
+          {text(options.runner_override) ? <> (currently <span className="mono">{text(options.runner_override)}</span>)</> : ' (none set)'}, and the argv that actually ran is kept in the run record.
+        </div>
+        <Row title="Model" description="The model id this profile asks its runner for; model names belong to the harness.">
+          <input className="input" aria-label="Model" value={model} onChange={e => setModel(e.target.value)} />
         </Row>
-        <Row title="Effort" description="Passed through to the runner when it supports it.">
-          <Segmented label="Effort" options={efforts} value={effort} onChange={setEffort} allowEmpty />
+        <Row title="Runner" description="Declared default adapter; a launch-time override wins.">
+          <Segmented label="Runner" options={runners} value={runner} onChange={setRunner} />
         </Row>
-        <Row title="Autonomy" description="Only the CTO recipe may run at high.">
-          <Segmented label="Autonomy" options={autos} value={auto} onChange={setAuto} allowEmpty />
-        </Row>
-        <details className="sblock" style={{ padding: 12 }}>
-          <summary className="t rail-settings-label">Advanced: launch defaults (model and runner)</summary>
-          <div className="d rail-list-sub" style={{ margin: '6px 0 10px' }}>
-            The profile declares a default; the harness decides at launch. <span className="mono">RAIL_RUNNER</span> overrides the runner for every launch in this environment
-            {text(options.runner_override) ? <> (currently <span className="mono">{text(options.runner_override)}</span>)</> : ' (none set)'}, and the argv that actually ran is kept in the run record.
-          </div>
-          <Row title="Model" description="The model id this profile asks its runner for; model names belong to the harness.">
-            <input className="input" aria-label="Model" value={model} onChange={e => setModel(e.target.value)} />
-          </Row>
-          <Row title="Runner" description="Declared default adapter; a launch-time override wins.">
-            <Segmented label="Runner" options={runners} value={runner} onChange={setRunner} />
-          </Row>
-        </details>
-        <Row title="Tools" description="The tool ids this worker may use; the reviewer may hold only read tools.">
-          <Chips label="Tools" options={tools} selected={selectedTools} onToggle={item => setSelectedTools(current => toggle(current, item))} />
-        </Row>
-        <details className="sblock" style={{ padding: 12 }}>
-          <summary className="t rail-settings-label">Advanced: allowed methods ({selectedMethods.length} selected)</summary>
-          <div className="d rail-list-sub" style={{ margin: '6px 0 8px' }}>Narrowing only: a profile can shrink its actor&apos;s methods, never widen them.</div>
-          <Chips label="Allowed methods" options={methods} selected={selectedMethods} onToggle={item => setSelectedMethods(current => toggle(current, item))} />
-        </details>
-        <Row title="Attempts" description="Worker attempts this profile allows; raising a budget needs a human.">
-          <input className="input" aria-label="Attempts" value={attempts} onChange={e => setAttempts(e.target.value)} />
-        </Row>
-        <Row title="Seconds" description="Worker runtime this profile allows; raising a budget needs a human.">
-          <input className="input" aria-label="Seconds" value={seconds} onChange={e => setSeconds(e.target.value)} />
-        </Row>
-        <Row title="Save profile" description="Version bumps once; the change is one gateway write.">
-          <Button disabled={busy} onClick={save}>Save profile</Button>
-        </Row>
-      </> : <p className="faint" style={{ fontSize: 12 }}>No profiles in this store yet.</p>}
-    </section>
+      </details>
+      <Row title="Tools" description="The tool ids this worker may use; the reviewer may hold only read tools.">
+        <Chips label="Tools" options={tools} selected={selectedTools} onToggle={item => setSelectedTools(current => toggle(current, item))} />
+      </Row>
+      <details className="sblock" style={{ padding: 12 }}>
+        <summary className="t rail-settings-label">Advanced: allowed methods ({selectedMethods.length} selected)</summary>
+        <div className="d rail-list-sub" style={{ margin: '6px 0 8px' }}>Narrowing only: a profile can shrink its actor&apos;s methods, never widen them.</div>
+        <Chips label="Allowed methods" options={methods} selected={selectedMethods} onToggle={item => setSelectedMethods(current => toggle(current, item))} />
+      </details>
+      <Row title="Attempts" description="Worker attempts this profile allows; raising a budget needs a human.">
+        <input className="input" aria-label="Attempts" value={attempts} onChange={e => setAttempts(e.target.value)} />
+      </Row>
+      <Row title="Seconds" description="Worker runtime this profile allows; raising a budget needs a human.">
+        <input className="input" aria-label="Seconds" value={seconds} onChange={e => setSeconds(e.target.value)} />
+      </Row>
+      {notice ? <p className="faint" style={{ fontSize: 12 }}>{notice}</p> : null}
+      <Row title="Save profile" description="Version bumps once; the change is one gateway write.">
+        <Button disabled={busy} onClick={save}>Save profile</Button>
+      </Row>
+    </>
   );
 }
 
@@ -215,15 +222,32 @@ function Skills({ skills, options, busy, run }: {
   skills: Data[]; options: Data; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
-  const toolIds = strings(options.tools);
   const [sel, setSel] = useState('');
   const doc = skills.find(d => text(d.id) === sel) ?? skills[0];
-  const f = object(doc?.fields);
+  return (
+    <section className="sblock" style={{ marginTop: 0 }}>
+      <h2>Skill</h2>
+      {skills.length && doc ? <>
+        <Row title="Which skill" description="The document this form edits.">
+          <select className="input" aria-label="Skill" value={text(doc.id)} onChange={e => setSel(e.target.value)}>
+            {skills.map(s => <option key={text(s.id)} value={text(s.id)}>{text(s.title, text(s.id))}</option>)}
+          </select>
+        </Row>
+        <SkillForm key={text(doc.id)} doc={doc} toolIds={toolIds} busy={busy} run={run} />
+      </> : <p className="faint" style={{ fontSize: 12 }}>No skills in this store yet.</p>}
+    </section>
+  );
+}
+
+function SkillForm({ doc, toolIds, busy, run }: {
+  doc: Data; toolIds: string[]; busy: boolean;
+  run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
+}) {
+  const f = object(doc.fields);
   const [desc, setDesc] = useState(text(f.description));
   const [tools, setTools] = useState<string[]>(strings(f.allowed_tools));
 
   const save = () => {
-    if (!doc) return;
     run('update', {
       slug: text(doc.id),
       set: [`description=${desc}`, `allowed_tools=${JSON.stringify(tools)}`],
@@ -232,14 +256,7 @@ function Skills({ skills, options, busy, run }: {
   };
 
   return (
-    <section className="sblock" style={{ marginTop: 0 }}>
-      <h2>Skill</h2>
-      {skills.length ? <>
-        <Row title="Which skill" description="The document this form edits.">
-          <select className="input" aria-label="Skill" value={text(doc?.id)} onChange={e => setSel(e.target.value)}>
-            {skills.map(s => <option key={text(s.id)} value={text(s.id)}>{text(s.title, text(s.id))}</option>)}
-          </select>
-        </Row>
+    <>
         <div className="srow rail-settings-item" style={{ alignItems: 'stretch' }}>
           <div style={{ flex: 1 }}>
             <div className="t rail-settings-label">Description</div>
@@ -253,8 +270,7 @@ function Skills({ skills, options, busy, run }: {
         <Row title="Save skill" description="The name stays pinned to the file stem; version bumps once.">
           <Button disabled={busy} onClick={save}>Save skill</Button>
         </Row>
-      </> : <p className="faint" style={{ fontSize: 12 }}>No skills in this store yet.</p>}
-    </section>
+    </>
   );
 }
 
