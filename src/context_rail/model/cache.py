@@ -20,9 +20,14 @@ _MAX_ENTRIES = 256
 _MAX_PROJECT_ENTRIES = 64
 
 
-def cached_model(source: Any, build: Callable[[], Any]) -> Any:
-    """Return the cached model for ``source``, rebuilding it if its content changed."""
-    key = _stat_key(source)
+def cached_model(source: Any, build: Callable[[], Any], *, packaged: bool = False) -> Any:
+    """Return the cached model for ``source``, rebuilding it if its content changed.
+
+    A ``packaged`` source ships inside the installed package and changes only
+    when the package is reinstalled, so it is keyed by stat alone and is never
+    read again just to key it.
+    """
+    key = _stat_key(source, content=not packaged)
     if key is None:
         return build()
     try:
@@ -64,14 +69,14 @@ def clear_project_cache() -> None:
     _CACHE_PROJECT.clear()
 
 
-def _stat_key(source: Any) -> tuple[Any, ...] | None:
+def _stat_key(source: Any, *, content: bool = True) -> tuple[Any, ...] | None:
     try:
         stat = source.stat()
-        content = sha256_hex(source.read_bytes())
+        digest = sha256_hex(source.read_bytes()) if content else ""
     except (AttributeError, OSError):
         return None
     try:
         label = str(source.resolve())
     except (AttributeError, OSError):
         label = str(source)
-    return (label, stat.st_mtime_ns, stat.st_size, content)
+    return (label, stat.st_mtime_ns, stat.st_size, digest)

@@ -264,7 +264,7 @@ def _load_pack(name: str, store: Path, *, seen: tuple[str, ...]) -> Pack:
     builtin = _builtin_pack(canonical)
     if builtin is None:
         _refuse(f"unknown pack {name!r}")
-    pack = cached_model(builtin, lambda: _parse_pack(_read_text(builtin), canonical))
+    pack = cached_model(builtin, lambda: _parse_pack(_read_text(builtin), canonical), packaged=True)
     resolved = _resolve_extends(pack, store, seen=( *seen, name))
     return replace(resolved, name=name)
 

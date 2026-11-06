@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from context_rail.model.cache import cached_model, cached_project, clear_project_cache
 from context_rail.model.compiler import compile_project, semantic_digest
 from context_rail.model.pack import load_pack
@@ -53,6 +55,19 @@ def test_a_same_size_edit_under_the_same_timestamp_is_not_served_stale(tmp_path:
     second = source.stat()
     assert (second.st_size, second.st_mtime_ns) == (first.st_size, first.st_mtime_ns)
     assert cached_model(source, source.read_bytes) == b"bbbb\n"
+
+
+def test_a_packaged_source_is_never_read_just_to_key_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "pack.yaml"
+    source.write_bytes(b"packaged\n")
+    reads: list[Path] = []
+    original = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: (reads.append(self), original(self))[1])
+    cached_model(source, lambda: "built", packaged=True)
+    cached_model(source, lambda: "built", packaged=True)
+    assert reads == []
 
 
 def test_an_unchanged_source_is_parsed_once(tmp_path: Path) -> None:
