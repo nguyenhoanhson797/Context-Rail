@@ -53,20 +53,21 @@ export function ConfigSettings({ snapshot, mutate, read, busy, refresh }: PagePr
         title="Configuration"
         description="Profiles, skills and charter. Every save goes through the gateway with the current etag."
       />
-      <nav className="set-nav rail-settings-nav" aria-label="Configuration" style={{ marginBottom: 20 }}>
+      <div className="seg rail-segmented" role="tablist" aria-label="Configuration" style={{ marginBottom: 20 }}>
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             type="button"
-            className={cn('sitem rail-nav-link', tab === key && 'on')}
-            aria-current={tab === key ? 'page' : undefined}
+            role="tab"
+            aria-selected={tab === key}
+            className={cn('rail-segment', tab === key && 'on rail-segment-on')}
             onClick={() => setTab(key)}
           >
-            <Icon className="i" size={15} strokeWidth={1.8} aria-hidden="true" />
-            <span>{label}</span>
+            <Icon className="i" size={14} strokeWidth={1.8} aria-hidden="true" />
+            {label}
           </button>
         ))}
-      </nav>
+      </div>
       {error ? <p role="alert" className="offline-bar" style={{ marginBottom: 12 }}>{error}</p> : null}
       {result ? (
         <section className="sblock">
