@@ -554,7 +554,7 @@ class _DaemonServer:
         while not self._stop.is_set():
             try:
                 conn, _ = sock.accept()
-            except socket.timeout:
+            except TimeoutError:
                 if time.monotonic() - self._last_active >= self._idle_s:
                     self._stop.set()
                 continue

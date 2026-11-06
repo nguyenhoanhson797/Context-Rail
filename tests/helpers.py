@@ -28,7 +28,12 @@ _JOIN_TIMEOUT = 30.0
 DEFAULT_FAKE_BEHAVIORS = ("success",)
 
 
-def _child_env(env: Mapping[str, str | None] | None) -> dict[str, str]:
+def child_env(env: Mapping[str, str | None] | None = None) -> dict[str, str]:
+    """The environment for a CLI child: this one, plus ``src`` on the path.
+
+    ``RAIL_ACTOR`` is dropped so a developer's shell never changes which actor a
+    test's records name. ``env`` overrides: a string sets, ``None`` removes.
+    """
     child = dict(os.environ)
     child["PYTHONPATH"] = str(_REPO_SRC)
     child.pop("RAIL_ACTOR", None)
@@ -62,7 +67,7 @@ def run_cli_probe(
     and YAML were imported by the time the command finished. The suite's daemon
     switch is removed from the child, so a daemon is used when one is live.
     """
-    child = _child_env({"RAIL_NO_DAEMON": None, **(env or {})})
+    child = child_env({"RAIL_NO_DAEMON": None, **(env or {})})
     command = [sys.executable, "-c", _PROBE]
     if store is not None:
         command += ["--store", str(store)]
@@ -101,7 +106,7 @@ def run_cli(
     never changes which actor a test's records name. ``env`` overrides that:
     a string sets a variable in the child, ``None`` removes it.
     """
-    child = _child_env(env)
+    child = child_env(env)
     command = [sys.executable, "-m", "context_rail"]
     if store is not None:
         command += ["--store", str(store)]

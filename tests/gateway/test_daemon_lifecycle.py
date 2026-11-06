@@ -110,11 +110,11 @@ class _Daemons:
     def wait_live(self, store: Path, *, other_than: int | None = None) -> int:
         if store not in self.stores:
             self.stores.append(store)
-        pid = _wait_for(
-            lambda: (lambda found: found if found != other_than else None)(_live_pid(store)),
-            10,
-            "a live daemon",
-        )
+        def replacement() -> int | None:
+            found = _live_pid(store)
+            return found if found != other_than else None
+
+        pid = _wait_for(replacement, 10, "a live daemon")
         self.pids.add(pid)
         return pid
 
