@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 import unicodedata
 
@@ -20,4 +19,8 @@ def slugify(text: str, max_len: int = 80) -> str:
 
 def sha256_hex(data: bytes) -> str:
     """Lowercase hex SHA-256 digest of ``data``."""
+    # Loading OpenSSL costs about 10 ms, and a store at the repository root
+    # never hashes, so the CLI fast path must not pay for it at import.
+    import hashlib
+
     return hashlib.sha256(data).hexdigest()

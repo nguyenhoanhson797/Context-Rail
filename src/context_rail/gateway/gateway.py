@@ -35,7 +35,7 @@ from context_rail.core.tool_names import (
     canonical_methods,
     canonical_tool,
 )
-from context_rail.gateway.tools import TOOLS, Param, Tool
+from context_rail.gateway.tools import TOOLS, Param, Tool, daemon_eligible
 from context_rail.gateway.daemon import NO_DAEMON_ENV
 from context_rail.kernel import rights
 from context_rail.kernel.lifecycle import category_of
@@ -74,41 +74,34 @@ def try_daemon_invoke(
 ) -> dict[str, Any] | None:
     """Try a live daemon for this store; ``None`` means run direct invoke.
 
-    The daemon is a cache of one invocation, never a second write path:
-    it still calls ``invoke()``. ``RAIL_NO_DAEMON`` and long-running
-    transports (``mcp serve``, ``ui serve``, ``sync driver``) always run
-    direct. A stale descriptor is a clean miss within ``DAEMON_TIMEOUT_MS``.
+    The daemon is a warm process, never a second write path: it still calls
+    ``invoke()``. Only a tool flagged for the daemon, called without a path
+    argument, is ever sent; every other call runs direct. ``RAIL_NO_DAEMON``
+    opts out. ``store=None`` means the store around the working directory.
     """
     if os.environ.get(NO_DAEMON_ENV):
         return None
     canonical = canonical_tool(name) if isinstance(name, str) else ""
-    if canonical in {"mcp serve", "ui serve", "sync driver"}:
-        return None
-    if store is None:
+    tool = _BY_NAME.get(canonical)
+    params = dict(args) if isinstance(args, dict) else {}
+    if tool is None or not daemon_eligible(tool, params):
         return None
     try:
-        from context_rail.gateway.daemon import daemon_alive, daemon_endpoint
-
-        store_path = Path(store)
-        if not daemon_alive(store_path):
-            return None
-        descriptor = daemon_endpoint(store_path)
-        if descriptor is None or not descriptor.is_file():
-            return None
-        import json
-
-        payload = json.loads(descriptor.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            return None
-        if not isinstance(payload.get("port"), int):
-            return None
-        from context_rail.gateway.daemon import try_daemon
-
-        return try_daemon(
-            store_path, canonical, dict(args or {}), actor, caller_actor_env()
-        )
-    except Exception:
+        found = Path(store) if store is not None else find_store(Path.cwd())
+    except (PathEscape, OSError):
         return None
+    if found is None:
+        return None
+    from context_rail.gateway.daemon import call_daemon
+
+    return call_daemon(
+        found,
+        canonical,
+        params,
+        actor=actor,
+        actor_env=caller_actor_env(),
+        read_only=tool.permission == "read",
+    )
 
 
 #: Tools that execute something; none of them may run before the human approves.

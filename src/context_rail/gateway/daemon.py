@@ -5,33 +5,42 @@ Context, so a checkout or a hand edit is seen at once. It is not a second
 write path: every call still goes through ``gateway.invoke()`` ->
 ``store/write.py:commit()``.
 The transport is TCP on 127.0.0.1, gated by a per-store token recorded in
-the descriptor, which never leaves the worktree's git dir. The CLI reads
-the descriptor and falls back to direct invoke on any miss, so a stale
-daemon can never block a command.
+the descriptor, which never leaves the worktree's git dir. A client reads the
+descriptor and falls back to a direct call on any miss, so a stale daemon can
+never block a command. A write whose outcome is unknown is reported, never
+run a second time.
+
+Importing this module costs only the standard library, ``core.locate`` and
+``core.result``: the CLI loads it before it may load YAML or SQLite.
 """
 
 from __future__ import annotations
 
-import hmac
 import json
 import os
-import secrets
 import socket
-import threading
+import time
 from pathlib import Path
 from typing import Any
 
-from context_rail.core.locate import local_dir
+# hmac, secrets and threading serve only the daemon process. They cost about
+# 25 ms together, which a client must not pay, so the server imports them where
+# it uses them.
+
+from context_rail import __version__
+from context_rail.core.locate import PathEscape, local_dir
+from context_rail.core.result import fail
 from context_rail.core.slug import sha256_hex
 
 __all__ = [
     "DAEMON_TIMEOUT_MS",
     "NO_DAEMON_ENV",
-    "daemon_endpoint",
-    "daemon_alive",
-    "try_daemon",
-    "serve",
+    "call_daemon",
     "clear_daemon_descriptor",
+    "daemon_alive",
+    "daemon_endpoint",
+    "process_alive",
+    "serve",
     "store_hash",
 ]
 
@@ -41,11 +50,61 @@ NO_DAEMON_ENV = "RAIL_NO_DAEMON"
 _DAEMON_FILE = "daemon.json"
 _PID_FILE = "daemon.pid"
 _MAX_FRAME = 16 * 1024 * 1024
+#: Windows takes about a second to refuse a connection to a closed loopback
+#: port, while a live listener completes the connect at once (even when it is
+#: busy: the kernel queues it), so a short cap loses nothing.
+_CONNECT_CAP_S = 0.25
+_TOKEN_REFUSED = "daemon_token"
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_STILL_ACTIVE = 259
+_ERROR_ACCESS_DENIED = 5
 
 
 def daemon_endpoint(store: Path) -> Path | None:
     """The daemon descriptor path for one store, under ``local_dir``."""
     return local_dir(Path(store)) / _DAEMON_FILE
+
+
+def process_alive(pid: int) -> bool:
+    """Whether ``pid`` is a running process, without starting one.
+
+    ``os.kill(pid, 0)`` terminates the process on Windows, so Windows asks the
+    kernel for the exit code instead.
+    """
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        return _windows_process_alive(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _windows_process_alive(pid: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ctypes.get_last_error() == _ERROR_ACCESS_DENIED
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == _STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def daemon_alive(store: Path) -> bool:
@@ -59,98 +118,150 @@ def daemon_alive(store: Path) -> bool:
     pid = payload.get("pid")
     if not isinstance(pid, int) or pid <= 0:
         return False
-    if os.name == "nt":
-        import subprocess
-
-        listed = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        return str(pid) in listed.stdout
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    return process_alive(pid)
 
 
-def try_daemon(
-    store: Path | None,
+def call_daemon(
+    store: Path,
     tool: str,
     params: dict[str, Any],
+    *,
     actor: str | None,
-    actor_env: str | None = None,
+    actor_env: str | None,
+    read_only: bool,
 ) -> dict[str, Any] | None:
-    """Serve one call from the daemon; ``None`` falls back to direct invoke."""
+    """Serve one call from the store's daemon; ``None`` means run it direct.
+
+    Before the request is fully sent, every failure is a miss. After it,
+    a read may still be run direct, but a write may already have happened:
+    it is reported as unknown and never repeated here.
+    """
     if os.environ.get(NO_DAEMON_ENV):
         return None
-    if store is None:
+    target = _live_target(Path(store))
+    if target is None:
         return None
-    canonical = tool
-    if canonical in ("mcp serve", "ui serve", "serve daemon", "sync driver"):
+    port, token = target
+    try:
+        request = json.dumps(
+            {
+                "tool": tool,
+                "params": params,
+                "actor": actor,
+                "actor_env": actor_env,
+                "token": token,
+            }
+        ).encode("utf-8")
+    except (TypeError, ValueError):
         return None
-    descriptor = daemon_endpoint(Path(store))
-    if descriptor is None or not descriptor.is_file():
+    budget = _timeout_ms() / 1000.0
+    deadline = time.monotonic() + budget
+    try:
+        client = socket.create_connection(
+            ("127.0.0.1", port), timeout=min(budget, _CONNECT_CAP_S)
+        )
+    except OSError:
+        return None
+    with client:
+        try:
+            client.sendall(request + b"\n")
+            client.shutdown(socket.SHUT_WR)
+        except OSError:
+            return None if read_only else _unknown_outcome(params)
+        envelope = _parse_reply(_read_reply(client, deadline))
+    if envelope is None:
+        return None if read_only else _unknown_outcome(params)
+    if _refused_token(envelope):
+        return None
+    return envelope
+
+
+def _live_target(store: Path) -> tuple[int, str] | None:
+    """``(port, token)`` of a live, current daemon, else None and nothing sent."""
+    try:
+        descriptor = daemon_endpoint(store)
+    except (PathEscape, OSError):
+        return None
+    if descriptor is None:
         return None
     payload = _read_descriptor(descriptor)
     if payload is None:
         return None
-    try:
-        port = int(payload["port"])
-        token = str(payload["token"])
-    except (KeyError, TypeError, ValueError):
+    pid, port, token = payload.get("pid"), payload.get("port"), payload.get("token")
+    if not (isinstance(pid, int) and isinstance(port, int) and isinstance(token, str)):
         return None
-    if port <= 0 or not token:
+    if pid <= 0 or port <= 0 or not token:
         return None
-    deadline_ms = _timeout_ms()
-    try:
-        import time
+    if not process_alive(pid):
+        clear_daemon_descriptor(store)
+        return None
+    if payload.get("version") != __version__:
+        _ask_to_stop(port, token)
+        return None
+    return port, token
 
-        deadline = time.monotonic() + deadline_ms / 1000.0
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client.settimeout(max(deadline_ms / 1000.0, 0.2))
+
+def _ask_to_stop(port: int, token: str) -> None:
+    """Best effort: a daemon from another version retires itself."""
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5) as sock:
+            sock.sendall(json.dumps({"op": "stop", "token": token}).encode("utf-8") + b"\n")
+            sock.shutdown(socket.SHUT_WR)
+            sock.recv(4096)
+    except OSError:
+        pass
+
+
+def _read_reply(client: socket.socket, deadline: float) -> bytes | None:
+    chunks: list[bytes] = []
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        client.settimeout(remaining)
         try:
-            client.connect(("127.0.0.1", port))
-            request = json.dumps(
-                {
-                    "tool": canonical,
-                    "params": dict(params or {}),
-                    "actor": actor,
-                    "actor_env": actor_env,
-                    "token": token,
-                }
-            ).encode("utf-8")
-            client.sendall(request + b"\n")
-            client.shutdown(socket.SHUT_WR)
-            chunks = b""
-            while True:
-                try:
-                    chunk = client.recv(65536)
-                except socket.timeout:
-                    return None
-                if time.monotonic() > deadline:
-                    return None
-                if not chunk:
-                    break
-                chunks += chunk
-                if b"\n" in chunks:
-                    break
-        finally:
-            client.close()
-        payload_out = json.loads(chunks.decode("utf-8").strip())
-        if not isinstance(payload_out, dict):
+            chunk = client.recv(65536)
+        except OSError:
             return None
-        if not isinstance(payload_out.get("ok"), bool):
-            return None
-        return payload_out
-    except Exception:
+        if not chunk:
+            break
+        chunks.append(chunk)
+        if b"\n" in chunk:
+            break
+    return b"".join(chunks) or None
+
+
+def _parse_reply(raw: bytes | None) -> dict[str, Any] | None:
+    if raw is None:
         return None
+    try:
+        envelope = json.loads(raw.decode("utf-8").strip())
+    except ValueError:
+        return None
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("ok"), bool):
+        return None
+    if envelope["ok"] is False and not isinstance(envelope.get("error"), dict):
+        return None
+    return envelope
+
+
+def _refused_token(envelope: dict[str, Any]) -> bool:
+    error = envelope.get("error")
+    if not isinstance(error, dict):
+        return False
+    details = error.get("details")
+    return isinstance(details, dict) and details.get("reason") == _TOKEN_REFUSED
+
+
+def _unknown_outcome(params: dict[str, Any]) -> dict[str, Any]:
+    if params.get("key"):
+        message = "outcome unknown; repeating this exact command is safe, the key makes it idempotent"
+    else:
+        message = (
+            "outcome unknown; do not repeat this command; "
+            "re-read the item to see whether it applied"
+        )
+    return fail("PROCESS_ERROR", message, {"reason": "daemon_no_answer"})
 
 
 def serve(store: Path, *, port: int = 0) -> int:
@@ -161,6 +272,8 @@ def serve(store: Path, *, port: int = 0) -> int:
 
 def write_daemon_descriptor(store: Path, *, port: int, pid: int | None = None) -> Path:
     """Persist daemon identity and token so later CLIs can find it."""
+    import secrets
+
     store_path = Path(store)
     descriptor = daemon_endpoint(store_path)
     assert descriptor is not None
@@ -172,6 +285,7 @@ def write_daemon_descriptor(store: Path, *, port: int, pid: int | None = None) -
             "port": int(port),
             "store": str(store_path),
             "token": token,
+            "version": __version__,
         },
         sort_keys=True,
     )
@@ -194,6 +308,16 @@ def clear_daemon_descriptor(store: Path) -> None:
             (stale.parent / _PID_FILE).unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def _release_descriptor(store: Path, token: str) -> None:
+    """Remove the descriptor unless a newer daemon has already replaced it."""
+    descriptor = daemon_endpoint(store)
+    if descriptor is not None and descriptor.is_file():
+        held = _read_descriptor(descriptor)
+        if held is not None and held.get("token") != token:
+            return
+    clear_daemon_descriptor(store)
 
 
 def store_hash(store: Path) -> str:
@@ -219,10 +343,33 @@ def _read_descriptor(descriptor: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+class _FrameTooLarge(Exception):
+    pass
+
+
+def _read_frame(conn: socket.socket) -> bytes:
+    """One request: every byte up to the first newline, or to EOF."""
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        chunk = conn.recv(65536)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > _MAX_FRAME:
+            raise _FrameTooLarge
+        chunks.append(chunk)
+        if b"\n" in chunk:
+            break
+    return b"".join(chunks).split(b"\n", 1)[0]
+
+
 class _DaemonServer:
     """TCP loopback server that runs each call in a warm process on a fresh Context."""
 
     def __init__(self, store: Path, *, host: str = "127.0.0.1", port: int = 0) -> None:
+        import threading
+
         self.store = Path(store)
         self.host = host
         self.port = port
@@ -234,14 +381,16 @@ class _DaemonServer:
     def start_blocking(self) -> int:
         self.start()
         try:
-            while not self._stop.is_set():
-                threading.Event().wait(0.5)
+            while not self._stop.wait(0.5):
+                pass
         except KeyboardInterrupt:
             self.stop()
         return 0
 
     def start(self) -> int:
         """Bind, publish the descriptor and spawn the serving thread."""
+        import threading
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((self.host, self.port))
@@ -255,6 +404,8 @@ class _DaemonServer:
         return self.port
 
     def stop(self) -> None:
+        import threading
+
         self._stop.set()
         sock = self._socket
         if sock is not None:
@@ -262,10 +413,10 @@ class _DaemonServer:
                 sock.close()
             except OSError:
                 pass
-        thread = getattr(self, "_thread", None)
-        if thread is not None:
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=2.0)
-        clear_daemon_descriptor(self.store)
+        _release_descriptor(self.store, self._token)
 
     def _serve(self, sock: socket.socket) -> None:
         sock.settimeout(0.5)
@@ -290,14 +441,26 @@ class _DaemonServer:
             except OSError:
                 pass
         sock.close()
+        _release_descriptor(self.store, self._token)
+
+    def _reply(self, conn: socket.socket, envelope: dict[str, Any]) -> None:
+        conn.sendall((json.dumps(envelope, ensure_ascii=False) + "\n").encode("utf-8"))
 
     def _handle(self, conn: socket.socket) -> None:
+        import hmac
+
         conn.settimeout(_timeout_ms() / 1000.0 + 1.0)
-        data = conn.recv(65536)
-        if not data:
+        try:
+            frame = _read_frame(conn)
+        except _FrameTooLarge:
+            self._reply(conn, fail("VALIDATION_FAILED", "the request is too large"))
+            return
+        except OSError:
+            return
+        if not frame:
             return
         try:
-            payload = json.loads(data.decode("utf-8").strip())
+            payload = json.loads(frame.decode("utf-8"))
         except ValueError:
             conn.sendall(b'{"ok": false}\n')
             return
@@ -305,10 +468,19 @@ class _DaemonServer:
             conn.sendall(b'{"ok": false}\n')
             return
         token = str(payload.get("token") or "")
-        if not hmac.compare_digest(token, getattr(self, "_token", "")):
-            conn.sendall(
-                b'{"ok": false, "error": {"code": "PERMISSION_DENIED", "message": "the daemon token does not match"}}\n'
+        if not hmac.compare_digest(token, self._token):
+            self._reply(
+                conn,
+                fail(
+                    "PERMISSION_DENIED",
+                    "the daemon token does not match",
+                    {"reason": _TOKEN_REFUSED},
+                ),
             )
+            return
+        if payload.get("op") == "stop":
+            self._reply(conn, {"ok": True, "value": {"stopping": True}})
+            self._stop.set()
             return
         from context_rail.gateway.execution import caller_identity
         from context_rail.gateway.gateway import invoke
@@ -333,4 +505,4 @@ class _DaemonServer:
                         "message": str(exc) or exc.__class__.__name__,
                     },
                 }
-        conn.sendall((json.dumps(result, ensure_ascii=False) + "\n").encode("utf-8"))
+        self._reply(conn, result)
