@@ -222,6 +222,7 @@ function Skills({ skills, options, busy, run }: {
   skills: Data[]; options: Data; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
+  const toolIds = strings(options.tools);
   const [sel, setSel] = useState('');
   const doc = skills.find(d => text(d.id) === sel) ?? skills[0];
   return (
