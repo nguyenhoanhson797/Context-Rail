@@ -223,19 +223,25 @@ function Skills({ skills, options, busy, run }: {
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
   const toolIds = strings(options.tools);
+  /* ``workspace/<scope>/skills/*`` are generated copies rendered by
+     ``adapters sync``; editing one is overwritten. Only canonical skill
+     documents are editable here. */
+  const canonical = skills.filter(s => !/^workspace\/[^/]+\/skills\//.test(text(s.path)));
   const [sel, setSel] = useState('');
-  const doc = skills.find(d => text(d.id) === sel) ?? skills[0];
+  const doc = canonical.find(d => text(d.id) === sel) ?? canonical[0];
   return (
     <section className="sblock" style={{ marginTop: 0 }}>
       <h2>Skill</h2>
-      {skills.length && doc ? <>
-        <Row title="Which skill" description="The document this form edits.">
+      {canonical.length && doc ? <>
+        <Row title="Which skill" description="The canonical skill document this form edits.">
           <select className="input" aria-label="Skill" value={text(doc.id)} onChange={e => setSel(e.target.value)}>
-            {skills.map(s => <option key={text(s.id)} value={text(s.id)}>{text(s.title, text(s.id))}</option>)}
+            {canonical.map(s => <option key={text(s.id)} value={text(s.id)}>{text(s.title, text(s.id))}</option>)}
           </select>
         </Row>
         <SkillForm key={text(doc.id)} doc={doc} toolIds={toolIds} busy={busy} run={run} />
-      </> : <p className="faint" style={{ fontSize: 12 }}>No skills in this store yet.</p>}
+      </> : <p className="faint" style={{ fontSize: 12 }}>
+        No canonical skill documents yet. The skills under <span className="mono">workspace/…/skills</span> are generated copies rendered by <span className="mono">ops adapters sync</span>, and editing them would be overwritten.
+      </p>}
     </section>
   );
 }
