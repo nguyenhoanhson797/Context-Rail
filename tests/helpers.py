@@ -107,6 +107,46 @@ def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return proc
 
 
+@contextmanager
+def serving_daemon(store: Path) -> Iterator[None]:
+    """Run an in-process daemon for ``store``; callers also need ``daemon_enabled``."""
+    from context_rail.gateway.daemon import _DaemonServer
+
+    server = _DaemonServer(store)
+    server.start()
+    try:
+        yield
+    finally:
+        server.stop()
+
+
+def _without_perf(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _without_perf(item) for key, item in value.items() if key != "perf"}
+    if isinstance(value, list):
+        return [_without_perf(item) for item in value]
+    return value
+
+
+def assert_parity(
+    store: Path, tool: str, params: dict[str, Any], actor: str = "human"
+) -> dict[str, Any]:
+    """The daemon answers exactly as a direct call, apart from timing.
+
+    The daemon is asked first: a direct call syncs the index the two share, which
+    would hide a daemon that serves rows it never refreshed.
+    """
+    from context_rail.gateway.gateway import invoke, try_daemon_invoke
+
+    served = try_daemon_invoke(tool, dict(params), store=store, actor=actor)
+    assert served is not None, "the daemon did not answer"
+    direct = invoke(tool, dict(params), store=store, actor=actor)
+    expected = _without_perf(json.loads(json.dumps(direct)))
+    actual = _without_perf(served)
+    assert actual == expected, f"daemon: {json.dumps(actual)[:600]}\ndirect: {json.dumps(expected)[:600]}"
+    return served
+
+
 def junction(link: Path, target: Path) -> None:
     """Create a real Windows directory junction, skipping where unsupported."""
     if os.name != "nt":

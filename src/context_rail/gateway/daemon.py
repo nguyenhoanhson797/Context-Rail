@@ -1,7 +1,9 @@
-"""A loopback daemon that holds one Index and one ProjectModel per store.
+"""A loopback daemon that keeps one warm Python process for one store.
 
-The daemon is a warm cache for one store, not a second write path: every
-call still goes through ``gateway.invoke()`` -> ``store/write.py:commit()``.
+The daemon caches the process, not the store: every call builds a fresh
+Context, so a checkout or a hand edit is seen at once. It is not a second
+write path: every call still goes through ``gateway.invoke()`` ->
+``store/write.py:commit()``.
 The transport is TCP on 127.0.0.1, gated by a per-store token recorded in
 the descriptor, which never leaves the worktree's git dir. The CLI reads
 the descriptor and falls back to direct invoke on any miss, so a stale
@@ -218,7 +220,7 @@ def _read_descriptor(descriptor: Path) -> dict[str, Any] | None:
 
 
 class _DaemonServer:
-    """TCP loopback server holding one warm Context per actor."""
+    """TCP loopback server that runs each call in a warm process on a fresh Context."""
 
     def __init__(self, store: Path, *, host: str = "127.0.0.1", port: int = 0) -> None:
         self.store = Path(store)
@@ -226,7 +228,6 @@ class _DaemonServer:
         self.port = port
         self._socket: socket.socket | None = None
         self._stop = threading.Event()
-        self._contexts: dict[tuple[str, bool], Any] = {}
         self._thread: threading.Thread | None = None
         self._token = ""
 
@@ -264,11 +265,6 @@ class _DaemonServer:
         thread = getattr(self, "_thread", None)
         if thread is not None:
             thread.join(timeout=2.0)
-        for context in self._contexts.values():
-            try:
-                context.close()
-            except Exception:
-                pass
         clear_daemon_descriptor(self.store)
 
     def _serve(self, sock: socket.socket) -> None:
@@ -316,7 +312,6 @@ class _DaemonServer:
             return
         from context_rail.gateway.execution import caller_identity
         from context_rail.gateway.gateway import invoke
-        from context_rail.gateway.gateway import _resolve_actor
 
         tool = payload.get("tool")
         params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
@@ -328,12 +323,8 @@ class _DaemonServer:
             conn.sendall(b'{"ok": false}\n')
             return
         with caller_identity(actor, actor_env):
-            resolved_actor, actor_named = _resolve_actor(actor)
-            context = self._context_for(resolved_actor, actor_named)
             try:
-                result = invoke(
-                    tool, params, store=self.store, actor=actor, context=context
-                )
+                result = invoke(tool, params, store=self.store, actor=actor)
             except Exception as exc:
                 result = {
                     "ok": False,
@@ -343,14 +334,3 @@ class _DaemonServer:
                     },
                 }
         conn.sendall((json.dumps(result, ensure_ascii=False) + "\n").encode("utf-8"))
-
-    def _context_for(self, actor: str, actor_named: bool):
-        key = (actor, actor_named)
-        found = self._contexts.get(key)
-        if found is not None:
-            return found
-        from context_rail.gateway.gateway import warm_context
-
-        context = warm_context(self.store, actor, actor_named=actor_named)
-        self._contexts[key] = context
-        return context

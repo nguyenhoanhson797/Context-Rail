@@ -50,7 +50,7 @@ from context_rail.store.location import PathEscape, find_store
 from context_rail.store.query import QueryError
 from context_rail.store.write import WriteRefused
 
-__all__ = ["EXECUTION_TOOLS", "Context", "effective_decision", "invoke", "last_timing", "try_daemon_invoke", "warm_context"]
+__all__ = ["EXECUTION_TOOLS", "Context", "effective_decision", "invoke", "last_timing", "try_daemon_invoke"]
 
 Handler = Callable[[Any, dict[str, Any], str], Any]
 
@@ -232,9 +232,9 @@ def invoke(
 ) -> dict[str, Any]:
     """Run one tool and return a Result envelope; no exception escapes.
 
-    ``context`` injects a warm Context (the daemon's): no manifest/index
-    reloads, and the caller owns closing it. A mismatch is ignored and a
-    store-bound one is built in its place.
+    ``context`` injects an already-open Context: no manifest/index reloads,
+    and the caller owns closing it. A mismatch is ignored and a store-bound
+    one is built in its place.
     """
     _started = time.perf_counter()
     resolved_actor, actor_named = _resolve_actor(actor)
@@ -296,25 +296,6 @@ def _usable_context(
         return context if Path(context.store).resolve() == Path(store).resolve() else None
     except OSError:
         return None
-
-
-def warm_context(store: Path | str, actor: str, *, actor_named: bool = True) -> Context:
-    """A pre-opened Context for the daemon: one manifest, one sync, cached model."""
-    found = Path(store)
-    if not (found / "rail.yaml").is_file():
-        raise WriteRefused("NOT_FOUND", "no store found")
-    manifest = load_manifest(found)
-    pack = load_pack(manifest.pack, found)
-    index = Index.open(found, pack)
-    index.sync()
-    return Context(
-        store=found,
-        manifest=manifest,
-        pack=pack,
-        actor=actor,
-        actor_named=actor_named,
-        _index=index,
-    )
 
 
 def _actor_env() -> str | None:

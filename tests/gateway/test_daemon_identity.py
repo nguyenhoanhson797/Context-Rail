@@ -5,29 +5,19 @@ from __future__ import annotations
 import json
 import socket
 from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from context_rail.gateway.daemon import _DaemonServer, daemon_endpoint
+from context_rail.gateway.daemon import daemon_endpoint
 from context_rail.gateway.gateway import invoke
+from helpers import serving_daemon
 from perf.gen import make_store
 
 _OMIT: Any = object()
 _APPROVE = {"target": "picture", "confirm": "probe", "confirmer": "human"}
 _STALE_ETAG = "0123456789abcdef"
-
-
-@contextmanager
-def _serving(store: Path) -> Iterator[None]:
-    server = _DaemonServer(store)
-    server.start()
-    try:
-        yield
-    finally:
-        server.stop()
 
 
 def _ask(
@@ -63,7 +53,7 @@ def _ask(
 @pytest.fixture
 def served(tmp_path: Path, daemon_enabled: None) -> Iterator[Path]:
     store = make_store(tmp_path, 20)
-    with _serving(store):
+    with serving_daemon(store):
         yield store
 
 
@@ -122,7 +112,7 @@ def test_profile_narrowing_applies_through_the_daemon(
     assert _error(direct)["code"] == "PERMISSION_DENIED"
     assert _error(direct)["details"]["profile"] == "implementer"
     monkeypatch.setenv("RAIL_ACTOR", "human")
-    with _serving(store):
+    with serving_daemon(store):
         served = _ask(store, "move", move, actor=None, actor_env="implementer")
     assert _error(served)["code"] == "PERMISSION_DENIED"
     assert _error(served)["details"]["profile"] == "implementer"

@@ -18,7 +18,7 @@ def generated_store(tmp_path: Path) -> Path:
     return make_store(tmp_path, 20)
 
 
-def test_daemon_serves_a_read_and_reuses_the_warm_context(
+def test_daemon_serves_a_read_and_closes_its_context(
     tmp_path: Path, daemon_enabled: None
 ) -> None:
     store = make_store(tmp_path, 20)
@@ -33,7 +33,6 @@ def test_daemon_serves_a_read_and_reuses_the_warm_context(
         second = try_daemon_invoke("status", {}, store=store, actor="human")
         assert second is not None
         assert second["ok"] is True
-        assert (store, second) is not None
     finally:
         server.stop()
     assert not daemon_alive(store)
