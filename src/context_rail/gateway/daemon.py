@@ -21,8 +21,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from context_rail.core.util import sha256_hex
-from context_rail.store.location import local_dir
+from context_rail.core.locate import local_dir
+from context_rail.core.slug import sha256_hex
 
 __all__ = [
     "DAEMON_TIMEOUT_MS",

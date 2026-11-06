@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import secrets
 import tempfile
 import threading
 import time
-import unicodedata
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from context_rail.core.slug import sha256_hex, slugify
 
 
 def now_iso() -> str:
@@ -34,20 +34,6 @@ __all__ = [
     "slugify",
     "write_bytes_atomic",
 ]
-
-
-def slugify(text: str, max_len: int = 80) -> str:
-    """Generate a URL-safe slug from text. Lowercase, hyphens, [a-z0-9-]."""
-    text = unicodedata.normalize("NFKD", text)
-    text = text.encode("ascii", "ignore").decode("ascii")
-    text = re.sub(r"[^a-z0-9]+", "-", text.lower())
-    text = text.strip("-")
-    return text[:max_len].rstrip("-") or "untitled"
-
-
-def sha256_hex(data: bytes) -> str:
-    """Lowercase hex SHA-256 digest of ``data``."""
-    return hashlib.sha256(data).hexdigest()
 
 
 # ── ULID ──────────────────────────────────────────────────────────────────
