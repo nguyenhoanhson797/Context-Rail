@@ -394,9 +394,13 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="serve daemon",
-        summary="Serve one warm RPC daemon for this store: pinned Index, compiled model, per-actor Contexts.",
+        summary="Run the warm daemon for this store, which commands start on their own, or stop it.",
         permission="read",
-        params=(Param("port", "int", default=0, help="port to bind on 127.0.0.1 (default: choose one)"),),
+        params=(
+            Param("port", "int", default=0, help="port to bind on 127.0.0.1 (default: choose one)"),
+            Param("idle", "int", help="seconds without a request before it exits (default 600, or RAIL_DAEMON_IDLE_S)"),
+            Param("stop", "bool", help="stop the daemon that is running for this store"),
+        ),
         handler="context_rail.gateway.handlers.daemon:serve",
     ),
     Tool(

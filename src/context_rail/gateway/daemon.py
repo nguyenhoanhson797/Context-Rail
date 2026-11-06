@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,7 @@ from context_rail.core.result import fail
 from context_rail.core.slug import sha256_hex
 
 __all__ = [
+    "DAEMON_IDLE_S",
     "DAEMON_TIMEOUT_MS",
     "NO_DAEMON_ENV",
     "call_daemon",
@@ -41,14 +43,23 @@ __all__ = [
     "daemon_endpoint",
     "process_alive",
     "serve",
+    "spawn_daemon",
+    "stop_daemon",
     "store_hash",
 ]
 
 DAEMON_TIMEOUT_MS = 2000
+DAEMON_IDLE_S = 600
 DAEMON_ENV_TIMEOUT = "RAIL_DAEMON_TIMEOUT_MS"
+DAEMON_ENV_IDLE = "RAIL_DAEMON_IDLE_S"
 NO_DAEMON_ENV = "RAIL_NO_DAEMON"
 _DAEMON_FILE = "daemon.json"
 _PID_FILE = "daemon.pid"
+_SPAWN_FILE = "daemon.spawn"
+_SPAWN_LOCK_STALE_S = 30
+_STOP_WAIT_S = 5.0
+_DETACHED_PROCESS = 0x8
+_CREATE_NEW_PROCESS_GROUP = 0x200
 _MAX_FRAME = 16 * 1024 * 1024
 #: Windows takes about a second to refuse a connection to a closed loopback
 #: port, while a live listener completes the connect at once (even when it is
@@ -201,15 +212,111 @@ def _live_target(store: Path) -> tuple[int, str] | None:
     return port, token
 
 
-def _ask_to_stop(port: int, token: str) -> None:
-    """Best effort: a daemon from another version retires itself."""
+def _ask_to_stop(port: int, token: str, timeout: float = 0.5) -> bool:
+    """Ask a daemon to exit; True when it said it would."""
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=0.5) as sock:
+        with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
             sock.sendall(json.dumps({"op": "stop", "token": token}).encode("utf-8") + b"\n")
             sock.shutdown(socket.SHUT_WR)
-            sock.recv(4096)
+            envelope = _parse_reply(_read_reply(sock, time.monotonic() + timeout))
+    except OSError:
+        return False
+    return envelope is not None and envelope["ok"] is True
+
+
+def spawn_daemon(store: Path) -> bool:
+    """Start a detached daemon for ``store``; True when this call started one.
+
+    It never waits for the daemon. Callers racing to start the first daemon
+    take an exclusive lock file, which the daemon removes once its descriptor
+    is written; a lock older than a crashed starter could leave is replaced.
+    """
+    store = Path(store)
+    lock = _take_spawn_lock(store)
+    if lock is None:
+        return False
+    if daemon_alive(store):
+        _drop_spawn_lock(lock)
+        return False
+    import subprocess
+    import tempfile
+
+    options: dict[str, Any] = {
+        "cwd": tempfile.gettempdir(),
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        options["creationflags"] = _DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP
+    else:
+        options["start_new_session"] = True
+    command = [sys.executable, "-m", "context_rail", "--store", str(store), "serve", "daemon"]
+    try:
+        subprocess.Popen(command, **options)
+    except OSError:
+        _drop_spawn_lock(lock)
+        return False
+    return True
+
+
+def _take_spawn_lock(store: Path) -> Path | None:
+    try:
+        folder = local_dir(store)
+    except (PathEscape, OSError):
+        return None
+    lock = folder / _SPAWN_FILE
+    for _ in range(2):
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                age = time.time() - lock.stat().st_mtime
+            except OSError:
+                continue
+            if age < _SPAWN_LOCK_STALE_S:
+                return None
+            _drop_spawn_lock(lock)
+            continue
+        except OSError:
+            return None
+        os.close(handle)
+        return lock
+    return None
+
+
+def _drop_spawn_lock(lock: Path) -> None:
+    try:
+        lock.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def stop_daemon(store: Path) -> bool:
+    """Stop the store's daemon; True when a live one was running and is now gone."""
+    try:
+        descriptor = daemon_endpoint(Path(store))
+    except (PathEscape, OSError):
+        return False
+    held = _read_descriptor(descriptor) if descriptor is not None else None
+    if held is None:
+        return False
+    pid, port, token = held.get("pid"), held.get("port"), held.get("token")
+    if not (isinstance(pid, int) and isinstance(port, int) and isinstance(token, str)):
+        return False
+    if not process_alive(pid):
+        _release_descriptor(Path(store), token)
+        return False
+    if not _ask_to_stop(port, token, _timeout_ms() / 1000.0):
+        return False
+    deadline = time.monotonic() + _STOP_WAIT_S
+    while process_alive(pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.02)
+    _release_descriptor(Path(store), token)
+    return True
 
 
 def _read_reply(client: socket.socket, deadline: float) -> bytes | None:
@@ -264,9 +371,9 @@ def _unknown_outcome(params: dict[str, Any]) -> dict[str, Any]:
     return fail("PROCESS_ERROR", message, {"reason": "daemon_no_answer"})
 
 
-def serve(store: Path, *, port: int = 0) -> int:
-    """Serve one store over loopback TCP; blocks until interrupted."""
-    server = _DaemonServer(Path(store), port=port)
+def serve(store: Path, *, port: int = 0, idle_s: int | None = None) -> int:
+    """Serve one store over loopback TCP; blocks until stopped or idle."""
+    server = _DaemonServer(Path(store), port=port, idle_s=idle_s)
     return server.start_blocking()
 
 
@@ -335,6 +442,18 @@ def _timeout_ms() -> int:
     return DAEMON_TIMEOUT_MS
 
 
+def _idle_seconds(explicit: int | None) -> int:
+    """Seconds without a request before the daemon exits: the argument, the environment, else 600."""
+    for candidate in (explicit, os.environ.get(DAEMON_ENV_IDLE)):
+        try:
+            seconds = int(candidate)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if seconds >= 1:
+            return seconds
+    return DAEMON_IDLE_S
+
+
 def _read_descriptor(descriptor: Path) -> dict[str, Any] | None:
     try:
         payload = json.loads(descriptor.read_text(encoding="utf-8"))
@@ -367,12 +486,21 @@ def _read_frame(conn: socket.socket) -> bytes:
 class _DaemonServer:
     """TCP loopback server that runs each call in a warm process on a fresh Context."""
 
-    def __init__(self, store: Path, *, host: str = "127.0.0.1", port: int = 0) -> None:
+    def __init__(
+        self,
+        store: Path,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 0,
+        idle_s: int | None = None,
+    ) -> None:
         import threading
 
         self.store = Path(store)
         self.host = host
         self.port = port
+        self._idle_s = _idle_seconds(idle_s)
+        self._last_active = time.monotonic()
         self._socket: socket.socket | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -384,7 +512,8 @@ class _DaemonServer:
             while not self._stop.wait(0.5):
                 pass
         except KeyboardInterrupt:
-            self.stop()
+            pass
+        self.stop()
         return 0
 
     def start(self) -> int:
@@ -399,6 +528,8 @@ class _DaemonServer:
         self._socket = sock
         descriptor = write_daemon_descriptor(self.store, port=self.port)
         self._token = json.loads(descriptor.read_text(encoding="utf-8"))["token"]
+        _drop_spawn_lock(descriptor.parent / _SPAWN_FILE)
+        self._last_active = time.monotonic()
         self._thread = threading.Thread(target=self._serve, args=(sock,), daemon=True)
         self._thread.start()
         return self.port
@@ -424,6 +555,8 @@ class _DaemonServer:
             try:
                 conn, _ = sock.accept()
             except socket.timeout:
+                if time.monotonic() - self._last_active >= self._idle_s:
+                    self._stop.set()
                 continue
             except OSError:
                 break
@@ -440,6 +573,7 @@ class _DaemonServer:
                 conn.close()
             except OSError:
                 pass
+            self._last_active = time.monotonic()
         sock.close()
         _release_descriptor(self.store, self._token)
 

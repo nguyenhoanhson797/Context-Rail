@@ -355,9 +355,9 @@ def _fast_path(
     store = _daemon_store(namespace.store)
     if store is None:
         return None
-    from context_rail.gateway.daemon import call_daemon
+    from context_rail.gateway import daemon
 
-    return call_daemon(
+    served = daemon.call_daemon(
         store,
         canonical_tool(tool),
         params,
@@ -365,6 +365,9 @@ def _fast_path(
         actor_env=(os.environ.get("RAIL_ACTOR") or "").strip() or None,
         read_only=declared.permission == "read",
     )
+    if served is None and not daemon.daemon_alive(store):
+        daemon.spawn_daemon(store)
+    return served
 
 
 def _daemon_store(option: str | None) -> Path | None:
@@ -384,7 +387,8 @@ def _finish(tool: str, result: dict[str, Any]) -> int:
     """Print one result and return its exit code."""
     from context_rail.core.result import INFRA_CODES
 
-    if canonical_tool(tool) in {"mcp serve", "sync driver", "ui serve", "serve daemon"}:
+    serving = canonical_tool(tool) in {"mcp serve", "sync driver", "ui serve", "serve daemon"}
+    if serving and "stopped" not in (result.get("value") or {}):
         if result.get("ok") is True:
             return 0
         _emit(result, stderr=True)
