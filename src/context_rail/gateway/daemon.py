@@ -91,7 +91,7 @@ def process_alive(pid: int) -> bool:
     ``os.kill(pid, 0)`` terminates the process on Windows, so Windows asks the
     kernel for the exit code instead.
     """
-    if pid <= 0:
+    if pid <= 0 or pid > _MAX_PID:
         return False
     if os.name == "nt":
         return _windows_process_alive(pid)
@@ -107,24 +107,19 @@ def process_alive(pid: int) -> bool:
 
 
 def _windows_process_alive(pid: int) -> bool:
-    import ctypes
-    from ctypes import wintypes
+    # ``_winapi`` is built into the interpreter; ``ctypes`` costs about 13 ms to import.
+    import _winapi
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
-    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-    if not handle:
-        return ctypes.get_last_error() == _ERROR_ACCESS_DENIED
     try:
-        code = wintypes.DWORD()
-        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-            return True
-        return code.value == _STILL_ACTIVE
+        handle = _winapi.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    except OSError as error:
+        return getattr(error, "winerror", None) == _ERROR_ACCESS_DENIED
+    try:
+        return bool(_winapi.GetExitCodeProcess(handle) == _STILL_ACTIVE)
+    except OSError:
+        return True
     finally:
-        kernel32.CloseHandle(handle)
+        _winapi.CloseHandle(handle)
 
 
 def daemon_alive(store: Path) -> bool:

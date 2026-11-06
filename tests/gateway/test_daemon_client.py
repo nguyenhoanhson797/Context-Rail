@@ -24,7 +24,7 @@ from context_rail.gateway.daemon import (
     write_daemon_descriptor,
 )
 from context_rail.gateway.gateway import invoke
-from helpers import serving_daemon
+from helpers import child_env, serving_daemon
 from perf.gen import make_store
 
 _NO_ANSWER_KEYED = "outcome unknown; repeating this exact command is safe, the key makes it idempotent"
@@ -231,6 +231,34 @@ def test_liveness_launches_no_subprocess_and_kills_nothing(
         monkeypatch.setattr(os, "kill", boom)
     assert process_alive(os.getpid()) is True
     assert process_alive(dead) is False
+
+
+def test_liveness_loads_no_foreign_function_library() -> None:
+    probe = (
+        "import os, sys\n"
+        "from context_rail.gateway.daemon import process_alive\n"
+        "assert process_alive(os.getpid())\n"
+        "print('ctypes' in sys.modules)\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        env=child_env(),
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "False"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the System process is a Windows fixture")
+def test_a_process_this_user_cannot_open_still_counts_as_alive() -> None:
+    assert process_alive(4) is True
+
+
+@pytest.mark.parametrize("pid", [0, -1, 2**40])
+def test_an_impossible_process_id_is_never_alive(pid: int) -> None:
+    assert process_alive(pid) is False
 
 
 def _send(port: int, payload: dict[str, Any]) -> dict[str, Any]:
