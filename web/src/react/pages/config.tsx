@@ -278,36 +278,49 @@ function Charter({ charter, busy, run }: {
   charter: Data; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
-  const f = object(charter.fields);
-  const budgets = object(f.budgets);
-  const [attempts, setAttempts] = useState(num(object(budgets.item).attempts));
-  const [seconds, setSeconds] = useState(num(object(budgets.item).seconds));
   const present = Object.keys(charter).length > 0;
-  const save = () => {
-    const item = { attempts: attempts || null, seconds: seconds || null };
-    run('update', {
-      slug: 'charter',
-      set: [`budgets={"item": ${JSON.stringify(item)}}`],
-      expect: text(charter.etag),
-      confirm: 'APPROVE charter',
-    }, true);
-  };
   return (
     <section className="sblock" style={{ marginTop: 0 }}>
       <h2>Charter</h2>
       {present ? <>
         <Row title="Human-only" description="Saving asks for the phrase APPROVE charter; a semantic change reports approval_mismatch until reapproved." />
-        <Row title="Item attempts" description="The cap every worker run is measured against.">
-          <input className="input" aria-label="Item attempts" value={attempts} onChange={e => setAttempts(e.target.value)} />
-        </Row>
-        <Row title="Item seconds" description="The runtime cap every worker run is measured against.">
-          <input className="input" aria-label="Item seconds" value={seconds} onChange={e => setSeconds(e.target.value)} />
-        </Row>
-        <Row title="Save charter" description="Goal, scope and gates stay human-only; this form edits budgets.">
-          <Button disabled={busy} onClick={save}>Save charter</Button>
-        </Row>
+        <CharterForm key={text(charter.etag)} charter={charter} busy={busy} run={run} />
       </> : <p className="faint" style={{ fontSize: 12 }}>No charter yet — run <span className="mono">rail init --interview</span> first.</p>}
     </section>
+  );
+}
+
+function CharterForm({ charter, busy, run }: {
+  charter: Data; busy: boolean;
+  run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
+}) {
+  const f = object(charter.fields);
+  const budgets = object(f.budgets);
+  const item = object(budgets.item);
+  const [attempts, setAttempts] = useState(num(item.attempts));
+  const [seconds, setSeconds] = useState(num(item.seconds));
+  const save = () => {
+    // Keep every cap this form does not edit (tokens, credits, and any future one).
+    const merged = { ...item, attempts: attempts || null, seconds: seconds || null };
+    run('update', {
+      slug: 'charter',
+      set: [`budgets={"item": ${JSON.stringify(merged)}}`],
+      expect: text(charter.etag),
+      confirm: 'APPROVE charter',
+    }, true);
+  };
+  return (
+    <>
+      <Row title="Item attempts" description="The cap every worker run is measured against.">
+        <input className="input" aria-label="Item attempts" value={attempts} onChange={e => setAttempts(e.target.value)} />
+      </Row>
+      <Row title="Item seconds" description="The runtime cap every worker run is measured against.">
+        <input className="input" aria-label="Item seconds" value={seconds} onChange={e => setSeconds(e.target.value)} />
+      </Row>
+      <Row title="Save charter" description="Goal, scope and gates stay human-only; this form edits budgets.">
+        <Button disabled={busy} onClick={save}>Save charter</Button>
+      </Row>
+    </>
   );
 }
 
