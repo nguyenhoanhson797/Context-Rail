@@ -226,7 +226,11 @@ function Skills({ skills, options, busy, run }: {
   /* ``workspace/<scope>/skills/*`` are generated copies rendered by
      ``adapters sync``; editing one is overwritten. Only canonical skill
      documents are editable here. */
-  const canonical = skills.filter(s => !/^workspace\/[^/]+\/skills\//.test(text(s.path)));
+  const canonical = skills.filter(s => {
+    const parts = text(s.path).split('/').filter(Boolean);
+    const scoped = parts.length > 3 && parts[0] === 'workspace' && parts[parts.length - 2] === 'skills';
+    return !scoped;
+  });
   const [sel, setSel] = useState('');
   const doc = canonical.find(d => text(d.id) === sel) ?? canonical[0];
   return (
