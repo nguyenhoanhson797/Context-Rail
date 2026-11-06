@@ -1,7 +1,8 @@
 """Parse-once cache for manifest, pack and compiled project models.
 
-A model is only reused while its source keeps the same path, modification time
-and size; a path-only cache would serve a stale pack after an edit. The
+A model is only reused while its source keeps the same path, modification time,
+size and content digest. Timestamps tick coarsely, so a same-size edit made
+within one tick would otherwise be served stale by a long-lived process. The
 compiled project cache is keyed by semantic and presentation digests, never
 by path identity, so an edit that changes a digest can never serve the old
 model.
@@ -11,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from context_rail.core.slug import sha256_hex
+
 _CACHE: dict[tuple[Any, ...], Any] = {}
 _CACHE_PROJECT: dict[tuple[Any, ...], Any] = {}
 _MAX_ENTRIES = 256
@@ -18,7 +21,7 @@ _MAX_PROJECT_ENTRIES = 64
 
 
 def cached_model(source: Any, build: Callable[[], Any]) -> Any:
-    """Return the cached model for ``source``, rebuilding it if its stat changed."""
+    """Return the cached model for ``source``, rebuilding it if its content changed."""
     key = _stat_key(source)
     if key is None:
         return build()
@@ -64,10 +67,11 @@ def clear_project_cache() -> None:
 def _stat_key(source: Any) -> tuple[Any, ...] | None:
     try:
         stat = source.stat()
+        content = sha256_hex(source.read_bytes())
     except (AttributeError, OSError):
         return None
     try:
         label = str(source.resolve())
     except (AttributeError, OSError):
         label = str(source)
-    return (label, stat.st_mtime_ns, stat.st_size)
+    return (label, stat.st_mtime_ns, stat.st_size, content)

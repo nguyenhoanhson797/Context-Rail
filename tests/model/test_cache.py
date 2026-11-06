@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import copy
+import os
 from pathlib import Path
 from typing import Any
 
-from context_rail.model.cache import cached_project, clear_project_cache
+from context_rail.model.cache import cached_model, cached_project, clear_project_cache
 from context_rail.model.compiler import compile_project, semantic_digest
 from context_rail.model.pack import load_pack
 from context_rail.model.presentation import default_presentation, presentation_hash
@@ -40,6 +41,32 @@ _PLAIN: dict[str, Any] = {
 def _plain_pack(tmp_path: Path) -> Any:
     write_pack(tmp_path, "plain", copy.deepcopy(_PLAIN))
     return load_pack("plain", tmp_path)
+
+
+def test_a_same_size_edit_under_the_same_timestamp_is_not_served_stale(tmp_path: Path) -> None:
+    source = tmp_path / "rail.yaml"
+    source.write_bytes(b"aaaa\n")
+    first = source.stat()
+    assert cached_model(source, source.read_bytes) == b"aaaa\n"
+    source.write_bytes(b"bbbb\n")
+    os.utime(source, ns=(first.st_atime_ns, first.st_mtime_ns))
+    second = source.stat()
+    assert (second.st_size, second.st_mtime_ns) == (first.st_size, first.st_mtime_ns)
+    assert cached_model(source, source.read_bytes) == b"bbbb\n"
+
+
+def test_an_unchanged_source_is_parsed_once(tmp_path: Path) -> None:
+    source = tmp_path / "pack.yaml"
+    source.write_text("same\n", encoding="utf-8")
+    parses: list[int] = []
+
+    def build() -> str:
+        parses.append(1)
+        return source.read_text(encoding="utf-8")
+
+    cached_model(source, build)
+    cached_model(source, build)
+    assert len(parses) == 1
 
 
 def test_cached_project_reuses_identical_model(tmp_path: Path) -> None:
