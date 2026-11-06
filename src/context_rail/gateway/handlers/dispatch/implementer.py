@@ -88,6 +88,7 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     expect = required(args.get("expect"), "the Item's etag", action="dispatch")
     key = required(args.get("key"), "a dispatch key", action="dispatch")
     profile_name = _optional(args.get("profile")) or IMPL_ROLE
+    intent = _optional(args.get("intent")) or ""
 
     replayed = _replayed(store, key, item, profile_name, expect)
     if replayed is not None:
@@ -218,11 +219,13 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             used_seconds=used_seconds,
             max_attempts=max(1, effective_attempts(budget) - used_attempts),
         )
-        role_file, order_file = _write_prompts(ctx, plan, rel)
+        role_file, order_file = _write_prompts(ctx, plan, rel, intent)
         return _execute(plan, role_file, order_file)
 
 
-def _write_prompts(ctx: Context, plan: _Plan, rel: str) -> tuple[Path, Path]:
+def _write_prompts(
+    ctx: Context, plan: _Plan, rel: str, intent: str = ""
+) -> tuple[Path, Path]:
     role_file = write_role_file(
         plan.store, plan.dispatch_id, profile=plan.droid, body=plan.profile.body
     )
@@ -246,12 +249,12 @@ def _write_prompts(ctx: Context, plan: _Plan, rel: str) -> tuple[Path, Path]:
             "store": str(plan.store.absolute()),
             "worktree": str(plan.paths.worktree.absolute()),
         },
-        sections=_sections(plan, doc),
+        sections=_sections(plan, doc, intent),
     )
     return role_file, order_file
 
 
-def _sections(plan: _Plan, doc: Doc) -> dict[str, str]:
+def _sections(plan: _Plan, doc: Doc, intent: str = "") -> dict[str, str]:
     title = doc.title or plan.slug
     scope = ", ".join(doc.relations.get("part_of", ())) or "(none)"
     methods = ", ".join(plan.profile.allowed_methods)
@@ -265,8 +268,11 @@ def _sections(plan: _Plan, doc: Doc) -> dict[str, str]:
     workflow_text = (
         surface.render_card(card) if card is not None else "(no workflow card)"
     )
+    objective = f"{title}\n\n{doc.body}"
+    if intent.strip():
+        objective += "\n\n## Intent from the CTO\n" + intent.strip()
     return {
-        "objective": bounded(f"{title}\n\n{doc.body}", 6000),
+        "objective": bounded(objective, 6000),
         "workflow": workflow_text,
         "selected scope": scope,
         "conventions": (

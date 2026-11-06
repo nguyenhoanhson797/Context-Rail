@@ -146,6 +146,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("profile", "str", default="implementer", help="implementer profile name"),
             Param("expect", "str", required=True, help="the Item's current etag"),
             Param("all", "bool", help="dispatch outside the operating focus"),
+            Param("intent", "str", help="a bounded note from the CTO: approach and rejected alternatives"),
             Param("key", "str", required=True, help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.dispatch:dispatch",

@@ -212,6 +212,29 @@ def test_work_order_names_the_canonical_store_and_the_item(leaf_item, fake_droid
     assert "--store" in prompt
 
 
+def test_a_dispatch_carries_the_cto_intent_into_the_order(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    r = dispatch(
+        leaf_item,
+        "intent",
+        intent="Try the adapter seam first; do not touch the legacy path.",
+    )
+    assert r["ok"], r
+    prompt = fake_droid.log()[0]["prompt"]
+    assert "Intent from the CTO" in prompt
+    assert "adapter seam first" in prompt
+
+
+def test_a_dispatch_without_intent_has_no_intent_section(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    r = dispatch(leaf_item, "no-intent")
+    assert r["ok"], r
+    prompt = fake_droid.log()[0]["prompt"]
+    assert "Intent from the CTO" not in prompt
+
+
 # ── retries and escalation ────────────────────────────────────────────────
 
 

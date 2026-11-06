@@ -28,7 +28,7 @@ unattended inside the charter's green and yellow rights.
 rail overview                                   # bounded starting page
 rail loop tick --key day-2026-11-02             # one CTO session, single-instance lock
 
-rail loop dispatch <item> --expect <etag> --key <k> [--profile <name>]
+rail loop dispatch <item> --expect <etag> --key <k> [--profile <name>] [--intent "<note>"]
 rail loop review   <item> --run <run-id> --key <k> [--profile <name>]
 rail loop merge    <item> --run <run-id> --expect <etag> --key <k> [--push]
 
@@ -61,7 +61,7 @@ active scene). The queue is focus-first and the brief's headline names it.
 
 | Step | Guarantee |
 |---|---|
-| Dispatch | A fresh git worktree and branch, a bounded `droid exec`, a run record, then verification |
+| Dispatch | A fresh git worktree and branch, a bounded `droid exec`, a run record, then verification. `--intent` adds a bounded CTO note (approach and rejected alternatives) to the objective; leave it out and the order carries only the Item. |
 | Verify | The item's declared checks run in that worktree; a check is fresh only while its inputs still match |
 | Review | A different actor in its own worktree; the implementer cannot approve its own work; the charter may require a different model |
 | Merge | Rebase onto the default branch, then fast-forward; `--push` only when the charter allows |
