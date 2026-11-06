@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "context-rail"
-version = "3.1.1"
+version = "3.2.0"
 description = "An agentic project workspace: files are the truth, agents work through one write path"
 readme = "README.md"
 license = "MIT"
