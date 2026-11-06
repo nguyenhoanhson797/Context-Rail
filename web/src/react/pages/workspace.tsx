@@ -86,6 +86,7 @@ import { ACCENTS, applyPrefs, readPrefs, savePrefs, type Prefs } from '../prefer
 import { Badge, Button, Empty, ErrorState, Loading, Markdown, PageHeading, Panel, cn } from '../ui';
 import { useModalFocus, useOverlayEscape } from '../overlays';
 import { AutomationSettings } from './settings';
+import { ConfigSettings } from './config';
 import { EVIDENCE, evidenceTitle, evidenceWord } from './evidence';
 import { cardFieldsOf, focusName, hierarchyLabels, hierarchyLevels, labelOf, priorityValues, screenTitle, screenTitleForRoute, unitLabel, unitOf } from './operating';
 
@@ -2315,10 +2316,11 @@ const THEMES: ['light' | 'dark' | 'system', string, ReactNode][] = [
 
 export function SettingsPage({ params, navigate, theme, setTheme, request, mutate, busy, project, refresh }: PageProps) {
   const section = params.get('sec') === 'shortcuts' ? 'shortcuts' : 'appearance';
-  /* The automation section is local state, not a URL section: the shell's router
+  /* The automation/config sections are local state, not a URL section: the shell's router
      only validates sec=appearance|shortcuts, and this section must not change
      that contract (it is reachable from the nav and by keyboard). */
   const [automation, setAutomation] = useState(false);
+  const [config, setConfig] = useState(false);
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   useEffect(() => {
     applyPrefs(prefs);
@@ -2341,17 +2343,23 @@ export function SettingsPage({ params, navigate, theme, setTheme, request, mutat
   return (
     <div className="set rail-settings">
       <nav className="set-nav rail-settings-nav" aria-label="Settings">
-        <button type="button" className={cn("sitem rail-nav-link", !automation && section === 'appearance' && "on")} aria-current={!automation && section === 'appearance' ? 'page' : undefined} onClick={() => { setAutomation(false); navigate('settings', { sec: 'appearance' }); }}>
+        <button type="button" className={cn("sitem rail-nav-link", !automation && !config && section === 'appearance' && "on")} aria-current={!automation && !config && section === 'appearance' ? 'page' : undefined} onClick={() => { setAutomation(false); setConfig(false); navigate('settings', { sec: 'appearance' }); }}>
           <Palette className="i" size={15} strokeWidth={1.8} aria-hidden="true" />
           <span>Appearance</span>
         </button>
-        <button type="button" className={cn("sitem rail-nav-link", !automation && section === 'shortcuts' && "on")} aria-current={!automation && section === 'shortcuts' ? 'page' : undefined} onClick={() => { setAutomation(false); navigate('settings', { sec: 'shortcuts' }); }}>
+        <button type="button" className={cn("sitem rail-nav-link", !automation && !config && section === 'shortcuts' && "on")} aria-current={!automation && !config && section === 'shortcuts' ? 'page' : undefined} onClick={() => { setAutomation(false); setConfig(false); navigate('settings', { sec: 'shortcuts' }); }}>
           <KeyboardGlyph className="i" size={15} strokeWidth={1.8} aria-hidden="true" />
           <span>Keyboard shortcuts</span>
         </button>
+        <button type="button" className={cn("sitem rail-nav-link", config && "on")} aria-current={config ? 'page' : undefined} onClick={() => { setAutomation(false); setConfig(true); }}>
+          <Palette className="i" size={15} strokeWidth={1.8} aria-hidden="true" />
+          <span>Configuration</span>
+        </button>
       </nav>
       <div className="set-body rail-settings-body"><div className="set-in">
-        {automation ? (
+        {config ? (
+          <ConfigSettings snapshot={snapshot} project={project} params={params} navigate={navigate} openDoc={openDoc} read={read} mutate={mutate} busy={busy} refresh={refresh} request={request} theme={theme} setTheme={setTheme} />
+        ) : automation ? (
           <AutomationSettings request={request} mutate={mutate} busy={busy} project={project} refresh={refresh} />
         ) : section === 'shortcuts' ? (
           <>

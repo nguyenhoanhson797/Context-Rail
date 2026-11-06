@@ -119,6 +119,28 @@ rail ops sync                   # integrate and publish clone changes
 rail --actor human ops migrate ...  # import a v1/v2 legacy store
 ```
 
+## Steering without widening
+
+Profiles and skills are store documents; the CTO may narrow them daily.
+Every save goes through the gateway with the current etag — the same call
+the UI Settings **Configuration** tab makes:
+
+```powershell
+rail change update implementer --set model=<model> --expect <etag> --key <k>
+rail change update test-first --set description=<text> --expect <etag> --key <k>
+rail ops measure versions --target-class profile --target implementer --before 1 --after 2
+rail ops rollback --target-class profile --target implementer --version 1
+```
+
+- `model` / `effort` / `auto` / `runner` / `tools` / `skills` / narrowed
+  `allowed_methods` are `cto-alone`; `allowed_methods` may only shrink.
+- Any budget increase is `human-only` (typed phrase) — the gateway refuses
+  a CTO `update` that raises `budgets.attempts/seconds/tokens/credits`.
+- Skills: `name == file stem`, `description` non-empty, `allowed_tools`
+  must be known tool ids; version auto-increments.
+- `measure versions` is observational only, never an auto-rollout; if the
+  comparison regresses, `rollback` restores the earlier version as a new one.
+
 ## Speed budgets (fixed, tested in CI)
 
 | Operation | 1,000 docs | 10,000 docs |
