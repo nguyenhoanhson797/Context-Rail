@@ -4,6 +4,8 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://pypi.org/project/context-rail/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/nguyenhoanhson797/Context-Rail/blob/master/LICENSE)
 
+![Context Rail: your git repo, six building blocks, an agent team with a human approver, and how work flows from approve to done](https://raw.githubusercontent.com/nguyenhoanhson797/Context-Rail/master/docs/assets/context-rail-banner.jpg)
+
 **Keep your AI agents on the rails.** Context Rail turns your project into a
 shared workspace where AI agents do the work and you stay in charge of what
 matters.
