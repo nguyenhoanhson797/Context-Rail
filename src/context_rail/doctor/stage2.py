@@ -41,6 +41,7 @@ SEVERITY: dict[str, str] = {
     "code_graph_dirty_tree": "error",
     "code_graph_stale": "info",
     "code_graph_fallback": "info",
+    "code_map_not_adopted": "info",
 }
 
 _SYNC_INSTALL = "rail ops sync install"
@@ -68,17 +69,27 @@ def _codegraph(store: Path, manifest: Manifest, pack: Pack) -> list[dict[str, An
     from context_rail.core.locate import StoreLocationError
     from context_rail.model.codegraph import effective_code_graph
     from context_rail.store.codegraph import freshness, last_event
+    from context_rail.store.codemap import pins_code_map
 
     configured = effective_code_graph(manifest.code_graph, pack.policy.get("code_graph"))
     if configured == "none":
         return []
+    found: list[dict[str, Any]] = []
+    if pins_code_map(store, manifest):
+        found.append(
+            _issue(
+                "code_map_not_adopted",
+                "workspace/profiles/implementer/profile.md",
+                "the implementer profile still pins the retired code-map skill",
+                fix="rail ops codegraph adopt",
+            )
+        )
     try:
         event = last_event(store)
         state = freshness(store)
     except StoreLocationError:
-        return []
+        return found
     refresh = "rail ops codegraph setup"
-    found: list[dict[str, Any]] = []
     kind = None if event is None else event.get("kind")
     detail = {} if event is None else event.get("detail") or {}
     if kind == "fallback":

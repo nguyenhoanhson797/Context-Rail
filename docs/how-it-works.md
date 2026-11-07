@@ -228,6 +228,36 @@ The UI carries the pack's labels and titles, renders the pinned populations,
 and an empty screen says so instead of showing a blank page. No React module
 branches on a pack name.
 
+## Code graph
+
+`rail ops codegraph setup|refresh|status` manage a derived cache of files,
+symbols and call edges under the store's local directory, one snapshot per git
+commit. Nothing is written to the store, reads never start a process, and a
+missing snapshot degrades to file-level answers with one line saying so.
+`rail.yaml` `code_graph` (`builtin` or `none`) wins over the pack's
+`policy.code_graph`, which wins over the default `builtin`; the video pack
+ships `none`. `graphify` and `gitnexus` are accepted values that fall back to
+`builtin` until their adapters ship.
+
+- **Dispatch** writes a `code area` section into the work order and the run
+  records `symbols_changed` with the files it changed.
+- **Review** gets the changed symbols, their impact, anything outside the
+  predicted area and tests that reach the change without being declared checks.
+- **`rail why` / `rail show`** accept `path` and `path:Symbol`.
+- **Implementers never write the store.** They state decisions in
+  `what_happened` and the CTO records them.
+
+### Upgrading a store that has a code map
+
+Stores made with the earlier packs keep working: while the implementer profile
+still pins the `code-map` skill, dispatch keeps allowing `code` notes in a
+candidate. `rail ops doctor` reports `code_map_not_adopted` (info). Run
+`rail --actor human ops codegraph adopt` (`--dry-run` first if you like) to
+rewrite the cto, implementer and reviewer profiles and the `review-checklist`
+skill and to delete the `code-map` skill copies. A copy you edited is left
+alone and listed under `customized` with its difference from the pack. Existing
+`code` notes stay as hand-written intent notes.
+
 ## Upgrading an existing video store
 
 The video pack no longer has a `render` item type, and the `queued`,
@@ -236,7 +266,8 @@ execution record on the approved shot. A store made before that change keeps
 reading, but `rail ops doctor` reports `unknown_preset`, `unknown_status` and
 `placement_unresolved` for every old render item and every item left on one of
 those statuses, and `rail change move` refuses them. The pack change also
-shows as `approval_mismatch` until a human re-approves it.
+shows as `approval_mismatch` until a human re-approves it. The same reapproval
+covers the pack's new `code_graph: none` policy.
 
 Repair it once, as the human:
 

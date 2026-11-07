@@ -671,6 +671,14 @@ TOOLS: tuple[Tool, ...] = (
         params=(),
         handler="context_rail.gateway.handlers.codegraph:status",
     ),
+    Tool(
+        name="codegraph adopt",
+        summary="Move the profiles and skills of a store off the hand-written code map.",
+        permission="write",
+        params=(Param("dry_run", "bool", help="report what would change without writing"),),
+        handler="context_rail.gateway.handlers.codegraph:adopt",
+        decision="human-only",
+    ),
 )
 
 

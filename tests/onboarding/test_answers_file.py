@@ -216,9 +216,6 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
         "cto brief",
         "ledger",
         "report",
-        "add",
-        "update",
-        "link",
     ]
 
     reviewer = _frontmatter(store / "workspace/profiles/reviewer/profile.md")
@@ -239,7 +236,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
     assert profiles["value"]["total"] == 2
     assert invoke("find", {"preset": "cto"}, store=store)["value"]["total"] == 1
     skills = invoke("find", {"preset": "skill"}, store=store)
-    assert skills["value"]["total"] == 7
+    assert skills["value"]["total"] == 4
 
 
 def test_materialized_profiles_are_well_formed_store_documents(

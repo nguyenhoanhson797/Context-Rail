@@ -37,11 +37,12 @@ team sees. All four also declare the shared base presets: `goal`, `scope`, `task
 `risk`, `question`, `note`, `convention`, `code`, `decision`, `event`, `check`,
 `charter`, `vision`, `wont`, `skill`, `cto`, `profile` and `fix`.
 
-- All four ship a `code` note preset and a `code-map` skill. The implementer writes
-  the notes in its candidate; the reviewer checks them against the diff. A code note
-  names a source file, class, function or method; `depends_on` points at what it
-  needs, so the notes pointing at a code note are its editing impact. The source
-  path lives in `source_path` because the engine reserves `path`.
+- All four keep a `code` note preset for hand-written intent that the code graph cannot
+  see (runtime coupling, configuration, why a module exists). Nobody has to write
+  one: the code graph derives files, symbols and callers from git, and the
+  implementer never writes the store. The source path lives in `source_path`
+  because the engine reserves `path`. A store from before the graph moves over with
+  `rail --actor human ops codegraph adopt`.
 
 ## The operating model sits beside the workflow
 

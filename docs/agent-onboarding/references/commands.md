@@ -126,6 +126,8 @@ rail ops rollback --target-class skill|profile --target PATH --version N
 rail ops measure versions --target-class skill|profile --target NAME
                           --before N --after N [--since ISO] [--until ISO]
 rail ops measure fix --item SLUG [--until ISO]
+rail ops codegraph setup|refresh|status
+rail --actor human ops codegraph adopt [--dry-run]
 rail ops sync [--remote NAME] [--branch NAME] [--key KEY]
 rail ops sync install
 rail ops adapters render [--harness agents|claude|cursor|gemini]... [--dry-run]
@@ -176,7 +178,7 @@ MCP clients see the canonical table, generated from the same source as the CLI:
 | Change | `add`, `update`, `move`, `link`, `rename`, `relocate`, `do` |
 | Proof | `check`, `verify` |
 | Loop | `dispatch`, `review`, `merge`, `report`, `triage`, `cto tick` |
-| Ops | `doctor`, `ci`, `reindex`, `rollback`, `pack list`, `pack show`, `pack validate`, `pack create`, `pack use`, `measure versions`, `measure fix`, `sync`, `sync driver`, `adapters sync` |
+| Ops | `doctor`, `ci`, `reindex`, `rollback`, `pack list`, `pack show`, `pack validate`, `pack create`, `pack use`, `measure versions`, `measure fix`, `codegraph setup`, `codegraph refresh`, `codegraph status`, `codegraph adopt`, `sync`, `sync driver`, `adapters sync` |
 | Transports | `mcp serve`, `ui serve`, `serve daemon` |
 
 Each tool declares a closed object schema, a `permission` (`read`, `write`,

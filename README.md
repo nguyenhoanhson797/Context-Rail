@@ -255,7 +255,7 @@ flowchart TD
     TS["tests · check"]
     RP["repro-check + acceptance · check"]
     RV["review · record"]
-    NT["vision, conventions,<br/>code map · note"]
+    NT["vision, conventions · note"]
     IM["implementer agent · actor<br/>own git worktree"]
     RE["reviewer · actor<br/>never the implementer"]
 
@@ -313,6 +313,27 @@ reaches done only with passing tests and an approved review; a bug also needs
 its `repro-check` and `acceptance` checks before it closes. A sprint closes only
 when every story in it is finished, and progress counts finished stories per
 sprint.
+
+## Code graph
+
+For code projects, Context Rail reads your git checkout and builds a graph of
+files, functions and who calls whom. It lives in a local cache, not in the
+store, and rebuilds from git. When you dispatch an agent, the work order
+carries a short `code area`: the files and symbols the item mentions, plus their
+callers. At review, the reviewer sees which functions the diff changed, what
+reaches them, and which tests cover them. `rail why src/app.py:total` answers
+for a file or a function the same way it answers for an item.
+
+```bash
+rail ops codegraph setup     # check the provider and build the first snapshot
+rail ops codegraph status    # provider, coverage and freshness
+```
+
+It is on by default for code packs and off for the video pack. Set
+`code_graph: none` in `rail.yaml` to turn it off anywhere. A store made before
+the code graph, with hand-written `code` notes, moves over once with
+`rail --actor human ops codegraph adopt`; it rewrites only the profiles and
+skills you have not edited.
 
 ## Use it your way
 
