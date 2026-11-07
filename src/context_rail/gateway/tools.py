@@ -210,6 +210,21 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.reports:report",
     ),
     Tool(
+        name="execution record",
+        summary="Record one attempt of a declared execution action, such as a render, on its target.",
+        permission="write",
+        params=(
+            Param("target", "str", required=True, positional=True, help="the Item the action ran on"),
+            Param("action", "str", required=True, help="a declared execution action"),
+            Param("state", "str", required=True, help="running, succeeded, failed or cancelled"),
+            Param("output", "str", repeat=True, help="a file or URL the attempt produced"),
+            Param("error", "str", help="why the attempt failed or was cancelled"),
+            Param("runner_digest", "str", help="a digest naming the runner that did the work"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.executions:record",
+    ),
+    Tool(
         name="triage",
         summary="Cluster untriaged reports into fixes, proposals or engine issues.",
         permission="write",

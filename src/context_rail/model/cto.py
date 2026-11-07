@@ -200,6 +200,7 @@ CTO_METHODS = WORKER_METHODS + (
     "review",
     "merge",
     "triage",
+    "execution record",
     "digest",
     "adapters sync",
     "ci",

@@ -58,6 +58,7 @@ _STAY_DIRECT = (
     "merge",
     "report",
     "triage",
+    "execution record",
     "do",
     "cto tick",
     "adapters sync",

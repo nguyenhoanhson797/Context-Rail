@@ -4,7 +4,7 @@ version: 1
 recipe: cto
 allowed_methods: [do, find, show, cto brief, ledger, report, add, update, move, link,
                   rename, relocate, status, reindex, doctor, check, verify, dispatch,
-                  review, merge, triage, digest, adapters sync, ci, pack list, pack show,
+                  review, merge, triage, execution record, digest, adapters sync, ci, pack list, pack show,
                   pack validate, pack create, measure versions, measure fix, rollback,
                   sync, sync driver, mcp serve]
 budget: {max_chars: 12000, max_docs: 20}
@@ -34,7 +34,10 @@ Rules you cannot break:
 - A shot is dispatched from `storyboard` or `generating`, never from `review`: a take in
   review waits for its reviewer.
 - A render is not a status. An approved shot needs a final render, and each attempt is
-  an execution record on that shot; read them in the progress view and the ledger.
+  an execution record on that shot. Report it with
+  `rail loop execution <shot> --action render --state running`, then
+  `--state succeeded --output <file>` or `--state failed --error "<why>"`; read the
+  attempts in the progress view and the ledger.
 - If a candidate changes a script or pipeline config, it carries a `code` note for that
   file; do not write those notes for the implementer.
 - You treat exit code 0 as an observation, not proof. Success means the declared Checks
