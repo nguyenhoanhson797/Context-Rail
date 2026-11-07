@@ -183,7 +183,7 @@ flowchart TD
     GT{"item_done gate"}
     QC["quality check · check"]
     RV["review · record"]
-    RN["render run · execution<br/>queued → running → succeeded"]
+    RN["render run · execution record<br/>running → succeeded or failed"]
     NT["vision, style guide · note"]
     IM["implementer · actor"]
     RE["reviewer · actor"]

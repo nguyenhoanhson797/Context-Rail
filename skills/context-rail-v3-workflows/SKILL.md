@@ -28,9 +28,9 @@ binary.
 |---|---|---|---|
 | `basic` | one stream | `todo → doing → done` | `milestone`, `idea` |
 | `flow` | continuous kanban | `backlog → ready → building → review → shipped` | `idea`, `story`, `epic` |
-| `scrum` | sprints | `todo → ready → doing → review → done` | `epic`, `sprint`, `story` |
+| `scrum` | sprints | `todo → ready → doing → review → done` | `backlog`, `epic`, `sprint`, `story` |
 | `waterfall` | phase gates | `planned → designing → building → testing → done` | `requirement`, `phase`, `deliverable` |
-| `video` | scenes and shots | `draft → storyboard → generating → review → approved → published` | `scene`, `shot`, `render`, `asset`, `review` |
+| `video` | scenes and shots | `draft → storyboard → generating → review → approved → published` | `scene`, `shot`, `asset`, `review` |
 
 Every pack also declares `blocked` and `dropped`; the table lists the flow the
 team sees. All four also declare the shared base presets: `goal`, `scope`, `task`, `bug`,
@@ -70,9 +70,11 @@ and it is not approved.
   two shapes.
 - Statuses alone do not gate execution: `ready` maps to `not_started` and
   `review` maps to `active`. A pack can still close a status with
-  `execution: {review: {dispatch: false}}`, which `flow` and `scrum` do. Other
-  hard gating comes from `depends_on`, the `blocked` category and the charter's
-  done gate.
+  `execution: {review: {dispatch: false}}`, which `flow`, `scrum` and `video` do.
+  The top-level `execution` block covers only the default workflow: a named
+  workflow that uses the status must declare the same flag itself, or items on
+  it stay dispatchable in review. Other hard gating comes from `depends_on`, the
+  `blocked` category and the charter's done gate.
 
 ## Pack anatomy (`packs/<name>/pack.yaml`)
 

@@ -118,12 +118,20 @@ basic   goal ──▶ task            (todo → doing → done)
 | Container | sprint (required) | phase (required) | scene (required) | epic (optional) | goal (optional) |
 | Unit | story | deliverable | shot | story | task |
 | Focus | active sprint | active phase | active scene | continuous | continuous |
-| Queue | story·task·bug | deliverable·task | shot | story·task·idea·bug | task·bug·idea |
+| Queue | story·task·bug | deliverable·task·bug | shot | story·task·bug | task·bug |
 | Progress | done / sprint | done / phase | `approved` / scene | done / epic | done / goal |
-| Gate | `item_done` (bugfix adds `repro-check`+`acceptance`) | `item_done` | `item_done` | — | — |
+| Gate | `item_done` (bugfix adds `repro-check`+`acceptance`) | `item_done` | `item_done` | `item_done` (default) | `item_done` (default) |
 
-In video, `render` runs are **execution records**: they show up in the
-progress view and the ledger, and are never merged with workflow completion.
+Every move into a done-category status needs the charter's `item_done` gate
+(or `scope_done` for a scope entry), whether or not the workflow names it.
+Ideas stay off the queue in `basic` and `flow`; they wait in the Ideas
+catalog until someone turns one into a task or story. In `scrum`, a story
+that is not planned yet waits in a `backlog` container
+(`--rel part_of=<backlog>`) and joins a sprint with `rail change link`.
+
+In video, `render` runs are **execution records** on the approved shot, not a
+status or an item of their own: they show up in the progress view and the
+ledger, and are never merged with workflow completion.
 Same engine, same five parts; only the pack's data changed.
 
 ### Why this costs zero engine code
