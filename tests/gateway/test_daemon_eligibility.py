@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from context_rail.core.tool_names import ALIAS_DEFAULTS, canonical_tool
 from context_rail.gateway.tools import SURFACE_TOOLS, TOOLS, daemon_eligible
 from helpers import assert_parity, serving_daemon
 
@@ -173,3 +174,11 @@ def test_every_flagged_tool_matches_direct_from_another_directory(
     monkeypatch.setenv("RAIL_ACTOR", "decoy-actor")
     with serving_daemon(store):
         assert_parity(store, tool, dict(_PARITY_ARGS[tool]))
+
+
+def test_no_served_tool_is_reached_through_an_alias_that_fills_in_arguments() -> None:
+    # The CLI sends the canonical tool name, so an alias default would be lost on
+    # the way to the daemon.
+    by_name = {tool.name: tool for tool in TOOLS}
+    for alias in ALIAS_DEFAULTS:
+        assert by_name[canonical_tool(alias)].daemon is False, alias

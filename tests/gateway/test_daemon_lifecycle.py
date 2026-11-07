@@ -24,28 +24,25 @@ from context_rail.gateway.daemon import (
     _DaemonServer,
     call_daemon,
     daemon_alive,
+    DaemonRunning,
     daemon_endpoint,
-    process_alive,
     spawn_daemon,
     stop_daemon,
     write_daemon_descriptor,
 )
-from helpers import run_cli, run_cli_probe, serving_daemon
+from helpers import (
+    child_env,
+    daemon_descriptor,
+    process_alive,
+    run_cli,
+    run_cli_probe,
+    serving_daemon,
+)
 from perf.gen import make_store
 
 
-def _descriptor(store: Path) -> dict[str, Any] | None:
-    path = daemon_endpoint(store)
-    assert path is not None
-    try:
-        held = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return held if isinstance(held, dict) else None
-
-
 def _live_pid(store: Path) -> int | None:
-    held = _descriptor(store)
+    held = daemon_descriptor(store)
     pid = held.get("pid") if held else None
     return pid if isinstance(pid, int) and process_alive(pid) else None
 
@@ -239,7 +236,7 @@ def test_spawn_arguments(store: Path, popen_calls: list[Any]) -> None:
     assert spawn_daemon(store) is True
     (command, options), = popen_calls
     assert command == [
-        sys.executable, "-m", "context_rail", "--store", str(store), "serve", "daemon",
+        sys.executable, "-P", "-m", "context_rail", "--store", str(store), "serve", "daemon",
     ]
     assert options["cwd"] == tempfile.gettempdir()
     for stream in ("stdin", "stdout", "stderr"):
@@ -249,6 +246,55 @@ def test_spawn_arguments(store: Path, popen_calls: list[Any]) -> None:
     else:
         assert options["start_new_session"] is True
 
+
+def test_the_daemon_never_imports_a_package_planted_in_its_directory(
+    store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_popen = subprocess.Popen
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda args, **_: spawned.append(list(args)) or SimpleNamespace()
+    )
+    assert spawn_daemon(store) is True
+    monkeypatch.setattr(subprocess, "Popen", real_popen)
+    command, = spawned
+    planted = tmp_path / "shared-tmp"
+    (planted / "context_rail").mkdir(parents=True)
+    for name in ("__init__.py", "__main__.py"):
+        (planted / "context_rail" / name).write_text(
+            "raise SystemExit('planted')\n", encoding="utf-8"
+        )
+    launcher = command[: command.index("context_rail") + 1]
+    proc = subprocess.run(
+        [*launcher, "--help"],
+        cwd=planted,
+        capture_output=True,
+        text=True,
+        env=child_env(),
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "planted" not in proc.stdout + proc.stderr
+
+
+def test_a_second_daemon_for_the_same_store_refuses_to_start(store: Path) -> None:
+    with serving_daemon(store):
+        before = daemon_descriptor(store)
+        with pytest.raises(DaemonRunning):
+            _DaemonServer(store).start()
+        assert daemon_descriptor(store) == before
+        answer = call_daemon(store, "status", {}, actor="human", actor_env=None, read_only=True)
+        assert answer is not None and answer["ok"] is True
+
+
+def test_serving_a_store_that_already_has_a_daemon_is_refused(store: Path) -> None:
+    from context_rail.gateway.gateway import invoke
+
+    with serving_daemon(store):
+        refused = invoke("serve daemon", {"port": 0}, store=store, actor="human")
+    assert refused["ok"] is False
+    assert refused["error"]["code"] == "CONFLICT"
+    assert refused["error"]["details"]["reason"] == "daemon_running"
 
 def test_the_daemon_exits_when_idle(store: Path) -> None:
     server = _DaemonServer(store, idle_s=1)
@@ -325,7 +371,7 @@ def test_a_hard_killed_daemon_is_replaced_on_the_next_call(
     first = daemons.start(store)
     os.kill(first, signal.SIGTERM)
     _wait_for(lambda: not process_alive(first), 5, "the daemon to die")
-    assert _descriptor(store) is not None
+    assert daemon_descriptor(store) is not None
     proc = run_cli(store.parent, "next", store=store, env={"RAIL_NO_DAEMON": None})
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["ok"] is True
@@ -389,7 +435,7 @@ def test_a_reused_process_id_does_not_keep_a_new_daemon_from_starting(
     store: Path, popen_calls: list[Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_daemon_descriptor(store, port=_closed_port(), pid=os.getpid())
-    assert daemon_alive(store) is True
+    assert daemon_alive(store) is False
     assert cli.main(["--store", str(store), "next"]) == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
     (command, _), = popen_calls
@@ -397,41 +443,57 @@ def test_a_reused_process_id_does_not_keep_a_new_daemon_from_starting(
     assert not daemon_endpoint(store).exists()
 
 
-def test_a_daemon_that_accepts_connections_is_never_dropped(store: Path) -> None:
-    from context_rail.gateway.daemon import drop_unreachable
+def test_a_busy_daemon_with_a_burst_of_waiting_callers_stays_the_daemon(
+    store: Path, monkeypatch: pytest.MonkeyPatch, popen_calls: list[Any]
+) -> None:
+    from context_rail.gateway import gateway
+
+    real = gateway.invoke
+
+    def slow(tool: str, params: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        if tool == "status":
+            time.sleep(6.0)
+        return real(tool, params, **kwargs)
+
+    monkeypatch.setattr(gateway, "invoke", slow)
+    waiting: list[socket.socket] = []
+    refused: list[OSError] = []
+
+    def wait_in_line(port: int) -> None:
+        try:
+            waiting.append(socket.create_connection(("127.0.0.1", port), timeout=4))
+        except OSError as error:
+            refused.append(error)
 
     with serving_daemon(store):
-        assert drop_unreachable(store) is False
-        assert daemon_endpoint(store).exists()
+        held = daemon_descriptor(store)
+        assert held is not None
+        busy = socket.create_connection(("127.0.0.1", held["port"]), timeout=10)
+        busy.sendall(
+            json.dumps({"tool": "status", "params": {}, "token": held["token"]}).encode() + b"\n"
+        )
+        busy.shutdown(socket.SHUT_WR)
+        time.sleep(0.3)
+        callers = [
+            threading.Thread(target=wait_in_line, args=(held["port"],)) for _ in range(40)
+        ]
+        for caller in callers:
+            caller.start()
+        for caller in callers:
+            caller.join(10)
+        try:
+            assert refused == []
+            assert daemon_alive(store) is True
+            assert daemon_descriptor(store) == held
+            assert spawn_daemon(store) is False
+            assert popen_calls == []
+        finally:
+            for conn in waiting:
+                conn.close()
+            busy.close()
 
 
-def test_a_listener_that_never_answers_is_not_dropped(store: Path) -> None:
-    from context_rail.gateway.daemon import drop_unreachable
-
-    with socket.socket() as silent:
-        silent.bind(("127.0.0.1", 0))
-        silent.listen(1)
-        write_daemon_descriptor(store, port=int(silent.getsockname()[1]), pid=os.getpid())
-        assert drop_unreachable(store) is False
-        assert daemon_endpoint(store).exists()
-
-
-def test_a_descriptor_nobody_listens_on_is_dropped(store: Path) -> None:
-    from context_rail.gateway.daemon import drop_unreachable
-
-    write_daemon_descriptor(store, port=_closed_port(), pid=os.getpid())
-    assert drop_unreachable(store) is True
-    assert not daemon_endpoint(store).exists()
-
-
-def test_drop_unreachable_with_no_descriptor_does_nothing(store: Path) -> None:
-    from context_rail.gateway.daemon import drop_unreachable
-
-    assert drop_unreachable(store) is False
-
-
-def test_a_broken_git_marker_is_not_a_crash_on_the_fast_path(
-    store: Path, popen_calls: list[Any], capsys: pytest.CaptureFixture[str]
+def test_a_broken_git_marker_is_not_a_crash_on_the_fast_path(    store: Path, popen_calls: list[Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
     (store.parent / ".git").write_text("gitdir: ../missing\n", encoding="utf-8")
     code = cli.main(["--store", str(store), "next"])

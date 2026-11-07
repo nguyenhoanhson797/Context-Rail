@@ -19,12 +19,18 @@ import pytest
 
 from context_rail.gateway.daemon import (
     call_daemon,
+    daemon_alive,
     daemon_endpoint,
-    process_alive,
     write_daemon_descriptor,
 )
 from context_rail.gateway.gateway import invoke
-from helpers import child_env, serving_daemon
+from helpers import (
+    child_env,
+    daemon_descriptor,
+    daemon_request,
+    holding_daemon_lock,
+    serving_daemon,
+)
 from perf.gen import make_store
 
 _NO_ANSWER_KEYED = "outcome unknown; repeating this exact command is safe, the key makes it idempotent"
@@ -81,7 +87,8 @@ def _fake_daemon(
     thread.start()
     write_daemon_descriptor(store, port=port, pid=pid)
     try:
-        yield SimpleNamespace(port=port, received=received, listener=listener)
+        with holding_daemon_lock(store):
+            yield SimpleNamespace(port=port, received=received, listener=listener)
     finally:
         for conn in held:
             conn.close()
@@ -104,13 +111,19 @@ def _find_count(store: Path) -> int:
     return len(found["value"]["items"])
 
 
-def test_a_dead_process_is_a_miss_and_no_byte_reaches_the_port(store: Path) -> None:
+@pytest.mark.parametrize("owner", ["dead", "reused"])
+def test_a_descriptor_no_daemon_holds_is_dropped_and_no_byte_reaches_the_port(
+    store: Path, owner: str
+) -> None:
+    # A reused pid (here, this live test process) and a port some other program now
+    # listens on look like a daemon from outside; only the lock tells them apart.
+    pid = _dead_pid() if owner == "dead" else os.getpid()
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     probe.bind(("127.0.0.1", 0))
     probe.listen(1)
     probe.settimeout(0.3)
     try:
-        write_daemon_descriptor(store, port=probe.getsockname()[1], pid=_dead_pid())
+        write_daemon_descriptor(store, port=probe.getsockname()[1], pid=pid)
         assert _call(store) is None
         descriptor = daemon_endpoint(store)
         assert descriptor is not None and not descriptor.is_file()
@@ -118,6 +131,24 @@ def test_a_dead_process_is_a_miss_and_no_byte_reaches_the_port(store: Path) -> N
             probe.accept()
     finally:
         probe.close()
+
+
+def test_a_daemon_is_alive_exactly_while_it_holds_the_lock(store: Path) -> None:
+    assert daemon_alive(store) is False
+    with holding_daemon_lock(store):
+        assert daemon_alive(store) is True
+    assert daemon_alive(store) is False
+
+
+def test_a_live_daemon_is_found_by_its_lock_not_its_recorded_pid(store: Path) -> None:
+    with serving_daemon(store):
+        descriptor = daemon_endpoint(store)
+        assert descriptor is not None
+        held = json.loads(descriptor.read_text(encoding="utf-8"))
+        held["pid"] = _dead_pid()
+        descriptor.write_text(json.dumps(held), encoding="utf-8")
+        served = _call(store)
+    assert served is not None and served["ok"] is True
 
 
 def test_a_version_mismatch_is_a_miss(store: Path) -> None:
@@ -140,9 +171,10 @@ def test_connection_refused_is_a_miss(store: Path) -> None:
     port = closed.getsockname()[1]
     closed.close()
     write_daemon_descriptor(store, port=port)
-    started = time.monotonic()
-    assert _call(store) is None
-    assert time.monotonic() - started < 1.0
+    with holding_daemon_lock(store):
+        started = time.monotonic()
+        assert _call(store) is None
+        assert time.monotonic() - started < 1.0
 
 
 def test_a_non_daemon_listener_is_a_miss(store: Path) -> None:
@@ -218,30 +250,28 @@ def test_a_request_larger_than_one_read_matches_direct(store: Path) -> None:
 
 
 def test_liveness_launches_no_subprocess_and_kills_nothing(
-    monkeypatch: pytest.MonkeyPatch,
+    store: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    dead = _dead_pid()
-
     def boom(*args: Any, **kwargs: Any) -> None:
-        raise AssertionError("liveness must not start a process")
+        raise AssertionError("liveness must not start or signal a process")
 
     monkeypatch.setattr(subprocess, "run", boom)
     monkeypatch.setattr(subprocess, "Popen", boom)
-    if os.name == "nt":
-        monkeypatch.setattr(os, "kill", boom)
-    assert process_alive(os.getpid()) is True
-    assert process_alive(dead) is False
+    monkeypatch.setattr(os, "kill", boom)
+    assert daemon_alive(store) is False
+    with holding_daemon_lock(store):
+        assert daemon_alive(store) is True
 
 
-def test_liveness_loads_no_foreign_function_library() -> None:
+def test_liveness_loads_no_foreign_function_library(store: Path) -> None:
     probe = (
-        "import os, sys\n"
-        "from context_rail.gateway.daemon import process_alive\n"
-        "assert process_alive(os.getpid())\n"
+        "import sys\n"
+        "from context_rail.gateway.daemon import daemon_alive\n"
+        "daemon_alive(sys.argv[1])\n"
         "print('ctypes' in sys.modules)\n"
     )
     proc = subprocess.run(
-        [sys.executable, "-c", probe],
+        [sys.executable, "-c", probe, str(store)],
         capture_output=True,
         text=True,
         env=child_env(),
@@ -251,33 +281,13 @@ def test_liveness_loads_no_foreign_function_library() -> None:
     assert proc.stdout.strip() == "False"
 
 
-@pytest.mark.skipif(os.name != "nt", reason="the System process is a Windows fixture")
-def test_a_process_this_user_cannot_open_still_counts_as_alive() -> None:
-    assert process_alive(4) is True
-
-
-@pytest.mark.parametrize("pid", [0, -1, 2**40])
-def test_an_impossible_process_id_is_never_alive(pid: int) -> None:
-    assert process_alive(pid) is False
-
-
-def _send(port: int, payload: dict[str, Any]) -> dict[str, Any]:
-    with socket.create_connection(("127.0.0.1", port), timeout=10) as sock:
-        sock.sendall(json.dumps(payload).encode("utf-8") + b"\n")
-        sock.shutdown(socket.SHUT_WR)
-        data = b""
-        while chunk := sock.recv(65536):
-            data += chunk
-    return json.loads(data.decode("utf-8"))
-
-
 @pytest.mark.parametrize("token", ["tökén", "", "x" * 5000])
 def test_an_unusable_token_is_refused_not_an_internal_error(store: Path, token: str) -> None:
     with serving_daemon(store):
         descriptor = daemon_endpoint(store)
         assert descriptor is not None
         held = json.loads(descriptor.read_text(encoding="utf-8"))
-        refused = _send(held["port"], {"tool": "status", "params": {}, "token": token})
+        refused = daemon_request(held["port"], {"tool": "status", "params": {}, "token": token})
     assert refused["error"]["code"] == "PERMISSION_DENIED"
     assert refused["error"]["details"]["reason"] == "daemon_token"
 
@@ -290,17 +300,12 @@ def test_the_descriptor_holding_the_token_is_readable_only_by_its_owner(store: P
         assert descriptor.stat().st_mode & 0o077 == 0
 
 
-def _held(store: Path) -> dict[str, Any]:
-    descriptor = daemon_endpoint(store)
-    assert descriptor is not None
-    return json.loads(descriptor.read_text(encoding="utf-8"))
-
-
 def test_a_request_past_its_deadline_is_declined_and_not_run(store: Path) -> None:
     before = _find_count(store)
     with serving_daemon(store):
-        held = _held(store)
-        declined = _send(
+        held = daemon_descriptor(store)
+        assert held is not None
+        declined = daemon_request(
             held["port"],
             {
                 "tool": "add",
@@ -308,7 +313,7 @@ def test_a_request_past_its_deadline_is_declined_and_not_run(store: Path) -> Non
                 "actor": "human",
                 "actor_env": None,
                 "token": held["token"],
-                "deadline": time.time() - 5,
+                "deadline_monotonic": time.monotonic() - 5,
             },
         )
     assert declined["error"]["details"]["reason"] == "daemon_expired"
@@ -331,9 +336,10 @@ def test_a_write_that_gave_up_waiting_never_runs_later(
     monkeypatch.setenv("RAIL_DAEMON_TIMEOUT_MS", "300")
     before = _find_count(store)
     with serving_daemon(store):
-        held = _held(store)
+        held = daemon_descriptor(store)
+        assert held is not None
         busy = threading.Thread(
-            target=_send,
+            target=daemon_request,
             args=(held["port"], {"tool": "status", "params": {}, "token": held["token"]}),
         )
         busy.start()
@@ -366,19 +372,6 @@ def test_the_descriptor_is_not_the_one_an_older_client_reads(store: Path) -> Non
         assert not (descriptor.parent / "daemon.json").exists()
 
 
-def test_a_result_that_cannot_be_sent_after_a_write_ran_is_unknown_not_internal(
-    store: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from context_rail.gateway import gateway
-
-    monkeypatch.setattr(gateway, "invoke", lambda *a, **k: {"ok": True, "value": object()})
-    with serving_daemon(store):
-        result = _call(store, "add", {"preset": "task", "title": "Ran"}, read_only=False)
-    assert result is not None and result["ok"] is False
-    assert result["error"]["code"] == "PROCESS_ERROR"
-    assert result["error"]["details"]["reason"] == "daemon_no_answer"
-
-
 @pytest.mark.parametrize(
     ("port", "pid"), [(99_999_999, None), (-1, None), (None, 2**40), (None, -7)]
 )
@@ -386,7 +379,8 @@ def test_a_descriptor_with_impossible_numbers_is_a_miss(
     store: Path, port: int | None, pid: int | None
 ) -> None:
     write_daemon_descriptor(store, port=port or 5, pid=pid or os.getpid())
-    assert _call(store) is None
+    with holding_daemon_lock(store):
+        assert _call(store) is None
 
 
 def test_the_stop_op_requires_the_token(store: Path) -> None:
@@ -394,11 +388,58 @@ def test_the_stop_op_requires_the_token(store: Path) -> None:
         descriptor = daemon_endpoint(store)
         assert descriptor is not None
         held = json.loads(descriptor.read_text(encoding="utf-8"))
-        refused = _send(held["port"], {"op": "stop", "token": "wrong"})
+        refused = daemon_request(held["port"], {"op": "stop", "token": "wrong"})
         assert refused["error"]["code"] == "PERMISSION_DENIED"
         assert descriptor.is_file(), "a wrong token must leave the daemon running"
-        assert _send(held["port"], {"op": "stop", "token": held["token"]})["ok"] is True
+        assert daemon_request(held["port"], {"op": "stop", "token": held["token"]})["ok"] is True
         deadline = time.monotonic() + 5
         while descriptor.is_file() and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not descriptor.is_file()
+
+
+def _nested(depth: int) -> list[Any]:
+    value: list[Any] = []
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+@pytest.mark.parametrize("value", [object(), _nested(100_000)], ids=["unencodable", "too-deep"])
+def test_any_failure_to_send_a_result_after_the_call_ran_is_unknown(
+    store: Path, monkeypatch: pytest.MonkeyPatch, value: Any
+) -> None:
+    from context_rail.gateway import gateway
+
+    monkeypatch.setattr(gateway, "invoke", lambda *a, **k: {"ok": True, "value": value})
+    with serving_daemon(store):
+        result = _call(store, "add", {"preset": "task", "title": "Ran"}, read_only=False)
+    assert result is not None and result["ok"] is False
+    assert result["error"]["code"] == "PROCESS_ERROR"
+    assert result["error"]["details"]["reason"] == "daemon_no_answer"
+
+
+def test_every_served_call_reads_a_fresh_git_index(store: Path) -> None:
+    from context_rail.store import git_index
+
+    with serving_daemon(store):
+        git_index._SNAPSHOT_CACHE[("planted", 0, 0)] = "stale"  # type: ignore[assignment]
+        served = _call(store)
+        assert served is not None and served["ok"] is True
+        assert ("planted", 0, 0) not in git_index._SNAPSHOT_CACHE
+
+
+def test_a_deadline_still_ahead_on_the_monotonic_clock_runs(store: Path) -> None:
+    with serving_daemon(store):
+        held = daemon_descriptor(store)
+        assert held is not None
+        served = daemon_request(
+            held["port"],
+            {
+                "tool": "status",
+                "params": {},
+                "token": held["token"],
+                "deadline_monotonic": time.monotonic() + 30,
+            },
+        )
+    assert served["ok"] is True

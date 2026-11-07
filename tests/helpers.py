@@ -7,6 +7,7 @@ import hashlib
 import multiprocessing
 import os
 import queue as queue_module
+import socket
 import statistics
 import subprocess
 import sys
@@ -49,8 +50,9 @@ _PROBE = (
     "import sys\n"
     "from context_rail import cli\n"
     "code = cli.main(sys.argv[1:])\n"
-    "sys.stderr.write('GW=%s\\nYAML=%s\\n' % "
-    "('context_rail.gateway.gateway' in sys.modules, 'yaml' in sys.modules))\n"
+    "sys.stderr.write('GW=%s\\nYAML=%s\\nSQLITE=%s\\n' % "
+    "('context_rail.gateway.gateway' in sys.modules, 'yaml' in sys.modules, "
+    "'sqlite3' in sys.modules))\n"
     "sys.exit(code)\n"
 )
 
@@ -63,9 +65,10 @@ def run_cli_probe(
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, bool]]:
     """Run the CLI as a user would, and report which heavy modules it loaded.
 
-    Returns the process and ``{"GW": ..., "YAML": ...}``: whether the gateway
-    and YAML were imported by the time the command finished. The suite's daemon
-    switch is removed from the child, so a daemon is used when one is live.
+    Returns the process and ``{"GW": ..., "YAML": ..., "SQLITE": ...}``: whether
+    the gateway, YAML and SQLite were imported by the time the command finished.
+    The suite's daemon switch is removed from the child, so a daemon is used
+    when one is live.
     """
     child = child_env({"RAIL_NO_DAEMON": None, **(env or {})})
     command = [sys.executable, "-c", _PROBE]
@@ -87,7 +90,7 @@ def run_cli_probe(
         for key, _, value in (
             line.partition("=")
             for line in proc.stderr.splitlines()
-            if line.startswith(("GW=", "YAML="))
+            if line.startswith(("GW=", "YAML=", "SQLITE="))
         )
     }
     return proc, flags
@@ -176,6 +179,43 @@ def serving_daemon(store: Path) -> Iterator[None]:
         yield
     finally:
         server.stop()
+
+
+@contextmanager
+def holding_daemon_lock(store: Path) -> Iterator[None]:
+    """Hold the store's daemon lock, as a live daemon would, without serving."""
+    from context_rail.gateway.daemon import _hold_lock, _lock_path, _release_lock
+
+    held = _hold_lock(store)
+    assert held is not None, "a daemon already holds this store's lock"
+    try:
+        yield
+    finally:
+        _release_lock(held, _lock_path(Path(store)))
+
+
+def daemon_descriptor(store: Path) -> dict[str, Any] | None:
+    """The store's daemon descriptor as written, or None when absent or unreadable."""
+    from context_rail.gateway.daemon import daemon_endpoint
+
+    path = daemon_endpoint(store)
+    assert path is not None
+    try:
+        held = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return held if isinstance(held, dict) else None
+
+
+def daemon_request(port: int, payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Send one raw request to a daemon and return its parsed reply."""
+    with socket.create_connection(("127.0.0.1", port), timeout=10) as sock:
+        sock.sendall(json.dumps(dict(payload)).encode("utf-8") + b"\n")
+        sock.shutdown(socket.SHUT_WR)
+        chunks: list[bytes] = []
+        while chunk := sock.recv(65536):
+            chunks.append(chunk)
+    return json.loads(b"".join(chunks).decode("utf-8"))
 
 
 def assert_parity(

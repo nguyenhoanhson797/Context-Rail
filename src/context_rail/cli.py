@@ -366,7 +366,7 @@ def _fast_path(
         actor_env=(os.environ.get("RAIL_ACTOR") or "").strip() or None,
         read_only=declared.permission == "read",
     )
-    if served is None and (not daemon.daemon_alive(store) or daemon.drop_unreachable(store)):
+    if served is None and not daemon.daemon_alive(store):
         daemon.spawn_daemon(store)
     return served
 
@@ -378,7 +378,9 @@ def _daemon_store(option: str | None) -> Path | None:
     try:
         if option is None:
             return find_store(Path.cwd())
-        store = Path(os.path.abspath(option))
+        # Joined, not normalised: on POSIX "link/.." is the link target's parent,
+        # which is what a direct call opens.
+        store = Path.cwd() / option
         return store if (store / "rail.yaml").is_file() else None
     except OSError:
         return None

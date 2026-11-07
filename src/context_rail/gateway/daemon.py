@@ -8,7 +8,8 @@ The transport is TCP on 127.0.0.1, gated by a per-store token recorded in
 the descriptor, which never leaves the worktree's git dir. A client reads the
 descriptor and falls back to a direct call on any miss, so a stale daemon can
 never block a command. A write whose outcome is unknown is reported, never
-run a second time.
+run a second time. A daemon is alive exactly while it holds the store's OS
+lock; a recorded pid or port proves nothing once the process has gone.
 
 Importing this module costs only the standard library, ``core.locate`` and
 ``core.result``: the CLI loads it before it may load YAML or SQLite.
@@ -16,6 +17,7 @@ Importing this module costs only the standard library, ``core.locate`` and
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import socket
@@ -37,12 +39,11 @@ __all__ = [
     "DAEMON_IDLE_S",
     "DAEMON_TIMEOUT_MS",
     "NO_DAEMON_ENV",
+    "DaemonRunning",
     "call_daemon",
     "clear_daemon_descriptor",
     "daemon_alive",
     "daemon_endpoint",
-    "drop_unreachable",
-    "process_alive",
     "serve",
     "spawn_daemon",
     "stop_daemon",
@@ -60,6 +61,11 @@ NO_DAEMON_ENV = "RAIL_NO_DAEMON"
 #: client would otherwise send no ``actor_env`` and run a worker as unnamed human.
 _PROTOCOL = 2
 _DAEMON_FILE = f"daemon-{_PROTOCOL}.json"
+_LOCK_FILE = f"daemon-{_PROTOCOL}.lock"
+_LOCK_TAKE_S = 1.0
+_LOCK_HELD_ERRNOS = frozenset({errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK})
+#: How long a retiring daemon keeps serving callers that were already queued.
+_DRAIN_S = 0.2
 _SPAWN_FILE = "daemon.spawn"
 _SPAWN_LOCK_STALE_S = 30
 _STOP_WAIT_S = 5.0
@@ -70,14 +76,9 @@ _MAX_FRAME = 16 * 1024 * 1024
 #: port, while a live listener completes the connect at once (even when it is
 #: busy: the kernel queues it), so a short cap loses nothing.
 _CONNECT_CAP_S = 0.25
-#: Long enough for that refusal to arrive, so a dead descriptor is told from a busy daemon.
-_REACH_CHECK_S = 3.0
 _MAX_PID = 2**31 - 1
 _TOKEN_REFUSED = "daemon_token"
 _EXPIRED = "daemon_expired"
-_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-_STILL_ACTIVE = 259
-_ERROR_ACCESS_DENIED = 5
 
 
 def daemon_endpoint(store: Path) -> Path | None:
@@ -85,68 +86,119 @@ def daemon_endpoint(store: Path) -> Path | None:
     return local_dir(Path(store)) / _DAEMON_FILE
 
 
-def process_alive(pid: int) -> bool:
-    """Whether ``pid`` is a running process, without starting one.
-
-    ``os.kill(pid, 0)`` terminates the process on Windows, so Windows asks the
-    kernel for the exit code instead.
-    """
-    if pid <= 0 or pid > _MAX_PID:
-        return False
-    if os.name == "nt":
-        return _windows_process_alive(pid)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
-
-
-def _windows_process_alive(pid: int) -> bool:
-    # ``_winapi`` is built into the interpreter; ``ctypes`` costs about 13 ms to import.
-    import _winapi
-
-    try:
-        handle = _winapi.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-    except OSError as error:
-        return getattr(error, "winerror", None) == _ERROR_ACCESS_DENIED
-    try:
-        return bool(_winapi.GetExitCodeProcess(handle) == _STILL_ACTIVE)
-    except OSError:
-        return True
-    finally:
-        _winapi.CloseHandle(handle)
+class DaemonRunning(Exception):
+    """Another daemon already holds this store's lock."""
 
 
 def daemon_alive(store: Path) -> bool:
-    """Whether a daemon descriptor exists and names a running process."""
-    held = _held_descriptor(store)
-    return held is not None and process_alive(held[0])
+    """Whether a daemon is running or starting for ``store``.
 
-
-def drop_unreachable(store: Path) -> bool:
-    """Clear a descriptor whose process is alive but does not answer; True when cleared.
-
-    A pid recorded before a reboot can belong to an unrelated process now, and
-    the descriptor would then keep a new daemon from ever starting. A daemon
-    that is merely busy still accepts the connection, so only a refusal counts.
+    A daemon holds an OS lock on a file under ``local_dir`` for its whole life,
+    and the OS drops it the moment the process ends. Unlike a recorded pid or
+    port, the lock cannot be inherited by an unrelated process after a crash or
+    a reboot. When the lock cannot be checked, the answer is yes, so nothing
+    starts a second daemon on a guess.
     """
-    held = _held_descriptor(store)
-    if held is None:
-        return False
-    _, port, token, _ = held
+    return _lock_held(Path(store)) is not False
+
+
+def _lock_path(store: Path) -> Path:
+    folder = local_dir(store)
+    if os.name != "nt":
+        return folder / _LOCK_FILE
+    # Windows will not rename a folder while any file inside it is open, and the
+    # daemon holds its lock open for life, so the lock lives in the user's profile.
+    key = sha256_hex(os.path.normcase(os.path.realpath(folder)).encode("utf-8"))[:32]
+    profile = os.environ.get("LOCALAPPDATA") or os.path.join(
+        os.path.expanduser("~"), "AppData", "Local"
+    )
+    return Path(profile) / "context-rail" / "daemons" / f"{key}-{_LOCK_FILE}"
+
+
+def _lock_held(store: Path) -> bool | None:
+    """True while a daemon holds the store's lock, False when none does, None when unknown."""
     try:
-        socket.create_connection(("127.0.0.1", port), timeout=_REACH_CHECK_S).close()
-    except TimeoutError:
+        handle = os.open(_lock_path(store), os.O_RDWR)
+    except FileNotFoundError:
+        return False
+    except (PathEscape, OSError):
+        return None
+    try:
+        if not _try_lock(handle):
+            return True
+        _unlock(handle)
         return False
     except OSError:
-        _release_descriptor(Path(store), token)
-        return True
-    return False
+        return None
+    finally:
+        os.close(handle)
+
+
+def _try_lock(handle: int) -> bool:
+    """Take the lock without waiting; False when another holder has it."""
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            os.lseek(handle, 0, os.SEEK_SET)
+            msvcrt.locking(handle, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        if error.errno in _LOCK_HELD_ERRNOS:
+            return False
+        raise
+    return True
+
+
+def _unlock(handle: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(handle, 0, os.SEEK_SET)
+        msvcrt.locking(handle, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _hold_lock(store: Path) -> int | None:
+    """Take the store's daemon lock for good; None when another daemon holds it."""
+    path = _lock_path(Path(store))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    deadline = time.monotonic() + _LOCK_TAKE_S
+    try:
+        # A client checking liveness holds the lock for an instant; only a
+        # holder that keeps it is another daemon.
+        while not _try_lock(handle):
+            if time.monotonic() >= deadline:
+                os.close(handle)
+                return None
+            time.sleep(0.01)
+    except OSError:
+        os.close(handle)
+        raise
+    return handle
+
+
+def _release_lock(handle: int, path: Path) -> None:
+    try:
+        _unlock(handle)
+    except OSError:
+        pass
+    os.close(handle)
+    if os.name == "nt":
+        # Windows deletes only a file no one has open, so this never pulls the
+        # lock from under a successor; elsewhere the file stays, as unlinking a
+        # lock file races with the next holder.
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 def _held_descriptor(store: Path) -> tuple[int, int, str, object] | None:
@@ -202,8 +254,10 @@ def call_daemon(
                 "token": token,
                 # A busy daemon may reach this request after the caller has
                 # stopped waiting; the daemon declines it rather than run a
-                # write nobody is waiting for and the caller may repeat.
-                "deadline": time.time() + budget,
+                # write nobody is waiting for and the caller may repeat. The
+                # monotonic clock is shared by every process on the machine and
+                # a wall-clock change cannot move it.
+                "deadline_monotonic": deadline,
             }
         ).encode("utf-8")
     except (TypeError, ValueError):
@@ -234,9 +288,12 @@ def _live_target(store: Path) -> tuple[int, str] | None:
     held = _held_descriptor(store)
     if held is None:
         return None
-    pid, port, token, version = held
-    if not process_alive(pid):
+    _, port, token, version = held
+    state = _lock_held(store)
+    if state is False:
         _release_descriptor(store, token)
+        return None
+    if state is None:
         return None
     if version != __version__:
         _ask_to_stop(port, token)
@@ -286,7 +343,9 @@ def spawn_daemon(store: Path) -> bool:
         options["creationflags"] = _DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP
     else:
         options["start_new_session"] = True
-    command = [sys.executable, "-m", "context_rail", "--store", str(store), "serve", "daemon"]
+    # -P keeps the working directory off the import path: a shared temp
+    # directory may hold a planted ``context_rail`` package.
+    command = [sys.executable, "-P", "-m", "context_rail", "--store", str(store), "serve", "daemon"]
     try:
         subprocess.Popen(command, **options)
     except OSError:
@@ -333,14 +392,14 @@ def stop_daemon(store: Path) -> bool:
     held = _held_descriptor(store)
     if held is None:
         return False
-    pid, port, token, _ = held
-    if not process_alive(pid):
+    _, port, token, _ = held
+    if _lock_held(Path(store)) is False:
         _release_descriptor(Path(store), token)
         return False
     if not _ask_to_stop(port, token, _timeout_ms() / 1000.0):
         return False
     deadline = time.monotonic() + _STOP_WAIT_S
-    while process_alive(pid):
+    while _lock_held(Path(store)) is not False:
         if time.monotonic() >= deadline:
             return False
         time.sleep(0.02)
@@ -446,12 +505,19 @@ def clear_daemon_descriptor(store: Path) -> None:
 
 
 def _release_descriptor(store: Path, token: str) -> None:
-    """Remove the descriptor unless a newer daemon has already replaced it."""
-    descriptor = daemon_endpoint(store)
-    if descriptor is not None and descriptor.is_file():
-        held = _read_descriptor(descriptor)
-        if held is not None and held.get("token") != token:
-            return
+    """Remove the descriptor only while it is still the one ``token`` names.
+
+    One that cannot be read may be a successor's being written, so it stays.
+    """
+    try:
+        descriptor = daemon_endpoint(store)
+    except (PathEscape, OSError):
+        return
+    if descriptor is None:
+        return
+    held = _read_descriptor(descriptor)
+    if held is None or held.get("token") != token:
+        return
     clear_daemon_descriptor(store)
 
 
@@ -473,9 +539,11 @@ def _timeout_ms() -> int:
 def _idle_seconds(explicit: int | None) -> int:
     """Seconds without a request before the daemon exits: the argument, the environment, else 600."""
     for candidate in (explicit, os.environ.get(DAEMON_ENV_IDLE)):
+        if candidate is None:
+            continue
         try:
-            seconds = int(candidate)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
+            seconds = int(candidate)
+        except ValueError:
             continue
         if seconds >= 1:
             return seconds
@@ -533,6 +601,7 @@ class _DaemonServer:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._token = ""
+        self._lock: int | None = None
 
     def start_blocking(self) -> int:
         self.start()
@@ -545,17 +614,27 @@ class _DaemonServer:
         return 0
 
     def start(self) -> int:
-        """Bind, publish the descriptor and spawn the serving thread."""
+        """Take the store's lock, bind, publish the descriptor and spawn the serving thread."""
         import threading
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((self.host, self.port))
-        sock.listen(16)
-        self.port = int(sock.getsockname()[1])
-        self._socket = sock
-        descriptor = write_daemon_descriptor(self.store, port=self.port)
-        self._token = json.loads(descriptor.read_text(encoding="utf-8"))["token"]
+        self._lock = _hold_lock(self.store)
+        if self._lock is None:
+            raise DaemonRunning(f"a daemon already serves {self.store}")
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((self.host, self.port))
+            # Windows refuses a caller once the queue is full; a deep queue keeps
+            # a burst of callers waiting for a busy daemon instead.
+            sock.listen(socket.SOMAXCONN)
+            self.port = int(sock.getsockname()[1])
+            self._socket = sock
+            descriptor = write_daemon_descriptor(self.store, port=self.port)
+            self._token = json.loads(descriptor.read_text(encoding="utf-8"))["token"]
+        except BaseException:
+            self._close_socket()
+            self._retire()
+            raise
         _drop_spawn_lock(descriptor.parent / _SPAWN_FILE)
         self._last_active = time.monotonic()
         self._thread = threading.Thread(target=self._serve, args=(sock,), daemon=True)
@@ -566,25 +645,46 @@ class _DaemonServer:
         import threading
 
         self._stop.set()
+        self._close_socket()
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
+        self._retire()
+
+    def _close_socket(self) -> None:
         sock = self._socket
         if sock is not None:
             try:
                 sock.close()
             except OSError:
                 pass
-        thread = self._thread
-        if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=2.0)
-        _release_descriptor(self.store, self._token)
+
+    def _retire(self) -> None:
+        """Stop being this store's daemon: no new caller finds or waits for it."""
+        held, self._lock = self._lock, None
+        if held is not None:
+            _release_lock(held, _lock_path(self.store))
+        if self._token:
+            _release_descriptor(self.store, self._token)
 
     def _serve(self, sock: socket.socket) -> None:
         sock.settimeout(0.5)
+        retiring = False
         while not self._stop.is_set():
             try:
                 conn, _ = sock.accept()
             except TimeoutError:
+                if retiring:
+                    break
                 if time.monotonic() - self._last_active >= self._idle_s:
-                    self._stop.set()
+                    # A caller may have connected just before the daemon gave up;
+                    # retire first, so no one new picks it, then answer the queue.
+                    retiring = True
+                    self._retire()
+                    try:
+                        sock.settimeout(_DRAIN_S)
+                    except OSError:
+                        break
                 continue
             except OSError:
                 break
@@ -603,7 +703,8 @@ class _DaemonServer:
                 pass
             self._last_active = time.monotonic()
         sock.close()
-        _release_descriptor(self.store, self._token)
+        self._retire()
+        self._stop.set()
 
     def _reply(self, conn: socket.socket, envelope: dict[str, Any]) -> None:
         conn.sendall((json.dumps(envelope) + "\n").encode("ascii"))
@@ -646,6 +747,7 @@ class _DaemonServer:
             return
         from context_rail.gateway.execution import caller_identity
         from context_rail.gateway.gateway import invoke
+        from context_rail.store.git_index import clear_snapshot_cache
 
         tool = payload.get("tool")
         params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
@@ -656,9 +758,9 @@ class _DaemonServer:
         if not isinstance(tool, str) or not tool.strip():
             conn.sendall(b'{"ok": false}\n')
             return
-        deadline = payload.get("deadline")
+        deadline = payload.get("deadline_monotonic")
         if isinstance(deadline, (int, float)) and not isinstance(deadline, bool):
-            if time.time() > deadline:
+            if time.monotonic() > deadline:
                 self._reply(
                     conn,
                     fail(
@@ -668,6 +770,7 @@ class _DaemonServer:
                     ),
                 )
                 return
+        clear_snapshot_cache()
         with caller_identity(actor, actor_env):
             try:
                 result = invoke(tool, params, store=self.store, actor=actor)
@@ -681,6 +784,8 @@ class _DaemonServer:
                 }
         try:
             self._reply(conn, result)
-        except (TypeError, ValueError):
+        except OSError:
+            return
+        except Exception:
             # The call has run; a result that cannot be written is not a failure to retry.
             self._reply(conn, _unknown_outcome(params))

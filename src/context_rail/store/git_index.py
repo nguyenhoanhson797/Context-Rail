@@ -34,6 +34,7 @@ __all__ = [
     "GlobError",
     "IndexEntry",
     "IndexSnapshot",
+    "clear_snapshot_cache",
     "freshness",
     "invalid_glob",
     "match_inputs",
@@ -73,6 +74,16 @@ _UNSUPPORTED_EXTENSIONS = {b"link": "a split index", b"sdir": "a sparse index"}
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 _SNAPSHOT_CACHE: dict[tuple[str, int, int], tuple[bytes, IndexSnapshot]] = {}
+
+
+def clear_snapshot_cache() -> None:
+    """Forget every cached index snapshot.
+
+    The cache keys on stat, which two quick ``git add`` runs can leave unchanged;
+    that is harmless within one short command, but a long-lived process must
+    start each call from the index as it is now.
+    """
+    _SNAPSHOT_CACHE.clear()
 
 
 class GlobError(ValueError):

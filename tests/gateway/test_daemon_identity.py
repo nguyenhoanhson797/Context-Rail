@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import socket
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from context_rail.gateway.daemon import daemon_endpoint
 from context_rail.gateway.gateway import invoke
-from helpers import serving_daemon
+from helpers import daemon_descriptor, daemon_request, serving_daemon
 from perf.gen import make_store
 
 _OMIT: Any = object()
@@ -27,9 +24,8 @@ def _ask(
     actor: str | None,
     actor_env: Any = _OMIT,
 ) -> dict[str, Any]:
-    descriptor = daemon_endpoint(store)
-    assert descriptor is not None
-    held = json.loads(descriptor.read_text(encoding="utf-8"))
+    held = daemon_descriptor(store)
+    assert held is not None
     request: dict[str, Any] = {
         "tool": tool,
         "params": params,
@@ -38,16 +34,7 @@ def _ask(
     }
     if actor_env is not _OMIT:
         request["actor_env"] = actor_env
-    with socket.create_connection(("127.0.0.1", held["port"]), timeout=10) as sock:
-        sock.sendall(json.dumps(request).encode("utf-8") + b"\n")
-        sock.shutdown(socket.SHUT_WR)
-        chunks: list[bytes] = []
-        while True:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-    return json.loads(b"".join(chunks).decode("utf-8"))
+    return daemon_request(held["port"], request)
 
 
 @pytest.fixture
