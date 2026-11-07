@@ -76,6 +76,9 @@ class _Plan:
     runner: str | None = None
     model: str | None = None
     intent: str = ""
+    code_section: str = "(none)"
+    code_entries: tuple[str, ...] = ()
+    code_warnings: tuple[str, ...] = ()
 
 
 def _optional(value: Any) -> str | None:

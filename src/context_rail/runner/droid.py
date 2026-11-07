@@ -45,6 +45,7 @@ __all__ = [
     "DROID_OUTPUT_CAP",
     "FAILURE_PROMPT_MAX_CHARS",
     "PROMPT_MAX_CHARS",
+    "TRIMMABLE_SECTION",
     "WORK_ORDER_KEYS",
     "WORK_ORDER_SCHEMA",
     "WORK_ORDER_SECTIONS",
@@ -104,7 +105,9 @@ WORK_ORDER_SECTIONS = (
     "no-store-edit rule",
     "commit expectation",
     "final report protocol",
+    "code area",
 )
+TRIMMABLE_SECTION = "code area"
 _SKILL_PIN_KEYS = ("identity", "version", "etag")
 _TEXT_KEYS = (
     "item",
@@ -555,14 +558,22 @@ def write_order_file(
     """Write the bounded work order with its leading JSON metadata."""
     data = _work_order_metadata(metadata, dispatch_id)
     rendered = _work_order_sections(sections)
-    lines = [json.dumps(data, indent=2, ensure_ascii=False), ""]
-    for name in WORK_ORDER_SECTIONS:
-        lines += [f"## {name}", "", rendered[name].strip() or "(none)", ""]
-    text = "\n".join(lines).rstrip("\n") + "\n"
+    head = json.dumps(data, indent=2, ensure_ascii=False)
+    text = _compose_order(head, rendered)
+    if len(text) > PROMPT_MAX_CHARS and rendered[TRIMMABLE_SECTION].strip():
+        # The code area is a hint; every other section is part of the contract.
+        text = _compose_order(head, {**rendered, TRIMMABLE_SECTION: "(trimmed)"})
     _bound(text, "the work order")
     path = prompt_dir(store, dispatch_id) / ORDER_FILE
     _write_local(path, text)
     return path
+
+
+def _compose_order(head: str, rendered: Mapping[str, str]) -> str:
+    lines = [head, ""]
+    for name in WORK_ORDER_SECTIONS:
+        lines += [f"## {name}", "", rendered[name].strip() or "(none)", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def append_failure(

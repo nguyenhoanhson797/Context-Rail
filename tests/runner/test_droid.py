@@ -393,6 +393,27 @@ def test_the_work_order_refuses_unknown_or_missing_sections(tmp_path):
         )
 
 
+def test_an_oversized_order_trims_the_code_area_first(tmp_path):
+    from context_rail.runner.droid import PROMPT_MAX_CHARS, TRIMMABLE_SECTION
+
+    sections = {name: "z" * 2700 for name in WORK_ORDER_SECTIONS}
+    path = write_order_file(
+        tmp_path, DISPATCH_ID, metadata=_metadata(), sections=sections
+    )
+
+    text = path.read_text(encoding="utf-8")
+    assert len(text) <= PROMPT_MAX_CHARS
+    assert text.split(f"## {TRIMMABLE_SECTION}", 1)[1].strip() == "(trimmed)"
+    assert text.count("z" * 2700) == len(WORK_ORDER_SECTIONS) - 1
+
+
+def test_an_order_too_big_even_without_the_code_area_is_refused(tmp_path):
+    sections = {name: "z" * 3000 for name in WORK_ORDER_SECTIONS}
+    with pytest.raises(WriteRefused) as refused:
+        write_order_file(tmp_path, DISPATCH_ID, metadata=_metadata(), sections=sections)
+    assert refused.value.code == "VALIDATION_FAILED"
+
+
 def test_the_work_order_refuses_a_mismatched_dispatch_id(tmp_path):
     with pytest.raises(WriteRefused):
         write_order_file(

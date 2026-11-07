@@ -114,6 +114,8 @@ class Neighbors(Protocol):
 
     def outgoing(self, node_id: str) -> tuple[Edge, ...]: ...
 
+    def files(self) -> tuple[str, ...]: ...
+
 
 class MemoryGraph:
     """A snapshot held in memory, indexed for the neighbor protocol."""
@@ -146,6 +148,11 @@ class MemoryGraph:
 
     def outgoing(self, node_id: str) -> tuple[Edge, ...]:
         return tuple(self._out.get(node_id, ()))
+
+    def files(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(node.id for node in self.snapshot.nodes if node.kind == "file")
+        )
 
 
 def effective_code_graph(configured: str | None, pack_default: str | None) -> str:

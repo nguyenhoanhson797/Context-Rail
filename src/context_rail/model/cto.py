@@ -36,6 +36,7 @@ __all__ = [
     "CHECK_KEYS",
     "CHECK_MODES",
     "CHECK_SCHEMA",
+    "CODE_AREA_MAX",
     "CTO_METHODS",
     "LEGACY_KEYS",
     "MODE_ONLY_KEYS",
@@ -292,7 +293,9 @@ RUN_KEYS = (
     "argv_digest",
     "intent",
     "report",
+    "code_area",
 )
+CODE_AREA_MAX = 50
 _RUN_REQUIRED = (
     "schema",
     "dispatch_id",
@@ -858,6 +861,9 @@ def parse_run(data: dict[str, Any]) -> Run:
         _optional_string(payload.get(key), f"run.{key}")
     for key in ("verdicts", "files_changed", "commits_changed"):
         string_list(payload.get(key, []), f"run.{key}", allow_empty=True)
+    area = string_list(payload.get("code_area", []), "run.code_area", allow_empty=True)
+    if len(area) > CODE_AREA_MAX:
+        refuse(f"run.code_area holds at most {CODE_AREA_MAX} entries")
 
     return Run(
         schema=schema,

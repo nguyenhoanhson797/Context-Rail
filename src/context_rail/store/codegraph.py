@@ -233,6 +233,13 @@ class CachedGraph:
     def outgoing(self, node_id: str) -> tuple[Edge, ...]:
         return self._edges("src", node_id)
 
+    def files(self) -> tuple[str, ...]:
+        rows = self._conn.execute(
+            "SELECT id FROM node WHERE sha = ? AND kind = 'file' ORDER BY id",
+            (self.commit,),
+        ).fetchall()
+        return tuple(row[0] for row in rows)
+
     def _nodes(self, column: str, value: str) -> tuple[Node, ...]:
         rows = self._conn.execute(
             'SELECT id, kind, name, file, start, "end" FROM node '

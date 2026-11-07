@@ -55,6 +55,7 @@ from .budget import (
     _require_executable,
     _run_facts,
 )
+from . import code_area
 from .checkpoint import (
     _checkpoint,
     _create_worktree,
@@ -202,6 +203,14 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             local_dispatch.register_worktree(
                 store, dispatch_id, paths.worktree, paths.branch
             )
+            prepared = code_area.prepare(
+                ctx,
+                slug=slug,
+                doc=original_doc,
+                dispatch_id=dispatch_id,
+                worktree=paths.worktree,
+                base=base,
+            )
         except BaseException:
             _rollback(store, key, dispatch_id)
             if not created:
@@ -232,6 +241,9 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             runner=current_runner,
             model=launch_model,
             intent=intent,
+            code_section=prepared.section,
+            code_entries=prepared.entries,
+            code_warnings=prepared.warnings,
         )
         role_file, order_file = _write_prompts(ctx, plan, rel, intent)
         return _execute(plan, role_file, order_file)
@@ -322,6 +334,7 @@ def _sections(plan: _Plan, doc: Doc, intent: str = "") -> dict[str, str]:
             "what_happened, expected, observed, impact, evidence and fingerprint. Prose "
             "never stands in for a Check."
         ),
+        "code area": plan.code_section,
     }
 
 
@@ -464,6 +477,8 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
         "intent": plan.intent or None,
         "report": report_id,
     }
+    if plan.code_entries:
+        run_data["code_area"] = list(plan.code_entries)
     parse_run(run_data)
     run_record = commit(
         plan.store,
@@ -498,6 +513,8 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
         "status": "verified" if verified else "escalated",
         "escalation": escalation,
     }
+    if plan.code_warnings:
+        value["warnings"] = list(plan.code_warnings)
     local_dispatch.write_progress(
         plan.store,
         plan.dispatch_id,

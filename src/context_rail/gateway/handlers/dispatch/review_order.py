@@ -107,6 +107,7 @@ def _review_sections(
             "(approve or reject), candidate_commit, findings and evidence. Prose never "
             "stands in for a Check."
         ),
+        "code area": "(none)",
     }
 
 

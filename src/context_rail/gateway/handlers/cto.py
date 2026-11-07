@@ -546,6 +546,7 @@ def _order_sections(
         "no-store-edit rule": _ORDER_STORE.format(store=store),
         "commit expectation": _ORDER_COMMITS,
         "final report protocol": _ORDER_REPORT,
+        "code area": "(none)",
     }
 
 

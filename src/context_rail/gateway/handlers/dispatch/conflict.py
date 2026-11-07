@@ -267,6 +267,7 @@ def _conflict_sections(
             "nothing_to_report, what_happened, expected, observed, impact, evidence "
             "and fingerprint."
         ),
+        "code area": "(none)",
     }
 
 

@@ -39,6 +39,7 @@ __all__ = [
     "PROGRESS_STATES",
     "acquire_dispatch_lock",
     "acquire_tick_lock",
+    "active_dispatches",
     "dispatch_paths",
     "key_binding_path",
     "pending_dispatches",
@@ -426,6 +427,30 @@ def pending_dispatches(store: Path, item: str) -> list[dict[str, Any]]:
         if payload.get("item") not in (None, item):
             continue
         found.append(payload)
+    return found
+
+
+def active_dispatches(store: Path) -> list[dict[str, Any]]:
+    """Every readable unfinished dispatch with the commit and code area it holds."""
+    folder = local_dir(Path(store)) / DISPATCH_DIR
+    if not folder.is_dir():
+        return []
+    found: list[dict[str, Any]] = []
+    for path in sorted(folder.glob("*.json")):
+        payload = read_control(path, identity=path.stem, key="dispatch_id")
+        if payload is None or payload.get("corrupt") or payload.get("state") == "completed":
+            continue
+        area = payload.get("code_area")
+        found.append(
+            {
+                "dispatch_id": path.stem,
+                "item": payload.get("item"),
+                "base_commit": payload.get("base_commit"),
+                "code_area": [entry for entry in area if isinstance(entry, str)]
+                if isinstance(area, list)
+                else [],
+            }
+        )
     return found
 
 
