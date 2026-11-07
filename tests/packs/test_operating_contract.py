@@ -283,6 +283,25 @@ def test_video_render_runs_are_execution_records_not_statuses(tmp_path: Path) ->
     assert pack.actions["render"].on == "shot"
 
 
+def test_a_scrum_story_waits_in_the_product_backlog_before_any_sprint(
+    tmp_path: Path,
+) -> None:
+    store = init_store(tmp_path, "scrum")
+    backlog = invoke(
+        "add", {"preset": "backlog", "title": "Product backlog"}, store=store, actor="human"
+    )
+    assert backlog["ok"], backlog
+    story = invoke(
+        "add",
+        {"preset": "story", "title": "Login", "rel": ["part_of=product-backlog"]},
+        store=store,
+        actor="human",
+    )
+    assert story["ok"], story
+    queue = invoke("next", {}, store=store, actor="human")["value"]["items"]
+    assert [(item["slug"], item["focus"]) for item in queue] == [("login", False)]
+
+
 def test_every_builtin_pack_validates(tmp_path: Path) -> None:
     store = init_store(tmp_path)
     for name in ("basic", "flow", "scrum", "waterfall", "video"):

@@ -43,10 +43,41 @@ operating:
     - preset: epic
       required: false
   queue:
-    presets: [story, task, idea, bug]
+    presets: [story, task, bug]
     require: transition
     focus: priority
   progress:
     group: epic
     of: [story]
     complete: {category: done}
+actions:
+  start:
+    "on": story
+    from: [backlog, ready]
+    tool: change move
+    args: {slug: "{item}", status: building, expect: "{etag}"}
+    use_when: "a story is pulled into work"
+  request-review:
+    "on": story
+    from: [building]
+    tool: change move
+    args: {slug: "{item}", status: review, expect: "{etag}"}
+    use_when: "a built story is ready for its separated review"
+  ship:
+    "on": story
+    from: [review]
+    tool: change move
+    args: {slug: "{item}", status: shipped, expect: "{etag}"}
+    use_when: "a reviewed story is released"
+  file-bug:
+    "on": "*"
+    from: []
+    tool: change add
+    args: {preset: bug, title: "{title}"}
+    use_when: "a defect needs recording before it is fixed"
+  triage-report:
+    "on": "*"
+    from: []
+    tool: loop triage
+    args: {report: "{report}"}
+    use_when: "one untriaged report needs a decision or a fix"

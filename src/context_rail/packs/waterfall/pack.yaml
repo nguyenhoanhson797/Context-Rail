@@ -42,7 +42,7 @@ presets:
   phase:       {primitive: item,   tags: [phase], container: true, workflow: phase}
   deliverable: {primitive: item,   tags: [deliverable], container: false, workflow: delivery, template: templates/deliverable.md}
   task:        {primitive: item,   tags: [task], container: false, workflow: delivery}
-  bug:         {primitive: item,   tags: [bug], container: false}
+  bug:         {primitive: item,   tags: [bug], container: false, workflow: delivery}
   milestone:   {primitive: item,   tags: [milestone], container: true}
   risk:        {primitive: item,   tags: [risk], container: false, fields: {severity: [low, medium, high, critical]}}
   question:    {primitive: item,   tags: [question], container: false}
@@ -73,7 +73,7 @@ operating:
     order: sequence
     resolve: unique
   queue:
-    presets: [deliverable, task]
+    presets: [deliverable, task, bug]
     require: transition
     focus: priority
   progress:

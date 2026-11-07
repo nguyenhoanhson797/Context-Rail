@@ -38,7 +38,7 @@ operating:
     - preset: goal
       required: false
   queue:
-    presets: [task, bug, idea]
+    presets: [task, bug]
     require: transition
     focus: priority
   progress:

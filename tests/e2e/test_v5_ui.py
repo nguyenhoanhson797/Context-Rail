@@ -77,7 +77,7 @@ def test_the_pack_screen_has_every_gate(
         ("video", "shot", "scene"),
         ("waterfall", "deliverable", "phase"),
         ("flow", "story", "epic"),
-        ("basic", "task", "milestone"),
+        ("basic", "task", "goal"),
     ],
 )
 def test_a_screen_pins_its_population_and_grouping(

@@ -5,13 +5,14 @@ labels:
   task: {one: Task, many: Tasks}
   bug: {one: Bug, many: Bugs}
   epic: {one: Epic, many: Epics}
+  backlog: {one: Product backlog, many: Product backlogs}
 screens:
   - {id: summary, kind: summary, title: Summary}
   - {id: board, kind: board, title: Sprint board, preset: story, group_by: status}
   - {id: plan, kind: timeline, title: Sprints, preset: sprint}
   - {id: workflow, kind: workflow, title: Workflow}
   - {id: execution, kind: execution, title: Progress}
-  - {id: catalog, kind: catalog, title: Backlog, presets: [bug, task]}
+  - {id: catalog, kind: catalog, title: Backlog, presets: [story, task, bug]}
   - {id: records, kind: records, title: Records}
   - {id: pack, kind: pack, title: Pack}
 fields:

@@ -80,7 +80,7 @@ def test_an_operating_change_invalidates_the_charter_approval(
 ) -> None:
     store = _local_approved(tmp_path, answers)
     document = _builtin_document()
-    document["operating"]["queue"]["presets"] = ["task", "bug"]
+    document["operating"]["queue"]["presets"] = ["task"]
     write_pack(store, "basic", document)
 
     assert _approval(store)["state"] == "mismatch"

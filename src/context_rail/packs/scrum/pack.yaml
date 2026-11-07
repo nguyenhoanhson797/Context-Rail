@@ -52,9 +52,15 @@ workflows:
       dropped: [todo]
     quality:
       done: {gate: scope_done}
+  backlog:
+    initial: ready
+    transitions:
+      ready: [dropped]
+      dropped: [ready]
 presets:
   goal:       {primitive: item,   tags: [goal], container: true}
   scope:      {primitive: item,   tags: [scope], container: true, workflow: scope, fields: {priority: [must, should, could, wont]}}
+  backlog:    {primitive: item,   tags: [backlog], container: true, workflow: backlog}
   epic:       {primitive: item,   tags: [epic], container: true, workflow: sprint}
   sprint:     {primitive: item,   tags: [sprint], container: true, workflow: sprint}
   story:      {primitive: item,   tags: [story], container: false, workflow: sprint, fields: {priority: [must, should, could, wont]}}
