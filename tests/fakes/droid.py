@@ -172,6 +172,7 @@ def main() -> int:
             store_path=behavior.get("store_path"),
             code_note=bool(behavior.get("code_note")),
             bulk=int(behavior.get("bulk") or 0),
+            edits=behavior.get("edits"),
         )
     return _emit(
         _text(behavior, reviewer, verdict, _order_metadata(flags.get("-f"))),
@@ -363,6 +364,7 @@ def _leave_commit(
     store_path: str | None = None,
     code_note: bool = False,
     bulk: int = 0,
+    edits: dict | None = None,
 ) -> None:
     content = work if isinstance(work, str) and work.strip() else "fake droid work\n"
     staged = [WORK_FILE]
@@ -400,6 +402,14 @@ def _leave_commit(
             staged.append(store_path)
         except OSError:
             pass
+    for rel, text in (edits or {}).items():
+        try:
+            edited = worktree / rel
+            edited.parent.mkdir(parents=True, exist_ok=True)
+            edited.write_text(text, encoding="utf-8", newline="\n")
+            staged.append(rel)
+        except OSError:
+            continue
     if code_note:
         staged.extend(_write_code_note(worktree))
     if not (worktree / ".git").exists():

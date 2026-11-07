@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from helpers import init_store
+
 from context_rail.gateway.handlers.dispatch.implementer import _code_map_changes
 from context_rail.model.manifest import load_manifest
 from context_rail.store.doc import record_digest
-from helpers import init_store
 
 STORE = "context-rail"
 STORE_PATHS = (STORE, "AGENTS.md", ".agents")

@@ -479,6 +479,21 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
     }
     if plan.code_entries:
         run_data["code_area"] = list(plan.code_entries)
+    if (
+        candidate
+        and public_capture["complete"]
+        and capture["files_changed"]
+        and code_area.configured_graph(plan.ctx) != "none"
+    ):
+        symbols = code_area.changed_symbols(
+            plan.store,
+            worktree=plan.paths.worktree,
+            base=plan.base,
+            candidate=candidate,
+            files=capture["files_changed"],
+        )
+        if symbols is not None:
+            run_data["symbols_changed"] = symbols
     parse_run(run_data)
     run_record = commit(
         plan.store,

@@ -57,6 +57,7 @@ __all__ = [
     "RUN_KEYS",
     "RUN_SCHEMA",
     "SKILL_SCHEMA",
+    "SYMBOLS_CHANGED_MAX",
     "TOOL_IDS",
     "UNKNOWN",
     "USAGE_KEYS",
@@ -294,8 +295,10 @@ RUN_KEYS = (
     "intent",
     "report",
     "code_area",
+    "symbols_changed",
 )
 CODE_AREA_MAX = 50
+SYMBOLS_CHANGED_MAX = 200
 _RUN_REQUIRED = (
     "schema",
     "dispatch_id",
@@ -864,6 +867,11 @@ def parse_run(data: dict[str, Any]) -> Run:
     area = string_list(payload.get("code_area", []), "run.code_area", allow_empty=True)
     if len(area) > CODE_AREA_MAX:
         refuse(f"run.code_area holds at most {CODE_AREA_MAX} entries")
+    symbols = string_list(
+        payload.get("symbols_changed", []), "run.symbols_changed", allow_empty=True
+    )
+    if len(symbols) > SYMBOLS_CHANGED_MAX:
+        refuse(f"run.symbols_changed holds at most {SYMBOLS_CHANGED_MAX} entries")
 
     return Run(
         schema=schema,

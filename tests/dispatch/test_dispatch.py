@@ -12,10 +12,10 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from helpers import item_etag, latest_record, process_alive, run_cli, run_git, start_cli
 
 from context_rail.gateway.gateway import invoke
 from context_rail.store.location import local_dir
-from helpers import item_etag, latest_record, process_alive, run_cli, run_git, start_cli
 
 RESULT_KEYS = {
     "dispatch_id",
@@ -1216,8 +1216,10 @@ def test_the_worktree_root_is_per_test(leaf_item, tmp_path) -> None:
 
 
 def test_control_files_share_one_reader_and_binding_schema(tmp_path) -> None:
-    from context_rail.runner import control, dispatch as local_dispatch, merge
     from helpers import init_store
+
+    from context_rail.runner import control, merge
+    from context_rail.runner import dispatch as local_dispatch
 
     store = init_store(tmp_path)
     assert not hasattr(local_dispatch, "_write_json")

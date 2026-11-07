@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from helpers import item_status, latest_record, records_of, run_git, write_record
 
 from context_rail.gateway.gateway import invoke
 from context_rail.model.pack import load_pack
@@ -15,7 +16,6 @@ from context_rail.runner.dispatch import review_paths, worktree_root
 from context_rail.store import query
 from context_rail.store.index import Index
 from context_rail.store.location import local_dir
-from helpers import item_status, latest_record, records_of, run_git, write_record
 
 REVIEW_TOOLS_CSV = "read-cli,ls-cli,grep_tool_cli,glob-search-cli"
 REVIEW_MODEL = "claude-opus-4-1"

@@ -17,13 +17,16 @@ from context_rail.model.codegraph import (
     Neighbors,
     effective_code_graph,
     resolve,
+    symbols_in,
+    tests_reaching,
     upstream,
 )
-from context_rail.model.cto import CODE_AREA_MAX
+from context_rail.model.cto import CODE_AREA_MAX, SYMBOLS_CHANGED_MAX
 from context_rail.runner import dispatch as local_dispatch
+from context_rail.runner import git as git_runner
 from context_rail.runner.codegraph import Ensured, ensure_snapshot
 from context_rail.store import query
-from context_rail.store.codegraph import open_graph
+from context_rail.store.codegraph import has_snapshot, open_graph
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -34,9 +37,12 @@ __all__ = [
     "CODE_AREA_ENTRIES",
     "Area",
     "Prepared",
+    "changed_symbols",
+    "configured_graph",
     "predict_area",
     "prepare",
     "render_area",
+    "review_code_lines",
 ]
 
 CODE_AREA_CHARS = 2000
@@ -127,9 +133,16 @@ def render_area(
         "-> coordinate or merge after it"
         for entry in list(overlaps)[:_OVERLAPS_SHOWN]
     ]
+    return _fit([graph_line], lists, tails)
+
+
+def _fit(
+    head: Sequence[str], lists: list[tuple[str, list[str]]], tails: Sequence[str] = ()
+) -> str:
+    """Join the lines, dropping entries from the longest list until it fits."""
     dropped = [0] * len(lists)
     while True:
-        lines = [graph_line]
+        lines = list(head)
         for (label, entries), gone in zip(lists, dropped, strict=True):
             if entries:
                 more = f" (+{gone} more)" if gone else ""
@@ -149,6 +162,99 @@ def render_area(
         dropped[longest] += 1
 
 
+def changed_symbols(
+    store: Path,
+    *,
+    worktree: Path,
+    base: str,
+    candidate: str,
+    files: Sequence[str],
+) -> list[str] | None:
+    """Symbols a candidate changed, or None when the base graph cannot say.
+
+    A file the base snapshot does not know (new, binary or unparsed) is named
+    at file level.
+    """
+    graph = open_graph(store, base)
+    if graph is None:
+        return None
+    with graph:
+        diff = git_runner.changed_line_ranges(
+            worktree=worktree,
+            confine_to=worktree,
+            base_commit=base,
+            candidate_commit=candidate,
+        )
+        if not diff["complete"]:
+            return None
+        found: set[str] = set()
+        for path in files:
+            ranges = diff["files"].get(path)
+            ids = symbols_in(graph, path, ranges) if ranges else ()
+            found.update(ids or (path,))
+    return sorted(found)[:SYMBOLS_CHANGED_MAX]
+
+
+def review_code_lines(ctx: Context, slug: str, run: dict[str, Any]) -> str:
+    """What the reviewer should know about the change's reach, in one bounded block."""
+    store = Path(ctx.store)
+    if configured_graph(ctx) == "none":
+        return "(none)"
+    data = run.get("data") or {}
+    symbols = data.get("symbols_changed")
+    if symbols is None:
+        return "file-level only: " + _why_unknown(store, data)
+    base = _base_of(store, data)
+    graph = open_graph(store, base) if base else None
+    if graph is None:
+        return "file-level only: no base snapshot"
+    with graph:
+        known = [item for item in symbols if graph.node(item) is not None]
+        impact = [
+            node_id
+            for node_id in upstream(graph, known, depth=2, limit=CODE_AREA_ENTRIES)
+            if node_id not in symbols
+        ]
+        covered = sorted(
+            {glob for row in query.check_states(ctx.index, slug) for glob in row["inputs"]}
+        )
+        tests = [
+            node_id
+            for node_id in tests_reaching(graph, known, depth=3, limit=100)
+            if not any(fnmatchcase(_file_of(node_id), glob) for glob in covered)
+        ][:20]
+    lists: list[tuple[str, list[str]]] = [
+        ("changed", list(symbols) or ["(no source symbols)"]),
+        ("impact", impact),
+    ]
+    predicted = {_file_of(entry) for entry in data.get("code_area") or ()}
+    if predicted:
+        lists.append(
+            (
+                "outside predicted area",
+                [path for path in data.get("files_changed") or () if path not in predicted],
+            )
+        )
+    lists.append(("tests reaching the change, not declared as checks", tests))
+    return _fit([], lists)
+
+
+def _base_of(store: Path, data: dict[str, Any]) -> str | None:
+    dispatch_id = data.get("dispatch_id")
+    if not isinstance(dispatch_id, str) or not dispatch_id:
+        return None
+    progress = local_dispatch.read_progress(store, dispatch_id) or {}
+    base = progress.get("base_commit")
+    return base if isinstance(base, str) and base else None
+
+
+def _why_unknown(store: Path, data: dict[str, Any]) -> str:
+    base = _base_of(store, data)
+    if base is None or not has_snapshot(store, base):
+        return "no base snapshot"
+    return "the change capture was incomplete"
+
+
 def prepare(
     ctx: Context,
     *,
@@ -160,9 +266,7 @@ def prepare(
 ) -> Prepared:
     """Build the base snapshot, predict the area, and record it in progress."""
     store = Path(ctx.store)
-    configured = effective_code_graph(
-        ctx.manifest.code_graph, ctx.pack.policy.get("code_graph")
-    )
+    configured = configured_graph(ctx)
     if configured == "none":
         return Prepared("(none)", (), ())
     others = [
@@ -205,6 +309,11 @@ def prepare(
         for entry in overlaps
     )
     return Prepared(section, entries, warnings)
+
+
+def configured_graph(ctx: Context) -> str:
+    """The resolved provider choice for this store."""
+    return effective_code_graph(ctx.manifest.code_graph, ctx.pack.policy.get("code_graph"))
 
 
 def _graph_line(ensured: Ensured, base: str) -> str:

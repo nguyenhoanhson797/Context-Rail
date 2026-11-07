@@ -8,8 +8,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
-from context_rail.gateway.gateway import invoke
 from helpers import (
     advance_default_branch,
     default_head,
@@ -21,6 +19,8 @@ from helpers import (
     review_call,
     run_git,
 )
+
+from context_rail.gateway.gateway import invoke
 
 RESULT_KEYS = {
     "commit",

@@ -9,8 +9,10 @@ which a read must never trust as proof.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from context_rail.runner.run import run
 from context_rail.store.location import owns_path
@@ -20,6 +22,7 @@ __all__ = [
     "CAPTURE_LIMIT",
     "CAPTURE_MAX_OUTPUT",
     "capture_changes",
+    "changed_line_ranges",
     "current_branch",
     "fast_forward",
     "git",
@@ -307,6 +310,77 @@ def capture_changes(
         "reason": reason,
         "omitted": omitted,
     }
+
+
+_HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@")
+
+
+def changed_line_ranges(
+    *,
+    worktree: Path,
+    confine_to: Path,
+    base_commit: str,
+    candidate_commit: str = "HEAD",
+) -> dict[str, Any]:
+    """Old-side line ranges each file changed between two revisions.
+
+    ``{"files": {path: [(start, end), ...]}, "complete": bool}``. Ranges are in
+    the base revision's numbering, so they line up with a snapshot built from
+    it. A pure insertion maps to the line it follows, a new file to no ranges,
+    and a rename to a delete plus an add. A cut listing or a path git had to
+    quote makes the result incomplete.
+    """
+    result = _checked(
+        [
+            "-c",
+            "core.quotepath=false",
+            "diff",
+            "-U0",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-renames",
+            _revision(base_commit, "base_commit"),
+            _revision(candidate_commit, "candidate_commit"),
+        ],
+        cwd=worktree,
+        confine_to=confine_to,
+        max_output=CAPTURE_MAX_OUTPUT,
+        allow_truncated=True,
+    )
+    complete = not result["omitted_bytes"]
+    files: dict[str, list[tuple[int, int]]] = {}
+    old = ""
+    header = ""
+    current: list[tuple[int, int]] | None = None
+    for line in result["stdout"].splitlines():
+        # A removed line "-- x" prints as "--- x", so file headers only count
+        # right after a "diff --git" line.
+        if line.startswith("diff --git "):
+            header, current = "old", None
+        elif header == "old" and line.startswith("--- "):
+            old, header = line[4:].split("\t")[0], "new"
+        elif header == "new" and line.startswith("+++ "):
+            header = ""
+            new = line[4:].split("\t")[0]
+            name = _diff_path(new if new != "/dev/null" else old)
+            if name is None:
+                complete = False
+                current = None
+                continue
+            current = files.setdefault(name, [])
+            if old == "/dev/null":
+                current = None
+        elif current is not None and (hunk := _HUNK.match(line)):
+            start = int(hunk.group(1))
+            count = 1 if hunk.group(2) is None else int(hunk.group(2))
+            current.append((max(start, 1), max(start, 1)) if count == 0 else (start, start + count - 1))
+    return {"files": files, "complete": complete}
+
+
+def _diff_path(text: str) -> str | None:
+    if text.startswith('"') or text == "/dev/null":
+        return None
+    return text[2:] if text[:2] in ("a/", "b/") else None
 
 
 def _revision(value: str, what: str) -> str:

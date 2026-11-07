@@ -13,6 +13,7 @@ from context_rail.runner.droid import extract_block
 from context_rail.store import query
 from context_rail.store.doc import etag
 
+from . import code_area
 from .checkpoint import _git
 from .common import REVIEW_DIFF_MAX, REVIEW_VERDICTS, _COMMIT, _string_list
 
@@ -107,7 +108,7 @@ def _review_sections(
             "(approve or reject), candidate_commit, findings and evidence. Prose never "
             "stands in for a Check."
         ),
-        "code area": "(none)",
+        "code area": code_area.review_code_lines(ctx, slug, run),
     }
 
 

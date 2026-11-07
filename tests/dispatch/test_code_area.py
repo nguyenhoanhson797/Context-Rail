@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-from typing import Any
-
 import pytest
 import yaml
+from code_fixtures import code_section as _section
+from code_fixtures import dispatch as _dispatch
+from code_fixtures import run_payload as _run
+from code_fixtures import with_body as _with_body
 from helpers import approve_picture, latest_record, run_git
 
-from context_rail.gateway.gateway import invoke
 from context_rail.gateway.handlers.dispatch import code_area
 from context_rail.model.codegraph import Edge, MemoryGraph, Node, Snapshot
 from context_rail.model.cto import parse_run
@@ -17,51 +17,6 @@ from context_rail.model.errors import ModelError
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner.codegraph import Ensured
 from context_rail.store.location import local_dir
-
-APP = (
-    "def total(items):\n"
-    "    return sum(items)\n"
-    "\n"
-    "\n"
-    "def checkout(items):\n"
-    "    return total(items)\n"
-)
-CART = "from src.app import total\n\n\ndef pay(items):\n    return total(items)\n"
-
-
-def _with_body(leaf: SimpleNamespace, body: str) -> SimpleNamespace:
-    """The leaf task with ``body`` as its text and real code in ``src/app.py``."""
-    (leaf.root / "src" / "app.py").write_text(APP, encoding="utf-8", newline="\n")
-    (leaf.root / "lib").mkdir()
-    (leaf.root / "lib" / "cart.py").write_text(CART, encoding="utf-8", newline="\n")
-    body_file = leaf.root.parent / "body.md"
-    body_file.write_text(body, encoding="utf-8", newline="\n")
-    updated = invoke(
-        "update",
-        {"slug": leaf.slug, "expect": leaf.etag, "body_file": str(body_file)},
-        store=leaf.store,
-        actor="cto",
-    )
-    assert updated["ok"], updated
-    run_git(leaf.root, "add", "-A")
-    run_git(leaf.root, "commit", "-m", "code and task text")
-    shown = invoke("show", {"slug": leaf.slug}, store=leaf.store, actor="cto")
-    return SimpleNamespace(**{**vars(leaf), "etag": shown["value"]["doc"]["etag"]})
-
-
-def _dispatch(leaf: SimpleNamespace, key: str) -> dict[str, Any]:
-    return invoke(
-        "dispatch",
-        {"item": leaf.slug, "expect": leaf.etag, "key": key},
-        store=leaf.store,
-        actor="cto",
-    )
-
-
-def _section(leaf: SimpleNamespace, dispatch_id: str) -> str:
-    order = local_dir(leaf.store) / "prompts" / dispatch_id / "order.md"
-    text = order.read_text(encoding="utf-8")
-    return text.split("## code area", 1)[1].strip()
 
 
 def test_a_mentioned_symbol_seeds_the_area(leaf_item, fake_droid, droid_env) -> None:
@@ -229,39 +184,6 @@ def test_the_rendered_area_never_exceeds_its_bound() -> None:
     assert len(text) <= code_area.CODE_AREA_CHARS
     assert text.startswith("graph: builtin @abc1234 (fresh)")
     assert "more)" in text
-
-
-def _run(**extra: Any) -> dict[str, Any]:
-    base = {
-        "schema": 1,
-        "dispatch_id": "d1",
-        "role": "implementer",
-        "actor": "implementer",
-        "profile": "implementer",
-        "model": "m",
-        "item": "login-page",
-        "started_at": "2026-11-07T00:00:00Z",
-        "ended_at": "2026-11-07T00:00:01Z",
-        "duration_s": 1,
-        "status": "verified",
-        "attempts": [
-            {
-                "number": 1,
-                "session_id": None,
-                "start": "2026-11-07T00:00:00Z",
-                "end": "2026-11-07T00:00:01Z",
-                "duration_s": 1,
-                "exit": 0,
-                "timed_out": False,
-                "usage": {},
-                "verdicts": [],
-                "status": "verified",
-            }
-        ],
-        "usage": {},
-    }
-    base.update(extra)
-    return base
 
 
 def test_parse_run_bounds_code_area() -> None:

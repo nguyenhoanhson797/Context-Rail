@@ -9,9 +9,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
-from context_rail.core.result import is_ok
-from context_rail.gateway.gateway import invoke
 from helpers import (
     approve_picture,
     item_etag,
@@ -22,6 +19,9 @@ from helpers import (
     run_git,
     touch_doc,
 )
+
+from context_rail.core.result import is_ok
+from context_rail.gateway.gateway import invoke
 
 #: The pilot's acceptance Check: the suite passes and the worker left a commit.
 #: Its inputs are the package and the suite, so a fast-forward of the worker's
