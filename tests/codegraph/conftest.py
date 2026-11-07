@@ -1,12 +1,37 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
+from helpers import run_git
 
 from context_rail.model.codegraph import Edge, Node, Snapshot
 
 SnapshotFactory = Callable[..., Snapshot]
+RepoFactory = Callable[..., Path]
+
+
+@pytest.fixture
+def make_repo(tmp_path: Path) -> RepoFactory:
+    """A committed git repo holding ``files`` (text or bytes), at ``tmp_path/name``."""
+
+    def build(files: dict[str, str | bytes], name: str = "repo") -> Path:
+        repo = tmp_path / name
+        repo.mkdir()
+        run_git(repo, "init")
+        for relative, content in files.items():
+            target = repo / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(content, bytes):
+                target.write_bytes(content)
+            else:
+                target.write_text(content, encoding="utf-8")
+        run_git(repo, "add", "-A")
+        run_git(repo, "commit", "-m", "fixture")
+        return repo
+
+    return build
 
 
 @pytest.fixture
