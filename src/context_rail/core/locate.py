@@ -23,6 +23,7 @@ __all__ = [
     "PathEscape",
     "StoreLocationError",
     "find_store",
+    "head_sha",
     "local_dir",
     "worktree_git_dir",
 ]
@@ -74,6 +75,66 @@ def worktree_git_dir(store: Path) -> tuple[Path, Path] | None:
     is never run.
     """
     return _worktree_git_dir(Path(store).absolute())
+
+
+def head_sha(path: Path) -> str | None:
+    """The commit the checkout containing ``path`` has checked out, or None.
+
+    Reads ``HEAD`` and at most one ``ref:`` through loose refs and then
+    ``packed-refs``; git is never run and history is never walked. A linked
+    worktree keeps ``HEAD`` in its own git dir and its refs in the common one.
+    """
+    try:
+        found = _worktree_git_dir(Path(path).absolute())
+    except StoreLocationError:
+        return None
+    if found is None:
+        return None
+    git_dir = found[0]
+    head = _read_line(git_dir / "HEAD")
+    if head is None:
+        return None
+    if not head.startswith("ref:"):
+        return head if _is_sha(head) else None
+    ref = head[4:].strip()
+    common = _common_dir(git_dir)
+    for base in dict.fromkeys((git_dir, common)):
+        loose = _read_line(base / ref)
+        if loose is not None and _is_sha(loose):
+            return loose
+    packed = common / "packed-refs"
+    try:
+        lines = packed.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        sha, _, name = line.partition(" ")
+        if name.strip() == ref and _is_sha(sha):
+            return sha
+    return None
+
+
+def _common_dir(git_dir: Path) -> Path:
+    pointer = _read_line(git_dir / "commondir")
+    if pointer is None:
+        return git_dir
+    target = Path(pointer)
+    if not target.is_absolute():
+        target = git_dir / target
+    return Path(os.path.normpath(target))
+
+
+def _read_line(path: Path) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    first = text.strip().splitlines()
+    return first[0].strip() if first else None
+
+
+def _is_sha(text: str) -> bool:
+    return len(text) in (40, 64) and all(char in "0123456789abcdef" for char in text)
 
 
 def _worktree_git_dir(store: Path) -> tuple[Path, Path] | None:
