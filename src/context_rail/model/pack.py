@@ -21,6 +21,7 @@ from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml, sha256_hex
 from context_rail.model.cache import cached_model
 from context_rail.model.actions import Action, parse_actions
+from context_rail.model.codegraph import PACK_CODE_GRAPH_CHOICES
 from context_rail.model.errors import ModelError
 from context_rail.model.fields import relative_path, reserved_fields
 from context_rail.model.operating import OperatingSpec, parse_operating
@@ -672,7 +673,7 @@ def _fields(raw: Any, preset: str) -> dict[str, tuple[str, ...]]:
 
 def _policy(raw: Any) -> dict[str, Any]:
     policy = _mapping(raw, "policy")
-    unknown = sorted(set(policy) - set(PACK_POLICY_KEYS))
+    unknown = sorted(set(policy) - set(PACK_POLICY_KEYS) - {"code_graph"})
     if unknown:
         _refuse("unknown policy key(s): " + ", ".join(unknown))
     missing = [key for key in ("stuck_hours", "retries") if key not in policy]
@@ -702,6 +703,13 @@ def _policy(raw: Any) -> dict[str, Any]:
                 f"{DEFAULT_MEASUREMENT_MIN_RUNS}"
             )
         result["measurement_min_runs"] = minimum
+    if "code_graph" in policy:
+        choice = policy["code_graph"]
+        if choice not in PACK_CODE_GRAPH_CHOICES:
+            _refuse(
+                "policy code_graph must be one of: " + ", ".join(PACK_CODE_GRAPH_CHOICES)
+            )
+        result["code_graph"] = choice
     return result
 
 

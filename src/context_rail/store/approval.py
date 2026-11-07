@@ -293,6 +293,8 @@ def _manifest_hash(context: Context, name: str) -> str:
         "placement": dict(context.manifest.placement),
         "presets": dict(context.manifest.preset_placement),
     }
+    if context.manifest.code_graph is not None:
+        mapping["code_graph"] = context.manifest.code_graph
     text = yaml.safe_dump(mapping, sort_keys=True)
     return semantic_hash(text.encode("utf-8"), format="yaml")
 

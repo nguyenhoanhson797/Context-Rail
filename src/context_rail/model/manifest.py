@@ -16,6 +16,7 @@ from typing import Any, NoReturn
 from context_rail.core.util import canonical_iso, load_yaml
 from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.model.cache import cached_model
+from context_rail.model.codegraph import CONFIG_CHOICES
 from context_rail.model.errors import ModelError
 from context_rail.model.pack import load_pack, pack_layout
 from context_rail.model.placement import (
@@ -46,7 +47,7 @@ __all__ = [
     "render_path",
 ]
 
-MANIFEST_KEYS = ("schema", "pack", "placement", "presets")
+MANIFEST_KEYS = ("schema", "pack", "placement", "presets", "code_graph")
 
 #: The token names a placement pattern may use. The parser is the source of
 #: truth; this tuple stays for callers that only need the simple names.
@@ -84,6 +85,7 @@ class Manifest:
     pack: str
     placement: dict[str, str]
     preset_placement: dict[str, str]
+    code_graph: str | None = None
 
 
 DEFAULT_MANIFEST: dict[str, Any] = {
@@ -240,11 +242,20 @@ def _manifest(data: dict[str, Any]) -> Manifest:
                 )
             singletons[rendered] = preset
 
+    code_graph = data.get("code_graph")
+    if "code_graph" in data and code_graph not in CONFIG_CHOICES:
+        raise ModelError(
+            "VALIDATION_FAILED",
+            "code_graph must be one of: " + ", ".join(CONFIG_CHOICES),
+            {"field": "code_graph"},
+        )
+
     manifest = Manifest(
         schema=schema,
         pack=pack,
         placement=dict(placement),
         preset_placement=dict(preset_placement),
+        code_graph=code_graph,
     )
     return manifest
 

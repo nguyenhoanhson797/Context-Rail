@@ -19,6 +19,7 @@ __all__ = [
     "CONFIG_CHOICES",
     "EDGE_RELS",
     "NODE_KINDS",
+    "PACK_CODE_GRAPH_CHOICES",
     "SNAPSHOT_SCHEMA",
     "TEST_GLOBS",
     "Edge",
@@ -26,7 +27,9 @@ __all__ = [
     "Neighbors",
     "Node",
     "Snapshot",
+    "code_graph_source",
     "downstream",
+    "effective_code_graph",
     "parse_snapshot",
     "resolve",
     "snapshot_mapping",
@@ -36,6 +39,8 @@ __all__ = [
 ]
 
 CONFIG_CHOICES = ("builtin", "graphify", "gitnexus", "none")
+#: A pack only says whether a graph is relevant; choosing a tool is the team's.
+PACK_CODE_GRAPH_CHOICES = ("builtin", "none")
 SNAPSHOT_SCHEMA = 1
 PROVIDERS = ("builtin", "graphify", "gitnexus")
 NODE_KINDS = ("file", "module", "class", "function", "method")
@@ -141,6 +146,24 @@ class MemoryGraph:
 
     def outgoing(self, node_id: str) -> tuple[Edge, ...]:
         return tuple(self._out.get(node_id, ()))
+
+
+def effective_code_graph(configured: str | None, pack_default: str | None) -> str:
+    """The provider choice in force: ``rail.yaml``, else the pack, else ``builtin``."""
+    if configured is not None:
+        return configured
+    if pack_default is not None:
+        return pack_default
+    return "builtin"
+
+
+def code_graph_source(configured: str | None, pack_default: str | None) -> str:
+    """Where ``effective_code_graph`` got its value: ``rail.yaml``, ``pack`` or ``default``."""
+    if configured is not None:
+        return "rail.yaml"
+    if pack_default is not None:
+        return "pack"
+    return "default"
 
 
 def snapshot_mapping(snapshot: Snapshot) -> dict[str, Any]:

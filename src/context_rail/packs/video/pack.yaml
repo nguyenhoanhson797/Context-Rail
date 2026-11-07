@@ -84,7 +84,7 @@ presets:
   cto:        {primitive: actor,  tags: []}
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
-policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10, code_graph: none}
 operating:
   version: 1
   unit: shot
