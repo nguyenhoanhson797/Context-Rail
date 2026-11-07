@@ -237,8 +237,9 @@ rail --actor human ops migrate --source <old> --dir <project>
 
 ## Engine invariants
 
-Every mutation goes through `store.write.commit`; reads never execute commands
-or hash source trees; `kernel` is pure; unknown pack version, schema, policy
+Every mutation goes through `store.write.commit`; reads never run store commands
+or hash source trees (the CLI transport may start the store's background
+daemon); `kernel` is pure; unknown pack version, schema, policy
 field → refused, never guessed. The full working rules are in
 [AGENTS.md](../AGENTS.md).
 

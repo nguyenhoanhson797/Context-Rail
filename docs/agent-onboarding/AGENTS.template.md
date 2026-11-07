@@ -139,7 +139,8 @@ Read `error.code` and `error.details`; a refusal names the reason and the fix.
 
 ## Safety rules
 
-- Reads never execute commands and never hash a source tree.
+- Reads never run store commands and never hash a source tree. The CLI transport
+  may start the store's background daemon.
 - The kernel is pure; do not add I/O to it.
 - Every store mutation goes through `context_rail.store.write.commit`.
 - Unknown manifest schemas, pack versions, keys and policy fields are refused,

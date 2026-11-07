@@ -57,7 +57,8 @@ repository.
   tree.
 - Every store change goes through `context_rail.store.write.commit`. Nothing
   else writes store files.
-- Reads never execute commands and never hash source trees.
+- Reads never run store commands and never hash source trees. The CLI transport
+  may start the store's background daemon.
 - `context_rail.kernel` is pure: no file, git, process or index access, and no
   imports from `store/`, `runner/` or `gateway/`.
 - Fail closed: an unknown manifest schema, pack version, key or policy field is
