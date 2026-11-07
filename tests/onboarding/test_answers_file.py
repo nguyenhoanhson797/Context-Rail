@@ -197,7 +197,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
     ]
     cto = _frontmatter(store / "workspace/cto/profile.md")
     assert cto["recipe"] == "cto"
-    assert cto["model"] == "custom:Deepseek-V4-flash-0"
+    assert cto["model"] == "claude-sonnet-4-5"
     assert cto["effort"] is None
     assert cto["auto"] == "high"
     assert cto["tools"] == seven
@@ -205,7 +205,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
 
     implementer = _frontmatter(store / "workspace/profiles/implementer/profile.md")
     assert implementer["recipe"] == "implementer"
-    assert implementer["model"] == "custom:Deepseek-V4-flash-0"
+    assert implementer["model"] == "gpt-5-codex"
     assert implementer["effort"] is None
     assert implementer["auto"] == "medium"
     assert implementer["tools"] == seven
@@ -223,7 +223,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
 
     reviewer = _frontmatter(store / "workspace/profiles/reviewer/profile.md")
     assert reviewer["recipe"] == "reviewer"
-    assert reviewer["model"] == "custom:gemini-3.8-flash-LTN-0"
+    assert reviewer["model"] == "claude-opus-4-1"
     assert reviewer["effort"] is None
     assert "auto" in reviewer and reviewer["auto"] is None
     assert reviewer["tools"] == seven[:4]

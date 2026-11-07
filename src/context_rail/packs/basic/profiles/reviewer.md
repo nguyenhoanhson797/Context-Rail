@@ -4,7 +4,7 @@ version: 1
 recipe: reviewer
 allowed_methods: [find, show, cto brief, ledger, report]
 budget: {max_chars: 12000, max_docs: 20}
-model: 'custom:gemini-3.8-flash-LTN-0'
+model: 'claude-opus-4-1'
 effort: null
 auto: null
 tools: [read-cli, ls-cli, grep_tool_cli, glob-search-cli]

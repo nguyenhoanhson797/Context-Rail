@@ -450,14 +450,14 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
     reviewer = load_builtin_profile("reviewer")
 
     assert cto.recipe == "cto"
-    assert cto.model == "custom:Deepseek-V4-flash-0"
+    assert cto.model == "claude-sonnet-4-5"
     assert cto.effort is None
     assert cto.auto == "high"
     assert cto.tools == WORKER_TOOL_IDS
     assert "cto tick" not in cto.allowed_methods
 
     assert implementer.recipe == "implementer"
-    assert implementer.model == "custom:Deepseek-V4-flash-0"
+    assert implementer.model == "gpt-5-codex"
     assert implementer.effort is None
     assert implementer.auto == "medium"
     assert implementer.tools == WORKER_TOOL_IDS
@@ -480,7 +480,7 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
     }
 
     assert reviewer.recipe == "reviewer"
-    assert reviewer.model == "custom:gemini-3.8-flash-LTN-0"
+    assert reviewer.model == "claude-opus-4-1"
     assert reviewer.effort is None
     assert reviewer.auto is None
     assert reviewer.tools == READ_ONLY_TOOL_IDS

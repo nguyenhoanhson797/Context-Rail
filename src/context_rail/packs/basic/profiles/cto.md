@@ -8,7 +8,7 @@ allowed_methods: [do, find, show, cto brief, ledger, report, add, update, move, 
                   pack validate, pack create, measure versions, measure fix, rollback,
                   sync, sync driver, mcp serve]
 budget: {max_chars: 12000, max_docs: 20}
-model: 'custom:Deepseek-V4-flash-0'
+model: 'claude-sonnet-4-5'
 effort: null
 auto: high
 tools: [read-cli, ls-cli, grep_tool_cli, glob-search-cli, create-cli, edit-cli, execute-cli]
