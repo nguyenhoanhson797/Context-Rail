@@ -223,6 +223,27 @@ The UI carries the pack's labels and titles, renders the pinned populations,
 and an empty screen says so instead of showing a blank page. No React module
 branches on a pack name.
 
+## Upgrading an existing video store
+
+The video pack no longer has a `render` item type, and the `queued`,
+`running`, `succeeded` and `failed` statuses are gone: a render attempt is an
+execution record on the approved shot. A store made before that change keeps
+reading, but `rail ops doctor` reports `unknown_preset`, `unknown_status` and
+`placement_unresolved` for every old render item and every item left on one of
+those statuses, and `rail change move` refuses them. The pack change also
+shows as `approval_mismatch` until a human re-approves it.
+
+Repair it once, as the human:
+
+1. In each `items/render/<slug>.md`, set `preset: task`, `tags: [task]` and a
+   status the pack knows (`dropped` for a render you no longer need).
+2. In any other item left on `queued`, `running`, `succeeded` or `failed`, set
+   `draft`, `doing`, `done` or `blocked`.
+3. `rail ops reindex`, then `rail change repath` to move the old render files
+   into `items/task/`.
+4. `rail ops doctor` should show no errors. Then
+   `rail --actor human approve pack:video` and `rail --actor human approve charter`.
+
 ## Upgrading a v1/v2 store
 
 ```bash
