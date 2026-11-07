@@ -11,8 +11,8 @@ def _read(rel: str) -> str:
     return (_ROOT / rel).read_text(encoding="utf-8")
 
 
-def test_readme_documents_the_operating_model() -> None:
-    text = _read("README.md")
+def test_how_it_works_documents_the_operating_model() -> None:
+    text = _read("docs/how-it-works.md")
 
     for phrase in (
         "operating",
@@ -31,9 +31,18 @@ def test_readme_documents_the_operating_model() -> None:
         assert phrase in text, phrase
 
 
-def test_readme_does_not_promise_a_pack_yaml_read() -> None:
+def test_how_it_works_does_not_promise_a_pack_yaml_read() -> None:
+    text = _read("docs/how-it-works.md")
+
+    assert "Agents never read `pack.yaml`" in text
+
+
+def test_readme_is_a_product_page_that_links_the_deep_docs() -> None:
     text = _read("README.md")
 
+    assert "https://github.com/nguyenhoanhson797/Context-Rail/blob/master/docs/how-it-works.md" in text
+    assert "pip install context-rail" in text
+    assert "rail init" in text
     assert "Agents never read `pack.yaml`" in text
 
 
