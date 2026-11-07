@@ -26,6 +26,7 @@ __all__ = [
     "brief_rows",
     "check_state",
     "check_states",
+    "code_touches",
     "digest_rows",
     "execution_count",
     "execution_latest",
@@ -545,6 +546,34 @@ def run_facts(ix: Index, item: str) -> list[dict[str, Any]]:
             "usage": usage.get(record_id, []),
         }
         for record_id, role, attempt_count, duration_s in rows
+    ]
+
+
+def code_touches(
+    ix: Index, path: str, symbol: str | None = None, limit: int = 10
+) -> list[dict[str, Any]]:
+    """Runs that changed ``path`` (or one of its symbols), newest first, one row per run."""
+    path = _text(path, "path")
+    limit = _bounded(limit, LIMIT_BOUNDS, "limit")
+    if symbol is None:
+        rows = ix.conn.execute(
+            "SELECT item, record, at FROM code_touch WHERE path = ? "
+            "GROUP BY record ORDER BY at DESC, record DESC LIMIT ?",
+            (path, limit),
+        ).fetchall()
+        return [
+            {"item": item, "record": record, "at": at, "symbol": None}
+            for item, record, at in rows
+        ]
+    symbol = _text(symbol, "symbol")
+    rows = ix.conn.execute(
+        "SELECT item, record, at FROM code_touch WHERE path = ? AND symbol = ? "
+        "GROUP BY record ORDER BY at DESC, record DESC LIMIT ?",
+        (path, symbol, limit),
+    ).fetchall()
+    return [
+        {"item": item, "record": record, "at": at, "symbol": symbol}
+        for item, record, at in rows
     ]
 
 

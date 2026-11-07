@@ -56,7 +56,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 5
+INDEX_SCHEMA = 6
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -215,6 +215,17 @@ _SCHEMA = (
     )
     """,
     """
+    CREATE TABLE code_touch(
+        path TEXT NOT NULL,
+        symbol TEXT,
+        item TEXT NOT NULL,
+        record TEXT NOT NULL,
+        at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX code_touch_path ON code_touch(path, at DESC)",
+    "CREATE INDEX code_touch_record ON code_touch(record)",
+    """
     CREATE TABLE reports(
         path TEXT PRIMARY KEY,
         record_id TEXT NOT NULL,
@@ -354,6 +365,7 @@ _PROJECTION_COLUMNS = {
         "data_json",
     ),
     "run_attempts": ("run_id", "number", "duration_s", "exit", "timed_out", "usage_json"),
+    "code_touch": ("path", "symbol", "item", "record", "at"),
     "reports": (
         "path",
         "record_id",
@@ -798,6 +810,7 @@ class Index:
             refresh.add(run[0])
             conn.execute("DELETE FROM run_skills WHERE run_id = ?", (run[0],))
             conn.execute("DELETE FROM run_attempts WHERE run_id = ?", (run[0],))
+            conn.execute("DELETE FROM code_touch WHERE record = ?", (run[0],))
         evaluation = conn.execute(
             "SELECT run_id FROM run_evaluations WHERE path = ?", (path,)
         ).fetchone()
@@ -963,6 +976,15 @@ def _run_rows(
                     _json(attempt["usage"]),
                 ),
             )
+        )
+    touched = [(path, None) for path in run.data.get("files_changed", [])]
+    touched += [
+        (symbol.partition(":")[0], symbol if ":" in symbol else None)
+        for symbol in run.data.get("symbols_changed", [])
+    ]
+    for path, symbol in touched:
+        rows.append(
+            ("code_touch", (path, symbol, run.item, record_id, run.ended_at))
         )
     return rows, {record_id}
 

@@ -373,6 +373,8 @@ def write_run(
     accepted: bool | None = None,
     usage: dict[str, Any] | None = None,
     duration: float = 1.0,
+    files_changed: Sequence[str] | None = None,
+    symbols_changed: Sequence[str] | None = None,
 ) -> Path:
     """Write one completed-run Record with a valid payload and return its path.
 
@@ -420,6 +422,12 @@ def write_run(
             "verdicts": [],
             "usage": dict(counters),
             "report": report,
+            **({} if files_changed is None else {"files_changed": list(files_changed)}),
+            **(
+                {}
+                if symbols_changed is None
+                else {"symbols_changed": list(symbols_changed)}
+            ),
         },
         at=at,
         about=() if item is None else (item,),

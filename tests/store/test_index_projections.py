@@ -34,6 +34,7 @@ REQUIRED_TABLES = {
     "run_skills",
     "run_evaluations",
     "run_attempts",
+    "code_touch",
     "reports",
     "triaged_reports",
     "approvals",
@@ -87,8 +88,8 @@ def truth_files(store: Path) -> dict[Path, bytes]:
     }
 
 
-def test_index_schema_five_keeps_the_base_tables_and_fts():
-    assert INDEX_SCHEMA == 5
+def test_index_schema_six_keeps_the_base_tables_and_fts():
+    assert INDEX_SCHEMA == 6
 
 
 def test_open_creates_the_typed_tables(store_factory):
@@ -101,9 +102,9 @@ def test_open_creates_the_typed_tables(store_factory):
             index.conn.execute(
                 "SELECT value FROM meta WHERE key = 'schema'"
             ).fetchone()[0]
-            == "5"
+            == "6"
         )
-        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 6
 
 
 def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
