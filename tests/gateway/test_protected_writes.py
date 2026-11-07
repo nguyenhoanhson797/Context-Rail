@@ -517,6 +517,20 @@ def test_a_profile_can_only_use_its_allowed_methods(approved_store: Path) -> Non
     assert is_ok(allowed), allowed
 
 
+def test_every_profile_may_read_the_compiled_surface(approved_store: Path) -> None:
+    for actor in ("cto", "implementer", "reviewer"):
+        for tool, params in (
+            ("model", {}),
+            ("next", {}),
+            ("types", {}),
+            ("explain", {"name": "task"}),
+        ):
+            result = invoke(tool, params, store=approved_store, actor=actor)
+            code = None if is_ok(result) else result["error"]["code"]
+            assert code != "PERMISSION_DENIED", (actor, tool, result)
+    assert is_ok(invoke("next", {}, store=approved_store, actor="cto"))
+
+
 def test_an_implementer_may_write_a_code_note(approved_store: Path) -> None:
     added = invoke(
         "add",

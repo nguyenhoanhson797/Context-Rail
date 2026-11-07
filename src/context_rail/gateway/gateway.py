@@ -119,6 +119,7 @@ _CONFIRM_SLUG = {
 }
 _HUMAN = "human"
 _CTO = "cto"
+_COMPILED_SURFACE = frozenset({"types", "next", "model", "explain", "why"})
 
 
 @dataclass
@@ -370,10 +371,12 @@ def _authorize(
     allowed = canonical_methods(profile.allowed_methods) if profile is not None else frozenset()
     # ``cto tick`` starts the CTO session rather than acting inside one, and
     # ``mcp serve``/``ui serve`` only open transports whose calls are gated one
-    # by one, so none of them is narrowed by the caller's profile.
+    # by one, so none of them is narrowed by the caller's profile. The compiled
+    # surface is how every actor reads the pack, so a profile never hides it.
     if (
         profile is not None
         and tool.name not in ("cto tick", "mcp serve", "ui serve")
+        and tool.name not in _COMPILED_SURFACE
         and tool.name not in allowed
     ):
         return fail(
