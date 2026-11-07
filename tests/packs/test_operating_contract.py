@@ -254,6 +254,35 @@ def test_the_video_pack_compiles_with_shots_and_scenes(tmp_path: Path) -> None:
     )
 
 
+def test_no_builtin_workflow_dispatches_a_status_its_pack_holds_back(
+    tmp_path: Path,
+) -> None:
+    from context_rail.model.pack import load_pack
+
+    for name in ("basic", "flow", "scrum", "waterfall", "video"):
+        pack = load_pack(name, tmp_path)
+        held = [
+            status
+            for status, flags in pack.execution.items()
+            if flags.get("dispatch") is False
+        ]
+        for workflow in pack.workflows.values():
+            for status in held:
+                if status in workflow.transitions:
+                    assert not workflow.dispatchable(status), (name, workflow.name, status)
+
+
+def test_video_render_runs_are_execution_records_not_statuses(tmp_path: Path) -> None:
+    from context_rail.model.execution import EXECUTION_STATES
+    from context_rail.model.pack import load_pack
+
+    pack = load_pack("video", tmp_path)
+    assert "render" not in pack.presets
+    assert "render" not in pack.workflows
+    assert not set(EXECUTION_STATES) & set(pack.statuses)
+    assert pack.actions["render"].on == "shot"
+
+
 def test_every_builtin_pack_validates(tmp_path: Path) -> None:
     store = init_store(tmp_path)
     for name in ("basic", "flow", "scrum", "waterfall", "video"):

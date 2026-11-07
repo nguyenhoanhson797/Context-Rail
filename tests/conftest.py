@@ -1865,7 +1865,7 @@ def operating_waterfall_store(tmp_path: Path) -> SimpleNamespace:
 
 @pytest.fixture
 def operating_video_store(tmp_path: Path) -> SimpleNamespace:
-    """A video store with an active scene, shots, a render and an asset."""
+    """A video store with an active scene, shots and an asset."""
     store = init_store(tmp_path / "video", "video")
     scene = _slug(_created(store, "scene", "Act one", set=["sequence=1"]))
     shot = _slug(
@@ -1880,7 +1880,6 @@ def operating_video_store(tmp_path: Path) -> SimpleNamespace:
     second_shot = _slug(
         _created(store, "shot", "Close up", rel=[f"part_of={scene}"])
     )
-    render = _slug(_created(store, "render", "Opening render"))
     asset = _slug(_created(store, "asset", "Hero plate"))
     _move(store, scene, "storyboard")
     return SimpleNamespace(
@@ -1890,6 +1889,5 @@ def operating_video_store(tmp_path: Path) -> SimpleNamespace:
         scene=scene,
         shot=shot,
         second_shot=second_shot,
-        render=render,
         asset=asset,
     )

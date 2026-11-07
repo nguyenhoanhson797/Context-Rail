@@ -5,29 +5,20 @@ statuses:
   ready: not_started
   storyboard: active
   generating: active
+  doing: active
   review: active
   approved: done
   published: done
-  queued: not_started
-  running: active
-  succeeded: done
-  failed: blocked
+  done: done
   blocked: blocked
   dropped: dropped
 initial: draft
 transitions:
-  draft: [ready, storyboard, queued, dropped]
-  ready: [storyboard, draft, dropped]
-  storyboard: [generating, review, blocked, dropped]
-  generating: [review, blocked, dropped]
-  review: [approved, generating, blocked, dropped]
-  approved: [published, generating]
-  published: [generating]
-  queued: [running, dropped]
-  running: [succeeded, failed, dropped]
-  succeeded: [queued]
-  failed: [queued]
-  blocked: [storyboard, generating, review, dropped]
+  draft: [doing, dropped]
+  doing: [review, blocked, dropped]
+  review: [done, doing, blocked, dropped]
+  done: [doing]
+  blocked: [doing, dropped]
   dropped: [draft]
 execution:
   review: {dispatch: false}
@@ -38,11 +29,13 @@ workflows:
       draft: [storyboard, dropped]
       storyboard: [generating, review, blocked, dropped]
       generating: [review, blocked, dropped]
-      review: [approved, blocked, dropped]
+      review: [approved, generating, blocked, dropped]
       approved: [published]
       published: []
       blocked: [storyboard, generating, review, dropped]
       dropped: [draft]
+    execution:
+      review: {dispatch: false}
     quality:
       approved: {gate: item_done}
   shot:
@@ -56,6 +49,8 @@ workflows:
       published: [generating]
       blocked: [generating, review, dropped]
       dropped: [draft]
+    execution:
+      review: {dispatch: false}
     quality:
       approved: {gate: item_done}
   asset:
@@ -65,22 +60,12 @@ workflows:
       ready: [approved, dropped]
       approved: [ready]
       dropped: [draft]
-  render:
-    initial: queued
-    transitions:
-      queued: [running, dropped]
-      running: [succeeded, failed, dropped]
-      succeeded: []
-      failed: [queued]
-      dropped: [queued]
 presets:
   goal:       {primitive: item,   tags: [goal], container: true}
   scope:      {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
   scene:      {primitive: item,   tags: [scene], container: true, workflow: scene, template: templates/scene.md}
   shot:       {primitive: item,   tags: [shot], container: false, workflow: shot, fields: {model: [standard, hero], duration: [short, long]}, template: templates/shot.md}
   asset:      {primitive: item,   tags: [asset], container: false, workflow: asset}
-  render:     {primitive: item,   tags: [render], container: false, workflow: render}
-  requirement: {primitive: item,  tags: [requirement], container: false}
   task:       {primitive: item,   tags: [task], container: false}
   bug:        {primitive: item,   tags: [bug], container: false}
   risk:       {primitive: item,   tags: [risk], container: false, fields: {severity: [low, medium, high, critical]}}
@@ -158,6 +143,6 @@ actions:
     "on": shot
     from: [approved]
     tool: next
-    args: {}
-    use_when: "an approved shot is ready to render"
+    args: {item: "{item}"}
+    use_when: "an approved shot needs its final render; the renderer reports each attempt as an execution record on the shot"
     version: 1

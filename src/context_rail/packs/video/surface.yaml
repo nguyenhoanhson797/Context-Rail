@@ -2,7 +2,6 @@
 labels:
   shot: {one: Shot, many: Shots}
   scene: {one: Scene, many: Scenes}
-  render: {one: Render, many: Renders}
   asset: {one: Asset, many: Assets}
   review: {one: Review, many: Reviews}
 screens:
@@ -11,7 +10,7 @@ screens:
   - {id: plan, kind: timeline, title: Scenes, preset: scene}
   - {id: workflow, kind: workflow, title: Workflow}
   - {id: execution, kind: execution, title: Progress}
-  - {id: catalog, kind: catalog, title: Assets, presets: [asset, render]}
+  - {id: catalog, kind: catalog, title: Assets, preset: asset}
   - {id: records, kind: records, title: Records}
   - {id: pack, kind: pack, title: Pack}
 fields:
