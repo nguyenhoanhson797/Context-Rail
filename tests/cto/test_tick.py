@@ -15,7 +15,7 @@ from context_rail.model.cto import USAGE_KEYS, load_builtin_profile
 from context_rail.store.location import local_dir
 from helpers import latest_record, records_of, run_cli, write_run
 
-MODEL = "custom:Deepseek-V4-flash-0"
+MODEL = "claude-sonnet-4-5"
 TOOLS_CSV = "read-cli,ls-cli,grep_tool_cli,glob-search-cli,create-cli,edit-cli,execute-cli"
 RESULT_KEYS = {"run", "session_id", "status", "reports", "usage"}
 

@@ -186,7 +186,7 @@ def test_a_dispatched_implementer_argv_is_exact(leaf_item, fake_droid, droid_env
         "--cwd",
         str(worktree),
         "-m",
-        "custom:Deepseek-V4-flash-0",
+        "gpt-5-codex",
         "--restrict-tools",
         TOOLS_CSV,
         "--append-system-prompt-file",

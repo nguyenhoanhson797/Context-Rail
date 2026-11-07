@@ -18,8 +18,8 @@ from context_rail.store.location import local_dir
 from helpers import item_status, latest_record, records_of, run_git, write_record
 
 REVIEW_TOOLS_CSV = "read-cli,ls-cli,grep_tool_cli,glob-search-cli"
-REVIEW_MODEL = "custom:gemini-3.8-flash-LTN-0"
-IMPLEMENTER_MODEL = "custom:Deepseek-V4-flash-0"
+REVIEW_MODEL = "claude-opus-4-1"
+IMPLEMENTER_MODEL = "gpt-5-codex"
 RESULT_KEYS = {"run", "review", "commit", "verdict", "findings", "status"}
 
 
