@@ -45,6 +45,34 @@ def test_readme_is_a_product_page_that_links_the_deep_docs() -> None:
     assert "rail init" in text
     assert "Agents never read `pack.yaml`" in text
 
+def test_readme_shows_the_primitives_graph_and_two_projects() -> None:
+    text = _read("README.md")
+
+    assert "## Build any project from six building blocks" in text
+    assert text.count("```mermaid") == 6
+    assert "### How a project runs" in text
+    for phrase in (
+        "policy",
+        "actor",
+        "item",
+        "check",
+        "record",
+        "note",
+        "part_of",
+        "depends_on",
+        "verifies",
+        "owned_by",
+        "about",
+        "scene",
+        "shot",
+        "render",
+        "sprint",
+        "story",
+        "repro-check",
+        "acceptance",
+    ):
+        assert phrase in text, phrase
+
 
 def test_the_surface_skill_is_model_first() -> None:
     text = _read("skills/context-rail-v3-surface/SKILL.md")
