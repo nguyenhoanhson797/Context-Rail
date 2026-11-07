@@ -54,6 +54,8 @@ rail check run <target> [--worktree PATH] [--verdict pass|fail]
                  [--evidence RECORD] [--confirm PHRASE]
 rail loop report [item] --run RUN_ID --report-file FILE
 rail loop triage [--limit N]
+rail loop execution <target> --action NAME --state running|succeeded|failed|cancelled
+                    [--output FILE]... [--error WHY]
 rail loop dispatch <item> --expect ETAG --key KEY [--profile NAME]
 rail loop review   <item> --run RUN_ID --key KEY [--profile NAME]
 rail loop merge    <item> --run RUN_ID --expect ETAG --key KEY [--push]

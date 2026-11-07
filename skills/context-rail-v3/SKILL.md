@@ -90,7 +90,7 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 | Family | Commands |
 |---|---|
 | Read | `overview`, `read status\|digest\|find\|show\|ledger` |
-| Change | `change add\|update\|link\|move\|rename\|repath`, `check declare\|run`, `loop report\|triage` |
+| Change | `change add\|update\|link\|move\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` |
 | Gate | `approve`, `ops pack use`, `gate` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
 | Loop | `loop dispatch\|review\|merge\|tick` |
 | Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui` |

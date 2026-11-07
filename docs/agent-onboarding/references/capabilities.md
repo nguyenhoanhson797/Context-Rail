@@ -200,6 +200,7 @@ Brief → Plan → Dispatch → Verify → Review → Merge → Report → Diges
 | `loop review` | different actor in its own worktree; the implementer cannot approve its own work |
 | `loop merge` | rebase onto the default branch, then fast-forward; `--push` only when allowed |
 | `loop report` | one structured report per completed run: target, expectation, observation, impact, evidence |
+| `loop execution` | record one attempt (`running`, then `succeeded`, `failed` or `cancelled`) of a pack-declared execution action, such as a video render; the engine records it and never runs it |
 | `loop tick` | one bounded CTO session behind a single-instance lock; must be the outer session |
 | `read digest` | counts, waits, reversible decisions, quality, usage |
 

@@ -34,6 +34,7 @@ rail loop merge    <item> --run <run-id> --expect <etag> --key <k> [--push]
 
 rail loop report [<item>] --run <run-id> --report-file <json>
 rail loop triage [--limit N]
+rail loop execution <item> --action <name> --state running|succeeded|failed|cancelled [--output <file>]... [--error <why>]
 rail read ledger [--item <slug>] [--since <iso>]
 ```
 

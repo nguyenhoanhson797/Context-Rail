@@ -74,7 +74,7 @@ refusal and `2` on an infrastructure failure:
 | Family | Commands | Use |
 |---|---|---|
 | Read | `overview`, `read status\|digest\|find\|show\|ledger`, `types`, `next`, `model`, `explain`, `why` | Understand without changing anything |
-| Change | `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop report\|triage` | Do the work |
+| Change | `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` | Do the work |
 | Gate | `approve`, `gate`, `ops pack use` | Human decisions and governance |
 | Loop | `loop dispatch\|review\|merge\|tick` | Run and supervise agents |
 | Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui\|daemon` | Maintain and connect |

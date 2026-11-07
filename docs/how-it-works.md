@@ -131,7 +131,12 @@ that is not planned yet waits in a `backlog` container
 
 In video, `render` runs are **execution records** on the approved shot, not a
 status or an item of their own: they show up in the progress view and the
-ledger, and are never merged with workflow completion.
+ledger, and are never merged with workflow completion. Context Rail does not
+run the render. Whoever does reports each attempt with
+`rail loop execution <shot> --action render --state running`, then
+`--state succeeded --output <file>` or `--state failed --error "<why>"`. A new
+attempt can start only from the action's declared status (`approved`), and only
+the CTO and the human may record one.
 Same engine, same five parts; only the pack's data changed.
 
 ### Why this costs zero engine code
