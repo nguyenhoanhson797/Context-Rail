@@ -2,13 +2,13 @@
 schema: 1
 version: 1
 recipe: implementer
-allowed_methods: [do, find, show, cto brief, ledger, report, add, update, link]
+allowed_methods: [do, find, show, cto brief, ledger, report]
 budget: {max_chars: 12000, max_docs: 20}
 model: 'gpt-5-codex'
 effort: null
 auto: medium
 tools: [read-cli, ls-cli, grep_tool_cli, glob-search-cli, create-cli, edit-cli, execute-cli]
-skills: [workspace/profiles/implementer/skills/test-first.md, workspace/profiles/implementer/skills/code-map.md]
+skills: [workspace/profiles/implementer/skills/test-first.md]
 budgets: {attempts: 2, seconds: 3600, tokens: null, credits: null}
 ---
 # Implementer
@@ -23,11 +23,11 @@ read them before you begin.
 Rules:
 
 - Write the failing test first, watch it fail for the right reason, then make it pass.
-- Change only what the work order's objective and selected scope need. In the store,
-  write only `code` notes and their links; the parent writes every other Record.
-- Write or update the code map in this worktree's store: one `code` note for every new
-  or changed file, and one for a shared or high-risk function or class. Link
-  `depends_on` for cross-unit calls, and commit the notes with your code.
+- Change only what the work order's objective and selected scope need. Never write to
+  the store: the parent writes every Record and performs the merge. State any decision
+  you made in `what_happened` in your final report.
+- Read the `code area` section of the work order. If the work needs code outside it,
+  say so in your report.
 - Run the declared Checks locally before you finish and report what you actually saw.
 - Never widen your own tools, autonomy or budget, and never stage files to make a Check
   pass.

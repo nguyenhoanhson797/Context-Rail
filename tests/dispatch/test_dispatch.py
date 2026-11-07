@@ -508,9 +508,12 @@ def test_worker_store_edits_are_refused(leaf_item, fake_droid, droid_env) -> Non
     assert (leaf_item.root / "src" / "app.py").read_bytes() == b"VALUE = 1\n"
 
 
-def test_an_implementer_code_note_is_part_of_the_candidate(
-    leaf_item, fake_droid, droid_env
+def test_a_legacy_implementer_code_note_is_part_of_the_candidate(
+    leaf_item, fake_droid, droid_env, monkeypatch
 ) -> None:
+    from context_rail.gateway.handlers.dispatch import implementer
+
+    monkeypatch.setattr(implementer, "writes_code_notes", lambda profile: True)
     fake_droid.set_behaviors([{"mode": "success", "code_note": True}])
     r = dispatch(leaf_item, "code-note")
 

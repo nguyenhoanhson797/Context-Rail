@@ -468,9 +468,6 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
         "cto brief",
         "ledger",
         "report",
-        "add",
-        "update",
-        "link",
     )
     assert implementer.budgets == {
         "attempts": 2,
@@ -652,7 +649,7 @@ def test_profile_body_must_be_a_nonempty_role_prompt() -> None:
 
 def test_builtin_skills_load_with_pinned_names() -> None:
     skills = load_builtin_skills()
-    assert sorted(skills) == ["code-map", "review-checklist", "test-first"]
+    assert sorted(skills) == ["review-checklist", "test-first"]
     for slug, text in skills.items():
         assert text.strip()
         assert f"name: {slug}" in text

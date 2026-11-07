@@ -317,13 +317,7 @@ def _sections(plan: _Plan, doc: Doc, intent: str = "") -> dict[str, str]:
         or "(none declared)",
         "checks": check_lines,
         "allowed rail methods": methods,
-        "no-store-edit rule": (
-            "Write only `code` notes in this worktree's store: `rail change add code ...`, "
-            "`rail change update ...` and `rail change link ...`. Never use "
-            f"`rail --store {plan.store.absolute()}` (the canonical store); the parent "
-            "writes every other Record and performs the merge. Any other store path in "
-            "your candidate is refused."
-        ),
+        "no-store-edit rule": _store_rule(plan),
         "commit expectation": (
             "Leave your work as commits on the current branch. Do not merge, rebase, push "
             "or switch branches."
@@ -545,6 +539,34 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
     return value
 
 
+def writes_code_notes(profile: Any) -> bool:
+    """True for a store whose implementer profile still pins the retired code-map skill.
+
+    Such a store keeps the old allowance until ``rail ops codegraph adopt`` rewrites
+    its profile; every other implementer may not touch the store at all.
+    """
+    return any(
+        isinstance(skill, str) and skill.endswith("/code-map.md")
+        for skill in getattr(profile, "skills", ())
+    )
+
+
+def _store_rule(plan: _Plan) -> str:
+    canonical = f"`rail --store {plan.store.absolute()}` (the canonical store)"
+    if writes_code_notes(plan.profile):
+        return (
+            "Write only `code` notes in this worktree's store: `rail change add code ...`, "
+            "`rail change update ...` and `rail change link ...`. Never use "
+            f"{canonical}; the parent writes every other Record and performs the merge. "
+            "Any other store path in your candidate is refused."
+        )
+    return (
+        f"Never write to the store, and never use {canonical}. The parent writes every "
+        "Record and performs the merge; a candidate that touches a store path is "
+        "refused. State decisions in `what_happened`."
+    )
+
+
 _CODE_NOTE_KINDS = frozenset({"file", "module", "class", "function", "method"})
 _CODE_RECORD_KINDS = frozenset(
     {"doc.created", "doc.updated", "relation.changed", "decision.made"}
@@ -700,14 +722,19 @@ def _judge(
         base_commit=plan.base,
         store_paths=plan.store_paths,
     )
-    _allowed, refused = _code_map_changes(
-        plan.ctx.manifest,
-        plan.paths.worktree,
-        plan.store_paths,
-        changes,
-        ctx=plan.ctx,
-        item=plan.slug,
-    )
+    if writes_code_notes(plan.profile):
+        _allowed, refused = _code_map_changes(
+            plan.ctx.manifest,
+            plan.paths.worktree,
+            plan.store_paths,
+            changes,
+            ctx=plan.ctx,
+            item=plan.slug,
+        )
+    else:
+        refused = [
+            path for path in changes.get("store_changed", ()) if isinstance(path, str)
+        ]
     if refused:
         reasons.append(
             "the worker changed store-owned or adapter paths: " + ", ".join(refused)

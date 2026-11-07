@@ -6,6 +6,7 @@ directory. They never touch a store document, and none starts an outside tool.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,9 +21,28 @@ from context_rail.store.codegraph import (
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["refresh", "resolved", "setup", "status"]
+__all__ = ["adopt_fingerprint", "refresh", "resolved", "setup", "status"]
 
 _SOURCE_WORDS = {"rail.yaml": "rail.yaml", "pack": "pack default", "default": "default"}
+_VOLATILE_KEYS = ("version", "updated")
+
+
+def adopt_fingerprint(text: str) -> str:
+    """A hash of a profile or skill that ignores line endings and bookkeeping keys.
+
+    ``version`` and ``updated`` change whenever the store rewrites a document, so
+    they cannot tell a customized copy from an untouched one.
+    """
+    lines = text.replace("\r\n", "\n").split("\n")
+    kept: list[str] = []
+    in_front = bool(lines) and lines[0].strip() == "---"
+    for index, line in enumerate(lines):
+        if in_front and index > 0 and line.strip() == "---":
+            in_front = False
+        elif in_front and index > 0 and line.split(":", 1)[0] in _VOLATILE_KEYS:
+            continue
+        kept.append(line)
+    return hashlib.sha256("\n".join(kept).encode("utf-8")).hexdigest()
 
 
 def resolved(manifest: Any, pack: Any) -> tuple[str, str]:

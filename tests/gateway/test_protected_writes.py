@@ -531,7 +531,7 @@ def test_every_profile_may_read_the_compiled_surface(approved_store: Path) -> No
     assert is_ok(invoke("next", {}, store=approved_store, actor="cto"))
 
 
-def test_an_implementer_may_write_a_code_note(approved_store: Path) -> None:
+def test_an_implementer_may_not_write_the_store(approved_store: Path) -> None:
     added = invoke(
         "add",
         {
@@ -542,7 +542,7 @@ def test_an_implementer_may_write_a_code_note(approved_store: Path) -> None:
         store=approved_store,
         actor="implementer",
     )
-    assert is_ok(added), added
+    assert added["error"]["code"] == "PERMISSION_DENIED", added
 
 
 def test_move_to_done_cannot_bypass_the_gate(approved_store: Path) -> None:
