@@ -272,13 +272,20 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             key=args["key"],
             index=index,
         )
-    return {
+    summary: dict[str, Any] = {
         "approval": result.get("record"),
         "target": target,
         "scope": scope,
         "hashes": scoped,
         "diff": diff,
     }
+    if ctx.manifest.code_graph is not None and any(
+        entry["path"] == "rail.yaml" for entry in diff
+    ):
+        from context_rail.runner.codegraph import readiness
+
+        summary["code_graph"] = readiness(store, ctx.manifest.code_graph)["line"]
+    return summary
 
 
 def _approval_target(ctx: Context, target: str) -> str | None:

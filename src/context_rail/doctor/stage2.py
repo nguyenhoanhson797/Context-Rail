@@ -36,6 +36,11 @@ SEVERITY: dict[str, str] = {
     "duplicate_record_id": "error",
     "version_history_mismatch": "error",
     "interrupted_sync": "warning",
+    "code_graph_unavailable": "warning",
+    "code_graph_invalid": "warning",
+    "code_graph_dirty_tree": "error",
+    "code_graph_stale": "info",
+    "code_graph_fallback": "info",
 }
 
 _SYNC_INSTALL = "rail ops sync install"
@@ -54,6 +59,85 @@ def issues(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> list[dict[
     found.extend(_records(ix))
     found.extend(_versions(store))
     found.extend(_sync_intent(store))
+    found.extend(_codegraph(store, manifest, pack))
+    return found
+
+
+def _codegraph(store: Path, manifest: Manifest, pack: Pack) -> list[dict[str, Any]]:
+    """Findings about the code graph cache; a store with the graph off has none."""
+    from context_rail.core.locate import StoreLocationError
+    from context_rail.model.codegraph import effective_code_graph
+    from context_rail.store.codegraph import freshness, last_event
+
+    configured = effective_code_graph(manifest.code_graph, pack.policy.get("code_graph"))
+    if configured == "none":
+        return []
+    try:
+        event = last_event(store)
+        state = freshness(store)
+    except StoreLocationError:
+        return []
+    refresh = "rail ops codegraph setup"
+    found: list[dict[str, Any]] = []
+    kind = None if event is None else event.get("kind")
+    detail = {} if event is None else event.get("detail") or {}
+    if kind == "fallback":
+        wanted = detail.get("configured", configured)
+        found.append(
+            _issue(
+                "code_graph_fallback",
+                "rail.yaml",
+                f"the code graph was built by builtin because {wanted} is not available",
+                fix=refresh,
+            )
+        )
+        found.append(
+            _issue(
+                "code_graph_unavailable",
+                "rail.yaml",
+                f"the configured code graph provider {wanted} cannot be used",
+                fix=refresh,
+            )
+        )
+    elif kind in ("unavailable", "timeout"):
+        found.append(
+            _issue(
+                "code_graph_unavailable",
+                "rail.yaml",
+                str(detail.get("message") or "the code graph could not be built"),
+                fix=refresh,
+            )
+        )
+    elif kind == "invalid":
+        found.append(
+            _issue(
+                "code_graph_invalid",
+                "rail.yaml",
+                "the code graph cache failed validation: "
+                + str(detail.get("reason") or "unreadable"),
+                fix=refresh,
+            )
+        )
+    elif kind == "dirty_tree":
+        paths = ", ".join(str(path) for path in detail.get("paths") or ["(unknown)"])
+        found.append(
+            _issue(
+                "code_graph_dirty_tree",
+                "rail.yaml",
+                f"a code graph provider changed the working tree: {paths}",
+                fix="remove the stray paths, then run rail ops codegraph setup",
+            )
+        )
+    if state["state"] == "stale" and state["head"] is not None:
+        found.append(
+            _issue(
+                "code_graph_stale",
+                "rail.yaml",
+                f"the newest code graph is at {str(state['graph'])[:7]}, "
+                f"HEAD is {str(state['head'])[:7]}",
+                fix="rail ops codegraph refresh",
+            )
+        )
     return found
 
 

@@ -491,6 +491,7 @@ def _brief_sections(
 
     charter_section = by_key["charter"]
     charter_section.fixed.extend(_charter_lines(context))
+    charter_section.fixed.extend(_code_graph_lines(context))
     if context.policy is None:
         charter_section.entries.append("no charter document yet")
 
@@ -763,6 +764,43 @@ def _memory_rows(ix: Any, limit: int) -> tuple[list[str], int]:
         for slug, title, excerpt in rows
     ]
     return shown, max(total - len(rows), 0)
+
+
+def _code_graph_lines(context: Context) -> list[str]:
+    """One line when the code graph needs a human; none while it works or is off."""
+    from pathlib import Path
+
+    from context_rail.core.locate import StoreLocationError
+    from context_rail.model.codegraph import effective_code_graph
+    from context_rail.store.codegraph import last_event
+
+    configured = effective_code_graph(
+        context.manifest.code_graph, context.pack.policy.get("code_graph")
+    )
+    if configured == "none":
+        return []
+    store = Path(context.store)
+    if configured != "builtin":
+        from context_rail.runner.codegraph import readiness
+
+        return [readiness(store, configured)["line"]]
+    try:
+        event = last_event(store)
+    except StoreLocationError:
+        return []
+    if event is None or event.get("kind") not in _GRAPH_PROBLEMS:
+        return []
+    detail = event.get("detail") or {}
+    reason = detail.get("message") or detail.get("reason") or ", ".join(detail.get("paths") or [])
+    return [f"code graph: {_GRAPH_PROBLEMS[event['kind']]}: {reason}".rstrip(": ")]
+
+
+_GRAPH_PROBLEMS = {
+    "timeout": "timed out",
+    "unavailable": "unavailable",
+    "invalid": "cache invalid",
+    "dirty_tree": "provider changed the working tree",
+}
 
 
 def _charter_lines(context: Context) -> list[str]:

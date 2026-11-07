@@ -650,6 +650,27 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.maintenance:ci",
         daemon=True,
     ),
+    Tool(
+        name="codegraph setup",
+        summary="Check the code graph provider and build the first snapshot of the checkout's HEAD.",
+        permission="read",
+        params=(),
+        handler="context_rail.gateway.handlers.codegraph:setup",
+    ),
+    Tool(
+        name="codegraph refresh",
+        summary="Build the code graph snapshot of the checkout's current HEAD when it has none.",
+        permission="read",
+        params=(),
+        handler="context_rail.gateway.handlers.codegraph:refresh",
+    ),
+    Tool(
+        name="codegraph status",
+        summary="Show the code graph provider, its newest snapshot, coverage and freshness.",
+        permission="read",
+        params=(),
+        handler="context_rail.gateway.handlers.codegraph:status",
+    ),
 )
 
 
