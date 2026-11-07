@@ -244,7 +244,11 @@ def render_workflows(context: Any, *, limit: int = 2000) -> str:
 
 
 def why(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
-    """The missing proof for one item, with the command that produces it."""
+    """The missing proof for one item, or the reach of one file or symbol."""
+    from context_rail.context import code_targets
+
+    if code_targets.looks_like_code_target(slug):
+        return code_targets.code_view(context, slug, limit=limit)
     view = card(context, slug, limit=limit)
     rows = query.check_states(context.index, slug)
     missing = [row["slug"] for row in rows if not row.get("passed")]

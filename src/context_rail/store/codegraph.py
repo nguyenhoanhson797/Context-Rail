@@ -243,18 +243,18 @@ class CachedGraph:
     def _nodes(self, column: str, value: str) -> tuple[Node, ...]:
         rows = self._conn.execute(
             'SELECT id, kind, name, file, start, "end" FROM node '
-            f"WHERE sha = ? AND {column} = ? ORDER BY id",
+            f"WHERE sha = ? AND {column} = ?",
             (self.commit, value),
         ).fetchall()
-        return tuple(Node(*row) for row in rows)
+        return tuple(Node(*row) for row in sorted(rows))
 
     def _edges(self, column: str, value: str) -> tuple[Edge, ...]:
         rows = self._conn.execute(
             "SELECT src, dst, rel, confidence FROM edge "
-            f"WHERE sha = ? AND {column} = ? ORDER BY src, dst, rel",
+            f"WHERE sha = ? AND {column} = ?",
             (self.commit, value),
         ).fetchall()
-        return tuple(Edge(*row) for row in rows)
+        return tuple(Edge(*row) for row in sorted(rows, key=lambda row: row[:3]))
 
 
 def _save(path: Path, snapshot: Snapshot, protect: set[str]) -> None:

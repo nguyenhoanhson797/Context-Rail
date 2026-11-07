@@ -46,6 +46,10 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "approval": approval.approval_state(ctx, slug),
             "phrase": confirmation_phrase("approve", slug),
         }
+    from context_rail.context import code_targets
+
+    if code_targets.looks_like_code_target(slug):
+        return code_targets.code_view(ctx, slug)
     resolve_unique(index, args["slug"])
     try:
         shown = query.show(index, args["slug"], body_chars=args["body_chars"])
