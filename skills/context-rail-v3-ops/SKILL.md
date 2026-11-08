@@ -45,6 +45,29 @@ rail gate                   # doctor + approval and done gates (never runs check
 rail gate --warnings-as-errors
 ```
 
+## Code graph
+
+```powershell
+rail ops codegraph setup      # probe the provider, cache readiness, build HEAD
+rail ops codegraph status     # provider, coverage, freshness; never probes
+rail ops codegraph refresh    # rebuild HEAD with the configured provider
+rail --actor human ops codegraph adopt   # move an old store off the code map
+```
+
+`rail.yaml` `code_graph` is `builtin` (default), `graphify`, `gitnexus` or
+`none`; the pack policy can only say `builtin` or `none`. The rail never
+installs a tool. Graphify is `uv tool install "graphifyy>=0.9.100,<0.10"`;
+GitNexus is `npm install -g gitnexus` (Node 22.18+ or 24.11+, PolyForm
+Noncommercial). Override either binary with `RAIL_GRAPHIFY_BIN` or
+`RAIL_GITNEXUS_BIN`.
+
+Readiness is cached under the local directory. `status`, the overview, an
+approval summary and doctor read the cache and never start a process; only
+`setup` probes. GitNexus indexes an isolated mirror under the cache with
+`GITNEXUS_HOME` set there, so the real checkout and `~/.gitnexus` stay clean.
+A missing or broken provider falls back to `builtin`; dispatch never blocks on
+it.
+
 ## Packs, digests and reapproval
 
 ```powershell

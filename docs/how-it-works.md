@@ -234,10 +234,31 @@ branches on a pack name.
 symbols and call edges under the store's local directory, one snapshot per git
 commit. Nothing is written to the store, reads never start a process, and a
 missing snapshot degrades to file-level answers with one line saying so.
-`rail.yaml` `code_graph` (`builtin` or `none`) wins over the pack's
-`policy.code_graph`, which wins over the default `builtin`; the video pack
-ships `none`. `graphify` and `gitnexus` are accepted values that fall back to
-`builtin` until their adapters ship.
+`rail.yaml` `code_graph` (`builtin`, `graphify`, `gitnexus` or `none`) wins
+over the pack's `policy.code_graph`, which wins over the default `builtin`; the
+video pack ships `none`.
+
+`builtin` is the zero-install provider. `graphify` uses Graphify's code-only
+graph and `gitnexus` uses GitNexus; both are optional upgrades. The rail never
+installs either tool. `rail ops codegraph setup` checks the binary, the Node
+runtime for GitNexus, the supported version and any tool-owned leftovers, then
+builds the first snapshot. The result is cached in
+`<local_dir>/codegraph/readiness.json`; `status`, the overview, an approval
+summary and `rail ops doctor` read that cache and never spawn a probe.
+
+GitNexus writes `.gitnexus`, `.gitignore` entries and agent skills into the
+repository it indexes, so the adapter gives it a detached **mirror** worktree
+under the local cache and points `GITNEXUS_HOME` at the same cache. The real
+checkout stays clean, and the global `~/.gitnexus/registry.json` is not used.
+GitNexus is PolyForm Noncommercial 1.0.0; commercial use needs a separate
+license, which `rail ops doctor` reports once when it is configured. Graphify
+is Apache-2.0 and is run with only `--code-only`, with hooks and auto-refresh
+disabled.
+
+When a configured external tool is missing, out of date or broken, dispatch
+**falls back to `builtin`** and says why in the work order. A provider failure
+never blocks dispatch, review or merge. Override a binary with
+`RAIL_GRAPHIFY_BIN` or `RAIL_GITNEXUS_BIN`.
 
 - **Dispatch** writes a `code area` section into the work order and the run
   records `symbols_changed` with the files it changed.
@@ -267,7 +288,10 @@ reading, but `rail ops doctor` reports `unknown_preset`, `unknown_status` and
 `placement_unresolved` for every old render item and every item left on one of
 those statuses, and `rail change move` refuses them. The pack change also
 shows as `approval_mismatch` until a human re-approves it. The same reapproval
-covers the pack's new `code_graph: none` policy.
+covers the pack's new `code_graph: none` policy. A team that later wants the
+code graph turns it on with a `code_graph:` line in `rail.yaml`, runs
+`rail ops codegraph setup`, and reapproves the manifest; the rail never
+installs the external tool.
 
 Repair it once, as the human:
 

@@ -329,11 +329,28 @@ rail ops codegraph setup     # check the provider and build the first snapshot
 rail ops codegraph status    # provider, coverage and freshness
 ```
 
-It is on by default for code packs and off for the video pack. Set
-`code_graph: none` in `rail.yaml` to turn it off anywhere. A store made before
-the code graph, with hand-written `code` notes, moves over once with
+It is on by default for code packs and off for the video pack. Choose a
+provider in `rail.yaml`:
+
+```yaml
+code_graph: builtin      # builtin | graphify | gitnexus | none
+```
+
+`builtin` needs no install. `graphify` (`uv tool install "graphifyy>=0.9.100,<0.10"`,
+Apache-2.0) and `gitnexus` (`npm install -g gitnexus`, Node 22.18+ or 24.11+,
+PolyForm Noncommercial) are optional upgrades. Override a binary with
+`RAIL_GRAPHIFY_BIN` or `RAIL_GITNEXUS_BIN`. A store made before the code graph,
+with hand-written `code` notes, moves over once with
 `rail --actor human ops codegraph adopt`; it rewrites only the profiles and
 skills you have not edited.
+
+The rail never installs an external tool. If the configured tool is missing or
+broken, dispatch falls back to `builtin` and says why in the work order.
+`rail ops codegraph setup` caches its readiness check; `status`, the overview,
+approval and `rail ops doctor` read that cache without starting a process.
+GitNexus is indexed in an isolated mirror under the local cache, so it never
+writes `.gitnexus`, `.claude` or a GitNexus section into your checkout, and
+`GITNEXUS_HOME` keeps its registry out of your home directory.
 
 ## Use it your way
 

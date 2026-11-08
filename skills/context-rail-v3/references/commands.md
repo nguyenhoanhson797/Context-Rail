@@ -80,6 +80,8 @@ the semantic digest; `surface.yaml` changes only the presentation digest.
 ```text
 rail ops doctor [--repair]
 rail ops reindex [--full]
+rail ops codegraph setup|refresh|status
+rail --actor human ops codegraph adopt [--dry-run]
 rail ops migrate --source LEGACY --dir DIR [--root DIR] [--pack NAME] [--dry-run]
 rail ops rollback --target-class skill|profile --target PATH --version N --expect ETAG
                   [--confirm "APPROVE <slug>"]
