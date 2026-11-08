@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -31,6 +32,12 @@ def main() -> int:
         return 0
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command == "analyze":
+        delay = float(settings.get("sleep", 0))
+        if delay:
+            time.sleep(delay)
+        if settings.get("analyze_exit"):
+            print("fake analyze failed", file=sys.stderr)
+            return int(settings["analyze_exit"])
         root = Path(sys.argv[2]) if len(sys.argv) > 2 else Path.cwd()
         storage = root / ".gitnexus"
         storage.mkdir(parents=True, exist_ok=True)
@@ -45,6 +52,13 @@ def main() -> int:
             ),
             encoding="utf-8",
         )
+        home = os.environ.get("GITNEXUS_HOME")
+        if home:
+            home_path = Path(home)
+            home_path.mkdir(parents=True, exist_ok=True)
+            (home_path / "registry.json").write_text(
+                json.dumps([{"name": root.name, "path": str(root)}]), encoding="utf-8"
+            )
         (root / ".claude" / "skills" / "gitnexus").mkdir(parents=True, exist_ok=True)
         (root / ".claude" / "skills" / "gitnexus" / "SKILL.md").write_text(
             "fake gitnexus skill\n", encoding="utf-8"

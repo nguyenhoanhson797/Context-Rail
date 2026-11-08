@@ -1,0 +1,4 @@
+{
+  "markdown": "| id | name | filePath |\n| --- | --- | --- |\n| File:web/util.ts | util.ts | web/util.ts |\n| File:web/app.ts | app.ts | web/app.ts |\n| File:tests/test_cart.py | test_cart.py | tests/test_cart.py |\n| File:src/shop/pricing.py | pricing.py | src/shop/pricing.py |\n| File:src/shop/cart.py | cart.py | src/shop/cart.py |",
+  "row_count": 5
+}

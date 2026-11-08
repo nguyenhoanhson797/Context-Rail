@@ -1,0 +1,4 @@
+{
+  "markdown": "| id | name | filePath | startLine | endLine |\n| --- | --- | --- | --- | --- |\n| Class:src/shop/cart.py:Cart | Cart | src/shop/cart.py | 3 | 11 |",
+  "row_count": 1
+}

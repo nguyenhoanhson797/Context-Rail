@@ -1,0 +1,4 @@
+{
+  "markdown": "| id | name | filePath | startLine | endLine |\n| --- | --- | --- | --- | --- |\n| Function:web/util.ts:format | format | web/util.ts | 0 | 2 |\n| Function:web/app.ts:render | render | web/app.ts | 2 | 4 |\n| Function:tests/test_cart.py:test_total | test_total | tests/test_cart.py | 3 | 6 |\n| Function:src/shop/pricing.py:discount | discount | src/shop/pricing.py | 0 | 3 |\n| Function:src/shop/cart.py:Cart.__init__ | __init__ | src/shop/cart.py | 4 | 5 |\n| Function:src/shop/cart.py:Cart.add | add | src/shop/cart.py | 7 | 8 |\n| Function:src/shop/cart.py:Cart.total | total | src/shop/cart.py | 10 | 11 |",
+  "row_count": 7
+}
