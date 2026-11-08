@@ -258,9 +258,10 @@ def _version(command: list[str], worktree: Path) -> tuple[str | None, str | None
         detail = (result["stderr"] or result["stdout"]).strip()
         return None, detail or f"the version check exited {result['exit']}"
     text = result["stdout"].strip()
-    if parse_version(text) is None:
+    parsed = parse_version(text)
+    if parsed is None:
         return None, f"unreadable version: {text or '(empty)'}"
-    return text, None
+    return ".".join(str(part) for part in parsed), None
 
 
 def _ready(

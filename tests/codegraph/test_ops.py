@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import yaml
-from helpers import git, init_store, run_git
+from helpers import git, init_store, install_fake_codegraph, run_git
 
 from context_rail.gateway.gateway import invoke
 from context_rail.runner.codegraph.probe import probe
@@ -101,6 +101,26 @@ def test_status_reports_coverage_and_the_last_event(
     assert value["last_event"]["kind"] == "built"
 
 
+def test_status_names_the_external_provider_and_its_snapshot(
+    git_approved_store: SimpleNamespace, monkeypatch
+) -> None:
+    store, root = git_approved_store.store, git_approved_store.root
+    _set_key(store, "graphify")
+    run_git(root, "commit", "-am", "pick a provider")
+    fixture = Path(__file__).resolve().parent / "fixtures" / "graphify-0.9.104.json"
+    binary = install_fake_codegraph(
+        root.parent, "fake-graphify.py", version="0.9.104", graph=str(fixture)
+    )
+    monkeypatch.setenv("RAIL_GRAPHIFY_BIN", binary)
+
+    setup = _call(store, "codegraph setup")["value"]
+    status = _call(store, "codegraph status")["value"]
+
+    assert setup["line"].startswith("code graph: ready (graphify 0.9.104, 13 nodes @")
+    assert status["provider"] == "graphify"
+    assert status["line"].startswith("code graph: ready (graphify 0.9.104, 13 nodes @")
+
+
 def test_the_alias_is_visible(git_approved_store: SimpleNamespace) -> None:
     store = git_approved_store.store
 
@@ -167,6 +187,21 @@ def test_the_overview_says_nothing_while_the_graph_is_ready(
 ) -> None:
     store = git_approved_store.store
     _call(store, "codegraph setup")
+
+    assert "code graph" not in _call(store, "overview")["value"]["text"]
+
+
+def test_the_overview_says_nothing_while_an_external_graph_is_ready(
+    git_approved_store: SimpleNamespace, monkeypatch
+) -> None:
+    store, root = git_approved_store.store, git_approved_store.root
+    _set_key(store, "graphify")
+    run_git(root, "commit", "-am", "pick a provider")
+    binary = install_fake_codegraph(
+        root.parent, "fake-graphify.py", version="0.9.104"
+    )
+    monkeypatch.setenv("RAIL_GRAPHIFY_BIN", binary)
+    probe(store, root, "graphify")
 
     assert "code graph" not in _call(store, "overview")["value"]["text"]
 

@@ -45,6 +45,14 @@ def test_check_inputs_seed_the_area_when_nothing_is_mentioned(
     assert "likely touch: src/app.py" in section
 
 
+def test_a_fallback_line_keeps_the_reason() -> None:
+    ensured = Ensured("c1", "builtin", True, "graphify", "graphify is not installed")
+
+    line = code_area._graph_line(ensured, "c1")
+
+    assert line == "graph: builtin @c1 (fallback: graphify is not installed)"
+
+
 def test_no_seeds_means_no_predicted_area() -> None:
     graph = MemoryGraph(
         Snapshot(

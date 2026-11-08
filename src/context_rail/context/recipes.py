@@ -783,7 +783,10 @@ def _code_graph_lines(context: Context) -> list[str]:
     if configured != "builtin":
         from context_rail.runner.codegraph import readiness
 
-        return [readiness(store, configured)["line"]]
+        ready = readiness(store, configured)
+        if ready.get("ready") and not ready.get("leftovers"):
+            return []
+        return [str(ready["line"])]
     try:
         event = last_event(store)
     except StoreLocationError:

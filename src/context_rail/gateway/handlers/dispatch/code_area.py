@@ -319,10 +319,8 @@ def configured_graph(ctx: Context) -> str:
 def _graph_line(ensured: Ensured, base: str) -> str:
     provider = ensured.provider or "builtin"
     if ensured.fallback:
-        return (
-            f"graph: {provider} @{base[:7]} "
-            f"(fallback: {ensured.fallback} is not available)"
-        )
+        reason = ensured.warning or f"{ensured.fallback} is not available"
+        return f"graph: {provider} @{base[:7]} (fallback: {reason})"
     return f"graph: {provider} @{base[:7]} (fresh)"
 
 

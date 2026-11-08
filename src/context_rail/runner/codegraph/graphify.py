@@ -218,9 +218,10 @@ def _normalize(
     parsed = {node.file for node in nodes.values() if node.kind != "file"}
     listed = sorted(files)
     skipped_paths = sorted(set(listed) - parsed)
+    graph_version = str(data["graph"].get("graphify_version") or version)
     return Snapshot(
         provider="graphify",
-        provider_version=str(data["graph"]["graphify_version"]),
+        provider_version=graph_version,
         commit=commit,
         built_at=now_iso(),
         calls=any(node.kind in ("function", "method") for node in nodes.values()),
