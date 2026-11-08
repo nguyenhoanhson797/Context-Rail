@@ -297,6 +297,19 @@ def write_fake_droid(root: Path, behaviors: Sequence[Any]) -> Path:
     return script
 
 
+def install_fake_codegraph(root: Path, name: str, **settings: Any) -> str:
+    """Copy one code-graph fake and its sidecar config into a test directory."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    source = Path(__file__).resolve().parent / "fakes" / "codegraph" / name
+    target = root / name
+    target.write_bytes(source.read_bytes())
+    target.with_suffix(".json").write_text(
+        json.dumps(settings), encoding="utf-8", newline="\n"
+    )
+    return str(target)
+
+
 class FakeDroid:
     """A scripted fake ``droid`` installed under one temporary root."""
 

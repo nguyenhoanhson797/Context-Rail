@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 
@@ -34,6 +35,9 @@ def main() -> int:
     if command not in ("extract", "update"):
         print(f"unknown command: {command}", file=sys.stderr)
         return 2
+    delay = float(settings.get("sleep", 0))
+    if delay:
+        time.sleep(delay)
     source = settings.get("graph")
     if command == "extract":
         out = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else Path.cwd()
