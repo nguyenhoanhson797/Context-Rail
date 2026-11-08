@@ -198,7 +198,7 @@ def test_readiness_shows_the_size_once_a_snapshot_exists(make_repo: RepoFactory)
 
 
 @pytest.mark.parametrize("provider", ["graphify", "gitnexus"])
-def test_readiness_of_an_external_provider_names_the_fallback(
+def test_readiness_of_an_external_provider_is_not_checked_until_setup(
     make_repo: RepoFactory, provider: str
 ) -> None:
     repo = make_repo({"a.py": "x = 1\n"})
@@ -208,9 +208,8 @@ def test_readiness_of_an_external_provider_names_the_fallback(
     assert found["ready"] is False
     assert found["provider"] == provider
     assert found["used"] == "builtin"
-    assert found["step"] == "binary"
-    assert found["line"].startswith("code graph: not ready: binary:")
-    assert found["line"].endswith("(fallback: builtin)")
+    assert found["step"] == "probe"
+    assert found["line"] == "code graph: not checked (run rail ops codegraph setup)"
 
 
 def test_readiness_when_off(make_repo: RepoFactory) -> None:

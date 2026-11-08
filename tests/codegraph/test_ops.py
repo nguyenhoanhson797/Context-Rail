@@ -8,6 +8,7 @@ import yaml
 from helpers import git, init_store, run_git
 
 from context_rail.gateway.gateway import invoke
+from context_rail.runner.codegraph.probe import probe
 from context_rail.store.codegraph import has_snapshot, last_event, record_event
 
 
@@ -43,7 +44,7 @@ def test_setup_builds_the_first_snapshot_and_says_ready(
     assert has_snapshot(store, _head(root))
 
 
-def test_setup_with_an_external_provider_says_fallback(
+def test_setup_with_an_external_provider_stops_at_the_probe(
     git_approved_store: SimpleNamespace,
 ) -> None:
     store, root = git_approved_store.store, git_approved_store.root
@@ -55,9 +56,9 @@ def test_setup_with_an_external_provider_says_fallback(
     assert "not ready: binary:" in value["line"]
     assert "fallback: builtin" in value["line"]
     assert value["ready"] is False
-    assert value["provider"] == "builtin"
+    assert value["provider"] is None
     assert value["configured"] == "graphify"
-    assert has_snapshot(store, _head(root))
+    assert not has_snapshot(store, _head(root))
 
 
 def test_refresh_builds_head_and_status_reports_fresh(
@@ -156,7 +157,7 @@ def test_the_overview_mentions_a_graph_that_is_not_ready(
 
     _set_key(store, "gitnexus")
     run_git(root, "commit", "-am", "pick a provider")
-    record_event(store, "fallback", {"configured": "gitnexus"})
+    probe(store, root, "gitnexus")
 
     assert "code graph: not ready" in _call(store, "overview")["value"]["text"]
 
@@ -195,7 +196,7 @@ def test_the_approval_summary_shows_readiness_when_rail_yaml_changed(
     )
 
     assert approved["ok"] is True, approved
-    assert approved["value"]["code_graph"].startswith("code graph: not ready: binary:")
+    assert approved["value"]["code_graph"].startswith("code graph: not checked")
     assert not has_snapshot(store, _head(root))
     assert last_event(store) is None
 

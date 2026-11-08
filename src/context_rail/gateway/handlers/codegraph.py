@@ -60,6 +60,19 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
 def setup(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Check the provider, then build the snapshot of the checkout's HEAD."""
+    from context_rail.runner.codegraph.probe import probe
+
+    configured, _source = resolved(ctx.manifest, ctx.pack)
+    store = Path(ctx.store)
+    if configured in ("graphify", "gitnexus"):
+        found = worktree_git_dir(store)
+        head = head_sha(store)
+        if found is None or head is None:
+            return _hinted(ctx, _not_git(ctx))
+        record = probe(store, found[1], configured)
+        if not record.get("ready", False):
+            return _hinted(ctx, _status(ctx))
+        return _hinted(ctx, _build(ctx, force=True))
     return _hinted(ctx, _build(ctx))
 
 
@@ -205,21 +218,32 @@ def _adoptable() -> dict[str, dict[str, list[str]]]:
     return json.loads(source.read_text(encoding="utf-8"))
 
 
-def _build(ctx: Context) -> dict[str, Any]:
+def _build(ctx: Context, *, force: bool = False) -> dict[str, Any]:
     from context_rail.runner.codegraph import ensure_snapshot
 
     configured, _source = resolved(ctx.manifest, ctx.pack)
     store = Path(ctx.store)
-    if configured != "none":
-        found = worktree_git_dir(store)
-        head = head_sha(store)
-        if found is None or head is None:
-            value = _status(ctx)
-            value["ready"] = False
-            value["line"] = "code graph: not ready: git: the store is not inside a git checkout"
-            return value
-        ensure_snapshot(store, worktree=found[1], commit=head, configured=configured)
+    if configured == "none":
+        return _status(ctx)
+    found = worktree_git_dir(store)
+    head = head_sha(store)
+    if found is None or head is None:
+        return _not_git(ctx)
+    ensure_snapshot(
+        store,
+        worktree=found[1],
+        commit=head,
+        configured=configured,
+        force=force or configured in ("graphify", "gitnexus"),
+    )
     return _status(ctx)
+
+
+def _not_git(ctx: Context) -> dict[str, Any]:
+    value = _status(ctx)
+    value["ready"] = False
+    value["line"] = "code graph: not ready: git: the store is not inside a git checkout"
+    return value
 
 
 def _status(ctx: Context) -> dict[str, Any]:

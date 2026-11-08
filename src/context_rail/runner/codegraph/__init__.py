@@ -25,7 +25,6 @@ from context_rail.runner.git import status_porcelain
 from context_rail.store.codegraph import (
     has_snapshot,
     last_event,
-    latest_commit,
     provider_dir,
     read_readiness,
     record_event,
@@ -37,7 +36,6 @@ from context_rail.store.write import WriteRefused
 __all__ = ["Ensured", "ensure_snapshot", "readiness"]
 
 _EXTERNAL = tuple(provider for provider in PROVIDERS if provider != "builtin")
-_NO_ADAPTER = "no adapter ships in this release; builtin is used instead"
 
 
 @dataclass(frozen=True)
@@ -116,50 +114,9 @@ def ensure_snapshot(
 
 def readiness(store: Path, configured: str) -> dict[str, Any]:
     """Whether ``configured`` can serve graphs right now, with the line to show."""
-    if configured == "none":
-        return _ready(False, "none", None, None, None, "code graph: off")
-    if configured in _EXTERNAL:
-        fix = _NO_ADAPTER
-        return _ready(
-            False,
-            configured,
-            "builtin",
-            "binary",
-            fix,
-            f"code graph: not ready: binary: {fix} (fallback: builtin)",
-        )
-    newest = latest_commit(store)
-    info = None if newest is None else snapshot_info(store, newest)
-    if newest is None or info is None:
-        size = "no snapshot yet"
-    else:
-        size = f"{info['nodes']} nodes @{newest[:7]}"
-    return _ready(
-        True,
-        "builtin",
-        "builtin",
-        None,
-        None,
-        f"code graph: ready (builtin {builtin.BUILTIN_VERSION}, {size})",
-    )
+    from context_rail.runner.codegraph.probe import readiness as cached
 
-
-def _ready(
-    ready: bool,
-    provider: str,
-    used: str | None,
-    step: str | None,
-    fix: str | None,
-    line: str,
-) -> dict[str, Any]:
-    return {
-        "ready": ready,
-        "provider": provider,
-        "used": used,
-        "step": step,
-        "fix": fix,
-        "line": line,
-    }
+    return cached(store, configured)
 
 
 def _timeout(configured: str, timeout_s: float | None) -> float:
