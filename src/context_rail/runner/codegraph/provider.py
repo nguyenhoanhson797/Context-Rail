@@ -96,7 +96,10 @@ def node_version_ok(text: str) -> bool:
 def resolve_binary(name: str, override: str | None) -> str | None:
     """The configured binary, else the one on ``PATH``."""
     if override:
-        return override
+        path = Path(override)
+        if path.is_file():
+            return str(path)
+        return shutil.which(override)
     return shutil.which(name)
 
 

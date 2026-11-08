@@ -180,7 +180,7 @@ def _node_version(node: str, worktree: Path, deadline: float) -> str:
 def _mirror(worktree: Path, mirror: Path, commit: str, deadline: float) -> None:
     if mirror.exists() and not (mirror / ".git").exists():
         shutil.rmtree(mirror, ignore_errors=True)
-    _git(worktree, ["worktree", "prune"], worktree, deadline)
+    _git_checked(worktree, ["worktree", "prune"], worktree, deadline, "prune")
     if not (mirror / ".git").exists():
         added = _git(
             worktree,
@@ -188,25 +188,24 @@ def _mirror(worktree: Path, mirror: Path, commit: str, deadline: float) -> None:
             worktree,
             deadline,
         )
+        _no_timeout(added, "create the gitnexus mirror")
         if added["exit"] != 0:
             detail = (added["stderr"] or added["stdout"]).strip()
             raise ExtractionError("invalid", "git could not create the gitnexus mirror: " + detail)
         return
     checked = _git(mirror, ["checkout", "--detach", "--force", commit], mirror, deadline)
+    if checked["timed_out"]:
+        raise ExtractionError("timeout", "checking out the gitnexus mirror timed out")
     if checked["exit"] == 0:
         return
-    _git(
-        worktree,
-        ["worktree", "remove", "--force", str(mirror)],
-        worktree,
-        deadline,
-    )
+    _git_checked(worktree, ["worktree", "remove", "--force", str(mirror)], worktree, deadline, "remove")
     added = _git(
         worktree,
         ["worktree", "add", "--detach", "--force", str(mirror), commit],
         worktree,
         deadline,
     )
+    _no_timeout(added, "recreate the gitnexus mirror")
     if added["exit"] != 0:
         detail = (added["stderr"] or added["stdout"]).strip()
         raise ExtractionError("invalid", "git could not recreate the gitnexus mirror: " + detail)
@@ -486,6 +485,21 @@ def _run(
 
 def _git(cwd: Path, args: list[str], confine_to: Path, deadline: float) -> dict[str, Any]:
     return _run(["git", *args], cwd, confine_to, deadline)
+
+
+def _git_checked(
+    cwd: Path, args: list[str], confine_to: Path, deadline: float, action: str
+) -> None:
+    result = _git(cwd, args, confine_to, deadline)
+    _no_timeout(result, action)
+    if result["exit"] != 0:
+        detail = (result["stderr"] or result["stdout"]).strip()
+        raise ExtractionError("invalid", f"git could not {action}: {detail}")
+
+
+def _no_timeout(result: dict[str, Any], action: str) -> None:
+    if result["timed_out"]:
+        raise ExtractionError("timeout", f"{action} timed out")
 
 
 def _node_binary() -> str | None:

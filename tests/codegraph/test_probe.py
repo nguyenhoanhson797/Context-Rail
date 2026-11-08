@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +7,7 @@ from typing import Any
 
 import pytest
 import yaml
-from helpers import git, run_git
+from helpers import git, install_fake_codegraph, run_git
 
 from context_rail.gateway.gateway import invoke
 from context_rail.runner.codegraph import probe as probe_module
@@ -17,22 +16,12 @@ from context_rail.store.codegraph import has_snapshot, read_readiness
 
 from .conftest import RepoFactory
 
-FAKES = Path(__file__).resolve().parents[1] / "fakes" / "codegraph"
-
-
-def _install_fake(root: Path, name: str, **settings: Any) -> str:
-    """Copy one fake and its sidecar config into a test-owned directory."""
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / name
-    target.write_bytes((FAKES / name).read_bytes())
-    target.with_suffix(".json").write_text(
-        json.dumps(settings), encoding="utf-8"
-    )
-    return str(target)
-
 
 def _head(root: Path) -> str:
     return git(root, "rev-parse", "HEAD").strip()
+
+
+_install_fake = install_fake_codegraph
 
 
 def _set_key(store: Path, value: Any) -> None:

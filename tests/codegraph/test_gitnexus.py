@@ -267,10 +267,15 @@ def test_a_timeout_reports_timeout(
     make_repo: RepoFactory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = _repo(make_repo)
-    _fake(tmp_path, monkeypatch, commit=_head(repo), sleep=2.0)
+    _fake(tmp_path, monkeypatch, commit=_head(repo))
+
+    def timed_out(command, cwd, confine_to, deadline, extra_env=None):
+        return {"timed_out": True, "exit": None, "stdout": "", "stderr": ""}
+
+    monkeypatch.setattr(gitnexus, "_run", timed_out)
 
     with pytest.raises(ExtractionError) as caught:
-        _extract(repo, tmp_path / "cache", timeout=0.4)
+        _extract(repo, tmp_path / "cache", timeout=20.0)
 
     assert caught.value.kind == "timeout"
 
