@@ -24,14 +24,19 @@ __all__ = [
     "KEEP_COMMITS",
     "CachedGraph",
     "cache_path",
+    "drop_readiness",
     "freshness",
     "has_snapshot",
     "last_event",
     "latest_commit",
     "open_graph",
+    "provider_dir",
+    "read_readiness",
+    "readiness_path",
     "record_event",
     "save_snapshot",
     "snapshot_info",
+    "write_readiness",
 ]
 
 KEEP_COMMITS = 3
@@ -82,6 +87,63 @@ CREATE INDEX IF NOT EXISTS edge_src ON edge (sha, src);
 def cache_path(store: Path) -> Path:
     """Where the snapshots live: under the store's local directory."""
     return local_dir(store) / "codegraph" / "graph.sqlite"
+
+
+def provider_dir(store: Path, provider: str) -> Path:
+    """One external provider's private cache under the local directory."""
+    return local_dir(store) / "codegraph" / provider
+
+
+def readiness_path(store: Path) -> Path:
+    """Where the last readiness probe for each provider is kept."""
+    return local_dir(store) / "codegraph" / "readiness.json"
+
+
+def read_readiness(store: Path) -> dict[str, dict[str, Any]]:
+    """Every cached readiness record; a missing or corrupt file reads as empty."""
+    path = readiness_path(store)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        str(name): record
+        for name, record in data.items()
+        if isinstance(record, dict)
+    }
+
+
+def write_readiness(store: Path, record: dict[str, Any]) -> None:
+    """Replace one provider's readiness record without touching the others."""
+    provider = str(record.get("provider") or "")
+    if not provider:
+        raise ValueError("a readiness record needs a provider")
+    path = readiness_path(store)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    current = read_readiness(store)
+    current[provider] = dict(record)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    os.replace(temporary, path)
+
+
+def drop_readiness(store: Path, provider: str) -> None:
+    """Forget one provider's cached readiness when there is nothing to say."""
+    current = read_readiness(store)
+    if provider not in current:
+        return
+    del current[provider]
+    path = readiness_path(store)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    os.replace(temporary, path)
 
 
 def save_snapshot(

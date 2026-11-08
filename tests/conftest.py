@@ -94,6 +94,17 @@ def no_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RAIL_NO_DAEMON", "1")
 
 
+@pytest.fixture(autouse=True)
+def isolated_external_code_graph_bins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    """No test reaches a tool installed on the machine by accident."""
+    if request.node.get_closest_marker("codegraph_live"):
+        return
+    monkeypatch.setenv("RAIL_GRAPHIFY_BIN", str(tmp_path / "missing-graphify"))
+    monkeypatch.setenv("RAIL_GITNEXUS_BIN", str(tmp_path / "missing-gitnexus"))
+
+
 @pytest.fixture
 def daemon_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     """Let this test reach a daemon: clears the suite-wide switch.

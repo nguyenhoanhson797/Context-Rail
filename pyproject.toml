@@ -49,5 +49,6 @@ timeout_method = "thread"
 markers = [
     "slow: tests that take many seconds (excluded from the default lane)",
     "perf: speed-budget tests (run serially, never with xdist)",
+    "codegraph_live: tests that need a real Graphify or GitNexus install",
 ]
 addopts = "-q -m 'not slow'"
