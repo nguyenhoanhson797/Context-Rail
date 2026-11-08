@@ -75,7 +75,8 @@ def _daemon_processes(store: Path) -> list[int]:
         command = ["powershell", "-NoProfile", "-Command", script]
         split = "|"
     else:
-        command = ["ps", "-eo", "pid=,ppid=,args="]
+        # ps truncates the args column by default, hiding the "serve daemon" tail.
+        command = ["ps", "-ww", "-eo", "pid=,ppid=,args="]
         split = None
     listing = subprocess.run(
         command, capture_output=True, text=True, encoding="utf-8", timeout=60
