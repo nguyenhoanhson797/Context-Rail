@@ -198,7 +198,16 @@ def _mirror(worktree: Path, mirror: Path, commit: str, deadline: float) -> None:
         raise ExtractionError("timeout", "checking out the gitnexus mirror timed out")
     if checked["exit"] == 0:
         return
-    _git_checked(worktree, ["worktree", "remove", "--force", str(mirror)], worktree, deadline, "remove")
+    removed = _git(
+        worktree,
+        ["worktree", "remove", "--force", str(mirror)],
+        worktree,
+        deadline,
+    )
+    _no_timeout(removed, "remove the gitnexus mirror")
+    if removed["exit"] != 0 and mirror.exists():
+        shutil.rmtree(mirror, ignore_errors=True)
+        _git_checked(worktree, ["worktree", "prune"], worktree, deadline, "prune")
     added = _git(
         worktree,
         ["worktree", "add", "--detach", "--force", str(mirror), commit],

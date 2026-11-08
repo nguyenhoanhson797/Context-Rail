@@ -72,7 +72,8 @@ def _codegraph(store: Path, manifest: Manifest, pack: Pack) -> list[dict[str, An
     """Findings about the code graph cache; a store with the graph off has none."""
     from context_rail.core.locate import StoreLocationError
     from context_rail.model.codegraph import effective_code_graph
-    from context_rail.store.codegraph import freshness, last_event, read_readiness
+    from context_rail.runner.codegraph.probe import readiness
+    from context_rail.store.codegraph import freshness, last_event
     from context_rail.store.codemap import pins_code_map
 
     configured = effective_code_graph(manifest.code_graph, pack.policy.get("code_graph"))
@@ -89,42 +90,32 @@ def _codegraph(store: Path, manifest: Manifest, pack: Pack) -> list[dict[str, An
             )
         )
     if configured in ("graphify", "gitnexus"):
-        record = read_readiness(store).get(configured)
-        if not isinstance(record, dict):
+        ready = readiness(store, configured)
+        if not ready.get("ready", False):
+            code = {
+                "runtime": "code_graph_runtime_missing",
+                "version": "code_graph_unsupported_version",
+                "binary": "code_graph_unavailable",
+                "probe": "code_graph_unavailable",
+            }.get(str(ready.get("step")), "code_graph_unavailable")
             found.append(
                 _issue(
-                    "code_graph_unavailable",
+                    code,
                     "rail.yaml",
-                    f"{configured} has not been checked on this machine",
-                    fix="rail ops codegraph setup",
+                    str(ready.get("line") or f"{configured} is not ready"),
+                    fix=str(ready.get("fix") or "rail ops codegraph setup"),
                 )
             )
-        else:
-            if not record.get("ready", False):
-                code = {
-                    "runtime": "code_graph_runtime_missing",
-                    "version": "code_graph_unsupported_version",
-                    "binary": "code_graph_unavailable",
-                    "probe": "code_graph_unavailable",
-                }.get(str(record.get("step")), "code_graph_unavailable")
-                found.append(
-                    _issue(
-                        code,
-                        "rail.yaml",
-                        str(record.get("line") or f"{configured} is not ready"),
-                        fix=str(record.get("fix") or "rail ops codegraph setup"),
-                    )
+        leftovers = [str(item) for item in ready.get("leftovers") or []]
+        if leftovers:
+            found.append(
+                _issue(
+                    "code_graph_tool_leftovers",
+                    "rail.yaml",
+                    "tool-owned files are in the repository: " + ", ".join(leftovers),
+                    fix=str(ready.get("fix") or f"clean up the {configured} leftovers"),
                 )
-            leftovers = [str(item) for item in record.get("leftovers") or []]
-            if leftovers:
-                found.append(
-                    _issue(
-                        "code_graph_tool_leftovers",
-                        "rail.yaml",
-                        "tool-owned files are in the repository: " + ", ".join(leftovers),
-                        fix=str(record.get("fix") or f"clean up the {configured} leftovers"),
-                    )
-                )
+            )
     if pins_code_map(store, manifest):
         found.append(
             _issue(
