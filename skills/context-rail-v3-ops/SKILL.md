@@ -55,8 +55,10 @@ rail --actor human ops codegraph adopt   # move an old store off the code map
 ```
 
 `rail.yaml` `code_graph` is `builtin` (default), `graphify`, `gitnexus` or
-`none`; the pack policy can only say `builtin` or `none`. The rail never
-installs a tool. Graphify is `uv tool install "graphifyy>=0.9.100,<0.10"`;
+`none`; the pack policy can only say `builtin` or `none`. Pass
+`--code-graph <choice>` to `rail init` to write it at onboarding; an external
+choice makes init probe the tool once and report the readiness line. The rail
+never installs a tool. Graphify is `uv tool install "graphifyy>=0.9.100,<0.10"`;
 GitNexus is `npm install -g gitnexus` (Node 22.18+ or 24.11+, PolyForm
 Noncommercial). Override either binary with `RAIL_GRAPHIFY_BIN` or
 `RAIL_GITNEXUS_BIN`.

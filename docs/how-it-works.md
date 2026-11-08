@@ -239,10 +239,13 @@ over the pack's `policy.code_graph`, which wins over the default `builtin`; the
 video pack ships `none`.
 
 `builtin` is the zero-install provider. `graphify` uses Graphify's code-only
-graph and `gitnexus` uses GitNexus; both are optional upgrades. The rail never
-installs either tool. `rail ops codegraph setup` checks the binary, the Node
-runtime for GitNexus, the supported version and any tool-owned leftovers, then
-builds the first snapshot. The result is cached in
+graph and `gitnexus` uses GitNexus; both are optional upgrades. Pass
+`--code-graph graphify` (or `gitnexus`, `builtin`, `none`) to `rail init` to
+write the choice into `rail.yaml`; for an external provider init probes it once
+and reports the readiness line at the end, without failing the init. The rail
+never installs either tool. `rail ops codegraph setup` checks the binary, the
+Node runtime for GitNexus, the supported version and any tool-owned leftovers,
+then builds the first snapshot. The result is cached in
 `<local_dir>/codegraph/readiness.json`; `status`, the overview, an approval
 summary and `rail ops doctor` read that cache and never spawn a probe.
 

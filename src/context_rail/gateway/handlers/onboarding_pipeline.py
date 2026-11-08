@@ -85,6 +85,7 @@ def picture_stage(
 ) -> dict[str, Any]:
     """Write the selected picture source, or skip when one already exists."""
     from context_rail.gateway.confirmation import validate_confirmation
+    from context_rail.gateway.handlers.init import requested_code_graph
     from context_rail.gateway.handlers.onboarding import (
         _interview,
         _is_tty,
@@ -156,6 +157,7 @@ def picture_stage(
         actor=actor,
         draft=draft,
         include_workspace=False,
+        code_graph=requested_code_graph(args),
     )
     return {
         "state": "written",
@@ -380,6 +382,7 @@ def run(
         "root": args.get("root") or store.name,
         "pack": pack_name,
         "key": args.get("key"),
+        "code_graph": args.get("code_graph"),
     }
     from context_rail.gateway.handlers.init import skeleton
 

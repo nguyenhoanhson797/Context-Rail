@@ -113,7 +113,9 @@ DEFAULT_MANIFEST: dict[str, Any] = {
 }
 
 
-def initial_manifest(pack: str, store: Path) -> tuple[Manifest, dict[str, Any]]:
+def initial_manifest(
+    pack: str, store: Path, *, code_graph: str | None = None
+) -> tuple[Manifest, dict[str, Any]]:
     """The manifest and serializable data a new store of ``pack`` starts with.
 
     A pack may ship ``layout.yaml`` defaults under ``placement`` and ``presets``;
@@ -126,6 +128,8 @@ def initial_manifest(pack: str, store: Path) -> tuple[Manifest, dict[str, Any]]:
     if layout is not None:
         data["placement"].update(layout["placement"])
         data["presets"].update(layout["presets"])
+    if code_graph is not None:
+        data["code_graph"] = code_graph
     return manifest_from_mapping(data, store), data
 
 

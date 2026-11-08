@@ -336,6 +336,10 @@ provider in `rail.yaml`:
 code_graph: builtin      # builtin | graphify | gitnexus | none
 ```
 
+or pass `--code-graph graphify` (or `gitnexus`, `builtin`, `none`) to
+`rail init`. For an external provider, init probes it once and reports the
+readiness line at the end; a missing tool does not fail the init.
+
 `builtin` needs no install. `graphify` (`uv tool install "graphifyy>=0.9.100,<0.10"`,
 Apache-2.0) and `gitnexus` (`npm install -g gitnexus`, Node 22.18+ or 24.11+,
 PolyForm Noncommercial) are optional upgrades. Override a binary with

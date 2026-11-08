@@ -9,7 +9,8 @@ import yaml
 
 from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml
-from context_rail.model.manifest import Manifest, initial_manifest
+from context_rail.model.codegraph import CONFIG_CHOICES, effective_code_graph
+from context_rail.model.manifest import Manifest, initial_manifest, load_manifest
 from context_rail.model.pack import canonical_pack_name, load_pack
 from context_rail.store.location import confine
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
@@ -49,6 +50,41 @@ def scaffold(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str
     return {"store": result["store"], "pack": result["pack"]}
 
 
+def requested_code_graph(args: dict[str, Any]) -> str | None:
+    """The provider named by ``init``, or None when the caller left it alone."""
+    value = args.get("code_graph")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "code_graph must be one of: " + ", ".join(CONFIG_CHOICES),
+            {"field": "code_graph"},
+        )
+    choice = value.strip()
+    if choice not in CONFIG_CHOICES:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "code_graph must be one of: " + ", ".join(CONFIG_CHOICES),
+            {"field": "code_graph"},
+        )
+    return choice
+
+
+def _check_code_graph(
+    manifest: Manifest, pack: Any, requested: str | None
+) -> None:
+    if requested is None:
+        return
+    current = effective_code_graph(manifest.code_graph, pack.policy.get("code_graph"))
+    if current != requested:
+        raise WriteRefused(
+            "CONFLICT",
+            f"the store already uses code graph {current!r}, not {requested!r}",
+            {"stored": current, "requested": requested},
+        )
+
+
 def skeleton(
     _ctx: Context | None,
     args: dict[str, Any],
@@ -68,7 +104,7 @@ def skeleton(
     stored = _stored_pack(store) if (store / "rail.yaml").exists() else None
     pack_name = requested or stored or DEFAULT_PACK
     pack = load_pack(pack_name, store)
-    manifest, data = initial_manifest(pack.name, store)
+    code_graph = requested_code_graph(args)
     saved = replay(store, args.get("key"))
     if saved is not None:
         return {
@@ -96,6 +132,8 @@ def skeleton(
                 f"the store uses pack {stored!r}, not {pack.name!r}",
                 {"stored": stored, "requested": pack.name},
             )
+        manifest = load_manifest(store)
+        _check_code_graph(manifest, pack, code_graph)
         written: list[str] = []
         if not (store / ".gitignore").exists():
             result = commit(
@@ -114,6 +152,7 @@ def skeleton(
             "state": "written" if written else "unchanged",
             "written": written,
         }
+    manifest, data = initial_manifest(pack.name, store, code_graph=code_graph)
     ops = [
         Op("rail.yaml", yaml.safe_dump(data, sort_keys=False).encode("utf-8"), ABSENT),
         Op(".gitignore", GITIGNORE, ABSENT),

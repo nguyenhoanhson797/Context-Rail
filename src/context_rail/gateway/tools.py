@@ -85,6 +85,11 @@ TOOLS: tuple[Tool, ...] = (
         params=(
             Param("dir", "str", help="project directory (default: the current one)", path=True),
             Param("pack", "str", help="pack name (default: the store's pack, then basic)"),
+            Param(
+                "code_graph",
+                "str",
+                help="code graph provider: builtin, graphify, gitnexus or none",
+            ),
             Param("root", "str", default="context-rail", help="store folder inside the project", path=True),
             Param("interview", "bool", help="ask the picture questions in a terminal"),
             Param("answers_file", "str", help="JSON answers written by the human", path=True),

@@ -16,6 +16,7 @@ def test_readme_documents_all_code_graph_providers() -> None:
     assert "rail ops codegraph setup" in text
     assert "RAIL_GRAPHIFY_BIN" in text
     assert "RAIL_GITNEXUS_BIN" in text
+    assert "--code-graph" in text
 
 
 def test_how_it_works_documents_the_gitnexus_mirror() -> None:
@@ -26,6 +27,7 @@ def test_how_it_works_documents_the_gitnexus_mirror() -> None:
     assert "PolyForm Noncommercial" in text
     assert "falls back to `builtin`" in text
     assert "readiness" in text
+    assert "--code-graph" in text
 
 
 def test_the_ops_skill_names_the_external_providers() -> None:

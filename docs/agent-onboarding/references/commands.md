@@ -39,7 +39,7 @@ Writes that change a document accept `--expect <etag>`; a stale etag is refused.
 ## Daily surface
 
 ```text
-rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run]
+rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run] [--code-graph PROVIDER]
           [--no-approve] [--no-git-drivers] [--harness ID]...
           [--interview | --answers-file FILE | --draft-file FILE]
           [--solo] [--key KEY]

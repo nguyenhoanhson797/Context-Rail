@@ -29,8 +29,10 @@ from context_rail.gateway.handlers.common import (
 )
 from context_rail.gateway.handlers.init import (
     GITIGNORE,
+    _check_code_graph,
     _stored_pack,
     pinned_folders,
+    requested_code_graph,
     scaffold,
 )
 from context_rail.model.cto import (
@@ -104,6 +106,7 @@ _NO = ("n", "no", "false")
 
 def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Route ``init`` to the scaffold, the onboarding pipeline or a picture mode."""
+    code_graph = requested_code_graph(args)
     if args.get("scaffold"):
         if any(args.get(name) for name in ("interview", "answers_file", "draft_file")):
             raise WriteRefused(
@@ -112,7 +115,7 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
             )
         if args.get("dry_run"):
             return _scaffold_plan(args)
-        return scaffold(None, args, actor)
+        return _after_code_graph(scaffold(None, args, actor), args, actor)
     if args.get("dry_run") or _mode(args) == "scaffold":
         from context_rail.gateway.execution import ACTOR_NAMED
         from context_rail.gateway.handlers.onboarding_pipeline import render_card, run
@@ -129,7 +132,9 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
         )
         if _is_tty():
             print(render_card(receipt), file=sys.stderr)
-        return receipt
+        if args.get("dry_run"):
+            return receipt
+        return _after_code_graph(receipt, args, actor)
     mode = _mode(args)
     if mode == "draft":
         if actor != "cto":
@@ -161,16 +166,53 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
         answers = read_answers(Path(args["answers_file"]))
     else:
         answers = _interview(pack_name, project_root)
-    return _materialise(
-        store,
-        project_root,
-        answers,
-        pack_name=pack_name,
-        key=args["key"],
-        actor=actor,
-        draft=draft,
-        solo=bool(args.get("solo")),
+    return _after_code_graph(
+        _materialise(
+            store,
+            project_root,
+            answers,
+            pack_name=pack_name,
+            key=args["key"],
+            actor=actor,
+            draft=draft,
+            solo=bool(args.get("solo")),
+            code_graph=code_graph,
+        ),
+        args,
+        actor,
     )
+
+
+def _after_code_graph(
+    value: dict[str, Any], args: dict[str, Any], actor: str
+) -> dict[str, Any]:
+    """Run the readiness probe once for an external provider the human chose."""
+    choice = requested_code_graph(args)
+    if choice not in ("graphify", "gitnexus") or actor != "human":
+        return value
+    store = value.get("store")
+    if not isinstance(store, str):
+        return value
+    try:
+        from context_rail.gateway.gateway import Context
+        from context_rail.gateway.handlers.codegraph import setup
+        from context_rail.model.manifest import load_manifest
+        from context_rail.model.pack import load_pack
+
+        path = Path(store)
+        manifest = load_manifest(path)
+        pack = load_pack(manifest.pack, path)
+        context = Context(store=path, manifest=manifest, pack=pack, actor=actor)
+        result = dict(value)
+        result["code_graph"] = setup(context, {}, actor)
+        return result
+    except Exception as exc:  # noqa: BLE001 - readiness is advisory; init has already committed
+        result = dict(value)
+        result["code_graph"] = {
+            "ready": False,
+            "line": f"code graph: not ready: {exc}",
+        }
+        return result
 
 
 def _init_replay(store: Path, saved: dict[str, Any]) -> dict[str, Any]:
@@ -604,8 +646,11 @@ def _materialise(
     draft: bool,
     include_workspace: bool = True,
     solo: bool = False,
+    code_graph: str | None = None,
 ) -> dict[str, Any]:
-    manifest, pack, existing, manifest_data = _store_shape(store, pack_name)
+    manifest, pack, existing, manifest_data = _store_shape(
+        store, pack_name, code_graph=code_graph
+    )
     prepared = _prepare(answers, project_root, solo=solo)
     parsed = parse_answers(prepared)
     if parsed["pack"] != pack.name:
@@ -703,14 +748,16 @@ def _mode(args: dict[str, Any]) -> str:
 
 
 def _store_shape(
-    store: Path, pack_name: str
+    store: Path, pack_name: str, *, code_graph: str | None = None
 ) -> tuple[Manifest, Pack, bool, dict[str, Any] | None]:
     """The manifest, pack and manifest bytes a picture writes against."""
     if (store / "rail.yaml").is_file():
         manifest = load_manifest(store)
-        return manifest, load_pack(manifest.pack, store), True, None
+        pack = load_pack(manifest.pack, store)
+        _check_code_graph(manifest, pack, code_graph)
+        return manifest, pack, True, None
     pack = load_pack(pack_name, store)
-    manifest, data = initial_manifest(pack.name, store)
+    manifest, data = initial_manifest(pack.name, store, code_graph=code_graph)
     return manifest, pack, False, data
 
 

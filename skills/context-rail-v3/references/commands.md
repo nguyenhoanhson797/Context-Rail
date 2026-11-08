@@ -9,7 +9,7 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 ## Daily
 
 ```text
-rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run]
+rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run] [--code-graph PROVIDER]
           [--no-approve] [--no-git-drivers] [--harness ID]...
           [--interview | --answers-file FILE | --draft-file FILE]
 rail overview [--max-chars N] [--item-limit N]
