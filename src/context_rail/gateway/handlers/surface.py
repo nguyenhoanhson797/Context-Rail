@@ -46,6 +46,14 @@ def next(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
     except operating.OperatingError as error:
         raise WriteRefused(error.code, error.message, error.details) from None
+    if args.get("brief"):
+        return {
+            "queue": [item.slug for item in view.items],
+            "blocked": view.blocked,
+            "omitted": 0,
+            "focus": view.focus.as_dict(),
+            "scope": view.scope,
+        }
     cards = [surface.card(ctx, item.slug) for item in view.items[:_QUEUE_CARDS]]
     return {
         "queue": [item.slug for item in view.items],
