@@ -324,6 +324,7 @@ def records_about(
         ]
         payloads.append(
             {
+                "slug": record_slug,
                 "id": fields.get("id") or record_slug,
                 "primitive": primitive,
                 "preset": preset,

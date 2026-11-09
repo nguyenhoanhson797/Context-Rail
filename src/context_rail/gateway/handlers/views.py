@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
 LIST_CAP = 20
+HISTORY_CAP = 10
 PACK_PREFIX = "pack:"
 CHARTER_TARGET = "charter"
 
@@ -83,6 +84,17 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         shown["freshness"] = recipes.freshness(
             ctx, query.check_state(index, doc["slug"])
         )
+    history = query.records_about(index, doc["slug"], limit=HISTORY_CAP + 1)
+    shown["history"] = [
+        {
+            "slug": row.get("slug") or row.get("id"),
+            "kind": row.get("kind"),
+            "at": row.get("at"),
+            "actor": row.get("actor"),
+        }
+        for row in history[:HISTORY_CAP]
+    ]
+    shown["history_omitted"] = max(len(history) - HISTORY_CAP, 0)
     if doc["primitive"] == "policy" and doc["preset"] == CHARTER_TARGET:
         shown["approval"] = approval.approval_state(ctx, CHARTER_TARGET)
         shown["phrase"] = confirmation_phrase("approve", CHARTER_TARGET)

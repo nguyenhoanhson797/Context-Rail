@@ -364,6 +364,7 @@ def test_records_about_returns_json_and_markdown_newest_first(store_factory):
     assert [payload["id"] for payload in found] == ["01D", "01C", "01B", "01A"]
     for payload in found[1:]:
         assert set(payload) == {
+            "slug",
             "id",
             "primitive",
             "preset",

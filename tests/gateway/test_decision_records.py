@@ -84,6 +84,10 @@ def test_a_dependency_link_is_cto_reversible_and_appends_a_decision_record(
     assert _decision_files(store) == [store / DECISIONS / "dependency-login-page.md"]
     shown = invoke("show", {"slug": "sign-in"}, store=store)["value"]
     assert shown["out"]["depends_on"] == ["login-page"]
+    assert "dependency-login-page" in [
+        row["slug"] for row in shown["history"]
+    ]
+    assert "relation.changed" in [row["kind"] for row in shown["history"]]
 
 
 def test_the_decision_record_is_markdown_under_records_decisions(
