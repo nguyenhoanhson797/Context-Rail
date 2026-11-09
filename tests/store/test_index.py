@@ -323,6 +323,7 @@ def test_bad_yaml_doc_does_not_block_others(store_factory):
 def test_binary_and_tmp_files_skipped(store_factory):
     store = store_factory(docs=10)
     (store / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (store / ".gitattributes").write_text("*.md text eol=lf\n", encoding="utf-8")
     (store / "items" / "task" / "login.md.123.tmp").write_bytes(TASK_DOC)
     with opened(store) as index:
         first = index.sync()
