@@ -985,7 +985,12 @@ def _decision_line(row: dict[str, Any]) -> str:
     before = json.dumps(row.get("before"), sort_keys=True)
     after = json.dumps(row.get("after"), sort_keys=True)
     reason = row.get("reason") or "no reason given"
-    return f"{row.get('decision')} {row.get('class')}: before {before} after {after} ({reason})"
+    item = row.get("item")
+    subject = f" for {item}" if item else ""
+    return (
+        f"{row.get('decision')}{subject} {row.get('class')}: "
+        f"before {before} after {after} ({reason})"
+    )
 
 
 def _gate_marks(gate: Any) -> str:

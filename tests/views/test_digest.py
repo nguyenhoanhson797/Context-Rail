@@ -69,6 +69,7 @@ def test_brief_repeats_the_reversible_decision(digest_store: SimpleNamespace) ->
     section = text[text.index("Reversible") :]
     assert "cto-reversible" in section
     assert "depends_on" in section
+    assert "for sign-in" in section
 
 
 def test_digest_quality_separates_implementations_from_reviews(
