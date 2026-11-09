@@ -7,7 +7,7 @@ from pathlib import Path
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from context_rail.gateway.tools import TOOLS
-from helpers import init_pack_store, workflow_pack_document
+from helpers import init_pack_store, init_store, workflow_pack_document
 
 
 def _store(tmp_path: Path) -> Path:
@@ -85,6 +85,38 @@ def test_next_does_not_offer_a_blocked_item(approved_store: Path) -> None:
 
     assert slug not in queue["value"]["queue"]
     assert slug in status["value"]["blocked"]
+
+
+def test_next_excludes_an_open_dependency_and_names_it(
+    tmp_path: Path,
+) -> None:
+    store = init_store(tmp_path)
+    for title in ("Blocker task", "Blocked task"):
+        added = invoke(
+            "add", {"preset": "task", "title": title}, store=store, actor="cto"
+        )
+        assert is_ok(added), added
+    shown = invoke("show", {"slug": "blocked-task"}, store=store, actor="cto")
+    linked = invoke(
+        "link",
+        {
+            "src": "blocked-task",
+            "rel": "depends_on",
+            "dst": "blocker-task",
+            "expect": shown["value"]["doc"]["etag"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(linked), linked
+
+    queue = invoke("next", {}, store=store, actor="cto")
+    reason = invoke("why", {"slug": "blocked-task"}, store=store, actor="cto")
+
+    assert queue["value"]["queue"] == ["blocker-task"]
+    assert queue["value"]["blocked"] == {"blocked-task": "depends_on:blocker-task"}
+    assert reason["value"]["blocked"] == "depends_on:blocker-task"
+    assert reason["value"]["command"] is None
 
 
 def test_show_can_disambiguate_a_shared_skill_slug(approved_store: Path) -> None:

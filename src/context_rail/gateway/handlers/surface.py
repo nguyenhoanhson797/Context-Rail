@@ -50,6 +50,7 @@ def next(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     return {
         "queue": [item.slug for item in view.items],
         "items": [item.as_dict() for item in view.items],
+        "blocked": view.blocked,
         "cards": cards,
         "omitted": max(len(view.items) - _QUEUE_CARDS, 0),
         "focus": view.focus.as_dict(),

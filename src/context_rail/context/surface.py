@@ -245,13 +245,17 @@ def render_workflows(context: Any, *, limit: int = 2000) -> str:
 
 def why(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
     """The missing proof for one item, or the reach of one file or symbol."""
-    from context_rail.context import code_targets
+    from context_rail.context import code_targets, recipes
+    from context_rail.kernel import structure
 
     if code_targets.looks_like_code_target(slug):
         return code_targets.code_view(context, slug, limit=limit)
     view = card(context, slug, limit=limit)
     rows = query.check_states(context.index, slug)
     missing = [row["slug"] for row in rows if not row.get("passed")]
+    blocked = structure.blocked(
+        recipes.item_rows(context.index, context.pack)
+    ).get(view["slug"])
     return {
         "slug": view["slug"],
         "workflow": view["workflow"],
@@ -259,7 +263,8 @@ def why(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
         "gate": view["gate"],
         "proof": view["proof"],
         "missing": missing,
-        "command": view["command"],
+        "blocked": blocked,
+        "command": None if blocked else view["command"],
     }
 
 

@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from context_rail.kernel import rights
+from context_rail.kernel import rights, structure
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -156,6 +156,7 @@ class QueueView:
     focus: FocusResolution
     scope: str
     candidates: tuple[ItemRow, ...]
+    blocked: dict[str, str] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -164,6 +165,7 @@ class QueueView:
             "focus": self.focus.as_dict(),
             "scope": self.scope,
             "candidates": [row.as_ref() for row in self.candidates],
+            "blocked": dict(self.blocked),
         }
 
 
@@ -397,10 +399,22 @@ def resolve_queue(
                 or row.slug == focus_slug
             ]
         )
+    from context_rail.context import recipes
+
+    items = recipes.item_rows(ctx.index, ctx.pack)
+    held = structure.blocked(items)
+    finished = {
+        item.slug
+        for item in items
+        if item.category in structure.FINISHED_CATEGORIES
+    }
+    blocked = {
+        slug: reason for slug, reason in held.items() if slug not in finished
+    }
     eligible: list[QueueItem] = []
     omitted = 0
     for row in rows:
-        if row.category in ("done", "dropped", "blocked"):
+        if row.slug in blocked or row.category in ("done", "dropped", "blocked"):
             continue
         actions = applicable_actions(ctx, model, row, actor)
         if model.operating.queue.require == "action":
@@ -436,6 +450,7 @@ def resolve_queue(
         focus=focus,
         scope=scope,
         candidates=focus.candidates,
+        blocked={row.slug: blocked[row.slug] for row in rows if row.slug in blocked},
     )
 
 

@@ -193,6 +193,7 @@ def _queue(ctx: Context, model: Any) -> dict[str, Any]:
         }
     return {
         "items": [item.as_dict() for item in view.items[:LIST_CAP]],
+        "blocked": dict(view.blocked),
         "omitted": max(len(view.items) - LIST_CAP, 0),
         "scope": view.scope,
     }

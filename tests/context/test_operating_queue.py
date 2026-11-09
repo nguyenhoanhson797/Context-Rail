@@ -9,7 +9,9 @@ from types import SimpleNamespace
 import pytest
 
 from context_rail.context.operating import OperatingError, resolve_queue
-from context_rail.gateway.gateway import Context
+from context_rail.core.result import is_ok
+from context_rail.gateway.gateway import Context, invoke
+from context_rail.model.compiler import load_project
 from context_rail.model.manifest import load_manifest
 from context_rail.model.operating import QueuePolicy
 from context_rail.model.pack import load_pack
@@ -192,3 +194,54 @@ def test_queue_order_is_total_across_mapping_order(
     )
 
     assert _slugs(first) == _slugs(second)
+
+
+def _task(store: Path, title: str) -> str:
+    added = invoke(
+        "add", {"preset": "task", "title": title}, store=store, actor="cto"
+    )
+    assert is_ok(added), added
+    return added["value"]["slug"]
+
+
+def _depends(store: Path, source: str, target: str) -> None:
+    shown = invoke("show", {"slug": source}, store=store, actor="cto")
+    linked = invoke(
+        "link",
+        {
+            "src": source,
+            "rel": "depends_on",
+            "dst": target,
+            "expect": shown["value"]["doc"]["etag"],
+        },
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(linked), linked
+
+
+def test_queue_excludes_open_dependencies_and_reports_them(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    _task(store, "Blocker task")
+    _task(store, "Blocked task")
+    _depends(store, "blocked-task", "blocker-task")
+    ctx = _context(store, "basic")
+
+    view = resolve_queue(ctx, load_project("basic", store), "cto")
+
+    assert _slugs(view) == ["blocker-task"]
+    assert view.blocked == {"blocked-task": "depends_on:blocker-task"}
+
+
+def test_queue_excludes_dependency_cycles_and_reports_them(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    _task(store, "One task")
+    _task(store, "Two task")
+    _depends(store, "one-task", "two-task")
+    _depends(store, "two-task", "one-task")
+    ctx = _context(store, "basic")
+
+    view = resolve_queue(ctx, load_project("basic", store), "cto")
+
+    assert _slugs(view) == []
+    assert view.blocked == {"one-task": "cycle", "two-task": "cycle"}
