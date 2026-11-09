@@ -545,6 +545,15 @@ def test_ci_fails_on_approval_mismatch_and_runs_no_check(
     assert details["counts"]["error"] >= 1
     codes = [issue["code"] for issue in details["issues"]]
     assert "approval_mismatch" in codes
+    approval = next(
+        issue for issue in details["issues"] if issue["code"] == "approval_mismatch"
+    )
+    assert approval["details"]["changed"] == {
+        "added": [],
+        "removed": [],
+        "changed": ["charter.md"],
+    }
+    assert "charter.md" in approval["message"]
     assert not marker.exists(), "ci must never execute a Check"
     assert project.is_dir()
 

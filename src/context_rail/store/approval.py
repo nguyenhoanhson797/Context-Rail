@@ -213,11 +213,15 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
                 "state": "approved",
                 "latest_record": changed["record_id"],
                 "protected_hashes": hashes,
+                "approved_hashes": hashes,
+                "current_hashes": hashes,
+                "changed": _changed_paths(hashes, hashes),
                 "snapshot_digest": snapshot_digest(hashes),
             }
+    approved = None if latest is None else latest["protected_hashes"]
     if latest is None:
         state = "missing"
-    elif latest["protected_hashes"] == hashes:
+    elif approved == hashes:
         state = "approved"
     else:
         state = "mismatch"
@@ -226,7 +230,27 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
         "state": state,
         "latest_record": latest["record_id"] if latest is not None else None,
         "protected_hashes": hashes,
+        "approved_hashes": approved,
+        "current_hashes": hashes,
+        "changed": _changed_paths(approved, hashes),
         "snapshot_digest": snapshot_digest(hashes),
+    }
+
+
+def _changed_paths(
+    approved: Mapping[str, str] | None, current: Mapping[str, str]
+) -> dict[str, list[str]]:
+    """The protected paths added, removed or changed since the approval."""
+    if not isinstance(approved, Mapping):
+        return {"added": [], "removed": [], "changed": []}
+    return {
+        "added": sorted(set(current) - set(approved)),
+        "removed": sorted(set(approved) - set(current)),
+        "changed": sorted(
+            path
+            for path in set(current) & set(approved)
+            if current[path] != approved[path]
+        ),
     }
 
 

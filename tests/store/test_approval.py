@@ -302,6 +302,14 @@ def test_acceptance_checks_join_and_leave_the_protected_set(
     for rel in PROTECTED_PATHS:
         assert hashes[rel] == before["protected_hashes"][rel], rel
     assert _state(approved_store)["state"] == "mismatch"
+    state = _state(approved_store)
+    assert state["approved_hashes"] == before["current_hashes"]
+    assert state["current_hashes"] == hashes
+    assert state["changed"] == {
+        "added": ["checks/signoff.md"],
+        "removed": [],
+        "changed": [],
+    }
 
     (approved_store / "checks" / "signoff.md").unlink()
     assert _state(approved_store)["state"] == "approved"

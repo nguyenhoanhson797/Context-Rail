@@ -797,10 +797,31 @@ def _approval_issues(context: Any) -> list[dict[str, Any]]:
         _issue(
             "approval_mismatch",
             path,
-            "the protected picture changed since the human approved it",
+            _approval_message(state.get("changed")),
             fix=_APPROVE,
+            details={"changed": state.get("changed") or {}},
         )
     ]
+
+
+def _approval_message(changed: Any) -> str:
+    message = "the protected picture changed since the human approved it"
+    if not isinstance(changed, dict):
+        return message
+    paths = sorted(
+        {
+            str(path)
+            for group in changed.values()
+            if isinstance(group, list)
+            for path in group
+        }
+    )
+    if not paths:
+        return message
+    shown = ", ".join(paths[:5])
+    if len(paths) > 5:
+        shown += f" (+{len(paths) - 5} more)"
+    return f"{message}: {shown}"
 
 
 def _closed_items(ix: Index) -> list[tuple[str, str]]:
@@ -1424,11 +1445,20 @@ def _has_descendant(
     return False
 
 
-def _issue(code: str, path: str, message: str, fix: str | None = None) -> dict[str, Any]:
-    return {
+def _issue(
+    code: str,
+    path: str,
+    message: str,
+    fix: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    issue = {
         "severity": SEVERITIES[code],
         "code": code,
         "path": path,
         "message": message,
         "fix": fix,
     }
+    if details is not None:
+        issue["details"] = details
+    return issue
