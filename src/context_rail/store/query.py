@@ -1594,6 +1594,16 @@ def _fts_tokens(term: str) -> list[str]:
             end = term.find('"', index + 1)
             tokens.append(term[index:] if end < 0 else term[index : end + 1])
             index = len(term) if end < 0 else end + 1
+        elif (
+            char == "*"
+            and not current
+            and tokens
+            and len(tokens[-1]) >= 2
+            and tokens[-1].startswith('"')
+            and tokens[-1].endswith('"')
+        ):
+            tokens[-1] += "*"
+            index += 1
         else:
             current.append(char)
             index += 1
@@ -1605,8 +1615,16 @@ def _fts_token(token: str) -> str:
     """Quote one ordinary token; leave FTS5 operators and phrases alone."""
     if token in _FTS_OPERATORS or token in ("(", ")"):
         return token
+    if len(token) >= 3 and token.startswith('"') and token.endswith('"*'):
+        return token
     if len(token) >= 2 and token.startswith('"') and token.endswith('"'):
         return token
+    if (
+        token.endswith("*")
+        and len(token) > 1
+        and all(char.isalnum() or char == "_" for char in token[:-1])
+    ):
+        return f'"{token[:-1]}"*'
     if (
         token.startswith("-")
         and len(token) > 1

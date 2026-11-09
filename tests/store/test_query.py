@@ -183,6 +183,8 @@ def test_find_text_uses_fts_and_binds_tag_values(indexed_store):
     found = find(index, text="zorbtoken")
     assert found["total"] == 1
     assert [item["slug"] for item in found["items"]] == ["zz"]
+    assert find(index, text="zorbtok*")["total"] == 1
+    assert find(index, text='"zorbtok"*')["total"] == 1
 
     injected = find(index, tags=("x' OR '1'='1",))
     assert injected == {"items": [], "total": 0, "omitted": 0}
