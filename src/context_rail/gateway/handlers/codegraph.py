@@ -244,14 +244,20 @@ def _build(ctx: Context, *, force: bool = False) -> dict[str, Any]:
     head = head_sha(store)
     if found is None or head is None:
         return _not_git(ctx)
-    ensure_snapshot(
+    ensured = ensure_snapshot(
         store,
         worktree=found[1],
         commit=head,
         configured=configured,
         force=force or configured in ("graphify", "gitnexus"),
     )
-    return _status(ctx)
+    value = _status(ctx)
+    value["built"] = ensured.built
+    if ensured.provider is None:
+        value["ready"] = False
+        if ensured.warning is not None:
+            value["line"] = f"code graph: not built: {ensured.warning}"
+    return value
 
 
 def _not_git(ctx: Context) -> dict[str, Any]:
@@ -281,6 +287,21 @@ def _status(ctx: Context) -> dict[str, Any]:
     state = freshness(store)
     info = None if state["graph"] is None else snapshot_info(store, state["graph"])
     ready = readiness(store, configured)
+    event = last_event(store)
+    if configured == "builtin" and info is None and ready.get("ready"):
+        detail = {} if event is None else event.get("detail") or {}
+        message = (
+            detail.get("message")
+            if event is not None and event.get("kind") in ("timeout", "unavailable")
+            else "no snapshot yet"
+        )
+        ready = {
+            **ready,
+            "ready": False,
+            "step": ready.get("step") or "snapshot",
+            "fix": ready.get("fix") or "rail ops codegraph setup",
+            "line": f"code graph: not built: {message}",
+        }
     provider = None if info is None else info["provider"]
     if provider is None and configured in ("graphify", "gitnexus") and ready.get("ready"):
         provider = configured
@@ -300,6 +321,6 @@ def _status(ctx: Context) -> dict[str, Any]:
             "nodes": info["nodes"],
             "edges": info["edges"],
         },
-        "last_event": last_event(store),
+        "last_event": event,
         "line": ready["line"],
     }

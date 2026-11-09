@@ -8,6 +8,7 @@ import yaml
 from helpers import git, init_store, install_fake_codegraph, run_git
 
 from context_rail.gateway.gateway import invoke
+from context_rail.runner.codegraph import builtin
 from context_rail.runner.codegraph.probe import probe
 from context_rail.store.codegraph import has_snapshot, last_event, record_event
 
@@ -42,6 +43,27 @@ def test_setup_builds_the_first_snapshot_and_says_ready(
     assert value["freshness"]["state"] == "fresh"
     assert value["commit"] == _head(root)
     assert has_snapshot(store, _head(root))
+
+
+def test_setup_reports_not_ready_when_extraction_times_out(
+    git_approved_store: SimpleNamespace, monkeypatch
+) -> None:
+    store, root = git_approved_store.store, git_approved_store.root
+
+    def timeout(*args, **kwargs):
+        raise TimeoutError("the deadline passed")
+
+    monkeypatch.setattr(builtin, "extract", timeout)
+
+    value = _call(store, "codegraph setup")["value"]
+
+    assert value["ready"] is False
+    assert value["built"] is False
+    assert value["provider"] is None
+    assert value["freshness"]["state"] == "none"
+    assert value["last_event"]["kind"] == "timeout"
+    assert "timed out after 30 s" in value["line"]
+    assert not has_snapshot(store, _head(root))
 
 
 def test_setup_with_an_external_provider_stops_at_the_probe(
@@ -85,6 +107,8 @@ def test_status_reads_without_building_anything(git_approved_store: SimpleNamesp
 
     assert value["freshness"]["state"] == "none"
     assert value["provider"] is None
+    assert value["ready"] is False
+    assert "no snapshot yet" in value["line"]
     assert not has_snapshot(store, _head(root))
 
 
