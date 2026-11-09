@@ -519,7 +519,7 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="link",
-        summary="Add or remove one relation on a document.",
+        summary="Add or remove one relation on a mutable document; Records are immutable.",
         permission="write",
         params=(
             Param("src", "str", required=True, positional=True, help="source slug"),
