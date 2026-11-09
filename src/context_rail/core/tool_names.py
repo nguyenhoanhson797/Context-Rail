@@ -38,7 +38,6 @@ VISIBLE_ALIASES: dict[str, str] = {
     "change rename": "rename",
     "change repath": "relocate",
     "check declare": "check",
-    "check list": "find",
     "check run": "verify",
     "loop dispatch": "dispatch",
     "loop review": "review",
@@ -88,6 +87,7 @@ ALIASES: dict[str, str] = {**VISIBLE_ALIASES, **COMPAT_ALIASES}
 VISIBLE_PATHS: frozenset[str] = frozenset(VISIBLE_ALIASES) | {
     "init",
     "approve",
+    "check list",
     "sync driver",
     "types",
     "next",
@@ -158,7 +158,6 @@ del _alias, _target
 
 #: Flags an alias supplies when the caller does not name them.
 ALIAS_DEFAULTS: dict[str, dict[str, object]] = {
-    "check list": {"primitive": "check"},
     "sync install": {"install": True},
     "ops sync install": {"install": True},
 }

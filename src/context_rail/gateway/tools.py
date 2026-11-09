@@ -151,6 +151,19 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.checks:check",
     ),
     Tool(
+        name="check list",
+        summary="List Checks and the Items they verify.",
+        permission="read",
+        params=(
+            Param("status", "str", help="check status"),
+            Param("text", "str", help="full-text query"),
+            Param("tag", "str", repeat=True, help="tag filter"),
+            Param("limit", "int", default=20, help="rows (1-100)"),
+        ),
+        handler="context_rail.gateway.handlers.views:check_list",
+        daemon=True,
+    ),
+    Tool(
         name="verify",
         summary="Run a check, or every executable check an Item declares, and record verdicts.",
         permission="write",
@@ -593,6 +606,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("all", "bool", help="every item preset, ignoring the queue scope"),
             Param("into", "str", help="a container to use as the focus for this call"),
             Param("focus_only", "bool", help="only items inside the focus"),
+            Param("brief", "bool", help="the queue and blockers without cards or item detail"),
         ),
         handler="context_rail.gateway.handlers.surface:next",
         daemon=True,
@@ -704,7 +718,7 @@ for _tool in TOOLS:
 del _tool, _param
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
-_SURFACE_LEAVES = {"init", "approve", "types", "next", "model", "explain", "why", "do", "serve daemon"}
+_SURFACE_LEAVES = {"init", "approve", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon"}
 
 
 def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from context_rail.core.result import is_ok
@@ -162,6 +163,19 @@ def test_explain_and_why_answer_from_the_pack(tmp_path: Path) -> None:
     assert is_ok(reason), reason
     assert reason["value"]["workflow"] == "bugfix"
     assert reason["value"]["command"].startswith("rail change move")
+
+
+def test_next_brief_omits_cards_and_item_detail(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+
+    full = invoke("next", {}, store=store, actor="cto")
+    brief = invoke("next", {"brief": True}, store=store, actor="cto")
+
+    assert is_ok(full), full
+    assert is_ok(brief), brief
+    assert "cards" not in brief["value"] and "items" not in brief["value"]
+    assert brief["value"]["queue"] == full["value"]["queue"]
+    assert len(json.dumps(brief)) < len(json.dumps(full))
 
 
 def test_check_list_is_a_read_alias_for_checks(tmp_path: Path) -> None:

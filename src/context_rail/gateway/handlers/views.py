@@ -37,6 +37,18 @@ def find(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     )
 
 
+def check_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Page through Check documents, never every primitive."""
+    return query.find(
+        ctx.index,
+        primitive="check",
+        tags=tuple(args["tag"]),
+        status=args["status"],
+        text=args["text"],
+        limit=args["limit"],
+    )
+
+
 def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """One document, its relations and a bounded body, or an approval target."""
     slug = (args["slug"] or "").strip()

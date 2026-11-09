@@ -16,6 +16,7 @@ _FLAGGED = frozenset(
     {
         "status",
         "find",
+        "check list",
         "show",
         "types",
         "next",
@@ -85,6 +86,7 @@ _BY_NAME = {tool.name: tool for tool in TOOLS}
 _STALE = "0123456789abcdef"
 _PARITY_ARGS: dict[str, dict[str, Any]] = {
     "find": {"preset": "task"},
+    "check list": {},
     "show": {"slug": "t0"},
     "explain": {"name": "task"},
     "why": {"slug": "t0"},
