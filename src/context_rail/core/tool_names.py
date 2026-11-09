@@ -166,7 +166,7 @@ ALIAS_DEFAULTS: dict[str, dict[str, object]] = {
 GROUP_SUMMARIES: dict[str, str] = {
     "read": "Inspect the picture, items, activity and runs.",
     "change": "Add, update, link, move, rename and repath documents.",
-    "check": "Declare a Check or run one.",
+    "check": "List, declare or run Checks.",
     "loop": "Dispatch, review, merge, report and triage work.",
     "ops": "Maintain the store, packs, sync, adapters, code graph and measurements.",
     "pack": "Inspect, validate, create and switch packs.",
