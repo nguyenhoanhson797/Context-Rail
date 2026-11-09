@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from context_rail import __version__
 from context_rail.gateway.tools import (
     GROUP_SUMMARIES,
     LEGACY_TO_SURFACE,
@@ -52,6 +53,11 @@ def _parser() -> argparse.ArgumentParser:
             "Every former flat command name remains accepted."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"context-rail {__version__}",
     )
     parser.add_argument(
         "--store", help="store folder (default: the nearest context-rail folder)"

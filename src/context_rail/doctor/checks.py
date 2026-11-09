@@ -109,7 +109,7 @@ SEVERITIES.update(stage2.SEVERITY)
 _REPAIR = "rail ops doctor --repair"
 _APPROVE = (
     'rail approve charter --confirm "APPROVE charter" --confirmer <you>; '
-    'for a pack-only change: rail approve pack:<name> --confirm "APPROVE pack:<name>"'
+    'after a pack change, also rail approve pack:<name> --confirm "APPROVE pack:<name>"'
 )
 _RELOCATE = "rail change repath"
 _TRIAGE = "rail loop triage"
@@ -1374,7 +1374,7 @@ def _execution_issues(
                         "execution_failed",
                         row.path,
                         f"the latest {action!r} run on {row.slug!r} failed",
-                        "inspect the run in rail show, then re-run it",
+                        "inspect the run in rail read show, then re-run it",
                     )
                 )
     return issues

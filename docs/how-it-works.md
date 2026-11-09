@@ -58,7 +58,7 @@ reads what it produced, so the CLI, MCP, UI and every agent see one answer.
 | **Paths are derived, never chosen** | You pass `--rel part_of=sprint-3`; the placement template renders the path. `rail change repath --dry-run` shows every implied move before you apply it. |
 | **Quality belongs to the workflow** | A status can name a charter gate and the checks it selects. A missing or stale check refuses the move and names the command that produces it. |
 | **Approval is data** | `approve` is human-only. Change the semantics (transition, placement, operating block) and the store reports `approval_mismatch` until a human reapproves. |
-| **Agents get a narrow surface** | They never parse `pack.yaml`; they ask `rail types`, `rail next`, `rail show`, `rail why`, `rail explain`, and run declared verbs with `rail do`. |
+| **Agents get a narrow surface** | They never parse `pack.yaml`; they ask `rail types`, `rail next`, `rail read show`, `rail why`, `rail explain`, and run declared verbs with `rail do`. |
 | **Work runs isolated** | Dispatch gets its own git worktree; merge is a fast-forward of an *approved* candidate; `gate` never runs Checks. |
 | **Collisions are impossible to miss** | Every write carries the etag it read; a stale write is refused. Every retry carries a `--key` and gets the same record back. |
 
@@ -178,7 +178,7 @@ switch with `rail ops pack use` (human-only).
 | `rail types` | every document type, its workflow and use line |
 | `rail next` | the operating queue (or one worker's card) |
 | `rail model` | the compiled operating model, its focus and digests |
-| `rail show <slug>` | the item plus its workflow and operating card |
+| `rail read show <slug>` | the item plus its workflow and operating card |
 | `rail why <slug>` | the missing proof and the command that produces it |
 | `rail explain <name>` | a preset, workflow or action in full |
 
@@ -241,11 +241,12 @@ video pack ships `none`.
 `builtin` is the zero-install provider. `graphify` uses Graphify's code-only
 graph and `gitnexus` uses GitNexus; both are optional upgrades. Pass
 `--code-graph graphify` (or `gitnexus`, `builtin`, `none`) to `rail init` to
-write the choice into `rail.yaml`; for an external provider init probes it once
-and reports the readiness line at the end, without failing the init. The rail
-never installs either tool. `rail ops codegraph setup` checks the binary, the
-Node runtime for GitNexus, the supported version and any tool-owned leftovers,
-then builds the first snapshot. The result is cached in
+write the choice into `rail.yaml`; for an external provider init runs a
+readiness probe once and reports the line at the end, without building a
+snapshot or failing the init. The rail never installs either tool.
+`rail ops codegraph setup` checks the binary, the Node runtime for GitNexus, the
+supported version and any tool-owned leftovers, then builds the first snapshot.
+The result is cached in
 `<local_dir>/codegraph/readiness.json`; `status`, the overview, an approval
 summary and `rail ops doctor` read that cache and never spawn a probe.
 
@@ -267,7 +268,7 @@ never blocks dispatch, review or merge. Override a binary with
   records `symbols_changed` with the files it changed.
 - **Review** gets the changed symbols, their impact, anything outside the
   predicted area and tests that reach the change without being declared checks.
-- **`rail why` / `rail show`** accept `path` and `path:Symbol`.
+- **`rail why` / `rail read show`** accept `path` and `path:Symbol`.
 - **Implementers never write the store.** They state decisions in
   `what_happened` and the CTO records them.
 

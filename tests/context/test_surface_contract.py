@@ -59,7 +59,7 @@ def test_a_refusal_names_the_command_that_produces_the_proof() -> None:
 
     command = _gate_command("a-bug", ["repro-check"])
 
-    assert "rail check repro-check" in command
+    assert "rail check declare repro-check" in command
     assert "a-bug" in command
 
 

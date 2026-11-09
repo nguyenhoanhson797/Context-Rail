@@ -47,6 +47,69 @@ def test_next_returns_the_queue_for_the_cto_and_a_card_for_a_worker(
     assert worker["value"]["workflow"] == "bugfix"
 
 
+def test_next_does_not_offer_a_blocked_item(approved_store: Path) -> None:
+    added = invoke(
+        "add",
+        {
+            "preset": "task",
+            "title": "Blocked task",
+            "rel": ["part_of=ship-invoicing"],
+        },
+        store=approved_store,
+        actor="cto",
+    )
+    assert is_ok(added), added
+    slug = added["value"]["slug"]
+    shown = invoke("show", {"slug": slug}, store=approved_store, actor="cto")
+    doing = invoke(
+        "move",
+        {"slug": slug, "status": "doing", "expect": shown["value"]["doc"]["etag"]},
+        store=approved_store,
+        actor="cto",
+    )
+    assert is_ok(doing), doing
+    blocked = invoke(
+        "move",
+        {
+            "slug": slug,
+            "status": "blocked",
+            "expect": doing["value"]["etag"],
+        },
+        store=approved_store,
+        actor="cto",
+    )
+    assert is_ok(blocked), blocked
+
+    queue = invoke("next", {}, store=approved_store, actor="cto")
+    status = invoke("status", {}, store=approved_store, actor="cto")
+
+    assert slug not in queue["value"]["queue"]
+    assert slug in status["value"]["blocked"]
+
+
+def test_show_can_disambiguate_a_shared_skill_slug(approved_store: Path) -> None:
+    ambiguous = invoke("show", {"slug": "test-first"}, store=approved_store, actor="cto")
+    shown = invoke(
+        "show",
+        {"slug": "test-first", "path": "workspace/cto/skills/test-first.md"},
+        store=approved_store,
+        actor="cto",
+    )
+
+    assert ambiguous["ok"] is False
+    assert ambiguous["error"]["code"] == "CONFLICT"
+    assert is_ok(shown), shown
+    assert shown["value"]["doc"]["path"] == "workspace/cto/skills/test-first.md"
+    wrong = invoke(
+        "show",
+        {"slug": "charter", "path": "workspace/cto/skills/test-first.md"},
+        store=approved_store,
+        actor="cto",
+    )
+    assert wrong["ok"] is False
+    assert wrong["error"]["code"] == "NOT_FOUND"
+
+
 def test_a_worker_without_an_item_is_refused(tmp_path: Path) -> None:
     store = _store(tmp_path)
 

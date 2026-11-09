@@ -314,7 +314,7 @@ def serve(store: Path, *, actor: str = "human", port: int = 0) -> None:
     """Run the UI until interrupted; the URL (with token) goes to stderr only."""
     created = create_server(store, actor=actor, port=port)
     url = f"{created.base}/?token={created.token}"
-    print(url, file=sys.stderr, flush=True)
+    print(f"Context Rail UI: {url}", file=sys.stderr, flush=True)
     try:
         created.server.serve_forever()
     except KeyboardInterrupt:

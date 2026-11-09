@@ -869,7 +869,7 @@ def _gate_command(slug: str, missing: list[str]) -> str:
     """The one command that produces the proof a gate named as missing."""
     if missing:
         return (
-            f"rail check {missing[0]} --target {slug} "
+            f"rail check declare {missing[0]} --target {slug} "
             f"--spec-file <file> --expect absent"
         )
-    return f"rail verify {slug}"
+    return f"rail check run {slug}"

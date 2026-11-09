@@ -25,6 +25,7 @@ from context_rail.gateway.handlers.common import (
     required,
     skill_pins,
 )
+from context_rail.kernel.triage import failure_fingerprint
 from context_rail.model.cto import (
     USAGE_KEYS,
     Profile,
@@ -419,7 +420,7 @@ def _report_payload(ran: Any, *, status: str) -> dict[str, Any]:
         "observed": bounded(str(observed), SUMMARY_MAX),
         "impact": "medium",
         "evidence": [],
-        "fingerprint": None,
+        "fingerprint": failure_fingerprint(str(observed)),
     }
 
 

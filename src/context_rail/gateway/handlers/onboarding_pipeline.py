@@ -173,6 +173,7 @@ def approval_stage(
     actor: str,
     actor_named: bool,
     args: dict[str, Any],
+    allow_prompt: bool = True,
 ) -> dict[str, Any]:
     """Offer the fresh approval phrase when the picture is waiting for one."""
     from context_rail.gateway.handlers.onboarding import _is_tty, approve
@@ -210,6 +211,37 @@ def approval_stage(
         return {
             "state": "skipped",
             "reason": "actor_not_named",
+            "command": _APPROVE_COMMAND,
+        }
+    if args.get("confirmer") and args.get("confirm"):
+        try:
+            result = approve(
+                context,
+                {
+                    "target": "charter",
+                    "confirm": args["confirm"],
+                    "confirmer": args["confirmer"],
+                    "expect": None,
+                    "key": None,
+                },
+                actor,
+            )
+        except (ModelError, WriteRefused) as exc:
+            return {
+                "state": "refused",
+                "reason": getattr(exc, "code", "VALIDATION_FAILED"),
+                "message": str(exc),
+                "command": _APPROVE_COMMAND,
+            }
+        return {
+            "state": "approved",
+            "approval": result.get("approval"),
+            "target": result.get("target"),
+        }
+    if not allow_prompt:
+        return {
+            "state": "skipped",
+            "reason": "no_confirmer",
             "command": _APPROVE_COMMAND,
         }
     if not _is_tty():
@@ -458,13 +490,14 @@ def _receipt(
         stages.get("approval", {}).get("state") == "approved"
         or state == "approved"
     )
+    solo = getattr(context.policy, "mode", None) == "solo"
     return {
         "store": str(store),
         "pack": context.pack.name,
         "stages": stages,
         "status": status,
-        "approval": "approved" if approved else "missing",
-        "next": _next_steps(approved, stages),
+        "approval": "skipped" if solo else ("approved" if approved else "missing"),
+        "next": _next_steps(approved or solo, stages),
         "dry_run": False,
     }
 

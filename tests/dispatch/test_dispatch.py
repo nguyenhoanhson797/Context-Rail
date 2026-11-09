@@ -15,6 +15,7 @@ import pytest
 from helpers import item_etag, latest_record, process_alive, run_cli, run_git, start_cli
 
 from context_rail.gateway.gateway import invoke
+from context_rail.kernel.triage import failure_fingerprint
 from context_rail.store.location import local_dir
 
 RESULT_KEYS = {
@@ -186,7 +187,7 @@ def test_a_dispatched_implementer_argv_is_exact(leaf_item, fake_droid, droid_env
         "--cwd",
         str(worktree),
         "-m",
-        "gpt-5-codex",
+        "gpt-5.3-codex",
         "--restrict-tools",
         TOOLS_CSV,
         "--append-system-prompt-file",
@@ -353,6 +354,26 @@ def test_retry_continues_the_same_session(leaf_item, fake_droid, droid_env) -> N
     checks = [row for row in verdicts if row.get("kind") == "check.verdict"]
     assert [row["data"]["passed"] for row in checks] == [False, True]
     assert len(branches(leaf_item.root, f"rail/{leaf_item.slug}/*")) == 1
+
+
+def test_an_invalid_model_stops_after_one_attempt(
+    leaf_item, fake_droid, droid_env
+) -> None:
+    fake_droid.set_behaviors(
+        [{"mode": "nonzero_exit", "stderr": "Invalid model: gpt-5-codex"}]
+    )
+
+    r = dispatch(leaf_item, "invalid-model")
+
+    assert r["ok"], r
+    assert r["value"]["status"] == "escalated"
+    assert r["value"]["attempts"] == 1
+    run = latest_record(leaf_item.store, "run.completed")
+    assert len(run["data"]["attempts"]) == 1
+    report = latest_record(leaf_item.store, "report.filed")
+    assert report["data"]["fingerprint"] == failure_fingerprint(
+        report["data"]["observed"]
+    )
 
 
 def test_two_failures_escalate_and_block(leaf_item, fake_droid, droid_env) -> None:

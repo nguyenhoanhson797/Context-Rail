@@ -337,8 +337,9 @@ code_graph: builtin      # builtin | graphify | gitnexus | none
 ```
 
 or pass `--code-graph graphify` (or `gitnexus`, `builtin`, `none`) to
-`rail init`. For an external provider, init probes it once and reports the
-readiness line at the end; a missing tool does not fail the init.
+`rail init`. For an external provider, init runs a readiness probe once and
+reports the line at the end; it does not build a snapshot, and a missing tool
+does not fail the init. Run `rail ops codegraph setup` for the first build.
 
 `builtin` needs no install. `graphify` (`uv tool install "graphifyy>=0.9.100,<0.10"`,
 Apache-2.0) and `gitnexus` (`npm install -g gitnexus`, Node 22.18+ or 24.11+,
@@ -377,7 +378,7 @@ writes `.gitnexus`, `.claude` or a GitNexus section into your checkout, and
 - **Fail closed.** An unknown pack key, manifest schema or policy field is
   refused, never guessed.
 - **Agents never read `pack.yaml`.** A compiler turns the pack into one model,
-  and agents ask `rail next`, `rail show`, `rail why` and `rail model`.
+  and agents ask `rail next`, `rail read show`, `rail why` and `rail model`.
 - **No lost updates, safe retries.** Every write carries the etag it read, and
   every retry carries an idempotency key that returns the same record.
 - **Project shape is data.** Six primitives, eight relations and five status

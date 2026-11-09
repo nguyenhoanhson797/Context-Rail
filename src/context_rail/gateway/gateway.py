@@ -644,14 +644,17 @@ def _with_command(
     if details.get("command"):
         return result
     if details.get("reason") == "approval_missing":
-        details["command"] = 'rail approve charter --confirm "APPROVE charter"'
+        details["command"] = (
+            'rail approve charter --confirm "APPROVE charter" '
+            "--confirmer <you>"
+        )
         error["details"] = details
         return result
     canonical = canonical_tool(name) if isinstance(name, str) else ""
     if canonical == "move" and params.get("slug"):
-        details["command"] = f"rail show {params['slug']}"
+        details["command"] = f"rail read show {params['slug']}"
     elif canonical in {"dispatch", "merge"} and params.get("item"):
-        details["command"] = f"rail show {params['item']}"
+        details["command"] = f"rail read show {params['item']}"
     elif canonical == "do":
         details["command"] = (
             f"rail explain {params['action']}"

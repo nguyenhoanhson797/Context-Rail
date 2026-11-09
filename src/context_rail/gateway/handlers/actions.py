@@ -206,7 +206,7 @@ def _check_requires(ctx: Context, action: Any, item: str) -> None:
                     "action": action.name,
                     "condition": "children",
                     "open": open_children,
-                    "command": f"rail show {open_children[0]}",
+                    "command": f"rail read show {open_children[0]}",
                 },
             )
     if requires.check:

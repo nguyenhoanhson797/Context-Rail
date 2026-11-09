@@ -169,27 +169,39 @@ def find(
     return {"items": items, "total": total, "omitted": total - len(items)}
 
 
-def show(ix: Index, slug: str, *, body_chars: int = DEFAULT_BODY_CHARS) -> dict:
+def show(
+    ix: Index, slug: str, *, path: str | None = None, body_chars: int = DEFAULT_BODY_CHARS
+) -> dict:
     """One document with its relations and a bounded body.
 
-    Raises ``LookupError("not_found")`` when no document has the slug, and
-    ``LookupError("ambiguous")`` when more than one does; the gateway turns the
-    latter into a CONFLICT naming the candidate paths.
+    ``path`` selects one document when several share a slug; without it a
+    shared slug is refused. Raises ``LookupError("not_found")`` when nothing
+    matches and ``LookupError("ambiguous")`` for a shared slug.
     """
     body_chars = _bounded(body_chars, BODY_CHARS_BOUNDS, "body_chars")
     slug = _slug(slug)
 
-    paths = [
-        path
-        for (path,) in ix.conn.execute(
-            "SELECT path FROM docs WHERE slug = ? ORDER BY path", (slug,)
-        )
-    ]
-    if not paths:
-        raise LookupError("not_found")
-    if len(paths) > 1:
-        raise LookupError("ambiguous")
-    path = paths[0]
+    if path is not None:
+        if not isinstance(path, str) or not path.strip():
+            raise LookupError("not_found")
+        path = path.strip()
+        found = ix.conn.execute(
+            "SELECT path FROM docs WHERE path = ? AND slug = ?", (path, slug)
+        ).fetchone()
+        if found is None:
+            raise LookupError("not_found")
+    else:
+        paths = [
+            path
+            for (path,) in ix.conn.execute(
+                "SELECT path FROM docs WHERE slug = ? ORDER BY path", (slug,)
+            )
+        ]
+        if not paths:
+            raise LookupError("not_found")
+        if len(paths) > 1:
+            raise LookupError("ambiguous")
+        path = paths[0]
 
     row = ix.conn.execute(
         f"SELECT {_DOC_COLUMNS} FROM docs WHERE path = ?", (path,)
@@ -1291,7 +1303,7 @@ def digest_rows(
     pending = _scalar(
         ix,
         f"SELECT COUNT(*) FROM runs r WHERE {clause} AND r.accepted IS NULL "
-        "AND r.role = 'implementer'",
+        "AND r.role = 'implementer' AND r.status != 'failed'",
         params,
     )
     reports = [

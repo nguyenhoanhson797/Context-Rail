@@ -7,6 +7,16 @@ import anyio
 from helpers import init_store, stdio_session
 
 
+def test_the_mcp_server_reports_the_package_version() -> None:
+    from context_rail import __version__
+    from context_rail.gateway.mcp_server import build_server
+
+    options = build_server(store=None, actor="cto").create_initialization_options()
+
+    assert options.server_name == "context-rail"
+    assert options.server_version == __version__
+
+
 def test_stdio_lists_reads_replays_and_shuts_down_cleanly(tmp_path) -> None:
     store = init_store(tmp_path)
 

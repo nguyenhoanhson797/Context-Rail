@@ -32,7 +32,7 @@ def test_a_refused_move_points_at_show(tmp_path: Path) -> None:
         actor="cto",
     )
 
-    assert _command(refused) == "rail show ghost"
+    assert _command(refused) == "rail read show ghost"
 
 
 def test_a_refused_dispatch_points_at_the_approval(tmp_path: Path) -> None:
@@ -74,8 +74,8 @@ def test_dispatch_and_merge_fall_back_to_show_once_approved() -> None:
     dispatch = _with_command(dict(refused), "dispatch", {"item": "a-task"})
     merge = _with_command(dict(refused), "merge", {"item": "a-task"})
 
-    assert dispatch["error"]["details"]["command"] == "rail show a-task"
-    assert merge["error"]["details"]["command"] == "rail show a-task"
+    assert dispatch["error"]["details"]["command"] == "rail read show a-task"
+    assert merge["error"]["details"]["command"] == "rail read show a-task"
 
 
 def test_a_refused_action_points_at_explain(tmp_path: Path) -> None:

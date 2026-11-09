@@ -88,6 +88,10 @@ stage. Add
 `--scaffold` for skeleton only, `--dry-run` to print the plan, and `--solo` to
 bind one human as the project owner.
 
+If you supply the picture with `--answers-file`, add `--confirmer "Your Name"`
+with `--confirm "APPROVE charter"` to record the approval in the same call;
+without it, approval stays missing and the separate `approve` above is required.
+
 If the store already exists, skip `init` and start with `rail overview`. If
 `init` reports that the picture is missing, supply it first with `--interview`,
 `--answers-file` or a CTO `--draft-file`; the approval refuses an incomplete

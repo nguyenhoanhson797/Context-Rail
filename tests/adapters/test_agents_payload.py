@@ -19,7 +19,7 @@ def test_the_generated_agents_block_teaches_the_rail_protocol(
         "Never parse",
         "rail types",
         "rail next",
-        "rail show",
+        "rail read show",
         "rail why",
         "rail model",
         "--expect",

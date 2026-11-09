@@ -50,7 +50,7 @@ def test_bare_init_resumes_an_existing_picture(
     assert stages["picture"]["state"] == "skipped"
     assert stages["picture"]["reason"] == "picture_present"
     assert stages["approval"]["reason"] == "no_terminal"
-    assert stages["agents"]["state"] == "written"
+    assert stages["agents"]["state"] == "unchanged"
     assert (unapproved_store.parent / "AGENTS.md").is_file()
 
 

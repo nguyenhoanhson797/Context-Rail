@@ -24,7 +24,7 @@ workflow. Ask the compiled surface:
 |---|---|
 | What kinds of work does this project have? | `rail types` |
 | What is executable now? | `rail next` |
-| What is this item's workflow, state, legal moves and proof? | `rail show <slug>` |
+| What is this item's workflow, state, legal moves and proof? | `rail read show <slug>` |
 | What proof is still missing, and how do I produce it? | `rail why <slug>` |
 | What does this preset, workflow or action mean in full? | `rail explain <name>` |
 | What is the operating model, focus, unit and hierarchy? | `rail model` |
@@ -38,7 +38,7 @@ children.
 
 ## The protocol for every change
 
-1. **Read the current state.** `rail show <slug>` returns the document, its
+1. **Read the current state.** `rail read show <slug>` returns the document, its
    relations, its workflow card and its etag.
 2. **Write with the etag.** Pass `--expect <etag>`. A changed document is
    refused with `CONFLICT`; re-read and retry. Never guess an etag.

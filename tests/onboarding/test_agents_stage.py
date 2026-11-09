@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,13 @@ from context_rail.gateway.handlers.onboarding_pipeline import agents_stage
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
 from context_rail.store.write import WriteRefused
+
+
+def _clean_agents(store: Path) -> None:
+    root = store.parent
+    (root / "AGENTS.md").unlink(missing_ok=True)
+    (root / "CLAUDE.md").unlink(missing_ok=True)
+    shutil.rmtree(root / ".agents", ignore_errors=True)
 
 
 def _context(store: Path) -> Context:
@@ -28,6 +36,7 @@ def _args(**overrides: object) -> dict[str, object]:
 
 
 def test_agents_stage_writes_and_then_skips(unapproved_store: Path) -> None:
+    _clean_agents(unapproved_store)
     context = _context(unapproved_store)
     try:
         first = agents_stage(context, _args())
@@ -46,6 +55,7 @@ def test_agents_stage_writes_and_then_skips(unapproved_store: Path) -> None:
 
 
 def test_agents_stage_passes_the_harness_selection(unapproved_store: Path) -> None:
+    _clean_agents(unapproved_store)
     context = _context(unapproved_store)
     try:
         result = agents_stage(context, _args(harness=["claude"]))

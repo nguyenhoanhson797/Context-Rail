@@ -22,6 +22,7 @@ __all__ = [
     "ReportFacts",
     "TriageThresholds",
     "cluster_reports",
+    "failure_fingerprint",
     "report_fingerprint",
 ]
 
@@ -82,6 +83,18 @@ def report_fingerprint(
 
 def _normalized(text: str) -> str:
     return " ".join(str(text).split())
+
+
+def failure_fingerprint(observed: str) -> str | None:
+    """A stable cluster key for a failure whose prose varies between attempts."""
+    if "invalid model" in str(observed).lower():
+        return report_fingerprint(
+            "environment",
+            "droid",
+            "the configured model is installed",
+            "invalid model",
+        )
+    return None
 
 
 def cluster_reports(

@@ -11,7 +11,7 @@ from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml
 from context_rail.model.codegraph import CONFIG_CHOICES, effective_code_graph
 from context_rail.model.manifest import Manifest, initial_manifest, load_manifest
-from context_rail.model.pack import canonical_pack_name, load_pack
+from context_rail.model.pack import Pack, canonical_pack_name, load_pack, pack_source
 from context_rail.store.location import confine
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
 
@@ -20,6 +20,13 @@ if TYPE_CHECKING:  # the gateway imports this module only when init is invoked
 
 BASE_FOLDERS = ("packs", "templates", "workspace/skills")
 GITIGNORE = b".rail-local/\n"
+
+
+def load_pack_or_not_found(name: str, store: Path) -> Pack:
+    """Load a pack, reporting an unknown name as NOT_FOUND rather than invalid."""
+    if pack_source(name, store) is None:
+        raise WriteRefused("NOT_FOUND", f"unknown pack {name!r}", {"pack": name})
+    return load_pack(name, store)
 
 
 def pinned_folders(manifest: Manifest) -> tuple[str, ...]:
@@ -103,7 +110,7 @@ def skeleton(
     )
     stored = _stored_pack(store) if (store / "rail.yaml").exists() else None
     pack_name = requested or stored or DEFAULT_PACK
-    pack = load_pack(pack_name, store)
+    pack = load_pack_or_not_found(pack_name, store)
     code_graph = requested_code_graph(args)
     saved = replay(store, args.get("key"))
     if saved is not None:

@@ -31,6 +31,7 @@ from context_rail.gateway.handlers.init import (
     GITIGNORE,
     _check_code_graph,
     _stored_pack,
+    load_pack_or_not_found,
     pinned_folders,
     requested_code_graph,
     scaffold,
@@ -166,21 +167,80 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
         answers = read_answers(Path(args["answers_file"]))
     else:
         answers = _interview(pack_name, project_root)
-    return _after_code_graph(
-        _materialise(
-            store,
-            project_root,
-            answers,
-            pack_name=pack_name,
-            key=args["key"],
-            actor=actor,
-            draft=draft,
-            solo=bool(args.get("solo")),
-            code_graph=code_graph,
-        ),
-        args,
-        actor,
+    value = _materialise(
+        store,
+        project_root,
+        answers,
+        pack_name=pack_name,
+        key=args["key"],
+        actor=actor,
+        draft=draft,
+        solo=bool(args.get("solo")),
+        code_graph=code_graph,
     )
+    if mode == "answers":
+        value = _finish_picture_init(value, args, actor, project_root)
+    return _after_code_graph(value, args, actor)
+
+
+def _finish_picture_init(
+    value: dict[str, Any],
+    args: dict[str, Any],
+    actor: str,
+    project_root: Path,
+) -> dict[str, Any]:
+    """Run the stages the direct picture path still owes after its commit."""
+    from context_rail.gateway.execution import ACTOR_NAMED
+    from context_rail.gateway.gateway import Context
+    from context_rail.gateway.handlers.onboarding_pipeline import (
+        _next_steps,
+        agents_stage,
+        approval_stage,
+        git_drivers_stage,
+    )
+
+    store = Path(value["store"])
+    manifest = load_manifest(store)
+    pack = load_pack(manifest.pack, store)
+    context = Context(store=store, manifest=manifest, pack=pack, actor=actor)
+    try:
+        written = list(value.get("written") or [])
+        skeleton = [path for path in written if path in ("rail.yaml", ".gitignore")]
+        workspace = [path for path in written if path.startswith("workspace/")]
+        picture = [
+            path for path in written if path not in skeleton and path not in workspace
+        ]
+        stages = {
+            "skeleton": {
+                "state": "written" if skeleton else "unchanged",
+                "written": skeleton,
+            },
+            "workspace": {
+                "state": "written" if workspace else "unchanged",
+                "written": workspace,
+            },
+            "picture": {"state": "written", "written": picture},
+            "approval": approval_stage(
+                context,
+                actor=actor,
+                actor_named=ACTOR_NAMED.get(),
+                args=args,
+                allow_prompt=False,
+            ),
+        }
+        stages["agents"] = agents_stage(context, args)
+        stages["git_drivers"] = git_drivers_stage(context, project_root, args)
+        solo = getattr(context.policy, "mode", None) == "solo"
+        approved = stages["approval"].get("state") == "approved"
+        value = dict(value)
+        value["stages"] = stages
+        value["approval"] = (
+            "skipped" if solo else ("approved" if approved else "missing")
+        )
+        value["next"] = _next_steps(approved or solo, stages)
+        return value
+    finally:
+        context.close()
 
 
 def _after_code_graph(
@@ -195,7 +255,7 @@ def _after_code_graph(
         return value
     try:
         from context_rail.gateway.gateway import Context
-        from context_rail.gateway.handlers.codegraph import setup
+        from context_rail.gateway.handlers.codegraph import probe_only
         from context_rail.model.manifest import load_manifest
         from context_rail.model.pack import load_pack
 
@@ -204,7 +264,7 @@ def _after_code_graph(
         pack = load_pack(manifest.pack, path)
         context = Context(store=path, manifest=manifest, pack=pack, actor=actor)
         result = dict(value)
-        result["code_graph"] = setup(context, {}, actor)
+        result["code_graph"] = probe_only(context, {}, actor)
         return result
     except Exception as exc:  # noqa: BLE001 - readiness is advisory; init has already committed
         result = dict(value)
@@ -689,7 +749,7 @@ def _materialise(
         "written": result["written"],
         "picture": info["picture"],
         "charter": info["charter"],
-        "approval": "missing",
+        "approval": "skipped" if parsed["charter"].mode == "solo" else "missing",
     }
 
 
@@ -756,7 +816,7 @@ def _store_shape(
         pack = load_pack(manifest.pack, store)
         _check_code_graph(manifest, pack, code_graph)
         return manifest, pack, True, None
-    pack = load_pack(pack_name, store)
+    pack = load_pack_or_not_found(pack_name, store)
     manifest, data = initial_manifest(pack.name, store, code_graph=code_graph)
     return manifest, pack, False, data
 

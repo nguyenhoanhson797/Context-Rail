@@ -419,7 +419,7 @@ def _agents_payload(skills: list[_Skill], profiles: list[_Profile]) -> str:
         "| --- | --- |",
         "| What kinds of work exist? | `rail types` |",
         "| What is executable now? | `rail next` |",
-        "| What is this item's workflow and proof? | `rail show <slug>` |",
+        "| What is this item's workflow and proof? | `rail read show <slug>` |",
         "| What proof is missing, and how do I produce it? | `rail why <slug>` |",
         "| What does a preset, workflow or action mean? | `rail explain <name>` |",
         "| What is the operating model? | `rail model` |",

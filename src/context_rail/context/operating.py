@@ -400,7 +400,7 @@ def resolve_queue(
     eligible: list[QueueItem] = []
     omitted = 0
     for row in rows:
-        if row.category in ("done", "dropped"):
+        if row.category in ("done", "dropped", "blocked"):
             continue
         actions = applicable_actions(ctx, model, row, actor)
         if model.operating.queue.require == "action":

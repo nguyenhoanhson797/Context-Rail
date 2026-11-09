@@ -410,10 +410,16 @@ def _workflow_lines(
     """Per-workflow counts plus the next action and proof for the top items."""
     from context_rail.context import surface
 
+    queue = (
+        set(context.model.operating.queue.presets)
+        if context.model.operating is not None
+        else set()
+    )
     open_items = [
         item
         for item in items
         if item.category not in structure.FINISHED_CATEGORIES
+        and (not queue or item.preset in queue)
     ]
     groups: dict[str, dict[str, int]] = {}
     for item in open_items:
@@ -755,14 +761,26 @@ def _memory_rows(ix: Any, limit: int) -> tuple[list[str], int]:
     )
     total = ix.conn.execute(f"SELECT COUNT(*) FROM docs d {where}").fetchone()[0]
     rows = ix.conn.execute(
-        f"SELECT d.slug, d.title, d.excerpt FROM docs d {where} "
+        f"SELECT d.slug, d.title, d.excerpt, d.path FROM docs d {where} "
         "ORDER BY d.updated DESC, d.slug ASC LIMIT ?",
         (limit,),
     ).fetchall()
-    shown = [
-        f"{title or slug} — {_clip(excerpt or '', EXCERPT_CHARS)}"
-        for slug, title, excerpt in rows
-    ]
+    seen: dict[tuple[str, str], int] = {}
+    order: list[tuple[str, str]] = []
+    for slug, title, excerpt, _path in rows:
+        key = (title or slug, excerpt or "")
+        if key in seen:
+            seen[key] += 1
+            continue
+        seen[key] = 1
+        order.append(key)
+    shown = []
+    for key in order:
+        title, excerpt = key
+        line = f"{title} — {_clip(excerpt, EXCERPT_CHARS)}"
+        if seen[key] > 1:
+            line += f" ({seen[key]} copies)"
+        shown.append(line)
     return shown, max(total - len(rows), 0)
 
 

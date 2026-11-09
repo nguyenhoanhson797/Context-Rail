@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any, TYPE_CHECKING
 
 from context_rail.gateway.handlers.common import bounded
+from context_rail.kernel.triage import failure_fingerprint
 from context_rail.model.cto import Profile
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.store.write import commit
@@ -74,7 +75,7 @@ def _failure_report(
         "observed": bounded(observed, SUMMARY_MAX),
         "impact": "medium",
         "evidence": verdicts[:20],
-        "fingerprint": None,
+        "fingerprint": failure_fingerprint(observed),
     }
 
 

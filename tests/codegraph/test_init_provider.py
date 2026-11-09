@@ -124,7 +124,7 @@ def test_the_cli_flag_reaches_the_manifest(tmp_path: Path) -> None:
     assert _rail(tmp_path)["code_graph"] == "graphify"
 
 
-def test_init_runs_setup_for_a_ready_provider(
+def test_init_probes_a_ready_provider_without_building_a_snapshot(
     tmp_path: Path, monkeypatch
 ) -> None:
     run_git(tmp_path, "init")
@@ -144,3 +144,9 @@ def test_init_runs_setup_for_a_ready_provider(
     assert graph["ready"] is True
     assert graph["provider"] == "graphify"
     assert graph["line"].startswith("code graph: ready (graphify")
+    assert graph["coverage"] is None
+    assert graph["freshness"]["state"] == "none"
+
+    built = invoke("codegraph setup", {}, store=Path(result["value"]["store"]))
+    assert is_ok(built), built
+    assert built["value"]["coverage"]["nodes"] > 0

@@ -58,7 +58,7 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 |---|---|---|
 | Onboarding pipeline | `rail init --pack basic` | skeleton, pack profiles and skills, the offered picture, the fresh approval, agent files and optional git drivers |
 | Skeleton only | `rail init --pack basic --scaffold` | `rail.yaml`, `.gitignore`, empty pinned folders |
-| Picture source | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter"` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the pack's worker skills |
+| Picture source | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter" [--confirmer "<you>"]` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the pack's worker skills; the answers-file path also renders agent files and git drivers |
 | Approve | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` | an approval record with the protected-file hashes |
 | Agent files | `rail ops adapters render [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block) and `.agents/skills/<name>/SKILL.md` per skill note |
 | Git drivers | `rail ops sync install` | `.gitattributes` and clone-local merge drivers |
@@ -66,9 +66,10 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 - Bare `init` is resumable: it keeps what exists and continues from the next
   missing stage. `--dry-run` prints the plan and writes nothing.
 - `--scaffold` preserves the old skeleton-only behavior. The picture modes
-  write the picture and leave approval `missing`; run
-  `rail --actor human init` again to resume approval, agent files and git
-  drivers.
+  write the picture. An answers-file init also renders the agent files and
+  installs the git drivers, and records the charter approval when `--confirmer`
+  is given. The interview leaves approval `missing`; run `rail approve` or
+  `rail --actor human init` again to resume the remaining stages.
 - The picture modes need the `human` actor. A CTO may only propose with
   `--draft-file`, and a draft records no approval.
 - `ops adapters render` is what makes the checkout agent-ready. Re-run it when a

@@ -1,6 +1,7 @@
 # Command reference
 
 Global options, before the command: `--store PATH`, `--actor NAME`.
+`rail --version` prints the package version.
 Human-only tools (`approve`, `ops migrate`, `ops pack use`) need an explicitly
 named human: `--actor human` or `RAIL_ACTOR=human`.
 Every command accepts `--key` for idempotency where it writes.
@@ -10,14 +11,14 @@ Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
 ```text
 rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run] [--code-graph PROVIDER]
-          [--no-approve] [--no-git-drivers] [--harness ID]...
+          [--no-approve] [--no-git-drivers] [--harness ID]... [--confirmer NAME]
           [--interview | --answers-file FILE | --draft-file FILE]
 rail overview [--max-chars N] [--item-limit N]
 rail read status
 rail read digest [--since ISO] [--limit N] [--max-chars N]
 rail read find [--primitive P] [--preset P] [--tag T] [--status S]
                [--category C] [--text Q] [--rel REL=SLUG] [--limit N]
-rail read show <slug> [--body-chars N]
+rail read show <slug> [--path PATH] [--body-chars N]
 rail read ledger [--item SLUG] [--profile NAME] [--since ISO] [--limit N]
 rail model
 rail types [--item SLUG] [--limit N]
@@ -44,6 +45,12 @@ item preset (still respecting transitions, gates and actor rights), `--into`
 overrides the focus for one call, and `--focus-only` filters. `add` gives a unit
 its focus container as `part_of` unless `--rel part_of=...` is explicit.
 `model` prints the compiled operating model and its three digests.
+`read show --path PATH` selects one document when several share a slug, such as
+a skill copied into each profile.
+
+`init --answers-file` runs the full onboarding pipeline and reports each stage
+plus the next steps. Add `--confirmer NAME` with the `--confirm` phrase to
+record the charter approval in the same call; otherwise approve separately.
 
 ## Checks, reports and the loop
 
@@ -53,10 +60,9 @@ rail check declare <slug> --spec-file FILE --expect ETAG|absent [--target ITEM]
 rail check run <target> [--worktree PATH] [--verdict pass|fail]
                  [--evidence RECORD] [--confirm PHRASE]
 rail loop report [item] --run RUN_ID --report-file FILE
-rail loop triage [--limit N]
+rail loop triage [--limit N] [--report ID] [--acknowledge]
 rail loop execution <target> --action NAME --state running|succeeded|failed|cancelled
-                    [--output FILE]... [--error WHY]
-rail loop dispatch <item> --expect ETAG --key KEY [--profile NAME]
+                    [--output FILE]... [--error WHY]rail loop dispatch <item> --expect ETAG --key KEY [--profile NAME]
 rail loop review   <item> --run RUN_ID --key KEY [--profile NAME]
 rail loop merge    <item> --run RUN_ID --expect ETAG --key KEY [--push]
 rail loop tick --key KEY [--timeout SECONDS]

@@ -421,6 +421,9 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
             if stderr:
                 failures.append("stderr: " + bounded(stderr, 800))
             summary = bounded("\n".join(failures), SUMMARY_MAX)
+            if "invalid model" in "\n".join([*reasons, stderr]).lower():
+                # A bad model cannot improve on a retry; stop after one launch.
+                break
         else:
             last_report = block
             summary = ""

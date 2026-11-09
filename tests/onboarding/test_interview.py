@@ -91,6 +91,7 @@ def test_the_interview_asks_every_picture_question_and_completes(
     result = invoke("init", {"dir": str(tmp_path), "interview": True}, actor="human")
 
     assert is_ok(result), result
+    assert result["value"]["approval"] == "missing"
     screen = "\n".join(prompts)
     for expected in (
         "Pack",

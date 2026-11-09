@@ -79,7 +79,7 @@ def test_the_surface_skill_names_every_command_and_recovery_step() -> None:
     for needle in (
         "rail types",
         "rail next",
-        "rail show",
+        "rail read show",
         "rail why",
         "rail explain",
         "rail do",

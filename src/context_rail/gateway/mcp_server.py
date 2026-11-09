@@ -11,6 +11,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.shared.exceptions import MCPError
 
+from context_rail import __version__
 from context_rail.gateway.execution import (
     EXPLICIT_ACTOR,
     resolve_server_actor,
@@ -78,6 +79,7 @@ def build_server(*, store: Path | None, actor: str | None) -> Server:
 
     return Server(
         "context-rail",
+        version=__version__,
         on_list_tools=on_list_tools,
         on_call_tool=on_call_tool,
     )

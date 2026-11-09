@@ -32,7 +32,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | `NOT_FOUND` | no store, unknown slug, unknown pack | `rail init`, fix `--store` placement, or `rail read find` for the slug |
 | `VALIDATION_FAILED` | bad flags, illegal transition, wrong phrase, bad pack field | Read the message; `--help` for flags; `rail explain <workflow>` for legal moves |
 | `CONFLICT` | etag changed, adapter block edited, duplicate identity | Re-read and retry with the new etag; repair an adapter by hand or force as a human |
-| `INVALID_STATE` | non-executable item, immutable record, wrong profile recipe | `rail show <slug>`; finish the dependency; use an implementer for dispatch, reviewer for review |
+| `INVALID_STATE` | non-executable item, immutable record, wrong profile recipe | `rail read show <slug>`; finish the dependency; use an implementer for dispatch, reviewer for review |
 | `BUSINESS_RULE_VIOLATED` | a charter gate is unsatisfied | `rail why <slug>`; run the named check or obtain the named review/acceptance |
 | `NO_FOCUS` | the pack needs a parent container and none matches | Start the container, or pass `--rel part_of=<container>` |
 | `AMBIGUOUS_FOCUS` | several containers match the focus | Pass `--into <id>` from `details.candidates`; never guess |
@@ -58,7 +58,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | The index is corrupt or missing | cache only | `rail ops reindex --full` |
 | `'cto tick' cannot be nested` | a child session already set `RAIL_ACTOR` | Run `rail loop tick` from the outer session with `RAIL_ACTOR` unset |
 | Two CTOs at once | single-instance lock | Let the running tick finish |
-| A dispatch refuses | dependency, gate, claim or profile recipe | `rail why <item>` and `rail show <item>`; finish the dependency or use the right profile |
+| A dispatch refuses | dependency, gate, claim or profile recipe | `rail why <item>` and `rail read show <item>`; finish the dependency or use the right profile |
 | A review refuses | the reviewer is the implementer, or the run is not verified | Use a distinct reviewer actor; review after verification |
 | A merge refuses | the candidate is not approved or conflicts | Review first; one rebase retry, then escalate |
 | `ops pack validate` fails | missing preset, template, field or operating reference | Fix the named key; `pack validate` is read-only |

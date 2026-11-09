@@ -162,7 +162,7 @@ def test_a_required_check_is_named_with_the_command(tmp_path: Path) -> None:
     details = refused["error"]["details"]
     assert details["gate"] == "code_review"
     assert details["missing"] == ["repro-check"]
-    assert "rail check repro-check" in details["command"]
+    assert "rail check declare repro-check" in details["command"]
 
 
 def test_doctor_warns_when_the_legacy_scope_rule_chooses_the_gate(

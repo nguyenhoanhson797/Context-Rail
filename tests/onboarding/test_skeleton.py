@@ -72,6 +72,14 @@ def test_skeleton_uses_the_store_pack_when_none_is_named(tmp_path: Path) -> None
     assert result["state"] == "unchanged"
 
 
+def test_an_unknown_pack_is_not_found(tmp_path: Path) -> None:
+    with pytest.raises(WriteRefused) as refused:
+        scaffold(None, _args(tmp_path, pack="nope"), "human")
+
+    assert refused.value.code == "NOT_FOUND"
+    assert refused.value.details == {"pack": "nope"}
+
+
 def test_skeleton_accepts_a_deprecated_pack_alias(tmp_path: Path) -> None:
     skeleton(None, _args(tmp_path), "human", allow_existing=True)
     manifest = tmp_path / "context-rail" / "rail.yaml"

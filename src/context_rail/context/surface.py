@@ -400,7 +400,7 @@ def _is_container(context: Any, doc: Mapping[str, Any]) -> bool:
 
 def _command(slug: str, next_states: Sequence[str]) -> str:
     if not next_states:
-        return f"rail show {slug}"
+        return f"rail read show {slug}"
     return f"rail change move {slug} {next_states[0]} --expect <etag>"
 
 

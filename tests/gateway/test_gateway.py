@@ -190,7 +190,7 @@ def test_init_confines_root_and_validates_the_pack(tmp_path):
     unknown = invoke(
         "init", {"dir": str(tmp_path / "other"), "pack": "nosuch"}, actor="human"
     )
-    assert unknown["error"]["code"] == "VALIDATION_FAILED"
+    assert unknown["error"]["code"] == "NOT_FOUND"
 
 
 def test_keyed_init_replays_instead_of_refusing(tmp_path):

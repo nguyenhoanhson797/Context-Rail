@@ -15,7 +15,7 @@ engine source; ask the rail.
 rail types                 # every document type, its workflow and use line
 rail model                 # the compiled operating model, focus, unit and digests
 rail next                  # the operating queue, or a worker's next card
-rail show checkout-crash   # the item plus its workflow and operating card
+rail read show checkout-crash   # the item plus its workflow and operating card
 rail why checkout-crash    # the missing proof and the command that produces it
 rail explain bugfix        # the full states, transitions and gates
 ```
@@ -90,8 +90,8 @@ command that produces it. `rail types` lists the pack's verbs.
 ## Recovering from a refusal
 
 1. Read `details.gate`, `details.missing` and `details.command`.
-2. Run the command it names (`rail check ...`, `rail verify ...`,
-   `rail review ...`) or fix the child it names.
+2. Run the command it names (`rail check declare ...`, `rail check run ...`,
+   `rail loop review ...`) or fix the child it names.
 3. `NO_FOCUS` means the pack needs a parent container: pass
    `--into <container>` or start one, or pass an explicit `--rel part_of=...`.
    `AMBIGUOUS_FOCUS` lists its candidates; choose one with `--into`.

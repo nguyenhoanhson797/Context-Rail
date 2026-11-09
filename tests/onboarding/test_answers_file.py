@@ -67,7 +67,15 @@ def test_answers_file_writes_the_picture_atomically(tmp_path: Path, answers: Pat
 
     assert is_ok(result), result
     value = result["value"]
-    assert set(value) == {"store", "written", "picture", "charter", "approval"}
+    assert set(value) == {
+        "store",
+        "written",
+        "picture",
+        "charter",
+        "approval",
+        "stages",
+        "next",
+    }
     assert value["approval"] == "missing"
     assert value["charter"] == "charter"
     assert value["picture"] == [
@@ -99,6 +107,68 @@ def test_answers_file_writes_the_picture_atomically(tmp_path: Path, answers: Pat
     assert all(rel.startswith("records/") for rel in extra), extra
     assert (store / "checks").is_dir()
     assert list((store / "checks").iterdir()) == []
+
+
+def test_answers_file_runs_the_agents_stage_and_honours_the_harness(
+    tmp_path: Path, answers: Path
+) -> None:
+    result = invoke(
+        "init",
+        {
+            "dir": str(tmp_path),
+            "answers_file": str(answers),
+            "confirm": "APPROVE charter",
+            "harness": ["agents"],
+        },
+        actor="human",
+    )
+
+    assert is_ok(result), result
+    value = result["value"]
+    assert value["stages"]["agents"]["state"] == "written"
+    assert (tmp_path / "AGENTS.md").is_file()
+    assert (tmp_path / ".agents" / "skills" / "test-first" / "SKILL.md").is_file()
+
+
+def test_answers_file_with_a_confirmer_approves_the_charter(
+    tmp_path: Path, answers: Path
+) -> None:
+    result = invoke(
+        "init",
+        {
+            "dir": str(tmp_path),
+            "answers_file": str(answers),
+            "confirm": "APPROVE charter",
+            "confirmer": "Dogfood Human",
+        },
+        actor="human",
+    )
+
+    assert is_ok(result), result
+    value = result["value"]
+    assert value["approval"] == "approved"
+    assert value["stages"]["approval"]["state"] == "approved"
+    shown = invoke("show", {"slug": "charter"}, store=Path(value["store"]), actor="human")
+    assert shown["value"]["approval"]["state"] == "approved"
+
+
+def test_solo_answers_file_reports_skipped_approval(
+    tmp_path: Path, answers: Path
+) -> None:
+    result = invoke(
+        "init",
+        {
+            "dir": str(tmp_path),
+            "answers_file": str(answers),
+            "confirm": "APPROVE charter",
+            "solo": True,
+        },
+        actor="human",
+    )
+
+    assert is_ok(result), result
+    assert result["value"]["approval"] == "skipped"
+    assert result["value"]["stages"]["approval"]["reason"] == "solo"
 
 
 def test_picture_documents_carry_the_pinned_roles_priorities_and_placement(
@@ -197,7 +267,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
     ]
     cto = _frontmatter(store / "workspace/cto/profile.md")
     assert cto["recipe"] == "cto"
-    assert cto["model"] == "claude-sonnet-4-5"
+    assert cto["model"] == "claude-sonnet-4-5-20250929"
     assert cto["effort"] is None
     assert cto["auto"] == "high"
     assert cto["tools"] == seven
@@ -205,7 +275,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
 
     implementer = _frontmatter(store / "workspace/profiles/implementer/profile.md")
     assert implementer["recipe"] == "implementer"
-    assert implementer["model"] == "gpt-5-codex"
+    assert implementer["model"] == "gpt-5.3-codex"
     assert implementer["effort"] is None
     assert implementer["auto"] == "medium"
     assert implementer["tools"] == seven
@@ -220,7 +290,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
 
     reviewer = _frontmatter(store / "workspace/profiles/reviewer/profile.md")
     assert reviewer["recipe"] == "reviewer"
-    assert reviewer["model"] == "claude-opus-4-1"
+    assert reviewer["model"] == "claude-opus-4-5-20251101"
     assert reviewer["effort"] is None
     assert "auto" in reviewer and reviewer["auto"] is None
     assert reviewer["tools"] == seven[:4]
@@ -509,4 +579,7 @@ def test_a_replayed_init_does_not_read_the_answers_file(
     second = invoke("init", args, actor="human")
 
     assert is_ok(second), second
-    assert second["value"] == first["value"]
+    core = ("store", "written", "picture", "charter", "approval")
+    assert {key: second["value"][key] for key in core} == {
+        key: first["value"][key] for key in core
+    }

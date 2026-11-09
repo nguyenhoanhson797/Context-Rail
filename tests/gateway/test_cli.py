@@ -20,6 +20,15 @@ from helpers import run_cli
 SRC_DIR = Path(cli.__file__).resolve().parent.parent
 
 
+def test_cli_version_prints_the_package_version(tmp_path: Path) -> None:
+    proc = run_cli(tmp_path, "--version")
+
+    assert proc.returncode == 0
+    import context_rail
+
+    assert proc.stdout.strip() == f"context-rail {context_rail.__version__}"
+
+
 def _init(tmp_path: Path) -> Path:
     result = invoke("init", {"dir": str(tmp_path), "scaffold": True}, actor="human")
     assert is_ok(result), result

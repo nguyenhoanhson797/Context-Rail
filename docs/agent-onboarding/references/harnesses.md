@@ -147,7 +147,7 @@ Use the CLI. It is not a second-class path:
 ```bash
 rail overview
 rail next
-rail show <slug>
+rail read show <slug>
 rail change move <slug> <status> --expect <etag> --key <key>
 ```
 

@@ -33,7 +33,7 @@ rail loop review   <item> --run <run-id> --key <k> [--profile <name>]
 rail loop merge    <item> --run <run-id> --expect <etag> --key <k> [--push]
 
 rail loop report [<item>] --run <run-id> --report-file <json>
-rail loop triage [--limit N]
+rail loop triage [--limit N] [--report <id>] [--acknowledge]
 rail loop execution <item> --action <name> --state running|succeeded|failed|cancelled [--output <file>]... [--error <why>]
 rail read ledger [--item <slug>] [--since <iso>]
 ```
@@ -41,6 +41,9 @@ rail read ledger [--item <slug>] [--since <iso>]
 - Every `--key` is an idempotency key: a retry returns the same record.
 - Every `--expect` is the etag just read: a stale write is refused.
 - `loop tick` must be the outer session; it refuses when `RAIL_ACTOR` is set.
+- `loop triage --report <id> --acknowledge` records a deliberate
+  acknowledgement for one report below the recurrence threshold; it writes a
+  `report.triaged` record and clears the doctor warning.
 
 ## Focus and the queue
 
@@ -90,6 +93,9 @@ active scene). The queue is focus-first and the brief's headline names it.
 - Still failing → the item escalates with its evidence; it is not retried
   forever.
 - A merge conflict gets one rebase retry, then escalation.
+- A failed dispatch deliberately leaves its checkpoint commit in the worktree
+  and the item blocked. Inspect the run and worktree, fix the cause, then move
+  the item back or dispatch it again.
 - Cheaper than guessing: `rail read status` names the blocked reason;
   `rail overview` lists what needs a human.
 

@@ -78,6 +78,52 @@ def test_single_weight_one_report_is_deferred(
     assert _items(triage_store.store) == items_before
 
 
+def test_acknowledge_triages_one_report_below_the_threshold(
+    triage_store: SimpleNamespace,
+) -> None:
+    store = triage_store.store
+
+    result = invoke(
+        "triage",
+        {"report": triage_store.report, "acknowledge": True},
+        store=store,
+        actor="cto",
+    )
+
+    assert is_ok(result), result
+    assert result["value"]["triaged"] == [triage_store.report]
+    assert result["value"]["deferred"] == []
+    record = latest_record(store, "report.triaged")
+    assert record["data"]["action"] == "acknowledged"
+    assert record["data"]["reports"] == [triage_store.report]
+    assert record["data"]["outputs"] == []
+
+    doctor = invoke("doctor", {}, store=store, actor="human")
+    assert is_ok(doctor), doctor
+    assert all(
+        issue["code"] != "report_untriaged" for issue in doctor["value"]["issues"]
+    )
+
+    again = invoke(
+        "triage", {"report": triage_store.report}, store=store, actor="cto"
+    )
+    assert again["ok"] is False
+    assert again["error"]["code"] == "NOT_FOUND"
+
+
+def test_acknowledge_needs_a_report(triage_store: SimpleNamespace) -> None:
+    result = invoke(
+        "triage",
+        {"acknowledge": True},
+        store=triage_store.store,
+        actor="cto",
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+    assert records_of(triage_store.store, "report.triaged") == []
+
+
 def test_two_distinct_failing_runs_create_a_linked_fix(
     triage_store_two_reports: SimpleNamespace,
 ) -> None:

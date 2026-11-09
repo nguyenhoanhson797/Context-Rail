@@ -15,9 +15,11 @@ server.
 
 ```text
 rail [--store PATH] [--actor NAME] [--no-daemon] <command> [flags]
+rail --version
 ```
 
 - Global options go **before** the command.
+- `rail --version` prints the package version and exits.
 - Without `--store`, the nearest `context-rail` folder above the current
   directory is used.
 - `--actor` defaults to `RAIL_ACTOR`, then `human`; human-only tools require an
@@ -40,7 +42,7 @@ Writes that change a document accept `--expect <etag>`; a stale etag is refused.
 
 ```text
 rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run] [--code-graph PROVIDER]
-          [--no-approve] [--no-git-drivers] [--harness ID]...
+          [--no-approve] [--no-git-drivers] [--harness ID]... [--confirmer NAME]
           [--interview | --answers-file FILE | --draft-file FILE]
           [--solo] [--key KEY]
 rail --actor human approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
@@ -49,7 +51,7 @@ rail read status
 rail read digest [--since ISO] [--limit N] [--max-chars N]
 rail read find [--primitive P] [--preset P] [--tag T] [--status S]
                [--category C] [--text Q] [--rel REL=SLUG] [--limit N]
-rail read show <slug> [--body-chars N]
+rail read show <slug> [--path PATH] [--body-chars N]
 rail read ledger [--item SLUG] [--profile NAME] [--since ISO] [--limit N]
 rail model
 rail types [--item SLUG] [--limit N]
@@ -62,11 +64,23 @@ rail gate [--warnings-as-errors]
 `approve` target is `charter`, a protected slug, or `pack:<name>`. Approval
 binds to the semantic digest.
 
+`init --answers-file` runs the same stages as the resumable pipeline: it writes
+the picture and workspace, renders the selected agent harnesses, installs the
+git drivers, and returns every stage plus the next steps. Add `--confirmer NAME`
+with the `--confirm` phrase to record the charter approval in the same call;
+without it, approval stays missing and `rail approve ...` does it later.
+
 `overview` is the bounded daily page. `read status` is the machine view.
-`types` is role-aware with `--item`. `next` is focus-aware: `--all` ignores the
-queue scope but never a gate, claim or permission; `--into` overrides the focus
-for one call; `--focus-only` filters. `explain` accepts a preset, a workflow or
-an action.
+`read show --path PATH` selects one document when several share a slug, such as
+a skill copied into each profile. `types` is role-aware with `--item`. `next` is
+focus-aware: `--all` ignores the queue scope but never a gate, claim or
+permission; `--into` overrides the focus for one call; `--focus-only` filters.
+`explain` accepts a preset, a workflow or an action.
+
+`report` files the one structured report a run owes. `triage` clusters the
+unclaimed reports by fingerprint; `--report ID --acknowledge` records a
+deliberate acknowledgement for one report that has not reached the recurrence
+threshold, writes a `report.triaged` record and clears the doctor warning.
 
 ## Change surface
 
@@ -102,7 +116,7 @@ rail check declare <slug> --spec-file FILE --expect ETAG|absent [--target ITEM]
 rail check run <target> [--worktree PATH] [--verdict pass|fail]
                  [--evidence RECORD]... [--confirm PHRASE] [--key KEY]
 rail loop report [item] --run RUN_ID --report-file FILE [--key KEY]
-rail loop triage [--limit N] [--report ID] [--key KEY]
+rail loop triage [--limit N] [--report ID] [--acknowledge] [--key KEY]
 rail loop execution <target> --action NAME --state running|succeeded|failed|cancelled
                     [--output FILE]... [--error WHY] [--runner-digest DIGEST] [--key KEY]
 rail loop dispatch <item> --expect ETAG --key KEY [--profile NAME] [--all]

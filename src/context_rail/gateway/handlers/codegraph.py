@@ -28,7 +28,7 @@ from context_rail.store.codemap import pins_code_map, semantic_fingerprint
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["adopt", "adopt_fingerprint", "refresh", "resolved", "setup", "status"]
+__all__ = ["adopt", "adopt_fingerprint", "probe_only", "refresh", "resolved", "setup", "status"]
 
 _SOURCE_WORDS = {"rail.yaml": "rail.yaml", "pack": "pack default", "default": "default"}
 _DIFF_LINES = 80
@@ -56,6 +56,21 @@ def resolved(manifest: Any, pack: Any) -> tuple[str, str]:
 def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """The provider, its newest snapshot, coverage and freshness. Builds nothing."""
     return _status(ctx)
+
+
+def probe_only(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Check an external provider and cache readiness, without building a snapshot."""
+    from context_rail.runner.codegraph.probe import probe
+
+    configured, _source = resolved(ctx.manifest, ctx.pack)
+    store = Path(ctx.store)
+    if configured in ("graphify", "gitnexus"):
+        found = worktree_git_dir(store)
+        head = head_sha(store)
+        if found is None or head is None:
+            return _hinted(ctx, _not_git(ctx))
+        probe(store, found[1], configured)
+    return _hinted(ctx, _status(ctx))
 
 
 def setup(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -266,11 +281,14 @@ def _status(ctx: Context) -> dict[str, Any]:
     state = freshness(store)
     info = None if state["graph"] is None else snapshot_info(store, state["graph"])
     ready = readiness(store, configured)
+    provider = None if info is None else info["provider"]
+    if provider is None and configured in ("graphify", "gitnexus") and ready.get("ready"):
+        provider = configured
     return {
         "configured": configured,
         "source": source,
         "ready": ready["ready"],
-        "provider": None if info is None else info["provider"],
+        "provider": provider,
         "commit": state["graph"],
         "freshness": state,
         "coverage": None

@@ -43,7 +43,7 @@ def ci(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     if failed:
         raise WriteRefused(
             "BUSINESS_RULE_VIOLATED",
-            f"ci found {counts['error']} error(s) and {counts['warning']} warning(s)",
+            f"gate found {counts['error']} error(s) and {counts['warning']} warning(s)",
             {"counts": counts, "issues": issues, "gates": gates},
         )
     return {"passed": True, "issues": issues, "counts": counts, "gates": gates}

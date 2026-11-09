@@ -95,6 +95,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("answers_file", "str", help="JSON answers written by the human", path=True),
             Param("draft_file", "str", help="JSON picture proposed by the CTO", path=True),
             Param("confirm", "str", help="the typed phrase APPROVE charter"),
+            Param("confirmer", "str", help="name recorded on an approval"),
             Param("scaffold", "bool", help="write only the skeleton, as before"),
             Param("no_approve", "bool", help="leave approval for a later run"),
             Param("no_git_drivers", "bool", help="skip installing git merge drivers"),
@@ -231,11 +232,16 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="triage",
-        summary="Cluster untriaged reports into fixes, proposals or engine issues.",
+        summary="Cluster reports into fixes, proposals, engine issues or acknowledgements.",
         permission="write",
         params=(
             Param("limit", "int", default=100, help="reports to consider (1-1000)"),
             Param("report", "str", help="consider exactly one report id"),
+            Param(
+                "acknowledge",
+                "bool",
+                help="acknowledge the selected report even below the threshold",
+            ),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.reports:triage",
@@ -561,6 +567,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="read",
         params=(
             Param("slug", "str", required=True, positional=True, help="document slug"),
+            Param("path", "str", help="document path, to disambiguate a shared slug", path=True),
             Param("body_chars", "int", default=4000, help="body characters to return"),
         ),
         handler="context_rail.gateway.handlers.views:show",

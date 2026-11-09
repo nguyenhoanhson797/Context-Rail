@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -119,6 +120,13 @@ def triage(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     store = ctx.store
     key = args["key"]
     thresholds = _thresholds(ctx)
+    acknowledge = bool(args.get("acknowledge"))
+    if acknowledge and not args.get("report"):
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "--acknowledge needs --report",
+            {"param": "report"},
+        )
     value: dict[str, list[str]] = {
         "triaged": [],
         "deferred": [],
@@ -156,7 +164,18 @@ def triage(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
         for decision in cluster_reports(facts, runs, thresholds):
             cluster_rows = members[decision.fingerprint]
-            action = _routed_action(ctx, decision, cluster_rows)
+            if acknowledge:
+                action = "acknowledged"
+                decision = replace(
+                    decision,
+                    action=action,
+                    reason=(
+                        f"report {decision.reports[0]!r} was acknowledged"
+                        " below the cluster threshold"
+                    ),
+                )
+            else:
+                action = _routed_action(ctx, decision, cluster_rows)
             if action == "deferred":
                 value["deferred"].extend(decision.reports)
                 continue

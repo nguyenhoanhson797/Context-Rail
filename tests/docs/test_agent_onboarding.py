@@ -33,7 +33,7 @@ def test_the_portable_agents_file_teaches_the_safe_protocol() -> None:
         "Never parse",
         "rail types",
         "rail next",
-        "rail show",
+        "rail read show",
         "rail why",
         "--expect",
         "--key",

@@ -18,8 +18,8 @@ from context_rail.store.index import Index
 from context_rail.store.location import local_dir
 
 REVIEW_TOOLS_CSV = "read-cli,ls-cli,grep_tool_cli,glob-search-cli"
-REVIEW_MODEL = "claude-opus-4-1"
-IMPLEMENTER_MODEL = "gpt-5-codex"
+REVIEW_MODEL = "claude-opus-4-5-20251101"
+IMPLEMENTER_MODEL = "gpt-5.3-codex"
 RESULT_KEYS = {"run", "review", "commit", "verdict", "findings", "status"}
 
 

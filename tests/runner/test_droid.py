@@ -104,7 +104,7 @@ def test_implementer_argv_is_exact(tmp_path):
         "--cwd",
         str(tmp_path / "wt"),
         "-m",
-        "gpt-5-codex",
+        "gpt-5.3-codex",
         "--restrict-tools",
         "read-cli,ls-cli,grep_tool_cli,glob-search-cli,create-cli,edit-cli,execute-cli",
         "--append-system-prompt-file",
@@ -518,7 +518,7 @@ def test_profile_for_reads_the_materialised_store_profile(approved_store):
     )
     found = profile_for(context, "reviewer")
     assert found.name == "reviewer"
-    assert found.model == "claude-opus-4-1"
+    assert found.model == "claude-opus-4-5-20251101"
     assert found.auto is None and found.effort is None
     assert found.tools == REVIEW.tools
 

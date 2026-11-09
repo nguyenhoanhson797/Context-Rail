@@ -76,24 +76,31 @@ Three ways to supply it:
 
 ```powershell
 rail --actor human init --interview                                  # terminal only
-rail --actor human init --answers-file answers.json --confirm "APPROVE charter"
+rail --actor human init --answers-file answers.json --confirm "APPROVE charter" --confirmer "Ada"
 rail --actor cto init --draft-file draft.json                        # propose only
 ```
 
-A draft records no approval. The approval is a separate, human-only decision
-with its own fresh phrase:
+An answers-file init runs the full onboarding pipeline: it writes the picture
+and workspace, renders the selected agent harnesses, installs the git drivers,
+and reports every stage plus the next steps. `--confirmer` with the confirm
+phrase records the charter approval in the same call; without it, approval stays
+missing and the separate approval below is required.
+
+A draft records no approval. The interview records no approval either: the
+approval is a separate, human-only decision with its own fresh phrase. (An
+answers-file init records it in the same call only when you pass `--confirmer`.)
 
 ```powershell
 rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
 ```
 
 The charter binds the protected files' hashes. Editing them later reports
-`approval_mismatch`; inspect the new state and reapprove deliberately. Never
-reuse the interview's phrase as the approval's phrase.
+`approval_mismatch`; inspect the new state and reapprove deliberately.
 
 If you only need a working store for a script or a quick tour, `--scaffold` is
 the old behavior. It is not a complete onboarding: it writes no profiles, no
-skills, no picture and no agent files.
+skills, no picture and no agent files. With an external `--code-graph` it only
+probes readiness; run `rail ops codegraph setup` to build the first snapshot.
 
 ## Seed the first work
 
@@ -113,7 +120,7 @@ Read the compiled surface, never `pack.yaml`:
 ```powershell
 rail types                  # what kinds of work exist, their workflows and use lines
 rail next                   # the operating queue, or one worker's card
-rail show <slug>            # the item, its workflow and its proof
+rail read show <slug>       # the item, its workflow and its proof
 rail why <slug>             # the missing proof and the command that produces it
 rail explain <name>         # one preset, workflow or action in full
 rail model                  # unit, hierarchy, focus, queue, progress, digests
