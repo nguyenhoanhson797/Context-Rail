@@ -878,6 +878,7 @@ def test_status_view_lists_executable_and_blocked(tmp_path):
         "done": 0,
         "dropped": 0,
     }
+    assert status["value"]["counts_scope"] == "every item preset"
     assert status["value"]["executable"] == ["t1"]
     assert status["value"]["blocked"] == {"t2": "depends_on:t1"}
     assert status["value"]["stuck"] == []

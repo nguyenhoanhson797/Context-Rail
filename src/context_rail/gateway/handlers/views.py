@@ -142,6 +142,7 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     queue = _queue(ctx, model)
     return {
         "counts": counts,
+        "counts_scope": "every item preset",
         "executable": executable_page,
         "blocked": {slug: held[slug] for slug in blocked_page},
         "stuck": stuck_page,
