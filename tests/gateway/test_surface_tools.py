@@ -164,6 +164,15 @@ def test_explain_and_why_answer_from_the_pack(tmp_path: Path) -> None:
     assert reason["value"]["command"].startswith("rail change move")
 
 
+def test_check_list_is_a_read_alias_for_checks(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+
+    listed = invoke("check list", {}, store=store, actor="cto")
+
+    assert is_ok(listed), listed
+    assert listed["value"] == {"items": [], "total": 0, "omitted": 0}
+
+
 def test_show_carries_the_workflow_card(tmp_path: Path) -> None:
     store = _store(tmp_path)
 
