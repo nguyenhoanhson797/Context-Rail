@@ -189,6 +189,36 @@ def test_find_text_uses_fts_and_binds_tag_values(indexed_store):
     assert find(index, preset="task")["total"] == 140
 
 
+def test_find_text_accepts_hyphenated_terms(indexed_store):
+    store, index = indexed_store.store, indexed_store.ix
+    note = store / "notes/note/hyphens.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(
+        f"""---
+primitive: note
+preset: note
+title: Hyphens
+tags: []
+created: '{STAMP}'
+updated: '{STAMP}'
+---
+# Hyphens
+
+Retire test-first. The course and release domain matters. cto review 2026.
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    index.sync()
+
+    for term in ("Retire test-first", "course-and-release-domain", "cto-review-2026"):
+        found = find(index, text=term)
+        assert found["total"] == 1, term
+        assert found["items"][0]["slug"] == "hyphens"
+
+    assert find(index, text='"Retire test-first"')["total"] == 1
+
+
 def test_duplicate_slug_text_search_matches_by_path(indexed_store_with_duplicate):
     index = indexed_store_with_duplicate.ix
 

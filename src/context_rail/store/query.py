@@ -1557,7 +1557,64 @@ def _text_filter(text: object) -> str | None:
     if not isinstance(text, str):
         raise QueryError("text must be a string")
     term = text.strip()
-    return term or None
+    if not term:
+        return None
+    if term.count('"') % 2:
+        # Keep an unclosed phrase intact so FTS5 reports the syntax error.
+        return term
+    return " ".join(_fts_token(token) for token in _fts_tokens(term))
+
+
+_FTS_OPERATORS = frozenset({"AND", "OR", "NOT", "NEAR"})
+
+
+def _fts_tokens(term: str) -> list[str]:
+    """Split a query into bare words, parenthesised operators and phrases."""
+    tokens: list[str] = []
+    current: list[str] = []
+
+    def flush() -> None:
+        if current:
+            tokens.append("".join(current))
+            current.clear()
+
+    index = 0
+    while index < len(term):
+        char = term[index]
+        if char.isspace():
+            flush()
+            index += 1
+        elif char in "()":
+            flush()
+            tokens.append(char)
+            index += 1
+        elif char == '"':
+            flush()
+            end = term.find('"', index + 1)
+            tokens.append(term[index:] if end < 0 else term[index : end + 1])
+            index = len(term) if end < 0 else end + 1
+        else:
+            current.append(char)
+            index += 1
+    flush()
+    return tokens
+
+
+def _fts_token(token: str) -> str:
+    """Quote one ordinary token; leave FTS5 operators and phrases alone."""
+    if token in _FTS_OPERATORS or token in ("(", ")"):
+        return token
+    if len(token) >= 2 and token.startswith('"') and token.endswith('"'):
+        return token
+    if (
+        token.startswith("-")
+        and len(token) > 1
+        and all(char.isalnum() or char == "_" for char in token[1:])
+    ):
+        return token
+    if all(char.isalnum() or char == "_" for char in token):
+        return token
+    return '"' + token.replace('"', '""') + '"'
 
 
 def _grouped(rows: Iterable[tuple[str, str]]) -> dict[str, list[str]]:
