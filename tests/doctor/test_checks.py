@@ -18,8 +18,10 @@ from context_rail.store.doc import etag
 from context_rail.store.location import local_dir
 from helpers import (
     init_pack_store,
+    init_store,
     nested_pack_document,
     run_cli,
+    run_git,
     touch_doc,
     workflow_pack_document,
 )
@@ -47,6 +49,17 @@ def _write(store: Path, rel: str, front: dict[str, Any], body: str = "# Document
         newline="\n",
     )
     return path
+
+
+def test_an_untracked_store_is_warned_once(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    run_git(tmp_path, "init")
+
+    assert "store_untracked" in _codes(store)
+
+    run_git(tmp_path, "add", "-A")
+
+    assert "store_untracked" not in _codes(store)
 
 
 def _task(slug: str, **overrides: Any) -> dict[str, Any]:

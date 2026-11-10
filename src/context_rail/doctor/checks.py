@@ -64,6 +64,7 @@ SEVERITIES: dict[str, str] = {
     "approval_unsigned": "warning",
     "policy_invalid": "error",
     "daemon_stale": "warning",
+    "store_untracked": "warning",
     "check_invalid": "error",
     "check_stale": "warning",
     "check_unknown": "warning",
@@ -180,6 +181,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_relation_type_issues(rows, relations))
     issues.extend(_intent_issues(store))
     issues.extend(_daemon_issues(store))
+    issues.extend(_tracking_issues(store, manifest))
     policy_issues, policy = _policy(context)
     issues.extend(policy_issues)
     if policy is not None:
@@ -769,6 +771,40 @@ def _daemon_issues(store: Path) -> list[dict[str, Any]]:
             str(endpoint),
             "a daemon descriptor remains but its process is gone",
             fix="rail ops doctor --fix",
+        )
+    ]
+
+
+def _tracking_issues(store: Path, manifest: Manifest) -> list[dict[str, Any]]:
+    """One warning when a store inside git has no tracked store file."""
+    from context_rail.store.git_index import read_index
+    from context_rail.store.location import (
+        StoreLocationError,
+        owns_path,
+        store_prefixes,
+        worktree_git_dir,
+    )
+
+    try:
+        found = worktree_git_dir(Path(store))
+    except (OSError, StoreLocationError):
+        return []
+    if found is None:
+        return []
+    git_dir, root = found
+    snapshot = read_index(git_dir, root)
+    if snapshot.unknown is not None and snapshot.unknown != "index_missing":
+        return []
+    prefixes = store_prefixes(Path(store), root, manifest)
+    if any(owns_path(path, prefixes) for path in snapshot.entries):
+        return []
+    return [
+        _issue(
+            "store_untracked",
+            "rail.yaml",
+            "the store is inside a git checkout but no store file is tracked; "
+            "commit it so the audit trail survives",
+            fix='git add <store> && git commit -m "add the context-rail store"',
         )
     ]
 
