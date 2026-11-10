@@ -367,7 +367,7 @@ class Profile:
     schema: int
     version: int
     allowed_methods: tuple[str, ...]
-    recipe: str
+    recipe: str | None
     budget: dict[str, int]
     model: str
     effort: str | None
@@ -552,27 +552,35 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
 # ── Profiles ──────────────────────────────────────────────────────────────
 
 
-def parse_profile(fields: dict[str, Any], *, body: str | None = None) -> Profile:
-    """Validate an Actor profile; ``auto: high`` belongs to the CTO recipe only."""
+def parse_profile(
+    fields: dict[str, Any], *, body: str | None = None, role_mode: bool = False
+) -> Profile:
+    """Validate an Actor profile; ``auto: high`` belongs to the CTO recipe only.
+
+    A store whose pack declares roles passes ``role_mode``: the role, not a
+    recipe, then decides what a seat may do, so ``recipe`` and
+    ``allowed_methods`` become optional and ``auto: high`` is accepted.
+    """
     data = mapping(fields, "profile")
     schema = schema_version(data, PROFILE_SCHEMA, "profile")
     no_unknown(data, PROFILE_KEYS, "profile")
-    require(
-        data,
-        ("version", "allowed_methods", "recipe", "budget", "model", "tools", "skills", "budgets"),
-        "profile",
-    )
+    required = ("version", "budget", "model", "tools", "skills", "budgets")
+    if not role_mode:
+        required = ("version", "allowed_methods", "recipe", *required[1:])
+    require(data, required, "profile")
 
-    recipe = string(data["recipe"], "profile.recipe")
-    if recipe not in PROFILE_RECIPES:
-        refuse("profile.recipe must be one of " + ", ".join(PROFILE_RECIPES))
+    recipe: str | None = None
+    if "recipe" in data:
+        recipe = string(data["recipe"], "profile.recipe")
+        if recipe not in PROFILE_RECIPES:
+            refuse("profile.recipe must be one of " + ", ".join(PROFILE_RECIPES))
 
     auto = data.get("auto")
     if auto is not None:
         auto = string(auto, "profile.auto")
         if auto not in PROFILE_AUTO:
             refuse("profile.auto must be null, low, medium or high")
-        if auto == "high" and recipe != "cto":
+        if auto == "high" and recipe != "cto" and not role_mode:
             refuse("only the cto profile may run at auto high")
 
     effort = data.get("effort")
@@ -582,7 +590,9 @@ def parse_profile(fields: dict[str, Any], *, body: str | None = None) -> Profile
             refuse("profile.effort must be null, low, medium or high")
 
     tools = _profile_tools(data["tools"], recipe)
-    allowed_methods = _profile_methods(data["allowed_methods"])
+    allowed_methods = (
+        _profile_methods(data["allowed_methods"]) if "allowed_methods" in data else ()
+    )
     budget = _context_budget(data["budget"])
     budgets = _run_budgets(data["budgets"])
     skills = _profile_skills(data["skills"])
@@ -638,7 +648,7 @@ def parse_profile(fields: dict[str, Any], *, body: str | None = None) -> Profile
     )
 
 
-def _profile_tools(raw: Any, recipe: str) -> tuple[str, ...]:
+def _profile_tools(raw: Any, recipe: str | None) -> tuple[str, ...]:
     tools = string_list(raw, "profile.tools")
     unknown = sorted(set(tools) - set(TOOL_IDS))
     if unknown:

@@ -170,7 +170,12 @@ class Context:
         found = self._actor_document()
         if found is None:
             return None
-        return parse_profile(found.fields, body=found.body)
+        return parse_profile(found.fields, body=found.body, role_mode=self.role_mode)
+
+    @cached_property
+    def role_mode(self) -> bool:
+        """Whether this store's pack declares roles, so seats rather than names act."""
+        return bool(getattr(self.pack.operating, "roles", None))
 
     def _actor_document(self) -> Doc | None:
         candidates: list[tuple[str, Doc]] = []

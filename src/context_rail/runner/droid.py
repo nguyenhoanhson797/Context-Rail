@@ -163,7 +163,7 @@ def droid_profile(
     if not isinstance(profile, Profile):
         raise WriteRefused("VALIDATION_FAILED", "a droid profile needs a validated profile")
     return DroidProfile(
-        name=name or profile.recipe,
+        name=name or profile.recipe or "worker",
         model=model if model is not None else profile.model,
         effort=profile.effort,
         auto=profile.auto,
@@ -182,7 +182,9 @@ def profile_for(context: Any, name: str) -> DroidProfile:
     found = _store_profile(context, name)
     try:
         profile = (
-            parse_profile(found[0], body=found[1])
+            parse_profile(
+                found[0], body=found[1], role_mode=bool(getattr(context, "role_mode", False))
+            )
             if found is not None
             else load_builtin_profile(name)
         )

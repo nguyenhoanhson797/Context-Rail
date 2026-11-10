@@ -558,13 +558,16 @@ def run_runner(
         session_id=session_id,
         model=resolve_model(profile, adapter.name),
     )
+    extra_env = {f"RAIL_{adapter.name.upper()}_BIN": argv[0]}
+    if profile.recipe:
+        extra_env["RAIL_ACTOR"] = profile.recipe
     launched = _run(
         argv,
         cwd=Path(worktree),
         confine_to=Path(confine_to),
         timeout=float(timeout),
         max_output=256 * 1024,
-        extra_env={"RAIL_ACTOR": profile.recipe, f"RAIL_{adapter.name.upper()}_BIN": argv[0]},
+        extra_env=extra_env,
     )
     payload, failure, text, usage, session, malformed = adapter.parse_output(
         launched["stdout"],

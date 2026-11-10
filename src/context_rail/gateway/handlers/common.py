@@ -744,7 +744,7 @@ def profile_document(context: Context, name: str) -> tuple[str, str, Profile]:
         )
     rel, data, doc = candidates[0]
     try:
-        profile = parse_profile(doc.fields, body=doc.body)
+        profile = parse_profile(doc.fields, body=doc.body, role_mode=context.role_mode)
     except ModelError as error:
         raise WriteRefused(error.code, error.message) from None
     return rel, etag(data), profile

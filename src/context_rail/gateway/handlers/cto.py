@@ -170,7 +170,7 @@ def tick(context: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
 
     _role_rel, profile_etag, profile = profile_document(context, CTO_ROLE)
-    if profile.recipe != CTO_ROLE:
+    if not context.role_mode and profile.recipe != CTO_ROLE:
         raise WriteRefused(
             "VALIDATION_FAILED",
             f"profile {CTO_ROLE!r} is a {profile.recipe!r}, not a cto profile",

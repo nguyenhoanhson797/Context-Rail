@@ -1031,6 +1031,7 @@ def _profile_issues(context: Any, rows: list[_Row]) -> list[dict[str, Any]]:
     """One issue per Actor profile whose stored fields do not validate."""
     from context_rail.model.cto import parse_profile
 
+    role_mode = bool(getattr(context, "role_mode", False))
     issues: list[dict[str, Any]] = []
     for row in rows:
         if row.primitive != "actor" or row.problems:
@@ -1041,7 +1042,7 @@ def _profile_issues(context: Any, rows: list[_Row]) -> list[dict[str, Any]]:
         except (OSError, UnicodeDecodeError):
             continue
         try:
-            parse_profile(dict(doc.fields), body=doc.body)
+            parse_profile(dict(doc.fields), body=doc.body, role_mode=role_mode)
         except ModelError as error:
             issues.append(
                 _issue(
