@@ -149,6 +149,50 @@ def test_a_v1_pack_still_loads_without_operating(tmp_path: Path) -> None:
     assert pack.operating is None
 
 
+_LEAD: dict[str, Any] = {
+    "lead": {
+        "anchor": "project",
+        "reach": {"read": ["project"], "write": ["project"]},
+        "can": {"move": {"shot": ["approved"]}, "actions": ["render"]},
+    }
+}
+
+
+def test_operating_version_2_may_declare_roles(tmp_path: Path) -> None:
+    pack = _load(tmp_path, ("operating.version", 2), ("operating.roles", _LEAD))
+
+    assert pack.operating is not None
+    assert pack.operating.version == 2
+    assert list(pack.operating.roles) == ["lead"]
+    assert pack.operating.roles["lead"].can.methods["actions"] == ("render",)
+
+
+def test_operating_version_2_without_roles_is_accepted(tmp_path: Path) -> None:
+    pack = _load(tmp_path, ("operating.version", 2))
+
+    assert pack.operating is not None
+    assert pack.operating.version == 2
+    assert pack.operating.roles == {}
+
+
+def test_roles_need_operating_version_2(tmp_path: Path) -> None:
+    with pytest.raises(ModelError) as caught:
+        _load(tmp_path, ("operating.roles", _LEAD))
+
+    assert caught.value.code == "VALIDATION_FAILED"
+    assert "roles" in caught.value.message
+    assert "version 2" in caught.value.message
+
+
+def test_a_bad_role_is_refused_when_the_pack_loads(tmp_path: Path) -> None:
+    bad = {"lead": {**_LEAD["lead"], "can": {"add": ["ghost"]}}}
+
+    with pytest.raises(ModelError) as caught:
+        _load(tmp_path, ("operating.version", 2), ("operating.roles", bad))
+
+    assert "operating.roles.lead.can.add" in caught.value.message
+
+
 def test_a_v1_pack_may_not_declare_operating(tmp_path: Path) -> None:
     with pytest.raises(ModelError) as caught:
         _load(tmp_path, ("version", 1))
@@ -161,7 +205,7 @@ def test_a_v1_pack_may_not_declare_operating(tmp_path: Path) -> None:
     "mutations",
     [
         pytest.param((("operating.mood", "light"),), id="unknown-key"),
-        pytest.param((("operating.version", 2),), id="unknown-version"),
+        pytest.param((("operating.version", 3),), id="unknown-version"),
         pytest.param((("operating.unit", "ghost"),), id="unknown-unit"),
         pytest.param((("operating.unit", "note"),), id="unit-not-an-item"),
         pytest.param(

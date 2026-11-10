@@ -9,7 +9,7 @@ or action is refused instead of guessed at.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from context_rail.model.fields import (
@@ -22,6 +22,7 @@ from context_rail.model.fields import (
     string_list,
 )
 from context_rail.model.primitives import CATEGORIES
+from context_rail.model.roles import Role, parse_roles, role_as_dict
 
 if TYPE_CHECKING:
     from context_rail.model.pack import Pack
@@ -39,6 +40,7 @@ __all__ = [
     "PROGRESS_KEYS",
     "QUEUE_KEYS",
     "QUEUE_REQUIREMENTS",
+    "SUPPORTED_OPERATING_VERSIONS",
     "CompleteRule",
     "ExecutionPolicy",
     "FocusPolicy",
@@ -46,10 +48,14 @@ __all__ = [
     "OperatingSpec",
     "ProgressPolicy",
     "QueuePolicy",
+    "operating_as_dict",
     "parse_operating",
 ]
 
-OPERATING_VERSION = 1
+OPERATING_VERSION = 2
+#: Version 1 stays valid for every pack written before roles; only 2 may declare them.
+SUPPORTED_OPERATING_VERSIONS = (1, 2)
+_ROLES_VERSION = 2
 OPERATING_KEYS = (
     "version",
     "unit",
@@ -58,6 +64,7 @@ OPERATING_KEYS = (
     "queue",
     "progress",
     "execution",
+    "roles",
 )
 HIERARCHY_KEYS = ("preset", "order", "required")
 FOCUS_KEYS = ("preset", "category", "order", "resolve")
@@ -137,6 +144,18 @@ class OperatingSpec:
     queue: QueuePolicy | None
     progress: ProgressPolicy | None
     execution: ExecutionPolicy
+    roles: dict[str, Role] = field(default_factory=dict)
+
+
+def operating_as_dict(spec: OperatingSpec) -> dict[str, Any]:
+    """The spec as plain data; ``roles`` appears only when roles are declared."""
+    payload = asdict(replace(spec, roles={}))
+    del payload["roles"]
+    if spec.roles:
+        payload["roles"] = {
+            name: role_as_dict(role) for name, role in spec.roles.items()
+        }
+    return payload
 
 
 def parse_operating(raw: Any, pack: Pack) -> OperatingSpec:
@@ -146,10 +165,14 @@ def parse_operating(raw: Any, pack: Pack) -> OperatingSpec:
     if "version" not in data:
         refuse("operating is missing version")
     version = integer(data["version"], "operating.version", positive=True)
-    if version != OPERATING_VERSION:
+    if version not in SUPPORTED_OPERATING_VERSIONS:
         refuse(
             f"operating version {version} is not supported; "
-            f"expected {OPERATING_VERSION}"
+            f"expected one of {', '.join(map(str, SUPPORTED_OPERATING_VERSIONS))}"
+        )
+    if "roles" in data and version < _ROLES_VERSION:
+        refuse(
+            f"operating.roles needs operating version {_ROLES_VERSION}, not {version}"
         )
 
     hierarchy = _hierarchy(data.get("hierarchy", []), pack)
@@ -158,6 +181,7 @@ def parse_operating(raw: Any, pack: Pack) -> OperatingSpec:
     queue = _queue(data.get("queue"), pack)
     progress = _progress(data.get("progress"), pack, unit, hierarchy, queue)
     execution = _execution(data.get("execution"), pack)
+    roles = parse_roles(data["roles"], pack) if "roles" in data else {}
     return OperatingSpec(
         version=version,
         unit=unit,
@@ -166,6 +190,7 @@ def parse_operating(raw: Any, pack: Pack) -> OperatingSpec:
         queue=queue,
         progress=progress,
         execution=execution,
+        roles=roles,
     )
 
 

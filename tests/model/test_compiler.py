@@ -121,6 +121,34 @@ def _studio(tmp_path: Path, *mutations: tuple[str, Any]) -> Any:
     return load_pack("studio", tmp_path)
 
 
+def test_the_model_dict_lists_declared_roles(tmp_path: Path) -> None:
+    roles = {
+        "lead": {
+            "anchor": "project",
+            "reach": {"read": ["project"], "write": ["project"]},
+            "can": {"move": {"shot": ["review"]}},
+        }
+    }
+    pack = _studio(tmp_path, ("operating.version", 2), ("operating.roles", roles))
+
+    model = compile_project(pack, None, default_presentation(pack))
+
+    assert list(model.operating.roles) == ["lead"]
+    listed = model.as_dict()["roles"]["lead"]
+    assert listed["anchor"] == "project"
+    assert listed["can"]["move"] == {"shot": ["review"]}
+    assert listed["reach"]["write"] == ["project"]
+
+
+def test_the_model_dict_has_no_roles_key_without_roles(tmp_path: Path) -> None:
+    write_pack(tmp_path, "plain", _PLAIN)
+
+    model = compiled_model(tmp_path, "plain")
+
+    assert model.operating.roles == {}
+    assert "roles" not in model.as_dict()
+
+
 def test_a_pack_without_operating_gets_the_neutral_model(tmp_path: Path) -> None:
     write_pack(tmp_path, "plain", _PLAIN)
     model = compiled_model(tmp_path, "plain")

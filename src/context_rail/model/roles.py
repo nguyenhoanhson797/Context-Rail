@@ -48,6 +48,7 @@ __all__ = [
     "Role",
     "Sees",
     "parse_roles",
+    "role_as_dict",
     "role_tools",
 ]
 
@@ -190,6 +191,59 @@ def parse_roles(raw: Any, pack: Pack) -> dict[str, Role]:
 def role_tools(role: Role) -> frozenset[str]:
     """The canonical write tools a role may call; ``grant`` is not a tool."""
     return frozenset(CAN_TOOLS[key] for key in role.can.methods if key in CAN_TOOLS)
+
+
+def role_as_dict(role: Role) -> dict[str, Any]:
+    """The role in the spelling a pack declares it, so ``parse_roles`` accepts it."""
+    return {
+        "anchor": _anchor_as_dict(role.anchor),
+        "reach": {
+            "read": [_term_as_dict(term) for term in role.read],
+            "write": [_term_as_dict(term) for term in role.write],
+            "code": {
+                "read": [pattern.raw for pattern in role.code_read],
+                "write": [pattern.raw for pattern in role.code_write],
+            },
+        },
+        "can": {key: _can_as_value(value) for key, value in role.can.methods.items()},
+        "sees": {
+            "up": role.sees.up,
+            "down": "all" if role.sees.down is None else role.sees.down,
+            "relations": list(role.sees.relations),
+            "parts": list(role.sees.parts),
+            "budget": {"chars": role.sees.chars, "docs": role.sees.docs},
+        },
+        "workspace": role.workspace,
+        "independent_of": list(role.independent_of),
+        "human": role.human,
+        "skills": list(role.skills),
+    }
+
+
+def _anchor_as_dict(anchor: Anchor) -> Any:
+    if anchor.kind == "project":
+        return "project"
+    if anchor.kind == "level":
+        return {"level": anchor.presets[0]}
+    return {"item": list(anchor.presets)}
+
+
+def _term_as_dict(term: ReachTerm) -> Any:
+    if term.kind in ("project", "anchor"):
+        return term.kind
+    if term.kind == "up":
+        return {"up": term.value}
+    if term.kind == "path":
+        return {"path": term.value.raw}
+    return {term.kind: list(term.value)}
+
+
+def _can_as_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {name: list(statuses) for name, statuses in value.items()}
+    if isinstance(value, tuple):
+        return list(value)
+    return value
 
 
 def _role(name: str, raw: Any, pack: Pack, names: tuple[str, ...]) -> Role:

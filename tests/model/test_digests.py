@@ -9,9 +9,10 @@ from typing import Any
 import pytest
 import yaml
 
-from context_rail.model.compiler import compile_project
+from context_rail.model.compiler import compile_project, semantic_digest
 from context_rail.model.pack import load_pack
 from context_rail.model.presentation import default_presentation, load_presentation
+from context_rail.store.index import pack_hash
 from helpers import write_pack
 
 _DOCUMENT: dict[str, Any] = {
@@ -125,6 +126,75 @@ def test_an_operating_change_changes_the_semantic_digest(tmp_path: Path) -> None
     assert before.semantic_digest != after.semantic_digest
     assert before.presentation_digest == after.presentation_digest
     assert before.full_digest != after.full_digest
+
+
+#: Recorded before roles existed: a role-less pack must keep its digest, or
+#: every approved store would need approving again.
+_SHIPPED_DIGESTS = {
+    "basic": "045d929092c045e65b0dda8a1797e8abc94b54da48422ef98c0025dd43396cee",
+    "flow": "6ce312aef712b3d7295ebd5c43dbb91c768a761f64c40099877d90c99a0646f1",
+    "scrum": "24efa5803c1e830eff7dd9ba6f35764b3c4dca554e5ffc12af3d39ea50897bbb",
+    "video": "beb029c07fbf32fcfb0b055c246204267a6c705c618d7af9f42fdca3ccaca987",
+    "waterfall": "9062c03e202f28944fd2d9bcd2bfb9172849d052fda7085175c8d74090867ac2",
+}
+
+_LEAD: dict[str, Any] = {
+    "lead": {
+        "anchor": "project",
+        "reach": {"read": ["project"], "write": ["project"]},
+        "can": {"move": {"shot": ["active"]}},
+    }
+}
+
+
+def _roles_document(roles: dict[str, Any] | None) -> dict[str, Any]:
+    document = copy.deepcopy(_DOCUMENT)
+    document["operating"]["version"] = 2
+    if roles is not None:
+        document["operating"]["roles"] = roles
+    return document
+
+
+@pytest.mark.parametrize("name", sorted(_SHIPPED_DIGESTS))
+def test_a_shipped_pack_digest_is_unchanged_by_roles(name: str, tmp_path: Path) -> None:
+    pack = load_pack(name, tmp_path)
+
+    assert semantic_digest(pack) == _SHIPPED_DIGESTS[name]
+    assert pack_hash(pack) == _SHIPPED_DIGESTS[name]
+
+
+def test_adding_a_role_changes_the_semantic_digest(tmp_path: Path) -> None:
+    before = _model(tmp_path, _roles_document(None))
+    after = _model(tmp_path, _roles_document(_LEAD))
+
+    assert before.semantic_digest != after.semantic_digest
+    assert before.full_digest != after.full_digest
+
+
+def test_widening_a_role_changes_the_semantic_digest(tmp_path: Path) -> None:
+    narrow = _model(tmp_path, _roles_document(_LEAD))
+    wide = copy.deepcopy(_LEAD)
+    wide["lead"]["can"]["move"]["shot"] = ["active", "done"]
+
+    assert narrow.semantic_digest != _model(tmp_path, _roles_document(wide)).semantic_digest
+
+
+def test_an_empty_roles_block_keeps_the_digest(tmp_path: Path) -> None:
+    without = _model(tmp_path, _roles_document(None))
+
+    assert without.semantic_digest == _model(tmp_path, _roles_document({})).semantic_digest
+
+
+def test_a_label_change_keeps_the_semantic_digest_of_a_role_pack(tmp_path: Path) -> None:
+    _write_surface(tmp_path, _SURFACE)
+    before = _model(tmp_path, _roles_document(_LEAD))
+    changed = copy.deepcopy(_SURFACE)
+    changed["labels"]["shot"] = {"one": "Take", "many": "Takes"}
+    _write_surface(tmp_path, changed)
+    after = _model(tmp_path, _roles_document(_LEAD))
+
+    assert before.semantic_digest == after.semantic_digest
+    assert before.presentation_digest != after.presentation_digest
 
 
 def test_a_pack_workflow_change_changes_the_semantic_digest(

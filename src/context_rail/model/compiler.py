@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -21,6 +21,7 @@ from context_rail.model.operating import (
     OperatingSpec,
     ProgressPolicy,
     QueuePolicy,
+    operating_as_dict,
     parse_operating,
 )
 from context_rail.model.presentation import (
@@ -29,6 +30,7 @@ from context_rail.model.presentation import (
     load_presentation,
     presentation_hash,
 )
+from context_rail.model.roles import Role, role_as_dict
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -64,9 +66,10 @@ class OperatingModel:
     semantic_digest: str
     unit_workflow: str | None = None
     unit_label: str | None = None
+    roles: dict[str, Role] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "unit": None
             if self.unit is None
             else {
@@ -109,6 +112,11 @@ class OperatingModel:
             },
             "execution": {"actions": list(self.execution_actions)},
         }
+        if self.roles:
+            payload["roles"] = {
+                name: role_as_dict(role) for name, role in self.roles.items()
+            }
+        return payload
 
 
 @dataclass(frozen=True)
@@ -183,9 +191,11 @@ def _canonical(value: Any) -> Any:
 
 def semantic_payload(pack: Pack) -> dict[str, Any]:
     """The semantic pack picture, without a null ``operating`` placeholder."""
-    payload = asdict(pack)
-    if payload.get("operating") is None:
+    payload = asdict(replace(pack, operating=None))
+    if pack.operating is None:
         payload.pop("operating", None)
+    else:
+        payload["operating"] = operating_as_dict(pack.operating)
     return payload
 
 
@@ -250,6 +260,7 @@ def compile_operating(pack: Pack, raw: Any = None) -> OperatingModel:
         execution_actions=spec.execution.actions,
         semantic_digest=digest,
         unit_workflow=workflow,
+        roles=spec.roles,
     )
 
 
@@ -280,6 +291,7 @@ def compile_project(
         semantic_digest=digest,
         unit_workflow=operating.unit_workflow,
         unit_label=unit_label,
+        roles=operating.roles,
     )
     presentation_fingerprint = presentation_hash(shown)
     full = sha256_hex(

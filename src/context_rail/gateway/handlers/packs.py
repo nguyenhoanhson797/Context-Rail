@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import json
 import re
-from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Iterator
 
@@ -25,6 +24,7 @@ from context_rail.model.compiler import ProjectModel, compile_project
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import initial_manifest, manifest_from_mapping
 from context_rail.model.metadata import ENGINE_PRESETS
+from context_rail.model.operating import operating_as_dict
 from context_rail.model.pack import (
     REQUIRED_PRESETS,
     check_pack_name,
@@ -97,7 +97,9 @@ def pack_show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "resources": pack_resources(ctx.store, name),
         "origin": pack_origins(ctx.store)[name],
         "etag": etag(data),
-        "operating": "neutral" if pack.operating is None else asdict(pack.operating),
+        "operating": "neutral"
+        if pack.operating is None
+        else operating_as_dict(pack.operating),
         "semantic_digest": model.semantic_digest,
         "presentation_digest": model.presentation_digest,
         "full_digest": model.full_digest,

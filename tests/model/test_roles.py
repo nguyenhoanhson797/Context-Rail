@@ -15,6 +15,7 @@ from context_rail.model.roles import (
     Anchor,
     ReachTerm,
     parse_roles,
+    role_as_dict,
     role_tools,
 )
 
@@ -214,6 +215,35 @@ def test_a_full_role_block_parses(pack: Pack) -> None:
     validator = roles["validator"]
     assert validator.write == ()
     assert validator.independent_of == ("produce",)
+
+
+def test_role_as_dict_round_trips_through_the_parser(pack: Pack) -> None:
+    roles = parse_roles(_roles(), pack)
+
+    again = parse_roles(
+        {name: role_as_dict(role) for name, role in roles.items()}, pack
+    )
+
+    assert again == roles
+
+
+def test_role_as_dict_uses_the_declared_spelling(pack: Pack) -> None:
+    roles = parse_roles(_roles(), pack)
+
+    manager = role_as_dict(roles["scene-manager"])
+
+    assert manager["anchor"] == {"level": "scene"}
+    assert manager["reach"]["read"] == [
+        "anchor",
+        {"related": ["depends_on"]},
+        {"preset": ["convention", "decision"]},
+    ]
+    assert manager["sees"]["down"] == "all"
+    assert role_as_dict(roles["lead"])["anchor"] == "project"
+    assert role_as_dict(roles["implementer"])["reach"]["code"]["write"] == [
+        "src/{up.scene.slug}/{anchor.model}/**",
+        "tests/**",
+    ]
 
 
 def test_an_empty_role_block_is_no_roles(pack: Pack) -> None:
