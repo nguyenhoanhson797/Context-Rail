@@ -1273,3 +1273,11 @@ def require_git_identity() -> None:
 def git(cwd: Path, *args: str) -> str:
     """Run one git command and return its stdout, as the plan's snippets expect."""
     return run_git(cwd, *args).stdout
+
+
+def open_test_session(store: Path, seat: str, **kw: Any) -> str:
+    """Open a session for ``seat`` and return only its token."""
+    from context_rail.store.sessions import open_session
+
+    token, _ = open_session(store, seat, **kw)
+    return token
