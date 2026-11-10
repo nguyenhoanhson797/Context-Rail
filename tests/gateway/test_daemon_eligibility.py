@@ -77,6 +77,7 @@ _STAY_DIRECT = (
     "mcp serve",
     "ui serve",
     "serve daemon",
+    "seat list",
     "doctor",
     "reindex",
     "measure versions",

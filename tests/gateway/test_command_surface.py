@@ -49,6 +49,20 @@ def test_surface_hides_the_flat_names_but_keeps_them_visible_to_the_parser() -> 
     assert "init" in visible and "approve" in visible
 
 
+def test_seat_list_is_a_visible_surface_leaf() -> None:
+    from context_rail.core.tool_names import GROUP_SUMMARIES, VISIBLE_PATHS
+    from context_rail.gateway.tools import VISIBLE_PATHS as TOOL_PATHS
+
+    canonical = {tool.name: tool for tool in TOOLS}
+    surface = {tool.name: tool for tool in SURFACE_TOOLS}
+
+    assert canonical["seat list"].permission == "read"
+    assert canonical["seat list"].daemon is False
+    assert "seat list" in VISIBLE_PATHS and "seat list" in TOOL_PATHS
+    assert surface["seat list"].hidden is False
+    assert "seat" in GROUP_SUMMARIES
+
+
 def test_legacy_commands_expand_to_the_grouped_surface() -> None:
     from context_rail.cli import _expand_legacy
 

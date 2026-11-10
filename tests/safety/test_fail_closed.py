@@ -66,6 +66,7 @@ _REFUSED_TOOLS = (
     "mcp serve",
     "ui serve",
     "serve daemon",
+    "seat list",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -128,6 +129,7 @@ _ARGS: dict[str, dict[str, Any]] = {
     "mcp serve": {},
     "ui serve": {},
     "serve daemon": {},
+    "seat list": {},
 }
 _ZONK = f"""---
 primitive: item

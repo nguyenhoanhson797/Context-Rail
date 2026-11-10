@@ -119,7 +119,7 @@ _CONFIRM_SLUG = {
 }
 _HUMAN = "human"
 _CTO = "cto"
-_COMPILED_SURFACE = frozenset({"types", "next", "model", "explain", "why"})
+_COMPILED_SURFACE = frozenset({"types", "next", "model", "explain", "why", "seat list"})
 
 
 @dataclass

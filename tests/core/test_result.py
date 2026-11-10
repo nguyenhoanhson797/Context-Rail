@@ -48,8 +48,19 @@ def test_error_vocabulary_is_the_copied_legacy_one():
         "NO_FOCUS",
         "AMBIGUOUS_FOCUS",
         "INVALID_FOCUS",
+        "SESSION_REQUIRED",
     }
     assert set(INFRA_CODES) == {"INTERNAL", "INTEGRATION_FAILURE", "PROCESS_ERROR"}
+
+
+def test_session_required_is_a_refusal_not_an_infrastructure_error():
+    from context_rail.cli import _finish
+
+    result = fail("SESSION_REQUIRED", "x")
+
+    assert result == {"ok": False, "error": {"code": "SESSION_REQUIRED", "message": "x"}}
+    assert "SESSION_REQUIRED" not in INFRA_CODES
+    assert _finish("seat list", result) == 1
 
 
 def test_is_ok_narrows_both_shapes():

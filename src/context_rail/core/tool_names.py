@@ -95,6 +95,7 @@ VISIBLE_PATHS: frozenset[str] = frozenset(VISIBLE_ALIASES) | {
     "explain",
     "why",
     "serve daemon",
+    "seat list",
 }
 
 #: Flat names accepted for continuity and where they move in the grouped surface.
@@ -174,6 +175,7 @@ GROUP_SUMMARIES: dict[str, str] = {
     "adapters": "Render the managed agent files and skills.",
     "measure": "Compare versions and check whether a fix recurred.",
     "serve": "Open an MCP or HTTP transport.",
+    "seat": "See which seats hold which roles, and manage them.",
 }
 
 #: Aliases whose surface wording differs from their canonical tool.

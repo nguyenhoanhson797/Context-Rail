@@ -26,6 +26,7 @@ ERROR_CODES = (
     "NO_FOCUS",
     "AMBIGUOUS_FOCUS",
     "INVALID_FOCUS",
+    "SESSION_REQUIRED",
 )
 
 #: Codes for something that broke rather than something refused: the CLI exits
