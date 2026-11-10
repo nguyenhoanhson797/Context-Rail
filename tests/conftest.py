@@ -949,6 +949,105 @@ def git_approved_store(tmp_path: Path, approved_store: Path) -> SimpleNamespace:
     return SimpleNamespace(store=approved_store, root=tmp_path, item="feature-a")
 
 
+def _build_role_store(tmp_path: Path) -> SimpleNamespace:
+    import context_rail
+    from context_rail.model.seats import SEAT_GRANTED
+    from context_rail.model.starter import starter_roles
+
+    answers = _write_answers(
+        tmp_path / "answers-scrum.json", {**picture_answers_payload(), "pack": "scrum"}
+    )
+    result = invoke(
+        "init",
+        {
+            "dir": str(tmp_path),
+            "answers_file": str(answers),
+            "pack": "scrum",
+            "no_approve": True,
+            "confirm": "APPROVE charter",
+        },
+        actor="human",
+    )
+    assert is_ok(result), result
+    store = tmp_path / "context-rail"
+    local = store / "packs" / "scrum"
+    shutil.copytree(Path(context_rail.__file__).parent / "packs" / "scrum", local)
+    document = yaml.safe_load((local / "pack.yaml").read_text(encoding="utf-8"))
+    document["operating"]["version"] = 2
+    document["operating"]["roles"] = starter_roles(load_pack("scrum", store))
+    (local / "pack.yaml").write_text(
+        yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+    approved = approve_picture(store)
+    assert is_ok(approved), approved
+
+    def add(preset: str, title: str, *relations: str) -> str:
+        added = invoke(
+            "add",
+            {"preset": preset, "title": title, "rel": list(relations)},
+            store=store,
+            actor="cto",
+        )
+        assert is_ok(added), added
+        return added["value"]["slug"]
+
+    orders = add("sprint", "Orders")
+    billing = add("sprint", "Billing")
+    o1 = add("story", "O1", f"part_of={orders}")
+    o2 = add("story", "O2", f"part_of={orders}")
+    b1 = add("story", "B1", f"part_of={billing}")
+    b2 = add("story", "B2", f"part_of={billing}")
+    rules = add("convention", "Rules")
+
+    def grant(record_id: str, seat: str, role: str, anchor: str, by: str, at: str) -> None:
+        data = {
+            "schema": 1,
+            "seat": seat,
+            "role": role,
+            "anchor": anchor,
+            "granted_by": by,
+        }
+        write_record(store, record_id, SEAT_GRANTED, data, at=at, actor=by)
+
+    grant("seat-lead-1", "lead-1", "lead", "project", "human", "2026-11-10T10:00:00Z")
+    grant("seat-mgr-orders", "mgr-orders", "sprint-lead", orders, "lead-1", "2026-11-10T10:01:00Z")
+    grant("seat-mgr-billing", "mgr-billing", "sprint-lead", billing, "lead-1", "2026-11-10T10:02:00Z")
+    return SimpleNamespace(
+        store=store,
+        lead="lead-1",
+        orders=orders,
+        billing=billing,
+        orders_seat="mgr-orders",
+        billing_seat="mgr-billing",
+        o1=o1,
+        o2=o2,
+        b1=b1,
+        b2=b2,
+        rules=rules,
+    )
+
+
+@pytest.fixture(scope="session")
+def _role_store_template(tmp_path_factory: pytest.TempPathFactory) -> SimpleNamespace:
+    return _build_role_store(tmp_path_factory.mktemp("role-store-template"))
+
+
+@pytest.fixture
+def role_store(tmp_path: Path, _role_store_template: SimpleNamespace) -> SimpleNamespace:
+    """An approved scrum store with starter roles, two sprints and three live seats.
+
+    ``orders`` and ``billing`` are sprints holding stories ``o1, o2`` and
+    ``b1, b2``; ``rules`` is a convention note. ``lead-1`` holds ``lead`` on the
+    project and ``mgr-orders`` and ``mgr-billing`` hold ``sprint-lead``. Each test
+    gets its own copy, built once per session, without the local index.
+    """
+    store = tmp_path / "context-rail"
+    shutil.copytree(
+        _role_store_template.store, store, ignore=shutil.ignore_patterns(".rail-local")
+    )
+    return SimpleNamespace(**{**vars(_role_store_template), "store": store})
+
+
 @pytest.fixture
 def unapproved_store(tmp_path: Path, answers: Path) -> Path:
     """A store whose picture exists but the human has not approved yet."""
