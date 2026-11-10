@@ -359,6 +359,12 @@ TOOLS: tuple[Tool, ...] = (
         params=(
             Param("name", "str", required=True, help="new pack name"),
             Param("from", "str", default=DEFAULT_PACK, help="pack to copy", path=True),
+            Param(
+                "roles",
+                "bool",
+                default=False,
+                help="add starter roles and operating version 2",
+            ),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.packs:pack_create",

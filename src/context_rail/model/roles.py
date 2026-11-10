@@ -27,7 +27,7 @@ from context_rail.model.patterns import Pattern, parse_pattern
 from context_rail.model.primitives import RELATIONS
 
 if TYPE_CHECKING:
-    from context_rail.model.pack import Pack
+    from context_rail.model.pack import Pack, Workflow
 
 __all__ = [
     "ANCHOR_KINDS",
@@ -50,6 +50,7 @@ __all__ = [
     "parse_roles",
     "role_as_dict",
     "role_tools",
+    "workflow_statuses",
 ]
 
 ROLE_KEYS = (
@@ -186,6 +187,14 @@ def parse_roles(raw: Any, pack: Pack) -> dict[str, Role]:
                 f"use a lowercase slug of at most {_MAX_NAME} characters"
             )
     return {name: _role(name, data[name], pack, names) for name in names}
+
+
+def workflow_statuses(workflow: Workflow) -> tuple[str, ...]:
+    """Every status a workflow can be in, in the order the pack declares them."""
+    seen = dict.fromkeys(workflow.transitions)
+    for targets in workflow.transitions.values():
+        seen.update(dict.fromkeys(targets))
+    return tuple(seen)
 
 
 def role_tools(role: Role) -> frozenset[str]:
@@ -427,9 +436,7 @@ def _move(raw: Any, pack: Pack, where: str) -> dict[str, tuple[str, ...]]:
             refuse(f"{spot} preset {name!r} is not an item preset")
         wanted = string_list(statuses, spot, allow_empty=True)
         workflow = pack.workflow_for(name)
-        reachable = set(workflow.transitions) | {
-            target for targets in workflow.transitions.values() for target in targets
-        }
+        reachable = workflow_statuses(workflow)
         for status in wanted:
             if status not in pack.statuses:
                 refuse(f"{spot} names unknown status {status!r}")

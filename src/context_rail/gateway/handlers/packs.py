@@ -33,6 +33,8 @@ from context_rail.model.pack import (
     pack_layout,
 )
 from context_rail.model.presentation import load_presentation
+from context_rail.model.roles import parse_roles
+from context_rail.model.starter import starter_roles
 from context_rail.store import query
 from context_rail.store.approval import (
     approval_state,
@@ -208,6 +210,8 @@ def pack_create(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
             "CONFLICT", f"pack {name!r} already exists", {"pack": name}
         )
     ops = copy_plan(ctx.store, name, resolved)
+    if args.get("roles"):
+        ops = _with_starter_roles(ops, f"packs/{name}/pack.yaml", load_pack(resolved, ctx.store))
     record = {
         "kind": "pack.created",
         "preset": "event",
@@ -225,6 +229,40 @@ def pack_create(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
         "record": result["record"],
         "approval": "pending",
     }
+
+
+def _with_starter_roles(ops: list[Op], target: str, pack: Any) -> list[Op]:
+    """Rewrite the draft's pack.yaml so it declares the starter roles.
+
+    The YAML is re-dumped, so comments and layout in the copy are not kept.
+    """
+    rewritten: list[Op] = []
+    for op in ops:
+        if op.path != target or op.data is None:
+            rewritten.append(op)
+            continue
+        document = yaml.safe_load(op.data.decode("utf-8-sig"))
+        if document.get("version") != 2:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"pack {pack.name!r} is version {document.get('version')}; "
+                "roles need pack version 2",
+                {"pack": pack.name},
+            )
+        operating = document.get("operating")
+        if operating is None and document.get("extends"):
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"pack {pack.name!r} extends another pack and declares no operating "
+                "block; declare one before adding roles",
+                {"pack": pack.name},
+            )
+        roles = starter_roles(pack)
+        parse_roles(roles, pack)
+        document["operating"] = {**(operating or {}), "version": 2, "roles": roles}
+        data = yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode("utf-8")
+        rewritten.append(Op(op.path, data, op.expect))
+    return rewritten
 
 
 def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
