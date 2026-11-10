@@ -36,6 +36,7 @@ from context_rail.model.fields import (
     string_list,
 )
 from context_rail.model.pack import Pack
+from context_rail.model.seats import SEAT_GRANTED, SEAT_KINDS, SEAT_REVOKED, parse_seat_event
 from context_rail.store.doc import (
     BAD_ENCODING,
     PARSE_ERROR,
@@ -56,7 +57,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 6
+INDEX_SCHEMA = 7
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -276,6 +277,20 @@ _SCHEMA = (
     )
     """,
     """
+    CREATE TABLE seats(
+        path TEXT PRIMARY KEY,
+        at TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        seat TEXT NOT NULL,
+        role TEXT,
+        anchor TEXT,
+        profile TEXT,
+        actor_by TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX seats_seat_at ON seats(seat, at)",
+    """
     CREATE TABLE executions(
         path TEXT PRIMARY KEY,
         record_id TEXT NOT NULL,
@@ -309,6 +324,7 @@ _PATH_TABLES = (
     "approvals",
     "reviews",
     "executions",
+    "seats",
 )
 _PROJECTION_COLUMNS = {
     "checks": (
@@ -416,6 +432,17 @@ _PROJECTION_COLUMNS = {
         "at",
         "data_json",
     ),
+    "seats": (
+        "path",
+        "at",
+        "record_id",
+        "kind",
+        "seat",
+        "role",
+        "anchor",
+        "profile",
+        "actor_by",
+    ),
 }
 
 _RUN_KIND = "run.completed"
@@ -434,6 +461,8 @@ _PROJECTED_KINDS = frozenset(
         _REVIEW_KIND,
         EXECUTION_KIND,
         TRIAGE_KIND,
+        SEAT_GRANTED,
+        SEAT_REVOKED,
     }
 )
 _EVALUATION_KEYS = ("schema", "run", "candidate_commit", "accepted", "check_verdicts", "review", "at")
@@ -879,6 +908,8 @@ def _projection(doc: Doc) -> tuple[list[tuple[str, tuple[Any, ...]]], set[str]]:
         return _approval_rows(doc, record_id, data), set()
     if kind == EXECUTION_KIND:
         return _execution_rows(doc, record_id, data), set()
+    if kind in SEAT_KINDS:
+        return _seat_rows(doc, record_id, kind, data), set()
     return _review_rows(doc, record_id, data), set()
 
 
@@ -1079,6 +1110,27 @@ def _review_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[s
     integer(payload["profile_version"], "review.profile_version", positive=True)
     row = (doc.path, record_id, item, run_id, candidate, reviewer, verdict, _json(data))
     return [("reviews", row)]
+
+
+def _seat_rows(
+    doc: Doc, record_id: str, kind: str, data: dict[str, Any]
+) -> list[tuple[str, tuple[Any, ...]]]:
+    at = _at(doc)
+    if at is None:
+        refuse("seat record needs an ISO 8601 at")
+    event = parse_seat_event(kind, data, at=at, record_id=record_id)
+    row = (
+        doc.path,
+        at,
+        record_id,
+        kind,
+        event.seat,
+        event.role,
+        event.anchor,
+        event.profile,
+        event.by,
+    )
+    return [("seats", row)]
 
 
 def _execution_rows(

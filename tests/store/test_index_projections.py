@@ -40,6 +40,7 @@ REQUIRED_TABLES = {
     "approvals",
     "reviews",
     "executions",
+    "seats",
 }
 BASE_TABLES = {"docs", "fields", "relations", "tags", "docs_fts", "meta"}
 TRIAGE_ID = "01JTRIAGE00000000000000001"
@@ -88,8 +89,8 @@ def truth_files(store: Path) -> dict[Path, bytes]:
     }
 
 
-def test_index_schema_six_keeps_the_base_tables_and_fts():
-    assert INDEX_SCHEMA == 6
+def test_index_schema_seven_keeps_the_base_tables_and_fts():
+    assert INDEX_SCHEMA == 7
 
 
 def test_open_creates_the_typed_tables(store_factory):
@@ -102,9 +103,9 @@ def test_open_creates_the_typed_tables(store_factory):
             index.conn.execute(
                 "SELECT value FROM meta WHERE key = 'schema'"
             ).fetchone()[0]
-            == "6"
+            == "7"
         )
-        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 7
 
 
 def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):

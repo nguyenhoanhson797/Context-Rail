@@ -15,8 +15,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 from context_rail.core.util import canonical_iso
+from context_rail.kernel.seats import LiveSeat, fold
 from context_rail.model.cto import USAGE_KEYS
 from context_rail.model.primitives import CATEGORIES, PRIMITIVES, RELATIONS
+from context_rail.model.seats import SeatEvent
 from context_rail.store.doc import parse_doc
 from context_rail.store.index import Index
 
@@ -36,6 +38,7 @@ __all__ = [
     "items_for_migration",
     "last_activity_ms",
     "ledger",
+    "live_seats",
     "pack_change_for",
     "records_about",
     "rejected_reviews",
@@ -48,6 +51,7 @@ __all__ = [
     "review_for_item",
     "run_facts",
     "run_record",
+    "seat_events",
     "show",
     "triage_runs",
     "untriaged_reports",
@@ -941,6 +945,20 @@ def approval_records(ix: Index, limit: int = 200) -> list[dict[str, Any]]:
             }
         )
     return found
+
+
+def seat_events(ix: Index) -> list[SeatEvent]:
+    """Every projected seat grant and revoke, oldest first by ``(at, id)``."""
+    rows = ix.conn.execute(
+        "SELECT kind, seat, role, anchor, profile, actor_by, at, record_id "
+        "FROM seats ORDER BY at, record_id"
+    ).fetchall()
+    return [SeatEvent(*row) for row in rows]
+
+
+def live_seats(ix: Index) -> dict[str, LiveSeat]:
+    """Seats still granted after folding every grant and revoke."""
+    return fold(seat_events(ix))
 
 
 def approval_for(ix: Index, target: str) -> dict[str, Any] | None:
