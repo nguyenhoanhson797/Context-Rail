@@ -34,6 +34,7 @@ __all__ = [
     "CAN_KEYS",
     "CAN_TOOLS",
     "CODE_KEYS",
+    "MAX_NAME_LENGTH",
     "REACH_KEYS",
     "READ_TERMS",
     "ROLE_KEYS",
@@ -47,6 +48,7 @@ __all__ = [
     "ReachTerm",
     "Role",
     "Sees",
+    "is_name",
     "parse_roles",
     "role_as_dict",
     "role_tools",
@@ -115,7 +117,7 @@ _WRITABLE = {
 _FLAGS = ("relocate", "tick")
 _NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 _SKILL = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-_MAX_NAME = 40
+MAX_NAME_LENGTH = 40
 _MAX_LEVELS = 16
 _BUDGET_KEYS = ("chars", "docs")
 _DEFAULT_PARTS = ("title", "status", "body")
@@ -181,12 +183,17 @@ def parse_roles(raw: Any, pack: Pack) -> dict[str, Role]:
     data = mapping(raw, "operating.roles")
     names = tuple(data)
     for name in names:
-        if not _NAME.fullmatch(name) or len(name) > _MAX_NAME:
+        if not is_name(name):
             refuse(
                 f"operating.roles has an invalid role name {name!r}; "
-                f"use a lowercase slug of at most {_MAX_NAME} characters"
+                f"use a lowercase slug of at most {MAX_NAME_LENGTH} characters"
             )
     return {name: _role(name, data[name], pack, names) for name in names}
+
+
+def is_name(value: str) -> bool:
+    """Whether ``value`` is a valid role or seat name: a short lowercase slug."""
+    return bool(_NAME.fullmatch(value)) and len(value) <= MAX_NAME_LENGTH
 
 
 def workflow_statuses(workflow: Workflow) -> tuple[str, ...]:
