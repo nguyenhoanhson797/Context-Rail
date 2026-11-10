@@ -66,6 +66,26 @@ def test_setup_reports_not_ready_when_extraction_times_out(
     assert not has_snapshot(store, _head(root))
 
 
+def test_setup_reports_not_ready_when_extraction_crashes(
+    git_approved_store: SimpleNamespace, monkeypatch
+) -> None:
+    store, root = git_approved_store.store, git_approved_store.root
+
+    def crash(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(builtin, "extract", crash)
+
+    value = _call(store, "codegraph setup")["value"]
+
+    assert value["ready"] is False
+    assert value["built"] is False
+    assert value["provider"] is None
+    assert value["last_event"]["kind"] == "unavailable"
+    assert "boom" in value["line"]
+    assert not has_snapshot(store, _head(root))
+
+
 def test_setup_with_an_external_provider_stops_at_the_probe(
     git_approved_store: SimpleNamespace,
 ) -> None:

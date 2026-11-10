@@ -245,3 +245,38 @@ def test_queue_excludes_dependency_cycles_and_reports_them(tmp_path: Path) -> No
 
     assert _slugs(view) == []
     assert view.blocked == {"one-task": "cycle", "two-task": "cycle"}
+
+
+def test_a_finished_dependency_does_not_block_the_queue(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    _task(store, "Blocker task")
+    _task(store, "Blocked task")
+    _depends(store, "blocked-task", "blocker-task")
+    path = store / "items" / "task" / "blocker-task.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("status: todo", "status: done"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    ctx = _context(store, "basic")
+
+    view = resolve_queue(ctx, load_project("basic", store), "cto")
+
+    assert _slugs(view) == ["blocked-task"]
+    assert view.blocked == {}
+
+
+def test_a_dependency_outside_the_queue_presets_still_blocks(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+    _task(store, "Blocked task")
+    risk = invoke(
+        "add", {"preset": "risk", "title": "Risk item"}, store=store, actor="cto"
+    )
+    assert is_ok(risk), risk
+    _depends(store, "blocked-task", risk["value"]["slug"])
+    ctx = _context(store, "basic")
+
+    view = resolve_queue(ctx, load_project("basic", store), "cto")
+
+    assert _slugs(view) == []
+    assert view.blocked == {"blocked-task": "depends_on:risk-item"}

@@ -174,6 +174,9 @@ def test_show_charter_reports_the_state_digest_and_phrase(
     assert approval["state"] == "approved"
     assert approval["latest_record"] == record["id"]
     assert approval["protected_hashes"] == record["data"]["protected_hashes"]
+    assert approval["approved_hashes"] == record["data"]["protected_hashes"]
+    assert approval["current_hashes"] == record["data"]["protected_hashes"]
+    assert approval["changed"] == {"added": [], "removed": [], "changed": []}
     assert shown["phrase"] == "APPROVE charter"
 
     context = _context(approved_store)
