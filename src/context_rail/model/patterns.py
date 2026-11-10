@@ -11,13 +11,15 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from context_rail.core.slug import slugify
 from context_rail.model.errors import ModelError
 from context_rail.model.fields import refuse
-from context_rail.model.pack import Preset
 from context_rail.model.placement import safe_segment
+
+if TYPE_CHECKING:
+    from context_rail.model.pack import Preset
 
 __all__ = [
     "Pattern",
