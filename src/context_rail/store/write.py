@@ -40,6 +40,7 @@ from context_rail.model.manifest import Manifest
 from context_rail.model.metadata import prepare_fields
 from context_rail.model.pack import load_pack
 from context_rail.model.primitives import PRIMITIVES, RECORD_STAMPED_KEYS, RELATIONS
+from context_rail.model.seats import SEAT_KINDS
 from context_rail.kernel.relations import endpoint_problem
 from context_rail.store.adapters import ADAPTER_PREFIX, project_root, resolve_adapter
 from context_rail.store.doc import etag, parse_doc, record_digest
@@ -201,6 +202,7 @@ def commit(
     extra_records: Sequence[dict[str, Any]] = (),
     inventory: tuple[tuple[str, str], ...] | None = None,
     allow_record_relocation: bool = False,
+    reserved_kinds: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Apply ``ops`` and append the requested records; return what was written.
 
@@ -218,6 +220,13 @@ def commit(
         raise WriteRefused("VALIDATION_FAILED", "an idempotency key must be text")
     targets = _plan_ops(store, ops)
     requests = _record_requests(record, extra_records)
+    for request in requests:
+        if request.kind in SEAT_KINDS and request.kind not in reserved_kinds:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"{request.kind!r} is an engine-owned seat record; seat commands write it",
+                {"kind": request.kind, "reason": "reserved_kind"},
+            )
 
     if key is not None:
         saved = replay(store, key)

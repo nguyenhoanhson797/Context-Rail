@@ -10,7 +10,7 @@ from context_rail.gateway.handlers.common import profile_document
 from context_rail.gateway.tools import reserved_seat_names
 from context_rail.kernel.seats import fold
 from context_rail.model.roles import check_profile_narrows, is_name, Role
-from context_rail.model.seats import HUMAN, SEAT_GRANTED
+from context_rail.model.seats import HUMAN, SEAT_GRANTED, SEAT_KINDS, SEAT_REVOKED
 from context_rail.store import query
 from context_rail.store.lock import store_lock
 from context_rail.store.write import WriteRefused, commit
@@ -18,7 +18,7 @@ from context_rail.store.write import WriteRefused, commit
 _PROJECT = "project"
 _SKILL_PRESET = "skill"
 
-__all__ = ["seat_grant", "seat_list"]
+__all__ = ["seat_grant", "seat_list", "seat_revoke"]
 
 
 def seat_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -166,6 +166,7 @@ def seat_grant(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
             actor=identity.name,
             key=args.get("key"),
             index=ctx.index,
+            reserved_kinds=frozenset(SEAT_KINDS),
         )
     return {
         "seat": seat,
@@ -175,6 +176,81 @@ def seat_grant(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
         "granted_by": identity.name,
         "live": True,
     }
+
+
+def seat_revoke(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Revoke a live seat; every seat it granted stops living in the fold.
+
+    Only the human or an ancestor in the target's grant lineage may revoke, and
+    no seat may revoke itself. The check runs again inside the store lock.
+    """
+    if not ctx.role_mode:
+        raise WriteRefused(
+            "INVALID_STATE",
+            "this pack declares no roles; revoke seats only in a store with roles",
+            {"reason": "no_roles", "command": "rail pack use <pack>"},
+        )
+    identity = ctx.identity
+    seat = _text(args.get("seat"), "seat")
+    with store_lock(ctx.store):
+        ctx.index.sync()
+        live = query.live_seats(ctx.index)
+        target = live.get(seat)
+        if target is None:
+            raise WriteRefused(
+                "NOT_FOUND",
+                f"no live seat {seat!r}",
+                {"reason": "seat_unknown", "seat": seat, "live": sorted(live)},
+            )
+        _check_revoker(identity, seat, live)
+        record = {
+            "kind": SEAT_REVOKED,
+            "about": [] if target.anchor == _PROJECT else [target.anchor],
+            "data": {
+                "schema": 1,
+                "seat": seat,
+                "revoked_by": identity.name,
+            },
+        }
+        commit(
+            ctx.store,
+            ctx.manifest,
+            [],
+            record,
+            actor=identity.name,
+            key=args.get("key"),
+            index=ctx.index,
+            reserved_kinds=frozenset(SEAT_KINDS),
+        )
+    return {"seat": seat, "revoked_by": identity.name, "live": False}
+
+
+def _check_revoker(
+    identity: Any, seat: str, live: dict[str, Any]
+) -> None:
+    if identity.kind == "human":
+        return
+    if identity.kind != "seat" or identity.name == seat:
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            f"seat {identity.name!r} may not revoke {seat!r}",
+            {"reason": "revoke_denied", "seat": seat},
+        )
+    seen: set[str] = set()
+    parent = live[seat].granted_by
+    while parent != HUMAN and parent not in seen:
+        if parent == identity.name:
+            return
+        seen.add(parent)
+        holder = live.get(parent)
+        if holder is None:
+            break
+        parent = holder.granted_by
+    raise WriteRefused(
+        "PERMISSION_DENIED",
+        f"seat {identity.name!r} may not revoke {seat!r}",
+        {"reason": "revoke_denied", "seat": seat},
+    )
 
 
 def _check_granter(identity: Any, role_name: str) -> None:
