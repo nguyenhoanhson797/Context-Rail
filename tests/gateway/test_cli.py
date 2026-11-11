@@ -61,7 +61,7 @@ def test_cli_help_is_text_and_lists_the_grouped_surface(tmp_path):
 
 def test_cli_parser_errors_print_one_envelope(tmp_path):
     store = tmp_path / "context-rail"
-    for args in (("add",), ("nosuchcmd",), ("show", "t0", "--nosuchflag")):
+    for args in (("add",), ("show", "t0", "--nosuchflag")):
         proc = run_cli(tmp_path, *args, store=store)
         assert proc.returncode == 1, (args, proc.stdout, proc.stderr)
         payload = _json(proc)
@@ -70,6 +70,14 @@ def test_cli_parser_errors_print_one_envelope(tmp_path):
             "error": {"code": "VALIDATION_FAILED", "message": payload["error"]["message"]},
         }, args
         assert proc.stdout.count('"ok"') == 1
+
+
+def test_cli_unknown_head_without_a_store_prints_one_envelope(tmp_path):
+    proc = run_cli(tmp_path, "nosuchcmd", store=tmp_path / "context-rail")
+
+    assert proc.returncode == 1
+    assert _json(proc)["error"]["code"] == "NOT_FOUND"
+    assert proc.stdout.count('"ok"') == 1
 
 
 def test_cli_exit_codes(tmp_path):
