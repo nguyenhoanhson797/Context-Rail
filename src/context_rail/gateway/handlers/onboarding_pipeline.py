@@ -11,6 +11,7 @@ import yaml
 
 from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import load_yaml
+from context_rail.gateway.identity import name_is_cto, name_is_human
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, load_manifest, render_path
 from context_rail.model.pack import load_pack
@@ -103,7 +104,7 @@ def picture_stage(
         }
     mode = _mode(args)
     if mode == "scaffold":
-        if not _is_tty() or actor != "human":
+        if not _is_tty() or not name_is_human(actor):
             return {
                 "state": "skipped",
                 "reason": "no_picture_source",
@@ -125,7 +126,7 @@ def picture_stage(
     if mode == "draft":
         from context_rail.store.write import WriteRefused
 
-        if actor != "cto":
+        if not name_is_cto(actor):
             raise WriteRefused(
                 "PERMISSION_DENIED", "only the CTO actor may propose a draft picture"
             )
@@ -134,7 +135,7 @@ def picture_stage(
     else:
         from context_rail.store.write import WriteRefused
 
-        if actor != "human":
+        if not name_is_human(actor):
             raise WriteRefused(
                 "PERMISSION_DENIED", f"{mode} onboarding needs the human actor"
             )
@@ -207,7 +208,7 @@ def approval_stage(
             "reason": "no_approve",
             "command": _APPROVE_COMMAND,
         }
-    if not actor_named or actor != "human":
+    if not actor_named or not name_is_human(actor):
         return {
             "state": "skipped",
             "reason": "actor_not_named",

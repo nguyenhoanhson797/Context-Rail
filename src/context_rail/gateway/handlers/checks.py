@@ -172,7 +172,7 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "VALIDATION_FAILED", "a new check needs the Item it verifies",
                 {"slug": slug},
             )
-        if _is_acceptance(index, slug, current, spec) and actor != "human":
+        if _is_acceptance(index, slug, current, spec) and not ctx.identity.human:
             raise WriteRefused(
                 "PERMISSION_DENIED",
                 "acceptance checks are written by the human only",
@@ -571,9 +571,9 @@ def _human_payload(
     supplied: Mapping[str, Any],
     actor: str,
 ) -> dict[str, Any]:
-    if actor != "human":
+    if not ctx.identity.human:
         raise WriteRefused(
-            "PERMISSION_DENIED", "a human verdict needs actor 'human'", {"actor": actor}
+            "PERMISSION_DENIED", "a human verdict needs the human", {"actor": actor}
         )
     verdict = supplied.get("verdict")
     if verdict not in HUMAN_VERDICTS:

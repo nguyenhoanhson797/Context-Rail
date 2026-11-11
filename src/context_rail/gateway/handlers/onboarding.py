@@ -27,6 +27,7 @@ from context_rail.gateway.handlers.common import (
     prepare_document_fields,
     record_data,
 )
+from context_rail.gateway.identity import name_is_cto, name_is_human
 from context_rail.gateway.handlers.init import (
     GITIGNORE,
     _check_code_graph,
@@ -138,13 +139,13 @@ def init(_ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, An
         return _after_code_graph(receipt, args, actor)
     mode = _mode(args)
     if mode == "draft":
-        if actor != "cto":
+        if not name_is_cto(actor):
             raise WriteRefused(
                 "PERMISSION_DENIED", "only the CTO actor may propose a draft picture"
             )
         draft = True
     else:
-        if actor != "human":
+        if not name_is_human(actor):
             raise WriteRefused(
                 "PERMISSION_DENIED", f"{mode} onboarding needs the human actor"
             )
@@ -248,7 +249,7 @@ def _after_code_graph(
 ) -> dict[str, Any]:
     """Run the readiness probe once for an external provider the human chose."""
     choice = requested_code_graph(args)
-    if choice not in ("graphify", "gitnexus") or actor != "human":
+    if choice not in ("graphify", "gitnexus") or not name_is_human(actor):
         return value
     store = value.get("store")
     if not isinstance(store, str):

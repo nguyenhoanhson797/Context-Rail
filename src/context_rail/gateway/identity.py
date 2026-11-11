@@ -26,11 +26,33 @@ from context_rail.store.write import WriteRefused
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["ANONYMOUS", "Identity", "IdentityRefused", "resolve_identity"]
+__all__ = [
+    "ANONYMOUS",
+    "Identity",
+    "IdentityRefused",
+    "name_is_cto",
+    "name_is_human",
+    "resolve_identity",
+]
 
 ANONYMOUS = "anonymous"
 _OPEN_COMMAND = "rail seat open <seat> -- <command>"
-_LEAD_NAMES = ("cto", "human")
+_CTO = "cto"
+_LEAD_NAMES = (_CTO, HUMAN)
+
+
+def name_is_human(name: str) -> bool:
+    """Whether a name-only caller is the human.
+
+    ``init`` and ``migrate`` run before a store has an identity to resolve, so
+    they still read the name the gateway resolved for them.
+    """
+    return name == HUMAN
+
+
+def name_is_cto(name: str) -> bool:
+    """Whether a name-only caller is the CTO, for the store-less draft path."""
+    return name == _CTO
 
 
 class IdentityRefused(WriteRefused):

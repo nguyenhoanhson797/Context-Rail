@@ -214,8 +214,8 @@ def test_a_worker_catalog_is_scoped_to_its_item(tmp_path: Path) -> None:
     _bug_at(store, "fixing")
     context.index.sync()
 
-    assert surface.catalog(context, role="implementer") == {"items": [], "omitted": 0}
-    scoped = surface.catalog(context, role="implementer", item="a-bug")
+    assert surface.catalog(context, lead=False) == {"items": [], "omitted": 0}
+    scoped = surface.catalog(context, lead=False, item="a-bug")
     assert [entry["name"] for entry in scoped["items"]] == ["bug"]
 
 

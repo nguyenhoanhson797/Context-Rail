@@ -18,16 +18,14 @@ _HIERARCHY_CAP = 20
 
 def types(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """The catalog, scoped to the caller's role."""
-    role = _role(ctx.actor)
     return surface.catalog(
-        ctx, role=role, item=args.get("item"), limit=args["limit"]
+        ctx, lead=ctx.identity.lead, item=args.get("item"), limit=args["limit"]
     )
 
 
 def next(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """The operating queue, or one worker's card with its focus breadcrumb."""
-    role = _role(ctx.actor)
-    if role != "cto":
+    if not ctx.identity.lead:
         if not args.get("item"):
             raise WriteRefused(
                 "VALIDATION_FAILED",
@@ -118,7 +116,3 @@ def why(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         return surface.why(ctx, args["slug"])
     except surface.SurfaceError as error:
         raise WriteRefused(error.code, error.message, error.details) from None
-
-
-def _role(actor: str) -> str:
-    return "cto" if actor in ("cto", "human") else actor

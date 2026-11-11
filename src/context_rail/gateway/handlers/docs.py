@@ -838,7 +838,7 @@ def _require_gate(ctx: Context, doc: Doc, target: str, actor: str) -> None:
         doc.slug,
         states,
         review,
-        actor == "human" and ctx.actor_named,
+        ctx.identity.human and ctx.actor_named,
         candidate,
     )
     if decision.allowed and not missing:

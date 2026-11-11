@@ -12,6 +12,7 @@ from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.util import now_iso
 from context_rail.gateway.handlers.init import GITIGNORE, pinned_folders
 from context_rail.gateway.handlers.onboarding import agent_ops
+from context_rail.gateway.identity import name_is_human
 from context_rail.model.manifest import initial_manifest
 from context_rail.model.pack import load_pack
 from context_rail.store.legacy import read_legacy
@@ -27,7 +28,7 @@ __all__ = ["migrate"]
 
 def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Read a legacy tree, then write a v3 store through one commit."""
-    if actor != "human":
+    if not name_is_human(actor):
         raise WriteRefused(
             "PERMISSION_DENIED",
             "migrating a legacy store is a human-only action",

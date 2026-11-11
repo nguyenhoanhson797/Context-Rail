@@ -49,19 +49,19 @@ class SurfaceError(Exception):
 
 def catalog(
     context: Any,
-    role: str = "cto",
+    lead: bool = True,
     *,
     item: str | None = None,
     limit: int = CATALOG_CHARS,
 ) -> dict[str, Any]:
     """Every document type the pack declares, with its workflow and use line.
 
-    A CTO sees the whole catalog. A worker sees only the type of the item it was
-    given, so a narrow order never exposes the rest of the project.
+    A lead sees the whole catalog. A worker sees only the type of the item it
+    was given, so a narrow order never exposes the rest of the project.
     """
     pack = context.pack
     names = list(pack.presets)
-    if role != "cto":
+    if not lead:
         if item is None:
             return {"items": [], "omitted": 0}
         doc = _document(context, item)
@@ -301,9 +301,7 @@ def _operating_card(context: Any, preset: str, slug: str) -> dict[str, Any]:
     actions = (
         ()
         if row is None
-        else operating.applicable_actions(
-            context, model, row, getattr(context, "actor", "cto")
-        )
+        else operating.applicable_actions(context, model, row, context.identity.name)
     )
     policy = model.operating.focus
     return {

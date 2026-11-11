@@ -127,8 +127,6 @@ _CONFIRM_SLUG = {
     "rename": "old",
     "check": "slug",
 }
-_HUMAN = "human"
-_CTO = "cto"
 _COMPILED_SURFACE = frozenset({"types", "next", "model", "explain", "why", "seat list"})
 
 
@@ -384,17 +382,17 @@ def _actor_env() -> str | None:
     return caller_actor_env()
 
 
-def _tick_refusal(actor: str, actor_env: str | None) -> str | None:
-    """Whether a tick may start: the CTO or the human, and only as the outer session.
+def _tick_refusal(identity: Identity, actor_env: str | None) -> str | None:
+    """Whether a tick may start: the lead alone, and only as the outer session.
 
     A droid child always carries ``RAIL_ACTOR``, so a session that is already
-    running can never nest a second tick; a worker actor may not start one at
-    all.
+    running can never nest a second tick; an identity whose role may not tick
+    starts none at all.
     """
     if actor_env is not None:
         return "'cto tick' cannot be nested inside a running session"
-    if actor not in (_CTO, _HUMAN):
-        return f"{_CTO!r} or {_HUMAN!r} alone may start a CTO tick, not {actor!r}"
+    if not identity.may("tick"):
+        return f"the lead alone may start a CTO tick, not {identity.name!r}"
     return None
 
 
@@ -451,7 +449,7 @@ def _authorize(
     if tool.permission == "human" or context is None:
         return None
     if tool.name == "cto tick":
-        nested = _tick_refusal(actor, actor_env)
+        nested = _tick_refusal(context.identity, actor_env)
         if nested is not None:
             return fail("PERMISSION_DENIED", nested, {"tool": tool.name, "actor": actor})
     profile = context.profile
@@ -480,7 +478,7 @@ def _authorize(
     if tool.name == "adapters sync" and params.get("force"):
         # Replacing a hand-edited generated file is a human action even in a
         # store with no charter yet, so it is checked before the policy rules.
-        if actor != _HUMAN:
+        if not context.identity.human:
             return fail(
                 "PERMISSION_DENIED",
                 "forcing generated adapter files is a human-only action",
@@ -511,10 +509,10 @@ def _authorize(
     # and the lockout on the protected picture are skipped; the workflow
     # quality gates (checks, review, merge) still apply.
     if getattr(policy, "mode", "full") == "solo":
-        if tool.name in EXECUTION_TOOLS and actor not in (_HUMAN, _CTO):
+        if tool.name in EXECUTION_TOOLS and not context.identity.lead:
             return fail(
                 "PERMISSION_DENIED",
-                "solo mode allows the human or CTO to execute",
+                "solo mode allows the lead to execute",
                 {"tool": tool.name, "actor": actor},
             )
         return None
@@ -535,7 +533,7 @@ def _authorize(
             refusal,
             {"tool": tool.name, "decision": decision, "actor": actor},
         )
-    if decision == "human-only" and actor == _HUMAN:
+    if decision == "human-only" and context.identity.human:
         action, target = _confirmation(tool, params, context)
         if target is not None:
             reason = validate_confirmation(action, target, params.get("confirm"))

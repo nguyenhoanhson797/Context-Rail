@@ -28,6 +28,7 @@ from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import FINISHED_CATEGORIES, PRIMITIVES
+from context_rail.model.seats import HUMAN
 from context_rail.store.placement import (
     PlacementError,
     expected_paths,
@@ -948,7 +949,7 @@ def _human_fact(ix: Index, slug: str, pack: Pack) -> bool:
             payload = json.loads(data_json) if data_json is not None else None
         except ValueError:
             continue
-        if actor != "human":
+        if actor != HUMAN:
             continue
         if kind in _VERDICT_KINDS:
             return True

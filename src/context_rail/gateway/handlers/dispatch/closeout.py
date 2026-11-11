@@ -44,7 +44,7 @@ def _merge_gate(
     ]
     review = review_gate_state(query.review_for_item(ctx.index, slug))
     return gates.evaluate_gate(
-        policy, "merge", slug, checks, review, actor == "human", candidate
+        policy, "merge", slug, checks, review, ctx.identity.human, candidate
     )
 
 

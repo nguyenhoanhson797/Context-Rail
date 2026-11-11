@@ -113,7 +113,7 @@ def rollback(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         else ("human-only" if protected else "cto-alone")
     )
     if decision == "human-only":
-        if actor != "human":
+        if not ctx.identity.human:
             raise WriteRefused(
                 "PERMISSION_DENIED",
                 "restoring a protected target is a human-only action",
