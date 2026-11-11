@@ -38,6 +38,7 @@ def test_parse_accepts_prefix_and_double_star(raw: str) -> None:
     ("raw", "anchors"),
     [
         ("src/*", ()),
+        ("/**", ()),
         ("src/a*/**", ()),
         ("/abs/**", ()),
         ("C:/x/**", ()),

@@ -1,9 +1,9 @@
 """Role-mode authorization: a seat acts through its role and its reach.
 
 A store whose pack declares roles decides every write from the seat's role and
-what the seat can reach, never from a name. Reads stay open here; Task 24 scopes
-them. The guard fails closed: a write tool with no rule is refused rather than
-allowed, so a new command cannot quietly become a seat capability.
+what the seat can reach, never from a name. The read views scope themselves with
+the same reach. The guard fails closed: a write tool with no rule is refused
+rather than allowed, so a new command cannot quietly become a seat capability.
 """
 
 from __future__ import annotations

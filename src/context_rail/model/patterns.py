@@ -68,6 +68,8 @@ def parse_pattern(
     if not raw.endswith(_SUFFIX):
         refuse(f"{where} must be '<prefix>/**' or '**', not {raw!r}")
     prefix = raw[: -len(_SUFFIX)]
+    if not prefix.strip():
+        refuse(f"{where} must be '**' for the whole tree, not {raw!r}")
     parts: list[str | PatternToken] = []
     end = 0
     for match in _TOKEN.finditer(prefix):
