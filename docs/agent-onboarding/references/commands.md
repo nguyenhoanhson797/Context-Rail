@@ -123,6 +123,8 @@ rail <seat> [command ...]
   starter roles, and does not select it. It refuses a version-1 source and an
   extending pack that has no own `operating` block. Select the draft with the
   human-only `ops pack use`.
+- In a role-mode store, run `ops pack use` and `approve` yourself in a terminal
+  (or through the UI). `--actor` is refused and a session is never human.
 
 ## Change surface
 

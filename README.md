@@ -404,14 +404,15 @@ To opt a pack into role mode, write a draft with starter roles and select it:
 
 ```bash
 rail ops pack create --name mine --from scrum --roles
-rail --actor human ops pack use --name mine --expect <rail-yaml-etag> \
+rail ops pack use --name mine --expect <rail-yaml-etag> \
   --confirm "USE PACK mine"
 ```
 
-The generated roles are a starting point; edit them in the draft before the
-human approves the new pack. The human's first project seat can then be granted;
-after that, a lead may grant only the roles its own `can.grant` lists and only
-inside its write reach.
+Run the pack switch yourself in a terminal: role mode refuses `--actor`, and a
+session is never human. The generated roles are a starting point; edit them in
+the draft before the human approves the new pack. The human's first project seat
+can then be granted; after that, a lead may grant only the roles its own
+`can.grant` lists and only inside its write reach.
 
 ## For engineers
 

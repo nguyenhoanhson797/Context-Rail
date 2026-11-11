@@ -122,7 +122,7 @@ Roles are compiled into the approved pack, so changing one needs re-approval.
 
 ```bash
 rail ops pack create --name mine --from scrum --roles   # draft with starter roles
-rail --actor human ops pack use --name mine --expect <etag> --confirm "USE PACK mine"
+rail ops pack use --name mine --expect <etag> --confirm "USE PACK mine"
 
 rail seat grant lead-1 --role lead --anchor project     # the human's first seat
 rail seat grant sprint-1 --role sprint-lead --anchor sprint-3 --profile manager
@@ -132,6 +132,10 @@ rail seat open sprint-1 -- rail next                   # child gets RAIL_SESSION
 rail sprint-1 next                                     # read as that seat
 rail seat close sprint-1                               # or --all (human)
 ```
+
+Run the pack switch yourself in a terminal: role mode refuses `--actor`, and a
+seat session is never human. The first seat grant is the human's bootstrap step;
+after that, a lead may grant inside its `can.grant` and write reach.
 
 In role mode:
 

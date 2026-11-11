@@ -89,6 +89,8 @@ as long as its run.
 - `rail ops pack create --roles` writes a draft with operating version 2 and
   starter roles, without selecting it; it refuses a version-1 source and an
   extending pack without its own `operating` block.
+- In a role-mode store, run `ops pack use` and `approve` yourself in a terminal
+  (or through the UI). `--actor` is refused and a session is never human.
 - MCP in role mode lists read tools plus the write tools the seat's role holds;
   a legacy store and the human still see the whole table.
 
