@@ -10,19 +10,7 @@ from context_rail.core.result import is_ok
 from context_rail.gateway.daemon import spawn_daemon
 from context_rail.gateway.execution import caller_identity
 from context_rail.gateway.gateway import try_daemon_invoke
-from helpers import open_test_session, run_cli, serving_daemon
-
-
-def actors_for(store: Path, slug: str) -> set[str]:
-    actors: set[str] = set()
-    for path in (store / "records").rglob("*.json"):
-        text = path.read_text(encoding="utf-8")
-        if slug not in text:
-            continue
-        value = json.loads(text).get("actor")
-        if isinstance(value, str):
-            actors.add(value)
-    return actors
+from helpers import actors_for, open_test_session, run_cli, serving_daemon
 
 
 def add_args(preset: str, title: str, parent: str) -> dict[str, object]:

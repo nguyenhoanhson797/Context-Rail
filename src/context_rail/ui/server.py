@@ -18,6 +18,8 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from context_rail.gateway.execution import human_channel
+from context_rail.gateway.identity import roles_declared
 from context_rail.store.write import WriteRefused
 from context_rail.ui import api
 
@@ -51,6 +53,7 @@ def create_server(
     """Bind the UI to loopback and return its server, token and base URL."""
     token = secrets.token_urlsafe(32)
     store = Path(store)
+    scoped = roles_declared(store)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ContextRailUI/1"
@@ -172,7 +175,10 @@ def create_server(
                 return
             arguments = body.get("args") if isinstance(body.get("args"), dict) else {}
             try:
-                result = api.call_tool(store, name, arguments, actor)
+                with human_channel():
+                    result = api.call_tool(
+                        store, name, arguments, None if scoped else actor
+                    )
             except WriteRefused as error:
                 status = (
                     HTTPStatus.FORBIDDEN

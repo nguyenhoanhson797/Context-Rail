@@ -1239,19 +1239,24 @@ def mcp_list(store: Path, *, actor: str | None = None) -> list[dict[str, Any]]:
     return found
 
 
-def stdio_session(store: Path, *, actor: str | None = None) -> Any:
+def stdio_session(
+    store: Path, *, actor: str | None = None, session: str | None = None
+) -> Any:
     """An initialized client session against ``context_rail mcp serve``."""
     import contextlib
     import os
 
     @contextlib.asynccontextmanager
-    async def session():
+    async def session_scope():
         from mcp import ClientSession
         from mcp.client.stdio import StdioServerParameters, stdio_client
 
         env = dict(os.environ)
         env["PYTHONPATH"] = str(_REPO_SRC)
-        env.pop("RAIL_ACTOR", None)
+        for name in ("RAIL_ACTOR", "RAIL_SESSION", "RAIL_RUN"):
+            env.pop(name, None)
+        if session is not None:
+            env["RAIL_SESSION"] = session
         command = [sys.executable, "-m", "context_rail", "--store", str(store)]
         if actor is not None:
             command += ["--actor", actor]
@@ -1262,7 +1267,20 @@ def stdio_session(store: Path, *, actor: str | None = None) -> Any:
                 await client.initialize()
                 yield client
 
-    return session()
+    return session_scope()
+
+
+def actors_for(store: Path, needle: str) -> set[str]:
+    """The actor of every record that mentions ``needle``."""
+    actors: set[str] = set()
+    for path in (store / "records").rglob("*.json"):
+        text = path.read_text(encoding="utf-8")
+        if needle not in text:
+            continue
+        value = json.loads(text).get("actor")
+        if isinstance(value, str):
+            actors.add(value)
+    return actors
 
 
 def require_git_identity() -> None:

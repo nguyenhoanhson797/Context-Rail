@@ -11,15 +11,19 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from context_rail.context.reach import ReachError, resolve_reach
 from context_rail.gateway.execution import resolve_actor_name
 from context_rail.kernel.seats import LiveSeat
 from context_rail.model.errors import ModelError
+from context_rail.model.manifest import load_manifest
+from context_rail.model.pack import load_pack
 from context_rail.model.roles import Role
 from context_rail.model.seats import HUMAN
 from context_rail.store import query
+from context_rail.store.location import PathEscape, find_store
 from context_rail.store.sessions import Session, resolve_session
 from context_rail.store.write import WriteRefused
 
@@ -33,6 +37,7 @@ __all__ = [
     "name_is_cto",
     "name_is_human",
     "resolve_identity",
+    "roles_declared",
 ]
 
 ANONYMOUS = "anonymous"
@@ -53,6 +58,27 @@ def name_is_human(name: str) -> bool:
 def name_is_cto(name: str) -> bool:
     """Whether a name-only caller is the CTO, for the store-less draft path."""
     return name == _CTO
+
+
+def roles_declared(store: Path | None) -> bool:
+    """Whether the store's pack declares roles, for a transport with no context.
+
+    A server pins identity per request, so it must know whether to send an
+    actor name or a session before the first call opens a context of its own.
+    """
+    if store is None:
+        try:
+            store = find_store(Path.cwd())
+        except (PathEscape, OSError):
+            return False
+        if store is None:
+            return False
+    try:
+        manifest = load_manifest(store)
+        pack = load_pack(manifest.pack, store)
+    except (ModelError, OSError, ValueError):
+        return False
+    return bool(getattr(pack.operating, "roles", None))
 
 
 class IdentityRefused(WriteRefused):

@@ -211,7 +211,7 @@ def portfolio_document(store: Path, actor: str = "human") -> dict[str, Any]:
 
 
 def call_tool(
-    store: Path, name: str, arguments: dict[str, Any], actor: str = "human"
+    store: Path, name: str, arguments: dict[str, Any], actor: str | None = "human"
 ) -> dict[str, Any]:
     """Run one tool and translate its Result into the page's envelope."""
     from context_rail.store.write import WriteRefused
