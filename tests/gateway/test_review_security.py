@@ -249,6 +249,34 @@ def test_a_non_positive_ttl_is_refused(role_store: SimpleNamespace) -> None:
     assert refusal(opened) == ("VALIDATION_FAILED", "ttl_invalid")
 
 
+def test_a_seat_whose_anchor_vanished_is_refused_with_reach_unresolved(
+    role_store: SimpleNamespace,
+) -> None:
+    from context_rail.model.seats import SEAT_GRANTED
+
+    write_record(
+        role_store.store,
+        "seat-broken-1",
+        SEAT_GRANTED,
+        {
+            "schema": 1,
+            "seat": "broken-1",
+            "role": "implementer",
+            "anchor": "missing-anchor",
+            "granted_by": "human",
+        },
+        about=(),
+        at="2026-11-10T10:05:00Z",
+    )
+    token = open_test_session(role_store.store, "broken-1")
+    with caller_identity(None, None, session=token):
+        shown = invoke(
+            "show", {"slug": role_store.o1}, store=role_store.store
+        )
+
+    assert refusal(shown) == ("PERMISSION_DENIED", "reach_unresolved")
+
+
 def test_a_session_opened_before_its_grant_is_refused(tmp_path: Path) -> None:
     store = tmp_path / "context-rail"
     store.mkdir()
