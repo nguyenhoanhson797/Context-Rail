@@ -103,8 +103,11 @@ def test_a_seat_granted_again_after_a_revoke_is_live_once(
     assert [row["live"] for row in mine] == [False, True]
 
 
-def test_seat_list_in_a_legacy_store_is_empty(approved_store: Path) -> None:
-    assert listed(approved_store) == {"seats": [], "role_mode": False}
+def test_seat_list_in_a_legacy_store_says_no_roles(approved_store: Path) -> None:
+    result = invoke("seat list", {}, store=approved_store)
+
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+    assert result["error"]["details"]["reason"] == "no_roles"
 
 
 def test_seat_list_runs_from_the_command_line(role_store: SimpleNamespace) -> None:

@@ -790,6 +790,20 @@ TOOLS: tuple[Tool, ...] = (
         ),
         handler="context_rail.gateway.handlers.seats:seat_close",
     ),
+    Tool(
+        name="seat show",
+        summary="One seat's role, reach, skills, budget, workspace and queue head.",
+        permission="read",
+        params=(
+            Param(
+                "seat",
+                "str",
+                positional=True,
+                help="the handle of a live seat; defaults to the caller's own",
+            ),
+        ),
+        handler="context_rail.gateway.handlers.seats:seat_show",
+    ),
 )
 
 
@@ -811,7 +825,7 @@ for _tool in TOOLS:
 del _tool, _param
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
-_SURFACE_LEAVES = {"init", "approve", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon", "seat list", "seat grant", "seat revoke", "seat open", "seat close"}
+_SURFACE_LEAVES = {"init", "approve", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon", "seat list", "seat grant", "seat revoke", "seat open", "seat close", "seat show"}
 
 
 def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:

@@ -96,9 +96,14 @@ def next(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 def _seat_next(
     ctx: Context, args: dict[str, Any], identity: Any
 ) -> dict[str, Any]:
-    """A seat's next: its anchor's card, or the queue inside its anchor."""
-    role = identity.role
-    anchor = identity.seat.anchor
+    """A seat's next: its anchor's card, or the queue inside its anchor.
+
+    A lens reads as the seat it shows, so the queue and card come from that
+    seat's anchor, not the caller's.
+    """
+    seat = identity.view_as or identity.seat
+    role = ctx.pack.operating.roles.get(seat.role) or identity.role
+    anchor = seat.anchor
     if role.anchor.kind == "item":
         slug = args.get("item") or anchor
         refused = read_refusal(ctx, slug)

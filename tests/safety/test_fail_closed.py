@@ -71,6 +71,7 @@ _REFUSED_TOOLS = (
     "seat revoke",
     "seat open",
     "seat close",
+    "seat show",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
@@ -138,6 +139,7 @@ _ARGS: dict[str, dict[str, Any]] = {
     "seat revoke": {"seat": "s1"},
     "seat open": {"seat": "s1"},
     "seat close": {"seat": "s1"},
+    "seat show": {"seat": "s1"},
 }
 _ZONK = f"""---
 primitive: item

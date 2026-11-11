@@ -10,12 +10,14 @@ VALIDATION_FAILED envelope and exit 1.
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 from context_rail import __version__
 from context_rail.gateway.tools import (
+    ALIASES,
     GROUP_SUMMARIES,
     LEGACY_TO_SURFACE,
     SURFACE_TOOLS,
@@ -28,6 +30,13 @@ from context_rail.gateway.tools import (
 )
 
 __all__ = ["main"]
+
+_SEAT_SLUG = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+_COMMAND_HEADS = frozenset(
+    {tool.name.split()[0] for tool in TOOLS}
+    | {alias.split()[0] for alias in ALIASES}
+    | {legacy.split()[0] for legacy in LEGACY_TO_SURFACE}
+)
 
 
 class _Parser(argparse.ArgumentParser):
@@ -301,6 +310,7 @@ def _expand_legacy(argv: list[str]) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     """Run one command and return the process exit code."""
     raw = list(sys.argv[1:] if argv is None else argv)
+    raw, lens = _split_seat_lens(raw)
     head, command = _split_seat_open(raw)
     args = _expand_legacy(head)
     try:
@@ -332,11 +342,24 @@ def main(argv: list[str] | None = None) -> int:
         if name not in reserved and name in names
     }
     if command is not None and tool == "seat open":
-        return _seat_open_command(namespace, params, command)
-    served = _fast_path(namespace, tool, params, declared)
+        return _seat_open_command(namespace, params, command, lens)
+    served = _fast_path(namespace, tool, params, declared, lens)
     if served is not None:
         return _finish(tool, served)
-    return _finish(tool, _direct_invoke(namespace, tool, params))
+    return _finish(tool, _direct_invoke(namespace, tool, params, lens))
+
+
+def _split_seat_lens(argv: list[str]) -> tuple[list[str], str | None]:
+    """Read ``rail <seat> ...`` as a lens when the head is not a command."""
+    index = _command_index(argv)
+    if index is None:
+        return argv, None
+    token = argv[index]
+    if token in _COMMAND_HEADS or _SEAT_SLUG.fullmatch(token) is None:
+        return argv, None
+    if index + 1 == len(argv):
+        return [*argv[:index], "seat", "show", token], None
+    return [*argv[:index], *argv[index + 1 :]], token
 
 
 def _split_seat_open(argv: list[str]) -> tuple[list[str], list[str] | None]:
@@ -353,14 +376,19 @@ def _split_seat_open(argv: list[str]) -> tuple[list[str], list[str] | None]:
 
 
 def _seat_open_command(
-    namespace: argparse.Namespace, params: dict[str, Any], command: list[str]
+    namespace: argparse.Namespace,
+    params: dict[str, Any],
+    command: list[str],
+    lens: str | None,
 ) -> int:
     """Open the seat's session and launch ``command`` with it in the environment."""
     import subprocess
 
     from context_rail.core.result import fail
 
-    result = _direct_invoke(namespace, "seat open", {**params, "print_env": True})
+    result = _direct_invoke(
+        namespace, "seat open", {**params, "print_env": True}, lens
+    )
     if result.get("ok") is not True:
         return _finish("seat open", result)
     token = (result.get("value") or {}).get("token")
@@ -386,7 +414,10 @@ def _seat_open_command(
 
 
 def _direct_invoke(
-    namespace: argparse.Namespace, tool: str, params: dict[str, Any]
+    namespace: argparse.Namespace,
+    tool: str,
+    params: dict[str, Any],
+    lens: str | None = None,
 ) -> dict[str, Any]:
     """Run one tool in this process as the caller the CLI was given."""
     from context_rail.gateway.execution import caller_identity
@@ -397,6 +428,7 @@ def _direct_invoke(
         os.environ.get("RAIL_ACTOR"),
         session=caller_session(),
         tty=_terminal(),
+        lens=lens,
     ):
         return invoke(tool, params, store=namespace.store, actor=namespace.actor)
 
@@ -406,6 +438,7 @@ def _fast_path(
     tool: str,
     params: dict[str, Any],
     declared: Tool | None,
+    lens: str | None = None,
 ) -> dict[str, Any] | None:
     """Serve the call from the store's live daemon, or return None to run it direct.
 
@@ -432,6 +465,7 @@ def _fast_path(
         read_only=declared.permission == "read",
         session=caller_session(),
         tty=_terminal(),
+        lens=lens,
     )
     if served is None and not daemon.daemon_alive(store):
         daemon.spawn_daemon(store)

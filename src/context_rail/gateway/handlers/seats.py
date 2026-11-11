@@ -2,33 +2,48 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 
+from context_rail.context import recipes
 from context_rail.context.reach import ReachError, resolve_reach
 from context_rail.gateway.gateway import Context
-from context_rail.gateway.handlers.common import profile_document
+from context_rail.gateway.handlers.common import profile_document, skill_pins_for
 from context_rail.gateway.tools import reserved_seat_names
 from context_rail.kernel.seats import fold
 from context_rail.model.roles import check_profile_narrows, is_name, Role
 from context_rail.model.seats import HUMAN, SEAT_GRANTED, SEAT_KINDS, SEAT_REVOKED
 from context_rail.store import query
+from context_rail.store.location import local_dir
 from context_rail.store.lock import store_lock
-from context_rail.store.sessions import close_sessions, open_session
+from context_rail.store.sessions import SESSIONS_DIR, close_sessions, open_session
 from context_rail.store.write import WriteRefused, commit
 
 _PROJECT = "project"
 _SKILL_PRESET = "skill"
 _MAX_TTL_HOURS = 168
 _DEFAULT_TTL_HOURS = 12
+_QUEUE_HEAD = 5
 
-__all__ = ["seat_close", "seat_grant", "seat_list", "seat_open", "seat_revoke"]
+__all__ = [
+    "seat_close",
+    "seat_grant",
+    "seat_list",
+    "seat_open",
+    "seat_revoke",
+    "seat_show",
+]
 
 
 def seat_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """The live seats; ``all`` lists every grant and marks which one is live."""
     if not ctx.role_mode:
-        return {"seats": [], "role_mode": False}
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "this pack declares no roles; seat commands need a pack with roles",
+            {"reason": "no_roles", "command": "rail pack use <pack>"},
+        )
     events = query.seat_events(ctx.index)
     live = fold(events)
     rows: list[dict[str, Any]] = []
@@ -497,6 +512,164 @@ def _text(value: Any, key: str) -> str:
 
 def _named(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def seat_show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """One seat's role, reach, skills, budget, workspace, session and queue head.
+
+    A seat sees itself; a seat with a wider read reach sees another seat's card;
+    the human (terminal or channel) and an anonymous reader may view any live
+    seat. The card never writes.
+    """
+    requested = _named(args.get("seat"))
+    if not ctx.role_mode:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"unknown command {requested or 'seat'!r}; this pack declares no roles, "
+            "so seat lenses are unavailable",
+            {"reason": "no_roles", "command": "rail pack use <pack>"},
+        )
+    identity = ctx.identity
+    live = query.live_seats(ctx.index)
+    if requested is None:
+        if identity.seat is None:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                "seat show needs a seat: this caller has none",
+                {"reason": "seat_required"},
+            )
+        target = identity.seat
+    else:
+        target = live.get(requested)
+        if target is None:
+            raise WriteRefused(
+                "NOT_FOUND",
+                f"no live seat is named {requested!r}",
+                {
+                    "reason": "seat_unknown",
+                    "seat": requested,
+                    "candidates": sorted(live),
+                },
+            )
+        _check_card_view(ctx, identity, target)
+    role = ctx.pack.operating.roles.get(target.role)
+    if role is None:
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            f"seat {target.seat!r} holds role {target.role!r}, which the pack no longer declares",
+            {"reason": "seat_role_unknown", "seat": target.seat, "role": target.role},
+        )
+    try:
+        reach = resolve_reach(ctx.index, ctx.pack, role, target)
+    except ReachError as exc:
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            str(exc),
+            {"reason": "reach_unresolved", "seat": target.seat},
+        ) from exc
+    pins: list[dict[str, Any]] = []
+    problems: list[str] = []
+    for skill in role.skills:
+        try:
+            pins.extend(skill_pins_for(ctx, [skill]))
+        except WriteRefused as exc:
+            problems.append(exc.message)
+    session = (
+        _session_expiry(ctx.store, identity.session)
+        if identity.session is not None and identity.name == target.seat
+        else None
+    )
+    head = [
+        row.slug
+        for row in recipes.item_rows(ctx.index, ctx.pack, reach=reach)
+        if row.category in ("not_started", "active")
+        and not _is_container(ctx, row.preset)
+    ][:_QUEUE_HEAD]
+    return {
+        "seat": target.seat,
+        "role": target.role,
+        "anchor": _anchor_card(ctx, target.anchor),
+        "reach": {
+            "documents": len(reach.read_slugs),
+            "read_presets": sorted(reach.read_presets),
+            "read_prefixes": list(reach.read_prefixes),
+            "write_prefixes": list(reach.write_prefixes),
+            "code_read": list(reach.code_read),
+            "code_write": list(reach.code_write),
+        },
+        "can": dict(role.can.methods),
+        "skills": pins,
+        "budget": {"chars": role.sees.chars, "docs": role.sees.docs},
+        "workspace": role.workspace,
+        "session": session,
+        "queue_head": head,
+        "problems": problems,
+    }
+
+
+def _check_card_view(ctx: Context, identity: Any, target: Any) -> None:
+    if identity.kind in ("human", "anonymous"):
+        return
+    if identity.name == target.seat:
+        return
+    reach = ctx.reach
+    row = (
+        None
+        if target.anchor == _PROJECT
+        else ctx.index.conn.execute(
+            "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1", (target.anchor,)
+        ).fetchone()
+    )
+    if target.anchor == _PROJECT:
+        allowed = reach is not None and reach.read_all
+    else:
+        allowed = (
+            reach is not None
+            and row is not None
+            and reach.can_read(target.anchor, path=row[0], preset=row[1])
+        )
+    if not allowed:
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            f"seat {target.seat!r} is outside the caller's read reach",
+            {"reason": "out_of_reach", "seat": target.seat, "anchor": target.anchor},
+        )
+
+
+def _is_container(ctx: Context, preset: str | None) -> bool:
+    declared = ctx.pack.presets.get(preset or "")
+    return declared is not None and declared.container
+
+
+def _anchor_card(ctx: Context, anchor: str) -> dict[str, Any]:
+    if anchor == _PROJECT:
+        return {"slug": _PROJECT, "title": _PROJECT, "status": None}
+    row = ctx.index.conn.execute(
+        "SELECT title, status FROM docs WHERE slug = ? LIMIT 1", (anchor,)
+    ).fetchone()
+    return {
+        "slug": anchor,
+        "title": (row[0] if row is not None and row[0] else anchor),
+        "status": None if row is None else row[1],
+    }
+
+
+def _session_expiry(store: Any, session_id: str | None) -> dict[str, Any] | None:
+    if not isinstance(session_id, str) or not session_id:
+        return None
+    path = local_dir(store) / SESSIONS_DIR / f"{session_id}.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    expires = payload.get("expires") if isinstance(payload, dict) else None
+    if isinstance(expires, bool) or not isinstance(expires, (int, float)):
+        return None
+    return {
+        "expires": datetime.fromtimestamp(expires, timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    }
 
 
 def _row(

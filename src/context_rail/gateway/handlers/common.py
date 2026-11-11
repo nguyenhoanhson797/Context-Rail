@@ -832,19 +832,39 @@ def skill_pins(context: Context, profile: Profile) -> list[dict[str, Any]]:
     A profile may name a scoped copy; when the store ships only the shared
     source for the same slug, that source is the document the pin describes.
     """
+    return [_pin(context, *_skill_source(context, declared)) for declared in profile.skills]
+
+
+def skill_pins_for(context: Context, declared: Sequence[str]) -> list[dict[str, Any]]:
+    """Pin the store's skill notes named by slugs, refusing a missing one."""
     pins: list[dict[str, Any]] = []
-    for declared in profile.skills:
-        rel, data = _skill_source(context, declared)
-        doc = parse_doc(rel, data)
-        version = doc.fields.get("version")
-        if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
+    for slug in declared:
+        row = context.index.conn.execute(
+            "SELECT path FROM docs WHERE slug = ? AND preset = 'skill' "
+            "AND broken = 0 ORDER BY path LIMIT 1",
+            (slug,),
+        ).fetchone()
+        if row is None:
             raise WriteRefused(
                 "VALIDATION_FAILED",
-                f"skill {rel!r} carries no positive version",
-                {"skill": rel},
+                f"the role names a missing skill note {slug!r}",
+                {"skill": slug},
             )
-        pins.append({"identity": rel, "version": version, "etag": etag(data)})
+        rel = row[0]
+        pins.append(_pin(context, rel, (Path(context.store) / rel).read_bytes()))
     return pins
+
+
+def _pin(context: Context, rel: str, data: bytes) -> dict[str, Any]:
+    doc = parse_doc(rel, data)
+    version = doc.fields.get("version")
+    if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"skill {rel!r} carries no positive version",
+            {"skill": rel},
+        )
+    return {"identity": rel, "version": version, "etag": etag(data)}
 
 
 def _skill_source(context: Context, declared: str) -> tuple[str, bytes]:

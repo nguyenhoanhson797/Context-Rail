@@ -100,6 +100,7 @@ VISIBLE_PATHS: frozenset[str] = frozenset(VISIBLE_ALIASES) | {
     "seat revoke",
     "seat open",
     "seat close",
+    "seat show",
 }
 
 #: Flat names accepted for continuity and where they move in the grouped surface.
