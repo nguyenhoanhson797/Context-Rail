@@ -449,6 +449,10 @@ def _fast_path(
     """
     if namespace.no_daemon or os.environ.get("RAIL_NO_DAEMON") or declared is None:
         return None
+    if _terminal() and caller_session() is None:
+        # A real terminal proves the human only in this process, never over the
+        # socket; a human call therefore runs direct instead of through a daemon.
+        return None
     if not daemon_eligible(declared, params):
         return None
     store = _daemon_store(namespace.store)

@@ -204,16 +204,8 @@ def _legacy(context: Context, actor: str | None) -> Identity:
         kind="legacy",
         name=name,
         human=name == HUMAN,
-        lead=name in _LEAD_NAMES or _profile_is_cto(context, name),
+        lead=name in _LEAD_NAMES,
     )
-
-
-def _profile_is_cto(context: Context, name: str) -> bool:
-    try:
-        profile = context.profile if name == context.actor else context.profile_for(name)
-    except (ModelError, WriteRefused):
-        return False
-    return profile is not None and profile.recipe == "cto"
 
 
 def _seat(context: Context, token: str) -> Identity:
@@ -225,7 +217,7 @@ def _seat(context: Context, token: str) -> Identity:
         seat = live.get(found.seat)
         if seat is None:
             raise _invalid(f"seat {found.seat!r} is not live")
-        if _changed(found, seat):
+        if _changed(found, seat) or _opened_before_grant(found, seat.granted_at):
             raise _invalid(f"seat {found.seat!r} was granted again after this session opened")
     else:
         seat = _run_seat(found, live)
@@ -249,8 +241,14 @@ def _seat(context: Context, token: str) -> Identity:
 def _run_seat(found: Session, live: dict[str, LiveSeat]) -> LiveSeat:
     if found.role is None or found.anchor is None or found.granted_by is None:
         raise _invalid("the run session carries no seat")
-    if found.granted_by != HUMAN and found.granted_by not in live:
-        raise _invalid(f"seat {found.granted_by!r}, which started this run, is not live")
+    if found.granted_by != HUMAN:
+        granter = live.get(found.granted_by)
+        if granter is None:
+            raise _invalid(f"seat {found.granted_by!r}, which started this run, is not live")
+        if _opened_before_grant(found, granter.granted_at):
+            raise _invalid(
+                f"seat {found.granted_by!r} was granted again after this run seat opened"
+            )
     created = datetime.fromtimestamp(found.created, timezone.utc)
     return LiveSeat(
         seat=found.seat,
@@ -260,6 +258,17 @@ def _run_seat(found: Session, live: dict[str, LiveSeat]) -> LiveSeat:
         granted_by=found.granted_by,
         granted_at=created.strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
+
+
+def _opened_before_grant(found: Session, granted_at: str) -> bool:
+    """Whether the session predates the live grant that now carries its name."""
+    try:
+        granted = datetime.strptime(granted_at, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except (TypeError, ValueError):
+        return True
+    return int(found.created) < int(granted.timestamp())
 
 
 def _changed(found: Session, seat: LiveSeat) -> bool:

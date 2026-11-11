@@ -220,13 +220,16 @@ class Context:
 
     @cached_property
     def reach(self) -> ReachSet | None:
-        """What the caller's seat (or the seat a lens shows) may read and write.
+        """What the caller's own seat may read and write.
 
-        ``None`` means unrestricted: a name in a store without roles, the human
-        and a caller with no seat.
+        ``None`` means unrestricted: a name in a store without roles or the
+        human. A lens changes what a seat looks at, never what it may read; a
+        caller with no seat in a store with roles sees no documents at all.
         """
-        seat = self.identity.view_as or self.identity.seat
+        seat = self.identity.seat
         if seat is None:
+            if self.identity.kind == "anonymous":
+                return ReachSet(seat=None, unrestricted=False)
             return None
         role = self.pack.operating.roles.get(seat.role)
         if role is None:
@@ -393,7 +396,7 @@ def _tick_refusal(identity: Identity, actor_env: str | None) -> str | None:
     running can never nest a second tick; an identity whose role may not tick
     starts none at all.
     """
-    if actor_env is not None:
+    if actor_env is not None or os.environ.get("RAIL_RUN"):
         return "'cto tick' cannot be nested inside a running session"
     if not identity.may("tick"):
         return f"the lead alone may start a CTO tick, not {identity.name!r}"
@@ -453,7 +456,11 @@ def _authorize(
         return fail(
             "PERMISSION_DENIED", refusal, {"tool": tool.name, "actor": actor}
         )
-    if tool.permission == "human" and not actor_named:
+    if (
+        tool.permission == "human"
+        and not actor_named
+        and not (context is not None and context.identity.human)
+    ):
         return fail(
             "PERMISSION_DENIED",
             "human-only tools need an explicitly named human; "

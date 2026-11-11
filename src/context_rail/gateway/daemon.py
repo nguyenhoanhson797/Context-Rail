@@ -769,7 +769,9 @@ class _DaemonServer:
         session = session_raw if isinstance(session_raw, str) else None
         lens_raw = payload.get("lens")
         lens = lens_raw if isinstance(lens_raw, str) else None
-        tty = payload.get("tty") is True
+        # A socket request cannot prove it came from a terminal: only a token or
+        # the caller's own direct invocation can make a human.
+        tty = False
         if not isinstance(tool, str) or not tool.strip():
             conn.sendall(b'{"ok": false}\n')
             return

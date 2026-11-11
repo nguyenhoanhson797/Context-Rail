@@ -241,7 +241,8 @@ def seat_revoke(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
             index=ctx.index,
             reserved_kinds=frozenset(SEAT_KINDS),
         )
-    return {"seat": seat, "revoked_by": identity.name, "live": False}
+    closed = close_sessions(ctx.store, seat=seat)
+    return {"seat": seat, "revoked_by": identity.name, "live": False, "closed": closed}
 
 
 def _check_revoker(

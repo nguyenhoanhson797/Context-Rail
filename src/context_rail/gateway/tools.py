@@ -437,7 +437,7 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         name="ui serve",
         summary="Serve the loopback UI over HTTP for this store.",
-        permission="read",
+        permission="human",
         params=(Param("port", "int", default=0, help="port to bind (default: choose one)"),),
         handler="context_rail.gateway.handlers.ui:serve",
     ),
