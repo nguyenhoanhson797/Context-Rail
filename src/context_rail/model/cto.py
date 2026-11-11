@@ -296,6 +296,9 @@ RUN_KEYS = (
     "report",
     "code_area",
     "symbols_changed",
+    "seat",
+    "seat_role",
+    "dispatcher",
 )
 CODE_AREA_MAX = 50
 SYMBOLS_CHANGED_MAX = 200
@@ -870,6 +873,9 @@ def parse_run(data: dict[str, Any]) -> Run:
         "argv_digest",
         "intent",
         "report",
+        "seat",
+        "seat_role",
+        "dispatcher",
     ):
         _optional_string(payload.get(key), f"run.{key}")
     for key in ("verdicts", "files_changed", "commits_changed"):

@@ -235,6 +235,10 @@ def _review_run_record(
     started_at: str,
     ended_at: str,
     duration: float,
+    seat: str | None = None,
+    seat_role: str | None = None,
+    dispatcher: str | None = None,
+    run_kind: str | None = None,
 ) -> str | None:
     attempt = {
         "number": 1,
@@ -253,7 +257,7 @@ def _review_run_record(
     data = {
         "schema": 1,
         "dispatch_id": review_id,
-        "role": REVIEW_ROLE,
+        "role": run_kind or REVIEW_ROLE,
         "actor": profile_name,
         "profile": profile_name,
         "profile_version": profile.version,
@@ -283,6 +287,10 @@ def _review_run_record(
         "argv_digest": ran.runner.get("argv_digest"),
         "report": report_id,
     }
+    if seat is not None:
+        data["seat"] = seat
+        data["seat_role"] = seat_role
+        data["dispatcher"] = dispatcher
     parse_run(data)
     result = commit(
         ctx.store,

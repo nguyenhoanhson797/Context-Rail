@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from context_rail.core.util import new_ulid, now_iso, sha256_hex
-from context_rail.gateway.handlers.common import checkout, profile_document, required
+from context_rail.gateway.handlers.common import checkout, profile_document, read_doc, required
 from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import Profile
 from context_rail.runner import dispatch as local_dispatch
@@ -42,6 +42,7 @@ from .review_records import (
     _verdict_ids,
     _verify_review_check,
 )
+from .roles import open_run_seat, pick_role
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -106,12 +107,26 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     )
     if separation is not None:
         raise separation
-    if profile.recipe != REVIEW_ROLE:
+    _data, current_doc = read_doc(store, rel)
+    role = None
+    if ctx.role_mode:
+        role = pick_role(
+            ctx,
+            ctx.identity,
+            item=slug,
+            preset=current_doc.preset or "",
+            workspace="read",
+            requested=_optional(args.get("role")),
+        )
+        run_kind = "reviewer"
+    elif profile.recipe != REVIEW_ROLE:
         raise WriteRefused(
             "VALIDATION_FAILED",
             f"profile {profile_name!r} is a {profile.recipe!r}, not a reviewer",
             {"profile": profile_name, "recipe": profile.recipe},
         )
+    else:
+        run_kind = None
     droid = droid_profile(profile, name=profile_name, model=review_model)
     budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     _facts, used_seconds, _used_attempts = _run_facts(index, slug)
@@ -140,6 +155,8 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         model=review_model,
         actor=actor,
         key=key,
+        role=role,
+        run_kind=run_kind,
         timeout=remaining,
     )
 
@@ -163,6 +180,8 @@ def _review_candidate(
     actor: str,
     key: str,
     timeout: float,
+    role: Any = None,
+    run_kind: str | None = None,
 ) -> dict[str, Any]:
     """Launch one separated reviewer at exactly ``candidate`` and keep its verdict.
 
@@ -171,6 +190,19 @@ def _review_candidate(
     """
     root, _git_dir = checkout(ctx, action="a dispatch")
     review_id = new_ulid()
+    seat = None
+    run_token = None
+    if role is not None:
+        run_token = open_run_seat(
+            ctx,
+            role,
+            item=slug,
+            dispatcher=ctx.identity,
+            profile_name=profile_name,
+            profile=profile,
+            dispatch_id=review_id,
+        )
+        seat = f"{role.name}@{review_id}"
     paths = local_dispatch.review_paths(store, slug, review_id)
     started_at = now_iso()
     flight_started = time.monotonic()
@@ -284,6 +316,10 @@ def _review_candidate(
         started_at=started_at,
         ended_at=ended_at,
         duration=duration,
+        seat=seat,
+        seat_role=role.name if role is not None else None,
+        dispatcher=ctx.identity.name if role is not None else None,
+        run_kind=run_kind,
     )
     evaluated = _evaluation_record(
         ctx,

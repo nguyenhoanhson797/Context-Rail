@@ -77,6 +77,7 @@ from .common import (
     effective_seconds,
 )
 from .records import _escalation_record, _failure_report, _started_record
+from .roles import open_run_seat, pick_role
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -117,12 +118,27 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "INVALID_STATE", "the charter is not approved", {"reason": "approval_missing"}
         )
     _profile_rel, profile_etag, profile = profile_document(ctx, profile_name)
-    if profile.recipe != IMPL_ROLE:
+    _data, current_doc = read_doc(store, rel)
+    preset = current_doc.preset or ""
+    role = None
+    if ctx.role_mode:
+        role = pick_role(
+            ctx,
+            ctx.identity,
+            item=slug,
+            preset=preset,
+            workspace="write",
+            requested=_optional(args.get("role")),
+        )
+        run_kind = "implementer"
+    elif profile.recipe != IMPL_ROLE:
         raise WriteRefused(
             "VALIDATION_FAILED",
             f"profile {profile_name!r} is a {profile.recipe!r}, not an implementer",
             {"profile": profile_name, "recipe": profile.recipe},
         )
+    else:
+        run_kind = None
     current_runner = runner_name(profile)
     launch_model = resolve_model(profile, current_runner)
     droid = droid_profile(profile, name=profile_name, model=launch_model)
@@ -149,6 +165,19 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
 
     dispatch_id = new_ulid()
+    run_seat = None
+    run_token = None
+    if role is not None:
+        run_token = open_run_seat(
+            ctx,
+            role,
+            item=slug,
+            dispatcher=ctx.identity,
+            profile_name=profile_name,
+            profile=profile,
+            dispatch_id=dispatch_id,
+        )
+        run_seat = f"{role.name}@{dispatch_id}"
     paths = local_dispatch.dispatch_paths(store, slug, dispatch_id)
     with local_dispatch.acquire_dispatch_lock(store, slug, dispatch_id):
         _refuse_pending(store, slug)
@@ -244,6 +273,11 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             code_section=prepared.section,
             code_entries=prepared.entries,
             code_warnings=prepared.warnings,
+            run_kind=run_kind,
+            seat=run_seat,
+            seat_role=role.name if role is not None else None,
+            dispatcher=ctx.identity.name if role is not None else None,
+            run_seat_token=run_token,
         )
         role_file, order_file = _write_prompts(ctx, plan, rel, intent)
         return _execute(plan, role_file, order_file)
@@ -446,7 +480,7 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
     run_data = {
         "schema": 1,
         "dispatch_id": plan.dispatch_id,
-        "role": plan.profile.recipe,
+        "role": plan.run_kind or plan.profile.recipe,
         "actor": plan.profile_name,
         "profile": plan.profile_name,
         "profile_version": plan.profile.version,
@@ -476,6 +510,10 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
     }
     if plan.code_entries:
         run_data["code_area"] = list(plan.code_entries)
+    if plan.seat is not None:
+        run_data["seat"] = plan.seat
+        run_data["seat_role"] = plan.seat_role
+        run_data["dispatcher"] = plan.dispatcher
     if (
         candidate
         and public_capture["complete"]

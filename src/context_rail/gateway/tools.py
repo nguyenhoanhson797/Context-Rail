@@ -186,6 +186,7 @@ TOOLS: tuple[Tool, ...] = (
         params=(
             Param("item", "str", required=True, positional=True, help="leaf Item slug"),
             Param("profile", "str", default="implementer", help="implementer profile name"),
+            Param("role", "str", help="the pack role to dispatch as; picked when unambiguous"),
             Param("expect", "str", required=True, help="the Item's current etag"),
             Param("all", "bool", help="dispatch outside the operating focus"),
             Param("intent", "str", help="a bounded note from the CTO: approach and rejected alternatives"),
@@ -201,6 +202,7 @@ TOOLS: tuple[Tool, ...] = (
             Param("item", "str", required=True, positional=True, help="leaf Item slug"),
             Param("run", "str", required=True, help="the verified implementer run id"),
             Param("profile", "str", default="reviewer", help="reviewer profile name"),
+            Param("role", "str", help="the pack role to review as; picked when unambiguous"),
             Param("key", "str", required=True, help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.dispatch:review",

@@ -79,6 +79,11 @@ class _Plan:
     code_section: str = "(none)"
     code_entries: tuple[str, ...] = ()
     code_warnings: tuple[str, ...] = ()
+    run_kind: str | None = None
+    seat: str | None = None
+    seat_role: str | None = None
+    dispatcher: str | None = None
+    run_seat_token: str | None = None
 
 
 def _optional(value: Any) -> str | None:
