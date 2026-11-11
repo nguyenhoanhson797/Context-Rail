@@ -242,6 +242,7 @@ def _conflict_sections(
             f"Resolve the rebase conflict in {names} against {onto} for {doc.title or slug}.",
             6000,
         ),
+        "context": "(none)",
         "workflow": workflow_text,
         "selected scope": ", ".join(doc.relations.get("part_of", ())) or "(none)",
         "conventions": "Keep the candidate's intent and the human commit's intent.",

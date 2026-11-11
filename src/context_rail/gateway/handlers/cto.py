@@ -548,6 +548,7 @@ def _order_sections(
     )
     return {
         "objective": f"{_ORDER_OBJECTIVE}\n\n# The brief\n\n{brief['text']}",
+        "context": "(none)",
         "workflow": _workflow_summary(context),
         "selected scope": _ORDER_SCOPE,
         "conventions": _ORDER_CONVENTIONS,
