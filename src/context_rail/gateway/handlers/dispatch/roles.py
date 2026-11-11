@@ -8,13 +8,15 @@ TTL, live while its run is open.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from context_rail.context.reach import ReachError, resolve_reach
 from context_rail.context.seat_brief import seat_brief
 from context_rail.core.util import now_iso
 from context_rail.kernel.seats import LiveSeat
 from context_rail.model.roles import check_profile_narrows
+from context_rail.store import query
 from context_rail.store.sessions import open_session
 from context_rail.store.write import WriteRefused
 
@@ -24,7 +26,15 @@ if TYPE_CHECKING:
     from context_rail.model.cto import Profile
     from context_rail.model.roles import Role
 
-__all__ = ["code_reach_text", "open_run_seat", "pick_role", "run_seat_brief"]
+__all__ = [
+    "code_reach_text",
+    "code_reach_violations",
+    "independence_refusal",
+    "open_run_seat",
+    "pick_role",
+    "refuse_code_reach",
+    "run_seat_brief",
+]
 
 
 def pick_role(
@@ -180,6 +190,118 @@ def run_seat_brief(
 def code_reach_text(role: Role) -> str:
     """The role's code write patterns as the work order states them."""
     return ", ".join(pattern.raw for pattern in role.code_write) or "(none)"
+
+
+def independence_refusal(
+    ctx: Context,
+    *,
+    item: str,
+    step_kinds: Sequence[str],
+    acting: Sequence[str],
+) -> str | None:
+    """Why the acting seats are not independent of the item's listed steps.
+
+    ``acting`` names the acting seat and its profile. The producing and
+    reviewing run seats are compared by seat and profile; a ``grant`` step
+    compares the seat that granted the run seat. The acting dispatcher is not
+    part of ``acting``: one lead may dispatch both sides.
+    """
+    names = {name for name in acting if isinstance(name, str) and name}
+    if not names:
+        return None
+    for kind in step_kinds:
+        if kind == "produce":
+            prior = _run_names(ctx, item, "implementer", ("seat", "profile"))
+        elif kind == "review":
+            prior = _run_names(ctx, item, "reviewer", ("seat", "profile"))
+        elif kind == "grant":
+            prior = _run_names(ctx, item, None, ("dispatcher",))
+        else:
+            continue
+        overlap = sorted(names & prior)
+        if overlap:
+            return (
+                f"the {kind} step on {item!r} was already performed by "
+                + ", ".join(overlap)
+            )
+    return None
+
+
+def _run_names(
+    ctx: Context, item: str, role: str | None, fields: Sequence[str]
+) -> set[str]:
+    clause = "item = ?"
+    params: list[Any] = [item]
+    if role is not None:
+        clause += " AND role = ?"
+        params.append(role)
+    rows = ctx.index.conn.execute(
+        f"SELECT record_id FROM runs WHERE {clause}", params
+    ).fetchall()
+    found: set[str] = set()
+    for (run_id,) in rows:
+        record = query.run_record(ctx.index, run_id)
+        if record is None:
+            continue
+        data = record.get("data") or {}
+        for field in fields:
+            value = data.get(field)
+            if field == "profile" and not value:
+                value = record.get("profile")
+            if isinstance(value, str) and value:
+                found.add(value)
+    return found
+
+
+def code_reach_violations(
+    ctx: Context, run_data: Mapping[str, Any]
+) -> list[str]:
+    """The run's changed files outside the producing seat's code write reach.
+
+    A legacy run carries no ``seat_role`` and skips the check. A run whose
+    role or anchor cannot be resolved fails closed: every changed file is a
+    violation, never none.
+    """
+    files = [
+        path.replace("\\", "/")
+        for path in run_data.get("files_changed") or ()
+        if isinstance(path, str)
+    ]
+    seat_role = run_data.get("seat_role")
+    if not isinstance(seat_role, str) or not seat_role:
+        return []
+    role = ctx.pack.operating.roles.get(seat_role)
+    anchor = run_data.get("item")
+    if role is None or not isinstance(anchor, str) or not anchor:
+        return files
+    live = LiveSeat(
+        seat=str(run_data.get("seat") or f"{seat_role}@run"),
+        role=seat_role,
+        anchor=anchor,
+        profile=run_data.get("profile") or run_data.get("actor"),
+        granted_by=str(run_data.get("dispatcher") or "human"),
+        granted_at=str(run_data.get("started_at") or ""),
+    )
+    try:
+        reach = resolve_reach(ctx.index, ctx.pack, role, live)
+    except ReachError:
+        return files
+    return [path for path in files if not reach.can_write_code(path)]
+
+
+def refuse_code_reach(ctx: Context, run_data: Mapping[str, Any]) -> None:
+    """Refuse a run whose changed files leave its producing seat's code reach."""
+    violations = code_reach_violations(ctx, run_data)
+    if not violations:
+        return
+    role = ctx.pack.operating.roles.get(str(run_data.get("seat_role") or ""))
+    reach = [pattern.raw for pattern in role.code_write] if role is not None else []
+    raise WriteRefused(
+        "BUSINESS_RULE_VIOLATED",
+        "the run changed files outside its code write reach: "
+        + ", ".join(violations),
+        {"paths": violations, "reach": reach},
+    )
 
 
 def _allows(value: Any, preset: str) -> bool:

@@ -37,6 +37,7 @@ from .common import (
 )
 from .conflict import _continue_conflict, _merge_escalated
 from .review import _review_candidate, _separation_reason
+from .roles import refuse_code_reach
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -108,6 +109,7 @@ def merge(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"run": implementation_run, "status": run["status"]},
         )
 
+    refuse_code_reach(ctx, run["data"])
     root, _git_dir = checkout(ctx, action="a dispatch")
     branch = _current_branch(root)
     if branch != policy.default_branch:

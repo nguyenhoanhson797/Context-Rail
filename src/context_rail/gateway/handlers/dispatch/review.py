@@ -44,7 +44,12 @@ from .review_records import (
     _verdict_ids,
     _verify_review_check,
 )
-from .roles import open_run_seat, pick_role
+from .roles import (
+    independence_refusal,
+    open_run_seat,
+    pick_role,
+    refuse_code_reach,
+)
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -96,6 +101,38 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"run": implementation_run, "status": run["status"]},
         )
 
+    _data, current_doc = read_doc(store, rel)
+    role = None
+    if ctx.role_mode:
+        role = pick_role(
+            ctx,
+            ctx.identity,
+            item=slug,
+            preset=current_doc.preset or "",
+            workspace="read",
+            requested=_optional(args.get("role")),
+        )
+        run_kind = "reviewer"
+    else:
+        run_kind = None
+    refuse_code_reach(ctx, run["data"])
+    if role is not None and role.independent_of:
+        reason = independence_refusal(
+            ctx,
+            item=slug,
+            step_kinds=role.independent_of,
+            acting=(ctx.identity.name, profile_name),
+        )
+        if reason is not None:
+            raise WriteRefused(
+                "PERMISSION_DENIED",
+                reason,
+                {
+                    "reason": "independence_violation",
+                    "item": slug,
+                    "steps": list(role.independent_of),
+                },
+            )
     _profile_rel, profile_etag, profile = profile_document(ctx, profile_name)
     review_runner = runner_name(profile)
     review_model = resolve_model(profile, review_runner)
@@ -109,26 +146,12 @@ def review(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     )
     if separation is not None:
         raise separation
-    _data, current_doc = read_doc(store, rel)
-    role = None
-    if ctx.role_mode:
-        role = pick_role(
-            ctx,
-            ctx.identity,
-            item=slug,
-            preset=current_doc.preset or "",
-            workspace="read",
-            requested=_optional(args.get("role")),
-        )
-        run_kind = "reviewer"
-    elif profile.recipe != REVIEW_ROLE:
+    if not ctx.role_mode and profile.recipe != REVIEW_ROLE:
         raise WriteRefused(
             "VALIDATION_FAILED",
             f"profile {profile_name!r} is a {profile.recipe!r}, not a reviewer",
             {"profile": profile_name, "recipe": profile.recipe},
         )
-    else:
-        run_kind = None
     droid = droid_profile(profile, name=profile_name, model=review_model)
     budget = _effective_budget(policy.budgets.get("item") or {}, profile.budgets, ctx.pack.policy["retries"])
     _facts, used_seconds, _used_attempts = _run_facts(index, slug)

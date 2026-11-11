@@ -390,6 +390,12 @@ def write_run(
     duration: float = 1.0,
     files_changed: Sequence[str] | None = None,
     symbols_changed: Sequence[str] | None = None,
+    profile: str | None = None,
+    actor: str | None = None,
+    model: str | None = None,
+    seat: str | None = None,
+    seat_role: str | None = None,
+    dispatcher: str | None = None,
 ) -> Path:
     """Write one completed-run Record with a valid payload and return its path.
 
@@ -403,6 +409,13 @@ def write_run(
     """
     failed = status == "failed"
     counters = {"input_tokens": 2, "output_tokens": 3} if usage is None else usage
+    seat_fields = {}
+    if seat is not None:
+        seat_fields = {
+            "seat": seat,
+            "seat_role": seat_role,
+            "dispatcher": dispatcher,
+        }
     return write_record(
         store,
         run_id,
@@ -411,11 +424,11 @@ def write_run(
             "schema": 1,
             "dispatch_id": dispatch,
             "role": role,
-            "actor": "cto",
-            "profile": role,
+            "actor": role if actor is None else actor,
+            "profile": role if profile is None else profile,
             "profile_version": 1,
             "skills": [],
-            "model": "custom:Deepseek-V4-flash-0",
+            "model": "custom:Deepseek-V4-flash-0" if model is None else model,
             "item": item,
             "started_at": at,
             "ended_at": at,
@@ -437,6 +450,7 @@ def write_run(
             "verdicts": [],
             "usage": dict(counters),
             "report": report,
+            **seat_fields,
             **({} if files_changed is None else {"files_changed": list(files_changed)}),
             **(
                 {}
@@ -1306,6 +1320,25 @@ def open_test_session(store: Path, seat: str, **kw: Any) -> str:
 
     token, _ = open_session(store, seat, **kw)
     return token
+
+
+def as_seat(store: Path, seat: str, tool: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Invoke ``tool`` through the gateway holding ``seat``'s session."""
+    from context_rail.gateway.execution import caller_identity
+    from context_rail.gateway.gateway import invoke
+
+    token = open_test_session(store, seat)
+    with caller_identity(None, None, session=token):
+        return invoke(tool, args, store=store)
+
+
+def refusal(result: dict[str, Any]) -> tuple[str | None, Any]:
+    """The error code and reason of a refused result."""
+    from context_rail.core.result import is_ok
+
+    assert not is_ok(result), result
+    error = result["error"]
+    return error["code"], (error.get("details") or {}).get("reason")
 
 
 @contextmanager
