@@ -199,6 +199,56 @@ def test_digest_hides_waits_and_progress_from_another_area(
     assert role_store.billing not in children
 
 
+def test_a_lens_is_refused_in_a_store_without_roles(
+    approved_store: Path,
+) -> None:
+    with caller_identity(None, None, lens="mgr-orders"):
+        shown = invoke("show", {"slug": "charter"}, store=approved_store, actor=None)
+
+    assert refusal(shown) == ("VALIDATION_FAILED", "no_roles")
+
+
+def test_a_link_to_an_unreadable_target_is_read_out_of_reach(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        shown = invoke("show", {"slug": role_store.o1}, store=role_store.store, actor=None)
+    linked = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "link",
+        {
+            "src": role_store.o1,
+            "rel": "depends_on",
+            "dst": role_store.b1,
+            "expect": shown["value"]["doc"]["etag"],
+            "reason": "outside the area",
+        },
+    )
+
+    assert refusal(linked) == ("PERMISSION_DENIED", "read_out_of_reach")
+
+
+def test_only_the_human_may_close_every_session(role_store: SimpleNamespace) -> None:
+    closed = as_seat(
+        role_store.store, role_store.orders_seat, "seat close", {"all": True}
+    )
+
+    assert refusal(closed) == ("PERMISSION_DENIED", "close_denied")
+
+
+def test_a_non_positive_ttl_is_refused(role_store: SimpleNamespace) -> None:
+    with as_human():
+        opened = invoke(
+            "seat open",
+            {"seat": role_store.orders_seat, "ttl_hours": 0},
+            store=role_store.store,
+            actor=None,
+        )
+
+    assert refusal(opened) == ("VALIDATION_FAILED", "ttl_invalid")
+
+
 def test_a_session_opened_before_its_grant_is_refused(tmp_path: Path) -> None:
     store = tmp_path / "context-rail"
     store.mkdir()
