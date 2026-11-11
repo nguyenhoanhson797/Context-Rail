@@ -32,7 +32,9 @@ from context_rail.gateway.confirmation import confirmation_phrase, validate_conf
 from context_rail.context.reach import ReachError, ReachSet, resolve_reach
 from context_rail.gateway.execution import (
     ACTOR_NAMED,
+    HAS_TTY,
     HUMAN_CHANNEL,
+    LENS_SEAT,
     caller_actor_env,
     caller_session,
     resolve_actor_name,
@@ -325,6 +327,8 @@ def invoke(
                 context,
                 actor=actor,
                 session=caller_session(),
+                tty=HAS_TTY.get(),
+                lens=LENS_SEAT.get(),
                 human_channel=HUMAN_CHANNEL.get(),
             )
             if context.role_mode:

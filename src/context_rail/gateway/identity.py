@@ -8,10 +8,12 @@ the gateway reads the resulting :class:`Identity`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from context_rail.context.reach import ReachError, resolve_reach
 from context_rail.gateway.execution import resolve_actor_name
 from context_rail.kernel.seats import LiveSeat
 from context_rail.model.errors import ModelError
@@ -70,12 +72,17 @@ def resolve_identity(
     *,
     actor: str | None,
     session: str | None,
+    tty: bool = False,
+    lens: str | None = None,
     human_channel: bool = False,
 ) -> Identity:
     """The identity a call acts as; refuses a caller it cannot place.
 
     ``actor`` is the name the caller passed (flag or parameter), if any. In role
-    mode it is refused, and ``RAIL_ACTOR`` is never read.
+    mode it is refused, and ``RAIL_ACTOR`` is never read. A terminal or the UI's
+    per-run channel is the human only when no token is present. ``lens`` names a
+    live seat the caller views the store as; a seat caller may only lens a seat
+    whose anchor lies in its read reach.
     """
     if not context.role_mode:
         return _legacy(context, actor)
@@ -86,11 +93,61 @@ def resolve_identity(
             "open a session with 'rail seat open'",
             {"reason": "actor_flag_refused", "command": _OPEN_COMMAND},
         )
-    if session is None:
-        if human_channel:
-            return Identity(kind="human", name=HUMAN, human=True, lead=True)
-        return Identity(kind="anonymous", name=ANONYMOUS)
-    return _seat(context, session)
+    if session is not None:
+        identity = _seat(context, session)
+    elif human_channel or (tty and not _in_run()):
+        identity = Identity(kind="human", name=HUMAN, human=True, lead=True)
+    else:
+        identity = Identity(kind="anonymous", name=ANONYMOUS)
+    if lens is None:
+        return identity
+    return _with_lens(context, identity, lens)
+
+
+def _in_run() -> bool:
+    """Whether this process is a dispatched run, which is never the terminal human."""
+    return bool(os.environ.get("RAIL_RUN"))
+
+
+def _with_lens(context: Context, identity: Identity, name: str) -> Identity:
+    """``identity`` viewing the live seat ``name``, refused when it may not."""
+    if identity.kind == "seat" and name == identity.name:
+        return identity
+    live = query.live_seats(context.index)
+    target = live.get(name)
+    if target is None:
+        raise IdentityRefused(
+            "PERMISSION_DENIED",
+            f"no live seat is named {name!r}",
+            {"reason": "lens_unknown_seat", "seat": name, "candidates": sorted(live)},
+        )
+    if identity.kind == "seat" and not _can_read_anchor(context, identity, target.anchor):
+        raise IdentityRefused(
+            "PERMISSION_DENIED",
+            f"seat {name!r} is outside the caller's read reach",
+            {"reason": "lens_out_of_reach", "seat": name, "anchor": target.anchor},
+        )
+    return replace(identity, view_as=target)
+
+
+def _can_read_anchor(context: Context, identity: Identity, anchor: str) -> bool:
+    """Whether the caller's own seat may read the target seat's anchor."""
+    if identity.role is None or identity.seat is None:
+        return False
+    try:
+        reach = resolve_reach(context.index, context.pack, identity.role, identity.seat)
+    except ReachError as exc:
+        raise IdentityRefused(
+            "PERMISSION_DENIED",
+            f"the caller's reach cannot be resolved: {exc}",
+            {"reason": "lens_out_of_reach", "anchor": anchor},
+        ) from exc
+    row = context.index.conn.execute(
+        "SELECT path, preset FROM docs WHERE slug = ?", (anchor,)
+    ).fetchone()
+    if row is None:
+        return reach.read_all
+    return reach.can_read(anchor, path=row[0], preset=row[1])
 
 
 def _legacy(context: Context, actor: str | None) -> Identity:

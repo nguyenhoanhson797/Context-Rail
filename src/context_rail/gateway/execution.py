@@ -15,6 +15,11 @@ SERVING: ContextVar[bool] = ContextVar("serving", default=False)
 #: Set by a channel only a person can use (a terminal prompt, the UI's per-run
 #: token); an agent's session never sets it.
 HUMAN_CHANNEL: ContextVar[bool] = ContextVar("human_channel", default=False)
+#: Whether this call arrived from an interactive terminal. An agent runner has
+#: no TTY, so a tokenless agent can never claim to be the person.
+HAS_TTY: ContextVar[bool] = ContextVar("has_tty", default=False)
+#: The seat name a caller asks to view the store as; read-only once set.
+LENS_SEAT: ContextVar[str | None] = ContextVar("lens_seat", default=None)
 #: The caller's own ``RAIL_ACTOR``, held in a 1-tuple so "the caller named
 #: nothing" differs from "nobody said": unset means read this process.
 _CALLER_ACTOR_ENV: ContextVar[tuple[str | None] | None] = ContextVar(
@@ -32,19 +37,29 @@ def _named(value: str | None) -> str | None:
 
 @contextlib.contextmanager
 def caller_identity(
-    actor: str | None, env_actor: str | None, *, session: str | None = None
+    actor: str | None,
+    env_actor: str | None,
+    *,
+    session: str | None = None,
+    tty: bool = False,
+    lens: str | None = None,
 ) -> Iterator[None]:
     """Run a call as the caller named it, not as this process's environment.
 
     The daemon outlives its callers and was started by one of them, so its own
-    ``RAIL_ACTOR`` and ``RAIL_SESSION`` say nothing about who is asking.
+    ``RAIL_ACTOR`` and ``RAIL_SESSION`` say nothing about who is asking. The
+    terminal flag and the lens travel with the call the same way.
     """
     actor_token = EXPLICIT_ACTOR.set(actor)
     env_token = _CALLER_ACTOR_ENV.set((_named(env_actor),))
     session_token = _CALLER_SESSION.set((_named(session),))
+    tty_token = HAS_TTY.set(bool(tty))
+    lens_token = LENS_SEAT.set(_named(lens))
     try:
         yield
     finally:
+        LENS_SEAT.reset(lens_token)
+        HAS_TTY.reset(tty_token)
         _CALLER_SESSION.reset(session_token)
         _CALLER_ACTOR_ENV.reset(env_token)
         EXPLICIT_ACTOR.reset(actor_token)
