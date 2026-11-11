@@ -27,6 +27,7 @@ from context_rail.model.patterns import Pattern, parse_pattern
 from context_rail.model.primitives import RELATIONS
 
 if TYPE_CHECKING:
+    from context_rail.model.cto import Profile
     from context_rail.model.pack import Pack, Workflow
 
 __all__ = [
@@ -48,6 +49,7 @@ __all__ = [
     "ReachTerm",
     "Role",
     "Sees",
+    "check_profile_narrows",
     "is_name",
     "parse_roles",
     "role_as_dict",
@@ -207,6 +209,31 @@ def workflow_statuses(workflow: Workflow) -> tuple[str, ...]:
 def role_tools(role: Role) -> frozenset[str]:
     """The canonical write tools a role may call; ``grant`` is not a tool."""
     return frozenset(CAN_TOOLS[key] for key in role.can.methods if key in CAN_TOOLS)
+
+
+def check_profile_narrows(role: Role, profile: Profile) -> str | None:
+    """Why a role-mode profile is wider than its role, or None when it narrows.
+
+    A profile may drop methods the role holds, never add one, ask for high
+    autonomy when the role may not tick, or hold writing tool ids in a read-only
+    workspace.
+    """
+    from context_rail.core.tool_names import canonical_methods
+    from context_rail.model.cto import READ_ONLY_TOOL_IDS
+
+    if profile.auto == "high" and "tick" not in role.can.methods:
+        return "the profile sets auto: high, but the role may not tick"
+    write_methods = canonical_methods(profile.allowed_methods) & frozenset(
+        CAN_TOOLS.values()
+    )
+    outside = sorted(write_methods - role_tools(role))
+    if outside:
+        return "the profile allows methods outside the role: " + ", ".join(outside)
+    if role.workspace in ("none", "read"):
+        widening = sorted(set(profile.tools) - set(READ_ONLY_TOOL_IDS))
+        if widening:
+            return "the profile's tools need a write workspace: " + ", ".join(widening)
+    return None
 
 
 def role_as_dict(role: Role) -> dict[str, Any]:

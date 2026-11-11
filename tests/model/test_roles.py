@@ -14,6 +14,7 @@ from context_rail.model.roles import (
     CAN_TOOLS,
     Anchor,
     ReachTerm,
+    check_profile_narrows,
     parse_roles,
     role_as_dict,
     role_tools,
@@ -500,3 +501,58 @@ def test_roles_read_the_store_path_term(pack: Pack) -> None:
     term = parse_roles(raw, pack)["lead"].read[0]
 
     assert term.kind == "path" and term.value.raw == "items/{up.scene.slug}/**"
+
+
+def _role_profile(**fields: Any) -> Any:
+    from context_rail.model.cto import parse_profile
+
+    raw = {
+        "schema": 1,
+        "version": 1,
+        "budget": {"max_chars": 1000, "max_docs": 10},
+        "model": "test-model",
+        "effort": None,
+        "auto": None,
+        "tools": ["read-cli"],
+        "skills": [],
+        "budgets": {"attempts": 1, "seconds": 60, "tokens": None, "credits": None},
+    }
+    raw.update(fields)
+    return parse_profile(raw, role_mode=True)
+
+
+def test_a_role_mode_profile_that_narrows_its_role_is_accepted(pack: Pack) -> None:
+    lead = parse_roles(_roles(), pack)["lead"]
+    profile = _role_profile(
+        allowed_methods=["add", "update", "report"],
+        tools=["read-cli", "ls-cli"],
+    )
+
+    assert check_profile_narrows(lead, profile) is None
+
+
+def test_a_profile_may_not_add_a_method_outside_its_role(pack: Pack) -> None:
+    implementer = parse_roles(_roles(), pack)["implementer"]
+    profile = _role_profile(allowed_methods=["report", "add"])
+
+    reason = check_profile_narrows(implementer, profile)
+
+    assert reason is not None and "outside the role" in reason
+
+
+def test_auto_high_needs_a_role_that_may_tick(pack: Pack) -> None:
+    implementer = parse_roles(_roles(), pack)["implementer"]
+    profile = _role_profile(auto="high")
+
+    reason = check_profile_narrows(implementer, profile)
+
+    assert reason is not None and "auto: high" in reason
+
+
+def test_a_read_only_workspace_refuses_writing_tools(pack: Pack) -> None:
+    validator = parse_roles(_roles(), pack)["validator"]
+    profile = _role_profile(tools=["read-cli", "create-cli"])
+
+    reason = check_profile_narrows(validator, profile)
+
+    assert reason is not None and "write workspace" in reason

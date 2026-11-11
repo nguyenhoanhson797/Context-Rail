@@ -14,6 +14,7 @@ from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.tool_names import (
     ALIAS_DEFAULTS,
     ALIAS_SUMMARIES,
+    ALIASES,
     GROUP_SUMMARIES,
     LEGACY_TO_SURFACE,
     VISIBLE_ALIASES,
@@ -31,6 +32,7 @@ __all__ = [
     "Tool",
     "canonical_tool",
     "daemon_eligible",
+    "reserved_seat_names",
 ]
 
 
@@ -718,7 +720,38 @@ TOOLS: tuple[Tool, ...] = (
         params=(Param("all", "bool", help="include revoked and replaced grants"),),
         handler="context_rail.gateway.handlers.seats:seat_list",
     ),
+    Tool(
+        name="seat grant",
+        summary="Grant a seat a role on an anchor, inside the granter's write reach.",
+        permission="write",
+        params=(
+            Param(
+                "seat",
+                "str",
+                required=True,
+                positional=True,
+                help="the handle the seat is known by",
+            ),
+            Param("role", "str", required=True, help="a role the pack declares"),
+            Param(
+                "anchor",
+                "str",
+                help="an item slug, or 'project' for a project-anchored role",
+            ),
+            Param("profile", "str", help="an Actor profile in the store"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.seats:seat_grant",
+    ),
 )
+
+
+def reserved_seat_names() -> frozenset[str]:
+    """Every word a seat name may not start with: a command, alias or fixed name."""
+    names = {tool.name.split()[0] for tool in TOOLS}
+    names.update(alias.split()[0] for alias in ALIASES)
+    names.update(legacy.split()[0] for legacy in LEGACY_TO_SURFACE)
+    return frozenset(names | {"human", "project", "help", "seat"})
 
 
 _PARAM_TYPES = ("str", "int", "bool")
@@ -731,7 +764,7 @@ for _tool in TOOLS:
 del _tool, _param
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
-_SURFACE_LEAVES = {"init", "approve", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon", "seat list"}
+_SURFACE_LEAVES = {"init", "approve", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon", "seat list", "seat grant"}
 
 
 def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:
