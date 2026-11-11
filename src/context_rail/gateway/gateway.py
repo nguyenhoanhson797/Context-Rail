@@ -553,8 +553,12 @@ def _authorize(
             {"reason": locked, "tool": tool.name},
         )
     decision = effective_decision(tool, params, context)
+    # Planning stays open before approval; a protected human-only write does not.
+    approved = True
+    if tool.name in PROTECTED_METHODS and decision == "human-only":
+        approved = context.approval["state"] == "approved"
     refusal = rights.allowed_decision(
-        tool.permission, decision, actor, policy, None, True
+        tool.permission, decision, actor, policy, None, approved
     )
     if refusal is not None:
         return fail(
