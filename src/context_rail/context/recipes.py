@@ -620,8 +620,23 @@ def digest(
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
     long_items = too_long_rows(context, items, titles)
     waits, waits_omitted = human_waits(context, page)
+    if reach is not None:
+        kept_waits = [row for row in waits if _reachable(context, row.get("item"))]
+        waits_omitted += len(waits) - len(kept_waits)
+        waits = kept_waits
     decisions, decisions_total = query.reversible_decisions(index, since, page)
     rejected, rejected_total = query.rejected_reviews(index, since, page)
+    if reach is not None:
+        kept_decisions = [
+            row for row in decisions if _reachable(context, row.get("item"))
+        ]
+        decisions_total -= len(decisions) - len(kept_decisions)
+        decisions = kept_decisions
+        kept_reviews = [
+            row for row in rejected if _reachable(context, row.get("item"))
+        ]
+        rejected_total -= len(rejected) - len(kept_reviews)
+        rejected = kept_reviews
     counts = activity["counts"]
     runnable = structure.executable(list(items))
     feed = activity["reports"]

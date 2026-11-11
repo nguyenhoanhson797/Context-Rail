@@ -80,6 +80,13 @@ def code_view(context: Any, target: str, *, limit: int = CARD_CHARS) -> dict[str
     """Callers, callees, contents, touching items and decisions for one target."""
     wanted = normalize_target(target)
     path, _colon, symbol = wanted.partition(":")
+    reach = getattr(context, "reach", None)
+    if reach is not None and not reach.can_read_code(path):
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            f"{path!r} is outside the seat's code read reach",
+            {"reason": "out_of_reach", "target": wanted},
+        )
     store = Path(context.store)
     state = freshness(store)
     commit = state["graph"]
@@ -101,6 +108,10 @@ def code_view(context: Any, target: str, *, limit: int = CARD_CHARS) -> dict[str
     touches = query.code_touches(context.index, path, touch_symbol, limit=_LISTED)
     items = list(dict.fromkeys(row["item"] for row in touches))
     notes = _notes(context.index, path)
+    if reach is not None:
+        items = [item for item in items if _readable_item(context, item)]
+        touches = [row for row in touches if row["item"] in items]
+        notes = [note for note in notes if _readable_item(context, note)]
     view.setdefault("callers", [])
     view.setdefault("callees", [])
     view.setdefault("contains", [])
@@ -111,6 +122,18 @@ def code_view(context: Any, target: str, *, limit: int = CARD_CHARS) -> dict[str
     if commit is not None and not ids and not touches and not notes:
         raise LookupError("not_found")
     return _bounded(view, limit)
+
+
+def _readable_item(context: Any, slug: str) -> bool:
+    reach = getattr(context, "reach", None)
+    if reach is None:
+        return True
+    row = context.index.conn.execute(
+        "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1", (slug,)
+    ).fetchone()
+    if row is None:
+        return False
+    return reach.can_read(slug, path=row[0], preset=row[1])
 
 
 def _graph_line(state: dict[str, Any]) -> str:

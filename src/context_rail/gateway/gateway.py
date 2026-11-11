@@ -231,6 +231,13 @@ class Context:
             if self.identity.kind == "anonymous":
                 return ReachSet(seat=None, unrestricted=False)
             return None
+        reach = self._seat_reach(seat)
+        target = self.identity.view_as
+        if target is not None and target.seat != seat.seat:
+            reach = reach.intersect(self._seat_reach(target))
+        return reach
+
+    def _seat_reach(self, seat: Any) -> ReachSet:
         role = self.pack.operating.roles.get(seat.role)
         if role is None:
             raise WriteRefused(

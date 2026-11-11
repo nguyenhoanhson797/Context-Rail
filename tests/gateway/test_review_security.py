@@ -18,6 +18,8 @@ from helpers import (
     daemon_request,
     open_test_session,
     serving_daemon,
+    write_record,
+    write_run,
 )
 
 
@@ -36,6 +38,12 @@ def grant_worker(store: Path, anchor: str) -> None:
             actor=None,
         )
     assert is_ok(granted), granted
+
+
+def as_seat(store: Path, seat: str, tool: str, args: dict[str, Any]) -> dict[str, Any]:
+    token = open_test_session(store, seat)
+    with caller_identity(None, None, session=token):
+        return invoke(tool, args, store=store)
 
 
 def test_anonymous_cannot_start_the_ui_human_channel(
@@ -154,3 +162,197 @@ def test_a_session_opened_before_its_grant_is_refused(tmp_path: Path) -> None:
     from context_rail.gateway.identity import _opened_before_grant
 
     assert _opened_before_grant(session, seat.granted_at) is True
+
+
+def link(store: Path, src: str, rel: str, dst: str) -> None:
+    with as_human():
+        shown = invoke("show", {"slug": src}, store=store, actor=None)
+        linked = invoke(
+            "link",
+            {
+                "src": src,
+                "rel": rel,
+                "dst": dst,
+                "expect": shown["value"]["doc"]["etag"],
+                "reason": "security fixture",
+            },
+            store=store,
+            actor=None,
+        )
+    assert is_ok(linked), linked
+
+
+def check_spec(tmp_path: Path) -> Path:
+    import json
+
+    path = tmp_path / "security-check.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "cmd",
+                "acceptance": False,
+                "cmd": ["py", "-c", "import sys; sys.exit(0)"],
+                "inputs": ["src/*.py"],
+                "timeout_s": 30,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_check_list_omits_checks_outside_reach(
+    role_store: SimpleNamespace, tmp_path: Path
+) -> None:
+    spec = check_spec(tmp_path)
+    with as_human():
+        for slug, target in (("orders-check", role_store.o1), ("billing-check", role_store.b1)):
+            created = invoke(
+                "check",
+                {
+                    "slug": slug,
+                    "target": target,
+                    "spec_file": str(spec),
+                    "expect": "absent",
+                },
+                store=role_store.store,
+                actor=None,
+            )
+            assert is_ok(created), created
+
+    listed = as_seat(role_store.store, role_store.orders_seat, "check list", {})
+
+    assert is_ok(listed), listed
+    slugs = {row["slug"] for row in listed["value"]["items"]}
+    assert "orders-check" in slugs
+    assert "billing-check" not in slugs
+
+
+def test_status_hides_the_other_areas_queue_and_groups(
+    role_store: SimpleNamespace,
+) -> None:
+    status = as_seat(role_store.store, role_store.orders_seat, "status", {})
+
+    assert is_ok(status), status
+    assert role_store.b1 not in {row["slug"] for row in status["value"]["queue"]["items"]}
+    groups = status["value"]["groups"]
+    assert all(
+        role_store.b1 not in {row["slug"] for row in group["items"]}
+        for group in groups
+    )
+
+
+def test_status_does_not_name_an_unreadable_dependency(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        added = invoke(
+            "add",
+            {
+                "preset": "task",
+                "title": "Needs the other area",
+                "rel": [f"part_of={role_store.o1}"],
+            },
+            store=role_store.store,
+            actor=None,
+        )
+        assert is_ok(added), added
+    task = added["value"]["slug"]
+    link(role_store.store, task, "depends_on", role_store.b1)
+
+    status = as_seat(role_store.store, role_store.orders_seat, "status", {})
+    assert is_ok(status), status
+    assert status["value"]["blocked"].get(task) == "depends_on"
+
+
+def test_a_finished_dependency_outside_reach_does_not_keep_the_item_blocked(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        added = invoke(
+            "add",
+            {
+                "preset": "task",
+                "title": "Waits on a dropped risk",
+                "rel": [f"part_of={role_store.o1}"],
+            },
+            store=role_store.store,
+            actor=None,
+        )
+        assert is_ok(added), added
+        risk = invoke(
+            "add",
+            {"preset": "risk", "title": "Settled elsewhere"},
+            store=role_store.store,
+            actor=None,
+        )
+        assert is_ok(risk), risk
+        moved = invoke(
+            "move",
+            {
+                "slug": risk["value"]["slug"],
+                "status": "dropped",
+                "expect": invoke(
+                    "show", {"slug": risk["value"]["slug"]}, store=role_store.store
+                )["value"]["doc"]["etag"],
+            },
+            store=role_store.store,
+            actor=None,
+        )
+        assert is_ok(moved), moved
+    task = added["value"]["slug"]
+    link(role_store.store, task, "depends_on", risk["value"]["slug"])
+
+    status = as_seat(role_store.store, role_store.orders_seat, "status", {})
+    assert is_ok(status), status
+    assert task not in status["value"]["blocked"]
+
+
+def test_ledger_totals_count_only_runs_inside_reach(
+    role_store: SimpleNamespace,
+) -> None:
+    write_run(
+        role_store.store,
+        "01JREACHINSIDE0000000000001",
+        item=role_store.o1,
+        dispatch="inside",
+        usage={"input_tokens": 7},
+        at="2026-11-11T10:00:00Z",
+    )
+    write_run(
+        role_store.store,
+        "01JREACHOUTSIDE000000000000",
+        item=role_store.b1,
+        dispatch="outside",
+        usage={"input_tokens": 11},
+        at="2026-11-11T10:01:00Z",
+    )
+
+    ledger = as_seat(role_store.store, role_store.orders_seat, "ledger", {"limit": 20})
+
+    assert is_ok(ledger), ledger
+    assert ledger["value"]["totals"]["known_sum"]["input_tokens"] == 7
+
+
+def test_show_hides_backlinks_outside_reach(role_store: SimpleNamespace) -> None:
+    link(role_store.store, role_store.o1, "depends_on", role_store.b1)
+
+    shown = as_seat(role_store.store, role_store.orders_seat, "show", {"slug": role_store.o1})
+
+    assert is_ok(shown), shown
+    for side in ("out", "in"):
+        assert role_store.b1 not in {
+            slug for slugs in (shown["value"].get(side) or {}).values() for slug in slugs
+        }
+
+
+def test_the_seat_brief_never_follows_a_relation_out_of_reach(
+    role_store: SimpleNamespace,
+) -> None:
+    link(role_store.store, role_store.o1, "depends_on", role_store.b1)
+
+    brief = as_seat(role_store.store, role_store.orders_seat, "cto brief", {})
+
+    assert is_ok(brief), brief
+    assert role_store.b1 not in brief["value"]["text"]

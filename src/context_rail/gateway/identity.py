@@ -133,6 +133,12 @@ def resolve_identity(
     whose anchor lies in its read reach.
     """
     if not context.role_mode:
+        if lens is not None:
+            raise IdentityRefused(
+                "VALIDATION_FAILED",
+                "this pack declares no roles; a seat lens needs a store with roles",
+                {"reason": "no_roles", "command": "rail pack use <pack>"},
+            )
         return _legacy(context, actor)
     if isinstance(actor, str) and actor.strip():
         raise IdentityRefused(

@@ -49,6 +49,20 @@ def _allow(ctx: Context) -> Any:
 
 def check_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Page through Check documents, never every primitive."""
+    reach = ctx.reach
+    if reach is None:
+        allow = None
+    else:
+        def allow(slug: str, path: str, preset: str | None) -> bool:
+            if preset != "check":
+                return reach.can_read(slug, path=path, preset=preset)
+            row = ctx.index.conn.execute(
+                "SELECT dst FROM relations WHERE src_path = ? AND rel = 'verifies' "
+                "LIMIT 1",
+                (path,),
+            ).fetchone()
+            return row is not None and _readable(ctx, row[0])
+
     return query.find(
         ctx.index,
         primitive="check",
@@ -56,6 +70,7 @@ def check_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
         status=args["status"],
         text=args["text"],
         limit=args["limit"],
+        allow=allow,
     )
 
 
@@ -89,6 +104,12 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         # A document can vanish between the index sync and the body read.
         raise LookupError("not_found") from None
     doc = shown["doc"]
+    if ctx.reach is not None:
+        for side in ("out", "in"):
+            shown[side] = {
+                rel: [slug for slug in slugs if _readable(ctx, slug)]
+                for rel, slugs in (shown.get(side) or {}).items()
+            }
     if doc["primitive"] == "item":
         from context_rail.context import surface
 
@@ -142,12 +163,19 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if item.category in counts:
             counts[item.category] += 1
 
-    held_now = structure.blocked(items)
+    held_now = structure.blocked(all_items)
     runnable = structure.executable(items, held_now)
+    visible = {item.slug for item in items}
     finished = {
-        item.slug for item in items if item.category in structure.FINISHED_CATEGORIES
+        item.slug
+        for item in all_items
+        if item.category in structure.FINISHED_CATEGORIES
     }
-    held = {slug: reason for slug, reason in held_now.items() if slug not in finished}
+    held = {
+        slug: _held_reason(ctx, reason)
+        for slug, reason in held_now.items()
+        if slug in visible and slug not in finished
+    }
     stalled = [
         row["slug"]
         for row in recipes.stuck_rows(
@@ -176,10 +204,28 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     model = ctx.model
     unit = operating.resolve_unit(ctx, model)
     focus = _focus(ctx, model)
+    if ctx.reach is not None and focus.get("focus"):
+        chosen = focus["focus"]
+        if not _readable(ctx, chosen.get("slug")):
+            focus = {"state": "none", "focus": None, "candidates": []}
+        else:
+            focus["candidates"] = [
+                row
+                for row in focus.get("candidates") or ()
+                if _readable(ctx, row.get("slug"))
+            ]
     groups, groups_omitted = _groups(ctx, model)
     progress = operating.resolve_progress(ctx, model)
     progress_data = progress.as_dict()
     progress_children = list(progress_data.get("children") or ())
+    if ctx.reach is not None:
+        progress_children = [
+            child for child in progress_children if _readable(ctx, child.get("slug"))
+        ]
+        progress_data["total"] = sum(int(child.get("total") or 0) for child in progress_children)
+        progress_data["complete"] = sum(
+            int(child.get("complete") or 0) for child in progress_children
+        )
     progress_data["children"] = progress_children[:LIST_CAP]
     progress_data["omitted"] = int(progress_data.get("omitted") or 0) + max(
         len(progress_children) - LIST_CAP, 0
@@ -187,7 +233,7 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     queue = _queue(ctx, model)
     result = {
         "counts": counts,
-        "counts_scope": "every item preset",
+        "counts_scope": "every item preset" if ctx.reach is None else "read reach",
         "executable": executable_page,
         "blocked": {slug: held[slug] for slug in blocked_page},
         "stuck": stuck_page,
@@ -240,10 +286,19 @@ def _queue(ctx: Context, model: Any) -> dict[str, Any]:
             "scope": "project",
             "error": error.code,
         }
+    items = [item.as_dict() for item in view.items]
+    blocked = dict(view.blocked)
+    if ctx.reach is not None:
+        items = [item for item in items if _readable(ctx, item.get("slug"))]
+        blocked = {
+            slug: reason
+            for slug, reason in blocked.items()
+            if _readable(ctx, slug)
+        }
     return {
-        "items": [item.as_dict() for item in view.items[:LIST_CAP]],
-        "blocked": dict(view.blocked),
-        "omitted": max(len(view.items) - LIST_CAP, 0),
+        "items": items[:LIST_CAP],
+        "blocked": blocked,
+        "omitted": max(len(items) - LIST_CAP, 0),
         "scope": view.scope,
     }
 
@@ -254,10 +309,36 @@ def _groups(ctx: Context, model: Any) -> tuple[list[dict[str, Any]], int]:
     omitted = 0
     for group in groups:
         values = group.as_dict()
+        if ctx.reach is not None:
+            values["items"] = [
+                row for row in values["items"] if _readable(ctx, row.get("slug"))
+            ]
+            if not values["items"]:
+                continue
         values["items"] = values["items"][:LIST_CAP]
         omitted += max(len(group.items) - LIST_CAP, 0)
         shown.append(values)
     return shown, omitted
+
+
+def _readable(ctx: Context, slug: Any) -> bool:
+    if ctx.reach is None:
+        return True
+    if not isinstance(slug, str) or not slug:
+        return False
+    row = ctx.index.conn.execute(
+        "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1", (slug,)
+    ).fetchone()
+    if row is None:
+        return False
+    return ctx.reach.can_read(slug, path=row[0], preset=row[1])
+
+
+def _held_reason(ctx: Context, reason: str) -> str:
+    if ctx.reach is None or not reason.startswith("depends_on:"):
+        return reason
+    dependency = reason.partition(":")[2]
+    return reason if _readable(ctx, dependency) else "depends_on"
 
 
 def ledger(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -275,6 +356,11 @@ def ledger(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     runs = result["runs"]
     kept = [row for row in runs if _run_in_reach(ctx, reach, row.get("item"))]
     result["runs"] = kept
+    result["totals"] = query.totals_for_runs(
+        ctx.index, [row["record_id"] for row in kept]
+    )
+    unknown = result["totals"]["unknown_attempts"]
+    result["unknown_counts"] = unknown
     result["omitted_outside_reach"] = len(runs) - len(kept)
     return result
 

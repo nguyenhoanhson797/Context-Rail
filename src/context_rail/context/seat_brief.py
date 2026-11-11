@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from context_rail.context import recipes
+from context_rail.context.reach import ReachError, resolve_reach
 from context_rail.kernel import structure
 from context_rail.kernel.reach import ancestors, descendants, one_hop
 from context_rail.store import query
@@ -40,6 +41,10 @@ def seat_brief(
 ) -> dict[str, Any]:
     """The bounded brief one seat may read, and what the budget left out."""
     documents = _documents(context, seat, role)
+    documents = _within_reach(context, seat, role, documents)
+    if seat.anchor in documents:
+        documents.remove(seat.anchor)
+        documents.insert(0, seat.anchor)
     profile = context.profile
     budget = role.sees.chars
     entries = role.sees.docs
@@ -49,7 +54,7 @@ def seat_brief(
     if max_chars is not None:
         budget = min(budget, max_chars)
     documents = documents[:entries]
-    lines = _lines(context, documents, role, extra_parts)
+    lines = _lines(context, documents, role, extra_parts, seat)
     active = [part for part in role.sees.parts if lines.get(part)]
     text, trimmed, dropped, fitted = _fit(
         f"# Seat {seat.seat} on {seat.anchor}", active, lines, budget
@@ -117,11 +122,36 @@ def _below(
     return frozenset(seen)
 
 
+def _within_reach(
+    context: Context,
+    seat: LiveSeat,
+    role: Role,
+    documents: list[str],
+) -> list[str]:
+    """Only the documents this seat's own role may read; the anchor always may."""
+    try:
+        reach = resolve_reach(context.index, context.pack, role, seat)
+    except ReachError:
+        return []
+    kept: list[str] = []
+    for slug in documents:
+        if slug == seat.anchor:
+            kept.append(slug)
+            continue
+        row = context.index.conn.execute(
+            "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1", (slug,)
+        ).fetchone()
+        if row is not None and reach.can_read(slug, path=row[0], preset=row[1]):
+            kept.append(slug)
+    return kept
+
+
 def _lines(
     context: Context,
     documents: list[str],
     role: Role,
     extra_parts: Mapping[str, str] | None,
+    seat: LiveSeat,
 ) -> dict[str, list[str]]:
     lines: dict[str, list[str]] = {part: [] for part in role.sees.parts}
     extras = extra_parts or {}
@@ -132,6 +162,10 @@ def _lines(
     blocked: dict[str, str] = {}
     if "blockers" in lines:
         blocked = structure.blocked(recipes.item_rows(index, context.pack))
+    try:
+        reach = resolve_reach(index, context.pack, role, seat)
+    except ReachError:
+        reach = None
     for slug in documents:
         row = index.conn.execute(
             "SELECT title, status, category, preset FROM docs WHERE slug = ? LIMIT 1",
@@ -152,6 +186,7 @@ def _lines(
                 category,
                 preset,
                 blocked,
+                reach,
             )
             if line:
                 lines[part].append(line)
@@ -167,6 +202,7 @@ def _line(
     category: str | None,
     preset: str | None,
     blocked: Mapping[str, str],
+    reach: Any,
 ) -> str | None:
     if part == "title":
         return f"- {slug}: {title}"
@@ -190,6 +226,16 @@ def _line(
         return f"- {slug}: {values}" if values else None
     if part == "blockers":
         reason = blocked.get(slug)
+        if reason and reason.startswith("depends_on:") and reach is not None:
+            dependency = reason.partition(":")[2]
+            row = context.index.conn.execute(
+                "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1",
+                (dependency,),
+            ).fetchone()
+            if row is None or not reach.can_read(
+                dependency, path=row[0], preset=row[1]
+            ):
+                reason = "depends_on"
         return f"- {slug}: {reason}" if reason else None
     if part == "waits":
         values = _field(context, slug, "waits")
@@ -260,11 +306,14 @@ def _fit(
         return "omitted: " + ", ".join(bits) if bits else ""
 
     def render() -> str:
-        chunks = [header]
+        chunks: list[str] = []
         for part in fitted:
             keep = lines[part][: len(lines[part]) - trimmed.get(part, 0)]
             if keep:
                 chunks.append("\n".join(keep))
+        if not chunks:
+            return omitted()
+        chunks.insert(0, header)
         body = "\n".join(chunks)
         tail = omitted()
         return body + ("\n\n" + tail if tail else "")

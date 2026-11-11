@@ -53,6 +53,7 @@ __all__ = [
     "run_record",
     "seat_events",
     "show",
+    "totals_for_runs",
     "triage_runs",
     "untriaged_reports",
     "worker_totals",
@@ -1429,6 +1430,14 @@ def _usage_for_runs(ix: Index, run_ids: Sequence[str]) -> dict[str, list[dict[st
     for run_id, usage in rows:
         grouped[run_id].append(json.loads(usage))
     return grouped
+
+
+def totals_for_runs(ix: Index, run_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+    """Usage totals over exactly ``run_ids``, with unknown counters kept apart."""
+    grouped = _usage_for_runs(ix, list(run_ids))
+    return _visible_usage(
+        usage for group in grouped.values() for usage in group
+    )
 
 
 def _visible_usage(usages: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:

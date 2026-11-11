@@ -101,6 +101,104 @@ class ReachSet:
         """Whether the repository-relative path is in code write reach."""
         return self.unrestricted or _under_any(self.code_write, rel)
 
+    def intersect(self, other: "ReachSet") -> "ReachSet":
+        """The narrower reach both sets hold; either unrestricted gives the other."""
+        if self.unrestricted:
+            return other
+        if other.unrestricted:
+            return self
+        read_slugs, read_prefixes, read_presets = _intersect_read(
+            self.read_all,
+            other.read_all,
+            self.read_slugs,
+            self.read_prefixes,
+            self.read_presets,
+            other.read_slugs,
+            other.read_prefixes,
+            other.read_presets,
+        )
+        write_slugs, write_prefixes, write_presets = _intersect_read(
+            self.write_all,
+            other.write_all,
+            self.write_slugs,
+            self.write_prefixes,
+            self.write_presets,
+            other.write_slugs,
+            other.write_prefixes,
+            other.write_presets,
+        )
+        return ReachSet(
+            seat=self.seat,
+            unrestricted=False,
+            read_slugs=read_slugs,
+            write_slugs=write_slugs,
+            read_prefixes=read_prefixes,
+            write_prefixes=write_prefixes,
+            read_presets=read_presets,
+            write_presets=write_presets,
+            code_read=_intersect_code(self.code_read, other.code_read),
+            code_write=_intersect_code(self.code_write, other.code_write),
+            read_all=self.read_all and other.read_all,
+            write_all=self.write_all and other.write_all,
+            anchor=self.anchor,
+        )
+
+
+def _intersect_read(
+    first_all: bool,
+    second_all: bool,
+    first_slugs: frozenset[str],
+    first_prefixes: tuple[str, ...],
+    first_presets: frozenset[str],
+    second_slugs: frozenset[str],
+    second_prefixes: tuple[str, ...],
+    second_presets: frozenset[str],
+) -> tuple[frozenset[str], tuple[str, ...], frozenset[str]]:
+    """Intersect two term sets, where one side's ``all`` gives the other side."""
+    if first_all:
+        return second_slugs, second_prefixes, second_presets
+    if second_all:
+        return first_slugs, first_prefixes, first_presets
+    return (
+        first_slugs & second_slugs,
+        _narrow(first_prefixes, second_prefixes),
+        first_presets & second_presets,
+    )
+
+
+def _narrow(first: tuple[str, ...], second: tuple[str, ...]) -> tuple[str, ...]:
+    """The more specific prefix for each overlapping pair."""
+    found: set[str] = set()
+    for left in first:
+        for right in second:
+            if under_prefix(left, right):
+                found.add(right)
+            elif under_prefix(right, left):
+                found.add(left)
+    return tuple(sorted(found))
+
+
+def _intersect_code(first: tuple[str, ...], second: tuple[str, ...]) -> tuple[str, ...]:
+    """Intersect two code-pattern sets; ``**`` covers and gives the other side."""
+    if not first:
+        return ()
+    if not second:
+        return ()
+    if first == ("**",):
+        return second
+    if second == ("**",):
+        return first
+    found: set[str] = set()
+    for left in first:
+        for right in second:
+            if left == right:
+                found.add(left)
+            elif under_prefix(left, right):
+                found.add(right)
+            elif under_prefix(right, left):
+                found.add(left)
+    return tuple(sorted(found))
+
 
 UNRESTRICTED = ReachSet(seat=None, unrestricted=True)
 
