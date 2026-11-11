@@ -1,0 +1,288 @@
+"""A seat's brief: the parts its role declares, for the documents it may see.
+
+The brief is built from the same index projections every other read uses. It
+never widens a role: the anchor subtree, the ancestors it may look up and one
+hop along the declared relations decide which documents appear, and a budget
+cut is always named in the text.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
+
+from context_rail.context import recipes
+from context_rail.kernel import structure
+from context_rail.kernel.reach import ancestors, descendants, one_hop
+from context_rail.store import query
+
+if TYPE_CHECKING:
+    from context_rail.gateway.gateway import Context
+    from context_rail.kernel.seats import LiveSeat
+    from context_rail.model.roles import Role
+
+__all__ = ["seat_brief"]
+
+_EXTRA_ONLY = ("diff", "evidence", "code_area")
+_BODY_CHARS = 200
+_RUNS = 3
+_RECORDS = 3
+
+
+def seat_brief(
+    context: Context,
+    seat: LiveSeat,
+    role: Role,
+    *,
+    max_chars: int | None = None,
+    extra_parts: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """The bounded brief one seat may read, and what the budget left out."""
+    documents = _documents(context, seat, role)
+    profile = context.profile
+    budget = role.sees.chars
+    entries = role.sees.docs
+    if profile is not None:
+        budget = min(budget, int(profile.budget.get("max_chars", budget)))
+        entries = min(entries, int(profile.budget.get("max_docs", entries)))
+    if max_chars is not None:
+        budget = min(budget, max_chars)
+    documents = documents[:entries]
+    lines = _lines(context, documents, role, extra_parts)
+    active = [part for part in role.sees.parts if lines.get(part)]
+    text, trimmed, dropped, fitted = _fit(
+        f"# Seat {seat.seat} on {seat.anchor}", active, lines, budget
+    )
+    return {
+        "text": text,
+        "estimated_tokens": recipes.estimate_tokens(text),
+        "documents": documents,
+        "parts": fitted,
+        "trimmed": trimmed,
+        "dropped": dropped,
+        "seat": seat.seat,
+        "anchor": seat.anchor,
+    }
+
+
+def _documents(context: Context, seat: LiveSeat, role: Role) -> list[str]:
+    index = context.index
+    children: dict[str, list[str]] = {}
+    parents: dict[str, list[str]] = {}
+    for src, dst in index.conn.execute(
+        "SELECT src, dst FROM relations WHERE rel = 'part_of'"
+    ):
+        children.setdefault(dst, []).append(src)
+        parents.setdefault(src, []).append(dst)
+    if role.anchor.kind == "project":
+        return [
+            slug
+            for (slug,) in index.conn.execute(
+                "SELECT slug FROM docs WHERE primitive IN ('item', 'note') "
+                "AND broken = 0 ORDER BY slug"
+            )
+        ]
+    anchor = seat.anchor
+    found: set[str] = {anchor}
+    found |= _below(anchor, children, role.sees.down)
+    found |= ancestors(anchor, parents, role.sees.up)
+    for relation in role.sees.relations:
+        edges: dict[str, list[str]] = {}
+        for src, dst in index.conn.execute(
+            "SELECT src, dst FROM relations WHERE rel = ?", (relation,)
+        ):
+            edges.setdefault(src, []).append(dst)
+        found |= one_hop(found, edges)
+    return sorted(found)
+
+
+def _below(
+    anchor: str, children: Mapping[str, list[str]], depth: int | None
+) -> frozenset[str]:
+    if depth is None:
+        return descendants(anchor, children)
+    seen = {anchor}
+    frontier = [anchor]
+    for _ in range(depth):
+        following: list[str] = []
+        for node in frontier:
+            for child in children.get(node, ()):
+                if child not in seen:
+                    seen.add(child)
+                    following.append(child)
+        frontier = following
+        if not frontier:
+            break
+    return frozenset(seen)
+
+
+def _lines(
+    context: Context,
+    documents: list[str],
+    role: Role,
+    extra_parts: Mapping[str, str] | None,
+) -> dict[str, list[str]]:
+    lines: dict[str, list[str]] = {part: [] for part in role.sees.parts}
+    extras = extra_parts or {}
+    for part in _EXTRA_ONLY:
+        if part in lines and extras.get(part):
+            lines[part] = [f"- {part}: {_clean(extras[part])}"]
+    index = context.index
+    blocked: dict[str, str] = {}
+    if "blockers" in lines:
+        blocked = structure.blocked(recipes.item_rows(index, context.pack))
+    for slug in documents:
+        row = index.conn.execute(
+            "SELECT title, status, category, preset FROM docs WHERE slug = ? LIMIT 1",
+            (slug,),
+        ).fetchone()
+        if row is None:
+            continue
+        title, status, category, preset = row
+        for part in role.sees.parts:
+            if part in _EXTRA_ONLY:
+                continue
+            line = _line(
+                context,
+                part,
+                slug,
+                title or slug,
+                status,
+                category,
+                preset,
+                blocked,
+            )
+            if line:
+                lines[part].append(line)
+    return lines
+
+
+def _line(
+    context: Context,
+    part: str,
+    slug: str,
+    title: str,
+    status: str | None,
+    category: str | None,
+    preset: str | None,
+    blocked: Mapping[str, str],
+) -> str | None:
+    if part == "title":
+        return f"- {slug}: {title}"
+    if part == "status":
+        return f"- {slug}: {status or 'none'} ({category or 'unknown'})"
+    if part == "next":
+        declared = context.pack.presets.get(preset or "")
+        if declared is None:
+            return None
+        states = sorted(context.pack.workflow_for(declared.name).transitions.get(status or "", ()))
+        return f"- {slug}: {', '.join(states) or 'none'}"
+    if part == "body":
+        try:
+            shown = query.show(context.index, slug, body_chars=_BODY_CHARS)
+        except LookupError:
+            return None
+        body = shown["doc"].get("body") or ""
+        return f"- {slug}: {_clean(body)[:_BODY_CHARS]}" if body.strip() else None
+    if part == "acceptance":
+        values = _field(context, slug, "acceptance")
+        return f"- {slug}: {values}" if values else None
+    if part == "blockers":
+        reason = blocked.get(slug)
+        return f"- {slug}: {reason}" if reason else None
+    if part == "waits":
+        values = _field(context, slug, "waits")
+        return f"- {slug}: {values}" if values else None
+    if part == "runs":
+        rows = context.index.conn.execute(
+            'SELECT record_id, status, role FROM runs WHERE item = ? '
+            'ORDER BY "end" DESC, record_id DESC LIMIT ?',
+            (slug, _RUNS),
+        ).fetchall()
+        return (
+            "- "
+            + slug
+            + ": "
+            + "; ".join(f"{run} {state} {who}" for run, state, who in rows)
+            if rows
+            else None
+        )
+    if part == "records":
+        rows = query.records_about(context.index, slug, limit=_RECORDS)
+        return (
+            "- "
+            + slug
+            + ": "
+            + ", ".join(str(row.get("kind")) for row in rows)
+            if rows
+            else None
+        )
+    return None
+
+
+def _field(context: Context, slug: str, key: str) -> str | None:
+    row = context.index.conn.execute(
+        "SELECT d.path FROM docs d WHERE d.slug = ? LIMIT 1", (slug,)
+    ).fetchone()
+    if row is None:
+        return None
+    value = context.index.conn.execute(
+        "SELECT value_json FROM fields WHERE path = ? AND key = ?", (row[0], key)
+    ).fetchone()
+    if value is None:
+        return None
+    try:
+        decoded = json.loads(value[0])
+    except (TypeError, ValueError):
+        return None
+    if isinstance(decoded, list):
+        return ", ".join(_clean(str(item)) for item in decoded) or None
+    return _clean(str(decoded)) or None
+
+
+def _fit(
+    header: str,
+    parts: list[str],
+    lines: Mapping[str, list[str]],
+    budget: int,
+) -> tuple[str, dict[str, int], list[str], list[str]]:
+    """Trim the last part's entries, then drop whole parts, until the text fits."""
+    fitted = list(parts)
+    trimmed: dict[str, int] = {}
+    dropped: list[str] = []
+
+    def omitted() -> str:
+        bits = [f"{part} (dropped)" for part in dropped]
+        bits.extend(
+            f"{part} ({count} trimmed)" for part, count in trimmed.items() if count
+        )
+        return "omitted: " + ", ".join(bits) if bits else ""
+
+    def render() -> str:
+        chunks = [header]
+        for part in fitted:
+            keep = lines[part][: len(lines[part]) - trimmed.get(part, 0)]
+            if keep:
+                chunks.append("\n".join(keep))
+        body = "\n".join(chunks)
+        tail = omitted()
+        return body + ("\n\n" + tail if tail else "")
+
+    while True:
+        text = render()
+        if len(text) <= budget:
+            return text, trimmed, dropped, fitted
+        if not fitted:
+            return text[:budget], trimmed, dropped, fitted
+        last = fitted[-1]
+        removed = trimmed.get(last, 0)
+        if removed < len(lines[last]):
+            trimmed[last] = removed + 1
+            continue
+        fitted.pop()
+        dropped.append(last)
+
+
+def _clean(text: str) -> str:
+    return " ".join(text.split())
