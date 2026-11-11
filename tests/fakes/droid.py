@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent
 BEHAVIORS = ROOT / "fake-droid.json"
 CURSOR = ROOT / "fake-droid-cursor.json"
 LOG = ROOT / "fake-droid-argv.jsonl"
+RAIL_LOG = ROOT / "fake-droid-rail.json"
 CHILD = ROOT / "fake-droid-child.json"
 WORK_FILE = "fake-droid-work.txt"
 
@@ -174,6 +175,8 @@ def main() -> int:
             bulk=int(behavior.get("bulk") or 0),
             edits=behavior.get("edits"),
         )
+    if behavior.get("rail"):
+        _rail_call(worktree, behavior["rail"])
     return _emit(
         _text(behavior, reviewer, verdict, _order_metadata(flags.get("-f"))),
         session,
@@ -418,6 +421,38 @@ def _leave_commit(
     for start in range(0, len(staged), 50):
         _git(worktree, "add", "--", *staged[start : start + 50])
     _git(worktree, "commit", "-m", "fake droid candidate")
+
+
+def _rail_call(worktree: Path, argv: list) -> None:
+    """Run one rail CLI command as the worker and keep its result aside."""
+    command = [sys.executable, "-m", "context_rail", *(str(item) for item in argv)]
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=worktree,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=dict(os.environ),
+            timeout=180,
+            check=False,
+        )
+        result = {
+            "argv": command,
+            "exit": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+        }
+    except subprocess.TimeoutExpired as error:
+        result = {
+            "argv": command,
+            "exit": None,
+            "stdout": (error.stdout or "").decode("utf-8", errors="replace")
+            if isinstance(error.stdout, bytes)
+            else error.stdout or "",
+            "stderr": "timed out",
+        }
+    RAIL_LOG.write_text(json.dumps(result), encoding="utf-8", newline="\n")
 
 
 def _write_code_note(worktree: Path) -> list[str]:

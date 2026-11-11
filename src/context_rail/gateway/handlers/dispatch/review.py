@@ -20,6 +20,7 @@ from context_rail.runner.droid import (
 )
 from context_rail.runner.protocol import resolve_model, runner_name, run_worker
 from context_rail.store import query
+from context_rail.store.sessions import close_sessions
 from context_rail.store.write import WriteRefused
 
 from .budget import _effective_budget, _run_facts
@@ -183,12 +184,7 @@ def _review_candidate(
     role: Any = None,
     run_kind: str | None = None,
 ) -> dict[str, Any]:
-    """Launch one separated reviewer at exactly ``candidate`` and keep its verdict.
-
-    The candidate is passed explicitly because a merge reviews the commit its
-    own rebase produced, which is not always the commit the run recorded.
-    """
-    root, _git_dir = checkout(ctx, action="a dispatch")
+    """Launch one separated reviewer and close its run seat whatever happens."""
     review_id = new_ulid()
     seat = None
     run_token = None
@@ -203,6 +199,67 @@ def _review_candidate(
             dispatch_id=review_id,
         )
         seat = f"{role.name}@{review_id}"
+    try:
+        return _review_once(
+            ctx,
+            store=store,
+            slug=slug,
+            rel=rel,
+            item=item,
+            implementation_run=implementation_run,
+            candidate=candidate,
+            run=run,
+            profile_name=profile_name,
+            profile=profile,
+            profile_etag=profile_etag,
+            droid=droid,
+            runner=runner,
+            model=model,
+            actor=actor,
+            key=key,
+            timeout=timeout,
+            review_id=review_id,
+            seat=seat,
+            run_token=run_token,
+            run_kind=run_kind,
+            role=role,
+        )
+    finally:
+        if run_token is not None:
+            close_sessions(store, run=review_id)
+
+
+def _review_once(
+    ctx: Context,
+    *,
+    store: Path,
+    slug: str,
+    rel: str,
+    item: str,
+    implementation_run: str,
+    candidate: str,
+    run: dict[str, Any],
+    profile_name: str,
+    profile: Profile,
+    profile_etag: str,
+    droid: DroidProfile,
+    runner: str,
+    model: str,
+    actor: str,
+    key: str,
+    timeout: float,
+    review_id: str,
+    seat: str | None,
+    run_token: str | None,
+    run_kind: str | None = None,
+    role: Any = None,
+) -> dict[str, Any]:
+    """Launch one separated reviewer at exactly ``candidate`` and keep its verdict.
+
+    The candidate is passed explicitly because a merge reviews the commit its
+    own rebase produced, which is not always the commit the run recorded.
+    """
+    root, _git_dir = checkout(ctx, action="a dispatch")
     paths = local_dispatch.review_paths(store, slug, review_id)
     started_at = now_iso()
     flight_started = time.monotonic()
@@ -269,6 +326,8 @@ def _review_candidate(
             order_file=order_file,
             timeout=timeout,
             runner=runner,
+            session=run_token,
+            run=review_id if run_token is not None else None,
         )
 
     duration = round(time.monotonic() - flight_started, 3)

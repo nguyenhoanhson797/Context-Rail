@@ -46,6 +46,7 @@ from context_rail.runner.droid import (
 from context_rail.runner.protocol import resolve_model, runner_name, run_worker
 from context_rail.store import query
 from context_rail.store.doc import Doc, etag, parse_doc
+from context_rail.store.sessions import close_sessions
 from context_rail.store.write import WriteRefused, commit, resolve_unique
 
 from .budget import (
@@ -367,6 +368,15 @@ def _sections(plan: _Plan, doc: Doc, intent: str = "") -> dict[str, str]:
 
 
 def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
+    """Run the plan and always close its run seat, even after a failed launch."""
+    try:
+        return _execute_run(plan, role_file, order_file)
+    finally:
+        if plan.run_seat_token is not None:
+            close_sessions(plan.store, run=plan.dispatch_id)
+
+
+def _execute_run(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
     attempts: list[dict[str, Any]] = []
     verdicts: list[str] = []
     last_report: dict[str, Any] | None = None
@@ -420,6 +430,8 @@ def _execute(plan: _Plan, role_file: Path, order_file: Path) -> dict[str, Any]:
             session_id=session,
             failure_text=retry_text,
             runner=plan.runner,
+            session=plan.run_seat_token,
+            run=plan.dispatch_id if plan.run_seat_token is not None else None,
         )
         duration = round(time.monotonic() - clock, 3)
         if ran.session_id:

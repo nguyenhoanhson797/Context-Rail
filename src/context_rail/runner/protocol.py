@@ -540,6 +540,8 @@ def run_runner(
     timeout: float,
     session_id: str | None = None,
     runner: str | None = None,
+    session: str | None = None,
+    run: str | None = None,
 ) -> RunnerResult:
     """Launch one bounded run through the profile's runner and parse it."""
     from context_rail.store.write import WriteRefused
@@ -559,7 +561,11 @@ def run_runner(
         model=resolve_model(profile, adapter.name),
     )
     extra_env = {f"RAIL_{adapter.name.upper()}_BIN": argv[0]}
-    if profile.recipe:
+    if session is not None:
+        extra_env["RAIL_SESSION"] = session
+        if run is not None:
+            extra_env["RAIL_RUN"] = run
+    elif profile.recipe:
         extra_env["RAIL_ACTOR"] = profile.recipe
     launched = _run(
         argv,
@@ -569,7 +575,7 @@ def run_runner(
         max_output=256 * 1024,
         extra_env=extra_env,
     )
-    payload, failure, text, usage, session, malformed = adapter.parse_output(
+    payload, failure, text, usage, resumed, malformed = adapter.parse_output(
         launched["stdout"],
         exit=launched["exit"],
         timed_out=launched["timed_out"],
@@ -581,7 +587,7 @@ def run_runner(
         ok=failure is None and not malformed,
         text=text,
         usage=usage,
-        session_id=session if isinstance(session, str) and _SESSION_RE.match(session) else None,
+        session_id=resumed if isinstance(resumed, str) and _SESSION_RE.match(resumed) else None,
         exit=launched["exit"],
         timed_out=launched["timed_out"],
         runner=launched,
@@ -601,6 +607,8 @@ def run_worker(
     session_id: str | None = None,
     failure_text: str | None = None,
     runner: str | None = None,
+    session: str | None = None,
+    run: str | None = None,
 ) -> Any:
     """Launch one bounded worker run: the profile's runner, droid by default.
 
@@ -625,6 +633,8 @@ def run_worker(
             timeout=timeout,
             session_id=session_id,
             failure_text=failure_text,
+            session=session,
+            run=run,
         )
     if failure_text:
         _append_failure(Path(order_file), failure_text)
@@ -644,6 +654,8 @@ def run_worker(
         timeout=timeout,
         session_id=session_id,
         runner=name,
+        session=session,
+        run=run,
     )
 
 

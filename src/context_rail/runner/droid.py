@@ -35,7 +35,7 @@ from context_rail.model.errors import ModelError
 from context_rail.model.primitives import WINDOWS_RESERVED_NAMES
 from context_rail.model.fields import is_number
 from context_rail.model.manifest import render_path
-from context_rail.runner.run import run
+from context_rail.runner.run import run as launch
 from context_rail.store.doc import parse_doc
 from context_rail.store.location import local_dir
 from context_rail.store.write import WriteRefused
@@ -280,11 +280,23 @@ def build_argv(
     return argv
 
 
-def droid_env(profile_name: str, droid_bin: str) -> dict[str, str]:
-    """The extra child variables: the actor, the binary and the auth key."""
+def droid_env(
+    profile_name: str,
+    droid_bin: str,
+    *,
+    session: str | None = None,
+    run: str | None = None,
+) -> dict[str, str]:
+    """The extra child variables: the session (or actor), the binary and the auth key."""
     if not isinstance(profile_name, str) or not profile_name.strip():
         raise WriteRefused("VALIDATION_FAILED", "a droid run needs an actor name")
-    extras = {"RAIL_ACTOR": profile_name, "RAIL_DROID_BIN": str(droid_bin)}
+    extras = {"RAIL_DROID_BIN": str(droid_bin)}
+    if session is not None:
+        extras["RAIL_SESSION"] = session
+        if run is not None:
+            extras["RAIL_RUN"] = run
+    else:
+        extras["RAIL_ACTOR"] = profile_name
     api_key = os.environ.get("FACTORY_API_KEY")
     if api_key:
         extras["FACTORY_API_KEY"] = api_key
@@ -302,6 +314,8 @@ def run_droid(
     timeout: float,
     session_id: str | None = None,
     failure_text: str | None = None,
+    session: str | None = None,
+    run: str | None = None,
 ) -> DroidRun:
     """Launch one bounded droid run and parse it; nothing is persisted here.
 
@@ -324,13 +338,13 @@ def run_droid(
         order_file=Path(order_file),
         session_id=session_id,
     )
-    runner = run(
+    runner = launch(
         argv,
         cwd=Path(worktree),
         confine_to=Path(confine_to),
         timeout=float(timeout),
         max_output=DROID_OUTPUT_CAP,
-        extra_env=droid_env(profile.name, droid_bin),
+        extra_env=droid_env(profile.name, droid_bin, session=session, run=run),
     )
     payload, failure = parse_result(
         runner["stdout"],
