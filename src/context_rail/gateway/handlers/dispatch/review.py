@@ -13,6 +13,7 @@ from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import Profile
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner.droid import (
+    COMBINED_PROMPT_MAX_CHARS,
     DroidProfile,
     droid_profile,
     write_order_file,
@@ -297,6 +298,10 @@ def _review_once(
         role_file = write_role_file(
             store, review_id, profile=droid, body=profile.body
         )
+        combined_limit = None
+        if role is not None:
+            role_text = role_file.read_text(encoding="utf-8")
+            combined_limit = COMBINED_PROMPT_MAX_CHARS - len(role_text)
         order_file = write_order_file(
             store,
             review_id,
@@ -311,8 +316,17 @@ def _review_once(
                 paths=paths,
             ),
             sections=_review_sections(
-                ctx, slug=slug, rel=rel, run=run, candidate=candidate, profile=profile
+                ctx,
+                slug=slug,
+                rel=rel,
+                run=run,
+                candidate=candidate,
+                profile=profile,
+                profile_name=profile_name,
+                role=role,
+                seat=seat,
             ),
+            combined_limit=combined_limit,
         )
         local_dispatch.write_review_progress(
             store, review_id, state="running", phase="running"

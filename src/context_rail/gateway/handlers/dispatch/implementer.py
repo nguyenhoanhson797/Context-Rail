@@ -38,6 +38,7 @@ from context_rail.store.placement import (
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner import git as git_runner
 from context_rail.runner.droid import (
+    COMBINED_PROMPT_MAX_CHARS,
     droid_profile,
     extract_block,
     write_order_file,
@@ -78,7 +79,7 @@ from .common import (
     effective_seconds,
 )
 from .records import _escalation_record, _failure_report, _started_record
-from .roles import open_run_seat, pick_role
+from .roles import code_reach_text, open_run_seat, pick_role, run_seat_brief
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -291,6 +292,10 @@ def _write_prompts(
         plan.store, plan.dispatch_id, profile=plan.droid, body=plan.profile.body
     )
     _data, doc = read_doc(plan.store, rel)
+    combined_limit = None
+    if plan.run_seat_token is not None:
+        role_text = role_file.read_text(encoding="utf-8")
+        combined_limit = COMBINED_PROMPT_MAX_CHARS - len(role_text)
     order_file = write_order_file(
         plan.store,
         plan.dispatch_id,
@@ -311,12 +316,38 @@ def _write_prompts(
             "worktree": str(plan.paths.worktree.absolute()),
         },
         sections=_sections(plan, doc, intent),
+        combined_limit=combined_limit,
     )
     return role_file, order_file
 
 
+def _run_role(plan: _Plan) -> Any:
+    operating = plan.ctx.pack.operating
+    if plan.seat_role is None or operating is None:
+        return None
+    return operating.roles.get(plan.seat_role)
+
+
 def _sections(plan: _Plan, doc: Doc, intent: str = "") -> dict[str, str]:
     title = doc.title or plan.slug
+    role = _run_role(plan)
+    context = "(none)"
+    if role is not None and plan.seat is not None:
+        context = run_seat_brief(
+            plan.ctx,
+            role,
+            seat=plan.seat,
+            item=plan.slug,
+            profile_name=plan.profile_name,
+            dispatcher=plan.dispatcher or "human",
+            extra_parts={"code_area": plan.code_section},
+        )
+    reach = ""
+    if role is not None:
+        reach = (
+            "\n\nCode reach (this run's role): code write: "
+            f"{code_reach_text(role)}. Never change a file outside it."
+        )
     scope = ", ".join(doc.relations.get("part_of", ())) or "(none)"
     methods = ", ".join(plan.profile.allowed_methods)
     check_lines = "\n".join(f"- {slug}" for slug in plan.checks) or "(none declared)"
@@ -334,6 +365,7 @@ def _sections(plan: _Plan, doc: Doc, intent: str = "") -> dict[str, str]:
         objective += "\n\n## Intent from the CTO\n" + intent.strip()
     return {
         "objective": bounded(objective, 6000),
+        "context": context,
         "workflow": workflow_text,
         "selected scope": scope,
         "conventions": (
@@ -343,7 +375,8 @@ def _sections(plan: _Plan, doc: Doc, intent: str = "") -> dict[str, str]:
         "constraints": (
             f"One session, at most {plan.max_attempts} attempt(s) and "
             f"{int(effective_seconds(plan.budget))} seconds. Never stage files to make "
-            "a Check pass, and never widen your own tools, autonomy or budget."
+            f"a Check pass, and never widen your own tools, autonomy or budget."
+            + reach
         ),
         "selected files": ", ".join(
             sorted({glob for row in query.check_states(plan.ctx.index, plan.slug)

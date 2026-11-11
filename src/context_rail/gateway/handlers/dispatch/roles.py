@@ -8,8 +8,12 @@ TTL, live while its run is open.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from context_rail.context.seat_brief import seat_brief
+from context_rail.core.util import now_iso
+from context_rail.kernel.seats import LiveSeat
 from context_rail.model.roles import check_profile_narrows
 from context_rail.store.sessions import open_session
 from context_rail.store.write import WriteRefused
@@ -20,7 +24,7 @@ if TYPE_CHECKING:
     from context_rail.model.cto import Profile
     from context_rail.model.roles import Role
 
-__all__ = ["open_run_seat", "pick_role"]
+__all__ = ["code_reach_text", "open_run_seat", "pick_role", "run_seat_brief"]
 
 
 def pick_role(
@@ -143,6 +147,33 @@ def open_run_seat(
         ttl_s=None,
     )
     return token
+
+
+def run_seat_brief(
+    context: Context,
+    role: Role,
+    *,
+    seat: str,
+    item: str,
+    profile_name: str,
+    dispatcher: str,
+    extra_parts: Mapping[str, str] | None = None,
+) -> str:
+    """The brief a run seat may read, rendered as the order's context section."""
+    live = LiveSeat(
+        seat=seat,
+        role=role.name,
+        anchor=item,
+        profile=profile_name,
+        granted_by=dispatcher,
+        granted_at=now_iso(),
+    )
+    return seat_brief(context, live, role, extra_parts=extra_parts)["text"]
+
+
+def code_reach_text(role: Role) -> str:
+    """The role's code write patterns as the work order states them."""
+    return ", ".join(pattern.raw for pattern in role.code_write) or "(none)"
 
 
 def _allows(value: Any, preset: str) -> bool:

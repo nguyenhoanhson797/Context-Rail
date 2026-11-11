@@ -183,7 +183,7 @@ def _line(
             shown = query.show(context.index, slug, body_chars=_BODY_CHARS)
         except LookupError:
             return None
-        body = shown["doc"].get("body") or ""
+        body = shown.get("body") or ""
         return f"- {slug}: {_clean(body)[:_BODY_CHARS]}" if body.strip() else None
     if part == "acceptance":
         values = _field(context, slug, "acceptance")

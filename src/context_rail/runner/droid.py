@@ -41,6 +41,7 @@ from context_rail.store.location import local_dir
 from context_rail.store.write import WriteRefused
 
 __all__ = [
+    "COMBINED_PROMPT_MAX_CHARS",
     "DEFAULT_DROID_BIN",
     "DROID_OUTPUT_CAP",
     "FAILURE_PROMPT_MAX_CHARS",
@@ -73,6 +74,7 @@ PROMPT_DIR = "prompts"
 ROLE_FILE = "role.md"
 ORDER_FILE = "order.md"
 PROMPT_MAX_CHARS = 32000
+COMBINED_PROMPT_MAX_CHARS = 30000
 FAILURE_PROMPT_MAX_CHARS = 4000
 _OMITTED = "\n[omitted]\n"
 
@@ -95,6 +97,7 @@ WORK_ORDER_KEYS = (
 )
 WORK_ORDER_SECTIONS = (
     "objective",
+    "context",
     "workflow",
     "selected scope",
     "conventions",
@@ -570,19 +573,53 @@ def write_order_file(
     *,
     metadata: Mapping[str, Any],
     sections: Mapping[str, str],
+    combined_limit: int | None = None,
 ) -> Path:
-    """Write the bounded work order with its leading JSON metadata."""
+    """Write the bounded work order with its leading JSON metadata.
+
+    ``combined_limit`` is the room the order has beside the role prompt. In role
+    mode the code area gives way first and an order that still does not fit is
+    refused with every section's size, never clipped head and tail.
+    """
+    if combined_limit is not None and (
+        isinstance(combined_limit, bool)
+        or not isinstance(combined_limit, int)
+        or combined_limit <= 0
+    ):
+        raise WriteRefused("VALIDATION_FAILED", "a combined prompt limit must be a positive integer")
     data = _work_order_metadata(metadata, dispatch_id)
     rendered = _work_order_sections(sections)
     head = json.dumps(data, indent=2, ensure_ascii=False)
     text = _compose_order(head, rendered)
-    if len(text) > PROMPT_MAX_CHARS and rendered[TRIMMABLE_SECTION].strip():
+    if combined_limit is not None:
+        text = _fit_combined(head, rendered, combined_limit)
+    elif len(text) > PROMPT_MAX_CHARS and rendered[TRIMMABLE_SECTION].strip():
         # The code area is a hint; every other section is part of the contract.
         text = _compose_order(head, {**rendered, TRIMMABLE_SECTION: "(trimmed)"})
     _bound(text, "the work order")
     path = prompt_dir(store, dispatch_id) / ORDER_FILE
     _write_local(path, text)
     return path
+
+
+def _fit_combined(
+    head: str, rendered: Mapping[str, str], combined_limit: int
+) -> str:
+    text = _compose_order(head, rendered)
+    if len(text) <= combined_limit:
+        return text
+    if rendered[TRIMMABLE_SECTION].strip():
+        text = _compose_order(head, {**rendered, TRIMMABLE_SECTION: "(trimmed)"})
+        if len(text) <= combined_limit:
+            return text
+    sizes = {name: len(rendered[name].strip()) for name in WORK_ORDER_SECTIONS}
+    listing = ", ".join(f"{name} {size}" for name, size in sizes.items())
+    raise WriteRefused(
+        "VALIDATION_FAILED",
+        f"the role prompt and work order exceed {combined_limit} characters "
+        f"even after the code area is trimmed: {listing}",
+        {"limit": combined_limit, "sections": sizes},
+    )
 
 
 def _compose_order(head: str, rendered: Mapping[str, str]) -> str:

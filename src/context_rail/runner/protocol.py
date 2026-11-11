@@ -69,6 +69,7 @@ class Runner(Protocol):
         order_file: Path,
         session_id: str | None = None,
         model: str | None = None,
+        combined_limit: int | None = None,
     ) -> list[str]: ...
 
 
@@ -142,6 +143,7 @@ class _Adapter:
         order_file: Path,
         session_id: str | None = None,
         model: str | None = None,
+        combined_limit: int | None = None,
     ) -> list[str]:
         from context_rail.store.write import WriteRefused
 
@@ -160,6 +162,7 @@ class _Adapter:
                 role_file=Path(role_file),
                 order_file=Path(order_file),
                 tools=tools,
+                combined_limit=combined_limit,
             )
         argv: list[str] = [binary, *_LAUNCHERS[self.name][1:]]
         if session_id is not None:
@@ -193,9 +196,12 @@ class _Adapter:
         role_file: Path,
         order_file: Path,
         tools: tuple[str, ...],
+        combined_limit: int | None,
     ) -> list[str]:
         """The argv for an adapter that takes one combined prompt argument."""
-        prompt = _combined_prompt(role_file, order_file, tools=tools)
+        prompt = _combined_prompt(
+            role_file, order_file, tools=tools, combined_limit=combined_limit
+        )
         raw = os.environ.get(f"RAIL_{self.name.upper()}_ARGS")
         template: list[str]
         if raw:
@@ -325,23 +331,41 @@ def _prompt_clip(text: str, cap: int) -> str:
 
 
 def _combined_prompt(
-    role_file: Path, order_file: Path, *, tools: tuple[str, ...] = ()
+    role_file: Path,
+    order_file: Path,
+    *,
+    tools: tuple[str, ...] = (),
+    combined_limit: int | None = None,
 ) -> str:
     """The role prompt and the work order as one bounded argument.
 
     Prompt-only adapters have no ``--tools`` flag, so the declared tool list
     travels in the prompt itself; the operator can still pin exact CLI flags
-    through ``RAIL_<NAME>_ARGS``.
+    through ``RAIL_<NAME>_ARGS``. With ``combined_limit`` the pair is a contract:
+    an overflowing pair is refused, never clipped.
     """
-    parts = [role_file.read_text(encoding="utf-8").rstrip()]
+    role_text = role_file.read_text(encoding="utf-8").rstrip()
+    order_text = order_file.read_text(encoding="utf-8").lstrip()
+    parts = [role_text]
     if tools:
         parts.append(
             "## Tool contract\nUse only these tools: "
             + ", ".join(tools)
             + ". Do not use any other tool."
         )
-    parts.append(order_file.read_text(encoding="utf-8").lstrip())
-    return _prompt_clip("\n\n".join(parts), _PROMPT_MAX_CHARS)
+    parts.append(order_text)
+    text = "\n\n".join(parts)
+    if combined_limit is not None and len(text) > combined_limit:
+        from context_rail.store.write import WriteRefused
+
+        sizes = {"role": len(role_text), "order": len(order_text), "tools": len(tools)}
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"the role prompt and work order exceed {combined_limit} characters: "
+            + ", ".join(f"{name} {size}" for name, size in sizes.items()),
+            {"limit": combined_limit, "sections": sizes},
+        )
+    return text if combined_limit is not None else _prompt_clip(text, _PROMPT_MAX_CHARS)
 
 
 def _usage_from_tokens(tokens: dict) -> dict:
@@ -559,6 +583,7 @@ def run_runner(
         order_file=Path(order_file),
         session_id=session_id,
         model=resolve_model(profile, adapter.name),
+        combined_limit=_PROMPT_MAX_CHARS if session is not None else None,
     )
     extra_env = {f"RAIL_{adapter.name.upper()}_BIN": argv[0]}
     if session is not None:

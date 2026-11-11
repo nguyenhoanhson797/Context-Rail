@@ -396,7 +396,7 @@ def test_the_work_order_refuses_unknown_or_missing_sections(tmp_path):
 def test_an_oversized_order_trims_the_code_area_first(tmp_path):
     from context_rail.runner.droid import PROMPT_MAX_CHARS, TRIMMABLE_SECTION
 
-    sections = {name: "z" * 2700 for name in WORK_ORDER_SECTIONS}
+    sections = {name: "z" * 2400 for name in WORK_ORDER_SECTIONS}
     path = write_order_file(
         tmp_path, DISPATCH_ID, metadata=_metadata(), sections=sections
     )
@@ -404,7 +404,7 @@ def test_an_oversized_order_trims_the_code_area_first(tmp_path):
     text = path.read_text(encoding="utf-8")
     assert len(text) <= PROMPT_MAX_CHARS
     assert text.split(f"## {TRIMMABLE_SECTION}", 1)[1].strip() == "(trimmed)"
-    assert text.count("z" * 2700) == len(WORK_ORDER_SECTIONS) - 1
+    assert text.count("z" * 2400) == len(WORK_ORDER_SECTIONS) - 1
 
 
 def test_an_order_too_big_even_without_the_code_area_is_refused(tmp_path):
@@ -482,7 +482,7 @@ def test_append_failure_keeps_a_near_cap_order_inside_the_prompt_cap(tmp_path):
 
     # A near-cap base leaves a small share for the first failure body, inside
     # the window where a naive head/tail split overflows.
-    sections = {name: "z" * 2700 for name in WORK_ORDER_SECTIONS}
+    sections = {name: "z" * 2400 for name in WORK_ORDER_SECTIONS}
     order = write_order_file(
         tmp_path, DISPATCH_ID, metadata=_metadata(), sections=sections
     )

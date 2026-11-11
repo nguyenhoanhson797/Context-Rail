@@ -26,6 +26,18 @@ WORKER_SET = [
     "budgets={attempts: 2, seconds: 3600, tokens: null, credits: null}",
 ]
 
+VALIDATOR_SET = [
+    "schema=1",
+    "version=1",
+    "recipe=reviewer",
+    "allowed_methods=[find, show, cto brief, ledger, report]",
+    "budget={max_chars: 12000, max_docs: 20}",
+    "model=gpt-5.3-review",
+    "tools=[read-cli, ls-cli, grep_tool_cli, glob-search-cli]",
+    "skills=[]",
+    "budgets={attempts: 2, seconds: 3600, tokens: null, credits: null}",
+]
+
 UNIT_COMMAND = (
     "import sys\n"
     "from pathlib import Path\n"
@@ -60,6 +72,21 @@ def role_git_store(
             actor=None,
         )
         assert is_ok(profile), profile
+        validator_body = project.parent / "validator-body.md"
+        validator_body.write_text("Review one Item.\n", encoding="utf-8")
+        validator = invoke(
+            "add",
+            {
+                "preset": "profile",
+                "title": "validator",
+                "set": VALIDATOR_SET,
+                "body_file": str(validator_body),
+                "confirm": "APPROVE validator",
+            },
+            store=role_store.store,
+            actor=None,
+        )
+        assert is_ok(validator), validator
         task = invoke(
             "add",
             {
@@ -109,6 +136,7 @@ def role_git_store(
         lead=role_store.lead,
         orders_seat=role_store.orders_seat,
         billing=role_store.billing,
+        o1=role_store.o1,
         task=task["value"]["slug"],
         sibling=role_store.b1,
         root=project,

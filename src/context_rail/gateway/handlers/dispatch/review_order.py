@@ -16,6 +16,7 @@ from context_rail.store.doc import etag
 from . import code_area
 from .checkpoint import _git
 from .common import REVIEW_DIFF_MAX, REVIEW_VERDICTS, _COMMIT, _string_list
+from .roles import run_seat_brief
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -59,6 +60,9 @@ def _review_sections(
     run: dict[str, Any],
     candidate: str,
     profile: Profile,
+    profile_name: str,
+    role: Any = None,
+    seat: str | None = None,
 ) -> dict[str, str]:
     _data, doc = read_doc(ctx.store, rel)
     title = doc.title or slug
@@ -74,10 +78,30 @@ def _review_sections(
     workflow_text = (
         surface.render_card(card) if card is not None else "(no workflow card)"
     )
+    diff = _bounded_diff(ctx, run, candidate)
+    evidence = _check_evidence(ctx, slug)
+    review_code = code_area.review_code_lines(ctx, slug, run)
+    context = "(none)"
+    if role is not None and seat is not None:
+        dispatcher = ctx.identity.name if ctx.identity is not None else "human"
+        context = run_seat_brief(
+            ctx,
+            role,
+            seat=seat,
+            item=slug,
+            profile_name=profile_name,
+            dispatcher=dispatcher,
+            extra_parts={
+                "diff": diff,
+                "evidence": evidence,
+                "code_area": review_code,
+            },
+        )
     return {
         "objective": bounded(
             f"Review candidate {candidate} for {title}.\n\n{doc.body}", 6000
         ),
+        "context": context,
         "workflow": workflow_text,
         "selected scope": scope,
         "conventions": (
@@ -89,10 +113,8 @@ def _review_sections(
             "stay at the candidate commit. Approve exactly this commit, or reject it "
             "with findings the implementer can act on."
         ),
-        "selected files": "\n".join(
-            part for part in (changed, _bounded_diff(ctx, run, candidate)) if part
-        ),
-        "checks": _check_evidence(ctx, slug),
+        "selected files": "\n".join(part for part in (changed, diff) if part),
+        "checks": evidence,
         "allowed rail methods": methods,
         "no-store-edit rule": (
             f"Never write {Path(ctx.store).absolute()} (the canonical store). Read it "
@@ -108,7 +130,7 @@ def _review_sections(
             "(approve or reject), candidate_commit, findings and evidence. Prose never "
             "stands in for a Check."
         ),
-        "code area": code_area.review_code_lines(ctx, slug, run),
+        "code area": review_code,
     }
 
 

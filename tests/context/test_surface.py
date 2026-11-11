@@ -238,7 +238,7 @@ def test_two_workflows_offer_different_next_states(tmp_path: Path) -> None:
 def test_the_work_order_sections_put_the_workflow_after_the_objective() -> None:
     from context_rail.runner.droid import WORK_ORDER_SECTIONS
 
-    assert WORK_ORDER_SECTIONS[:2] == ("objective", "workflow")
+    assert WORK_ORDER_SECTIONS[:3] == ("objective", "context", "workflow")
 
 
 def test_the_cto_objective_is_queue_driven() -> None:

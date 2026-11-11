@@ -117,7 +117,9 @@ def main() -> int:
         return 2
     session = flags.get("-s") or f"fake-session-{_launches() + 1}"
     worktree = Path(flags.get("--cwd") or os.getcwd())
-    reviewer = os.environ.get("RAIL_ACTOR") == "reviewer"
+    reviewer = os.environ.get("RAIL_ACTOR") == "reviewer" or bool(
+        _order_metadata(flags.get("-f")).get("candidate_commit")
+    )
     _record([str(Path(__file__).resolve()), *args], flags, mode, session)
     if behavior.get("stderr"):
         print(str(behavior["stderr"]), file=sys.stderr)
