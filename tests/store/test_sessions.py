@@ -91,12 +91,14 @@ def test_a_session_of_another_store_does_not_resolve(tmp_path: Path) -> None:
     assert resolve_session(two, token) is None
 
 
-def test_an_expired_session_is_removed_and_none(tmp_path: Path) -> None:
+def test_an_expired_session_is_refused_and_removed_by_cleanup(tmp_path: Path) -> None:
     store = plain_store(tmp_path)
     token, _ = open_session(store, "lead", ttl_s=10, now=1000.0)
 
     assert resolve_session(store, token, now=1009.0) is not None
     assert resolve_session(store, token, now=1010.0) is None
+    assert session_files(store)
+    assert drop_expired_sessions(store, now=1010.0) == 1
     assert session_files(store) == []
 
 

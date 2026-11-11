@@ -29,6 +29,7 @@ __all__ = [
     "SESSIONS_DIR",
     "Session",
     "close_sessions",
+    "close_all_sessions",
     "drop_expired_sessions",
     "open_session",
     "resolve_session",
@@ -107,7 +108,8 @@ def resolve_session(
     if session is None or session.id != session_id:
         return None
     if _expired(session, time.time() if now is None else now):
-        _remove(path)
+        # A read never writes; the expired file is removed by a write-side
+        # cleanup such as seat open, seat close or drop_expired_sessions.
         return None
     return session
 
@@ -143,6 +145,11 @@ def drop_expired_sessions(store: Path, *, now: float | None = None) -> int:
     return sum(
         _remove(path) for path, session in _entries(store) if _expired(session, moment)
     )
+
+
+def close_all_sessions(store: Path) -> int:
+    """Remove every session, manual or run; only the human ``seat close --all`` uses it."""
+    return sum(_remove(path) for path, _session in _entries(store))
 
 
 def _token_id(token: str) -> str:

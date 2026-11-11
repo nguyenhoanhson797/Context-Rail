@@ -167,19 +167,6 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
 
     dispatch_id = new_ulid()
-    run_seat = None
-    run_token = None
-    if role is not None:
-        run_token = open_run_seat(
-            ctx,
-            role,
-            item=slug,
-            dispatcher=ctx.identity,
-            profile_name=profile_name,
-            profile=profile,
-            dispatch_id=dispatch_id,
-        )
-        run_seat = f"{role.name}@{dispatch_id}"
     paths = local_dispatch.dispatch_paths(store, slug, dispatch_id)
     with local_dispatch.acquire_dispatch_lock(store, slug, dispatch_id):
         _refuse_pending(store, slug)
@@ -248,6 +235,19 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 _restore_status(ctx, slug, original_status, actor)
             raise
 
+        run_seat = None
+        run_token = None
+        if role is not None:
+            run_token = open_run_seat(
+                ctx,
+                role,
+                item=slug,
+                dispatcher=ctx.identity,
+                profile_name=profile_name,
+                profile=profile,
+                dispatch_id=dispatch_id,
+            )
+            run_seat = f"{role.name}@{dispatch_id}"
         checks = tuple(row["slug"] for row in query.check_states(index, slug))
         plan = _Plan(
             ctx=ctx,
@@ -281,7 +281,12 @@ def dispatch(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             dispatcher=ctx.identity.name if role is not None else None,
             run_seat_token=run_token,
         )
-        role_file, order_file = _write_prompts(ctx, plan, rel, intent)
+        try:
+            role_file, order_file = _write_prompts(ctx, plan, rel, intent)
+        except BaseException:
+            if run_token is not None:
+                close_sessions(store, run=dispatch_id)
+            raise
         return _execute(plan, role_file, order_file)
 
 

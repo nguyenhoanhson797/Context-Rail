@@ -17,7 +17,13 @@ from context_rail.model.seats import HUMAN, SEAT_GRANTED, SEAT_KINDS, SEAT_REVOK
 from context_rail.store import query
 from context_rail.store.location import local_dir
 from context_rail.store.lock import store_lock
-from context_rail.store.sessions import SESSIONS_DIR, close_sessions, open_session
+from context_rail.store.sessions import (
+    SESSIONS_DIR,
+    close_all_sessions,
+    close_sessions,
+    drop_expired_sessions,
+    open_session,
+)
 from context_rail.store.write import WriteRefused, commit
 
 _PROJECT = "project"
@@ -278,6 +284,7 @@ def seat_open(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"reason": "no_roles", "command": "rail pack use <pack>"},
         )
     identity = ctx.identity
+    drop_expired_sessions(ctx.store)
     seat = _text(args.get("seat"), "seat")
     hours = _ttl_hours(args.get("ttl_hours"))
     live = query.live_seats(ctx.index)
@@ -327,9 +334,7 @@ def seat_close(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
                 "only the human may close every session",
                 {"reason": "close_denied"},
             )
-        known = sorted({event.seat for event in query.seat_events(ctx.index)})
-        closed = sum(close_sessions(ctx.store, seat=name) for name in known)
-        return {"all": True, "closed": closed}
+        return {"all": True, "closed": close_all_sessions(ctx.store)}
     seat = _named(args.get("seat"))
     if seat is None:
         raise WriteRefused(

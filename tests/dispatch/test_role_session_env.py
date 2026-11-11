@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from context_rail.core.result import is_ok
 from context_rail.gateway.execution import caller_identity
 from context_rail.gateway.gateway import invoke
@@ -16,6 +18,7 @@ from context_rail.runner import protocol
 from context_rail.runner.droid import droid_env
 from context_rail.runner.protocol import run_runner
 from context_rail.store.sessions import resolve_session
+from context_rail.store.location import local_dir
 from helpers import FakeDroid, open_test_session
 
 
@@ -135,6 +138,33 @@ def test_the_run_session_is_closed_after_the_run_even_on_failure(
     assert dispatched["value"]["status"] == "escalated"
     token = probe.log()[0]["env"]["RAIL_SESSION"]
     assert resolve_session(role_git_store.store, token) is None
+
+
+def test_the_run_session_is_closed_when_the_prompts_cannot_be_written(
+    role_git_store: SimpleNamespace, monkeypatch: Any
+) -> None:
+    sessions = local_dir(role_git_store.store) / "sessions"
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("prompt write failed")
+
+    monkeypatch.setattr(implementer_handler, "_write_prompts", boom)
+    dispatched = dispatch_as(
+        role_git_store.store,
+        role_git_store.lead,
+        role_git_store.task,
+        role_git_store.etag,
+        "role-env-prompt-failure",
+    )
+
+    assert not is_ok(dispatched)
+    import json
+
+    leftover = [
+        json.loads(path.read_text(encoding="utf-8")).get("run")
+        for path in sessions.glob("*.json")
+    ]
+    assert not any(leftover)
 
 
 def test_the_non_droid_runner_gets_the_same_environment(

@@ -135,6 +135,70 @@ def test_revoke_closes_the_seat_session_and_a_regrant_does_not_revive_it(
     assert refusal(regranted) == ("PERMISSION_DENIED", "session_invalid")
 
 
+def test_seat_close_all_also_closes_run_sessions(role_store: SimpleNamespace) -> None:
+    token, _session = open_session(
+        role_store.store,
+        "worker@run-1",
+        run="run-1",
+        role="implementer",
+        anchor=role_store.o1,
+        profile=None,
+        granted_by=role_store.lead,
+        ttl_s=None,
+    )
+    with as_human():
+        closed = invoke(
+            "seat close", {"all": True}, store=role_store.store, actor=None
+        )
+    assert is_ok(closed), closed
+    assert closed["value"]["closed"] >= 1
+    from context_rail.store.sessions import resolve_session
+
+    assert resolve_session(role_store.store, token) is None
+
+
+def test_digest_hides_waits_and_progress_from_another_area(
+    role_store: SimpleNamespace,
+) -> None:
+    for record_id, item in (
+        ("01JWAITINSIDE0000000000001", role_store.o1),
+        ("01JWAITOUTSIDE000000000000", role_store.b1),
+    ):
+        write_record(
+            role_store.store,
+            record_id,
+            "report.filed",
+            {
+                "schema": 1,
+                "target_class": "human-wait",
+                "target": "copy",
+                "item": item,
+                "run": None,
+                "nothing_to_report": False,
+                "what_happened": "a human must decide this",
+                "expected": "the default holds",
+                "observed": "it does not",
+                "impact": "medium",
+                "evidence": [],
+                "fingerprint": f"human-wait|copy|{item}",
+            },
+            about=(item,),
+            at="2026-11-11T10:00:00Z",
+        )
+
+    digest = as_seat(role_store.store, role_store.orders_seat, "digest", {})
+
+    assert is_ok(digest), digest
+    items = {row.get("item") for row in digest["value"]["needs_human"]}
+    assert role_store.o1 in items
+    assert role_store.b1 not in items
+    children = {
+        child.get("slug")
+        for child in (digest["value"].get("progress") or {}).get("children") or ()
+    }
+    assert role_store.billing not in children
+
+
 def test_a_session_opened_before_its_grant_is_refused(tmp_path: Path) -> None:
     store = tmp_path / "context-rail"
     store.mkdir()
