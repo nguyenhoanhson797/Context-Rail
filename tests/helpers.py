@@ -1177,6 +1177,7 @@ def mcp_call(
     arguments: dict[str, Any] | None = None,
     *,
     actor: str | None = None,
+    session: str | None = None,
 ) -> dict[str, Any]:
     """One in-memory MCP tool call, with a protocol error reported separately."""
     import anyio
@@ -1194,7 +1195,8 @@ def mcp_call(
 
     async def scenario() -> None:
         async with Client(
-            build_server(store=store, actor=actor), raise_exceptions=True
+            build_server(store=store, actor=actor, session=session),
+            raise_exceptions=True,
         ) as client:
             try:
                 response = await client.call_tool(name, arguments or {})
@@ -1214,7 +1216,9 @@ def mcp_call(
     return outcome
 
 
-def mcp_list(store: Path, *, actor: str | None = None) -> list[dict[str, Any]]:
+def mcp_list(
+    store: Path, *, actor: str | None = None, session: str | None = None
+) -> list[dict[str, Any]]:
     """Every tool one in-memory MCP server lists."""
     import anyio
     from mcp.client import Client
@@ -1225,7 +1229,8 @@ def mcp_list(store: Path, *, actor: str | None = None) -> list[dict[str, Any]]:
 
     async def scenario() -> None:
         async with Client(
-            build_server(store=store, actor=actor), raise_exceptions=True
+            build_server(store=store, actor=actor, session=session),
+            raise_exceptions=True,
         ) as client:
             response = await client.list_tools()
             for tool in response.tools:

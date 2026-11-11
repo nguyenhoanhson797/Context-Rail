@@ -20,9 +20,10 @@ from context_rail.gateway.execution import (
     resolve_server_actor,
     serving_connection,
 )
-from context_rail.gateway.gateway import invoke
-from context_rail.gateway.identity import roles_declared
+from context_rail.gateway.gateway import _open_context, invoke
+from context_rail.gateway.identity import resolve_identity, roles_declared
 from context_rail.gateway.mcp_schema import input_schema, read_only_hint, tool_meta
+from context_rail.gateway.role_guard import tools_for
 from context_rail.gateway.tools import TOOLS
 
 _SESSION_COMMAND = "rail seat open <seat> -- <command>"
@@ -45,7 +46,28 @@ def build_server(
     by_name = {tool.name: tool for tool in TOOLS}
     write_lock = anyio.Lock()
 
+    def listed() -> frozenset[str]:
+        """The tool names this pinned caller may see, or none when it cannot be placed."""
+        if not scoped:
+            return frozenset(tool.name for tool in TOOLS)
+        try:
+            context = _open_context(
+                store, pinned_actor or "human", pinned_actor is not None
+            )
+        except Exception:
+            return frozenset()
+        try:
+            context.identity = resolve_identity(
+                context, actor=None, session=pinned_session, tty=False
+            )
+            return tools_for(context)
+        except Exception:
+            return frozenset()
+        finally:
+            context.close()
+
     async def on_list_tools(_context: object, _params: object) -> types.ListToolsResult:
+        names = listed()
         return types.ListToolsResult(
             tools=[
                 types.Tool(
@@ -58,6 +80,7 @@ def build_server(
                     **{"_meta": tool_meta(tool)},
                 )
                 for tool in TOOLS
+                if tool.name in names
             ]
         )
 

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping
 
 from context_rail.core.result import fail
+from context_rail.gateway.tools import TOOLS
 from context_rail.model.roles import role_tools
 from context_rail.store.index import Index
 
@@ -26,6 +27,7 @@ __all__ = [
     "authorize_role",
     "reach_hint",
     "targets_for",
+    "tools_for",
 ]
 
 OPS_HUMAN_ONLY = frozenset(
@@ -150,6 +152,23 @@ def targets_for(
             relation=_text(params.get("action")),
         )
     return Targets()
+
+
+def tools_for(context: Context) -> frozenset[str]:
+    """The tools this caller may use, from its identity and never its name.
+
+    A legacy store and the human keep the whole table. A seat gets every read
+    tool plus the write tools its role holds; an anonymous caller gets only the
+    read tools.
+    """
+    names = frozenset(tool.name for tool in TOOLS)
+    identity = context.identity
+    if not context.role_mode or identity.kind in ("legacy", "human"):
+        return names
+    reads = frozenset(tool.name for tool in TOOLS if tool.permission == "read")
+    if identity.kind == "seat" and identity.role is not None:
+        return reads | role_tools(identity.role)
+    return reads
 
 
 def authorize_role(
