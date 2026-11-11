@@ -52,5 +52,7 @@ def test_api_call_tool_alone_is_not_a_human_channel(role_store) -> None:
         actor=None,
     )
 
-    assert result["status"] == "ok", result
+    assert result["status"] == "error", result
+    assert result["code"] == "SESSION_REQUIRED"
     assert "human" not in actors_for(role_store.store, "ui-direct")
+    assert actors_for(role_store.store, "ui-direct") == set()

@@ -25,12 +25,13 @@ def seat_kinds(store: Path) -> list[str]:
 
 def test_generic_add_cannot_create_a_seat_record(role_store: SimpleNamespace) -> None:
     before = len(seat_kinds(role_store.store))
-    added = invoke(
-        "add",
-        {"preset": "event", "title": "Not a seat", "set": ["kind=seat.granted"]},
-        store=role_store.store,
-        actor=None,
-    )
+    with as_human():
+        added = invoke(
+            "add",
+            {"preset": "event", "title": "Not a seat", "set": ["kind=seat.granted"]},
+            store=role_store.store,
+            actor=None,
+        )
 
     assert len(seat_kinds(role_store.store)) == before
     if not is_ok(added):

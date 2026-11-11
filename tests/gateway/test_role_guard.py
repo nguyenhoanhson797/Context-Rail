@@ -1,0 +1,228 @@
+"""Role-mode authorization: a seat writes only through its role and its reach."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import yaml
+
+from context_rail.core.result import is_ok
+from context_rail.gateway.execution import caller_identity
+from context_rail.gateway.gateway import invoke
+from helpers import actors_for, as_human, open_test_session
+
+
+def edit_roles(store: Path, change: Any) -> None:
+    path = store / "packs" / "scrum" / "pack.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    change(document["operating"]["roles"])
+    path.write_text(
+        yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+
+
+def as_seat(
+    store: Path, seat: str, tool: str, args: dict[str, Any]
+) -> dict[str, Any]:
+    token = open_test_session(store, seat)
+    with caller_identity(None, None, session=token):
+        return invoke(tool, args, store=store)
+
+
+def refusal(result: dict[str, Any]) -> tuple[str | None, Any]:
+    assert not is_ok(result), result
+    error = result["error"]
+    return error["code"], (error.get("details") or {}).get("reason")
+
+
+def etag_of(store: Path, seat: str, slug: str) -> str:
+    shown = as_seat(store, seat, "show", {"slug": slug})
+    assert is_ok(shown), shown
+    return shown["value"]["doc"]["etag"]
+
+
+def test_manager_updates_its_own_story(role_store: SimpleNamespace) -> None:
+    updated = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "update",
+        {
+            "slug": role_store.o1,
+            "expect": etag_of(role_store.store, role_store.orders_seat, role_store.o1),
+            "tag": ["+revised"],
+        },
+    )
+
+    assert is_ok(updated), updated
+
+
+def test_manager_cannot_update_a_sibling_sprints_story(
+    role_store: SimpleNamespace,
+) -> None:
+    updated = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "update",
+        {
+            "slug": role_store.b1,
+            "expect": etag_of(role_store.store, role_store.orders_seat, role_store.b1),
+            "tag": ["+revised"],
+        },
+    )
+
+    assert refusal(updated) == ("PERMISSION_DENIED", "write_out_of_reach")
+
+
+def test_manager_cannot_add_without_a_parent_in_reach(
+    role_store: SimpleNamespace,
+) -> None:
+    added = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "add",
+        {"preset": "story", "title": "Orphan"},
+    )
+
+    assert refusal(added) == ("PERMISSION_DENIED", "add_without_parent")
+
+
+def test_manager_adds_a_story_under_its_sprint(role_store: SimpleNamespace) -> None:
+    added = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "add",
+        {"preset": "story", "title": "O3", "rel": [f"part_of={role_store.orders}"]},
+    )
+
+    assert is_ok(added), added
+    assert role_store.orders_seat in actors_for(
+        role_store.store, added["value"]["slug"]
+    )
+
+
+def test_move_to_a_status_outside_can_move_is_refused(
+    role_store: SimpleNamespace,
+) -> None:
+    def narrow(roles: dict[str, Any]) -> None:
+        roles["sprint-lead"]["can"]["move"]["story"] = ["todo"]
+
+    edit_roles(role_store.store, narrow)
+    moved = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "move",
+        {
+            "slug": role_store.o1,
+            "status": "doing",
+            "expect": etag_of(role_store.store, role_store.orders_seat, role_store.o1),
+        },
+    )
+
+    assert refusal(moved) == ("PERMISSION_DENIED", "status_not_in_can_move")
+
+
+def test_a_write_tool_missing_from_the_table_is_refused(
+    role_store: SimpleNamespace,
+) -> None:
+    linked = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "link",
+        {
+            "src": role_store.o1,
+            "rel": "depends_on",
+            "dst": role_store.o2,
+            "expect": etag_of(role_store.store, role_store.orders_seat, role_store.o1),
+            "reason": "orders",
+        },
+    )
+
+    assert refusal(linked) == ("PERMISSION_DENIED", "tool_not_for_seats")
+
+
+def test_ops_tools_are_human_only_for_seats(role_store: SimpleNamespace) -> None:
+    synced = as_seat(role_store.store, role_store.orders_seat, "sync", {})
+
+    assert refusal(synced) == ("PERMISSION_DENIED", "ops_human_only")
+
+
+def test_anonymous_write_is_session_required(role_store: SimpleNamespace) -> None:
+    added = invoke(
+        "add",
+        {"preset": "story", "title": "Anonymous", "rel": [f"part_of={role_store.orders}"]},
+        store=role_store.store,
+    )
+
+    assert refusal(added) == ("SESSION_REQUIRED", "session_required")
+
+
+def test_lens_write_is_refused(role_store: SimpleNamespace) -> None:
+    with caller_identity(None, None, tty=True, lens=role_store.billing_seat):
+        added = invoke(
+            "add",
+            {
+                "preset": "story",
+                "title": "Through the lens",
+                "rel": [f"part_of={role_store.billing}"],
+            },
+            store=role_store.store,
+        )
+
+    assert refusal(added) == ("PERMISSION_DENIED", "lens_read_only")
+
+
+def test_human_terminal_passes_the_guard(role_store: SimpleNamespace) -> None:
+    with as_human():
+        added = invoke(
+            "add",
+            {"preset": "story", "title": "By the human", "rel": [f"part_of={role_store.billing}"]},
+            store=role_store.store,
+            actor=None,
+        )
+
+    assert is_ok(added), added
+
+
+def test_lead_with_project_reach_writes_anywhere(role_store: SimpleNamespace) -> None:
+    added = as_seat(
+        role_store.store,
+        role_store.lead,
+        "add",
+        {"preset": "story", "title": "Lead anywhere", "rel": [f"part_of={role_store.billing}"]},
+    )
+
+    assert is_ok(added), added
+
+
+def test_seat_role_removed_is_inert(role_store: SimpleNamespace) -> None:
+    def remove(roles: dict[str, Any]) -> None:
+        del roles["sprint-lead"]
+        for role in roles.values():
+            grants = role.get("can", {}).get("grant")
+            if isinstance(grants, list) and "sprint-lead" in grants:
+                grants.remove("sprint-lead")
+
+    edit_roles(role_store.store, remove)
+    added = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "add",
+        {"preset": "story", "title": "Stale seat", "rel": [f"part_of={role_store.orders}"]},
+    )
+
+    assert refusal(added) == ("PERMISSION_DENIED", "seat_role_unknown")
+
+
+def test_legacy_store_still_uses_allowed_methods(approved_store: Path) -> None:
+    refused = invoke(
+        "add", {"preset": "task", "title": "Not allowed"}, store=approved_store, actor="implementer"
+    )
+    allowed = invoke(
+        "add", {"preset": "task", "title": "Allowed"}, store=approved_store, actor="cto"
+    )
+
+    assert refused["error"]["code"] == "PERMISSION_DENIED"
+    assert refused["error"]["details"]["profile"] == "implementer"
+    assert is_ok(allowed), allowed

@@ -40,6 +40,7 @@ from context_rail.gateway.execution import (
     resolve_actor_name,
 )
 from context_rail.gateway.identity import ANONYMOUS, Identity, resolve_identity
+from context_rail.gateway.role_guard import authorize_role
 from context_rail.core.tool_names import (
     alias_defaults,
     canonical_methods,
@@ -455,27 +456,32 @@ def _authorize(
         nested = _tick_refusal(context.identity, actor_env)
         if nested is not None:
             return fail("PERMISSION_DENIED", nested, {"tool": tool.name, "actor": actor})
-    profile = context.profile
-    allowed = canonical_methods(profile.allowed_methods) if profile is not None else frozenset()
-    # ``cto tick`` starts the CTO session rather than acting inside one, and
-    # ``mcp serve``/``ui serve`` only open transports whose calls are gated one
-    # by one, so none of them is narrowed by the caller's profile. The compiled
-    # surface is how every actor reads the pack, so a profile never hides it.
-    if (
-        profile is not None
-        and tool.name not in ("cto tick", "mcp serve", "ui serve")
-        and tool.name not in _COMPILED_SURFACE
-        and tool.name not in allowed
-    ):
-        return fail(
-            "PERMISSION_DENIED",
-            f"profile {actor!r} may not use {tool.name!r}",
-            {
-                "tool": tool.name,
-                "profile": actor,
-                "allowed_methods": list(profile.allowed_methods),
-            },
-        )
+    if context.role_mode:
+        refusal = authorize_role(tool, params, context)
+        if refusal is not None:
+            return refusal
+    else:
+        profile = context.profile
+        allowed = canonical_methods(profile.allowed_methods) if profile is not None else frozenset()
+        # ``cto tick`` starts the CTO session rather than acting inside one, and
+        # ``mcp serve``/``ui serve`` only open transports whose calls are gated one
+        # by one, so none of them is narrowed by the caller's profile. The compiled
+        # surface is how every actor reads the pack, so a profile never hides it.
+        if (
+            profile is not None
+            and tool.name not in ("cto tick", "mcp serve", "ui serve")
+            and tool.name not in _COMPILED_SURFACE
+            and tool.name not in allowed
+        ):
+            return fail(
+                "PERMISSION_DENIED",
+                f"profile {actor!r} may not use {tool.name!r}",
+                {
+                    "tool": tool.name,
+                    "profile": actor,
+                    "allowed_methods": list(profile.allowed_methods),
+                },
+            )
     if tool.permission == "read":
         return None
     if tool.name == "adapters sync" and params.get("force"):

@@ -88,11 +88,10 @@ def test_the_daemon_never_caches_identity(
         )
 
     assert signed is not None and is_ok(signed), signed
-    assert unsigned is not None and is_ok(unsigned), unsigned
+    assert unsigned is not None and not is_ok(unsigned), unsigned
+    assert unsigned["error"]["code"] == "SESSION_REQUIRED"
     assert role_store.orders_seat in actors_for(role_store.store, signed["value"]["slug"])
-    assert role_store.orders_seat not in actors_for(
-        role_store.store, unsigned["value"]["slug"]
-    )
+    assert actors_for(role_store.store, "t15-unsigned") == set()
 
 
 def test_the_daemon_environment_has_no_session_variables(

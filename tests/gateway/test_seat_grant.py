@@ -90,7 +90,7 @@ def test_the_human_bootstraps_the_first_lead_seat(role_store: SimpleNamespace) -
         {"seat": "lead-3", "role": "lead", "anchor": "project"},
         store=role_store.store,
     )
-    assert refusal(anonymous) == ("PERMISSION_DENIED", "grant_denied")
+    assert refusal(anonymous) == ("SESSION_REQUIRED", "session_required")
 
 
 def test_a_seat_with_can_grant_grants_a_subordinate(role_store: SimpleNamespace) -> None:
