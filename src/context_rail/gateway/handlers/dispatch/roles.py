@@ -92,6 +92,12 @@ def _check_role(
         )
     if identity.kind == "human":
         return
+    if role.human:
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            f"role {role.name!r} may only be dispatched by a verified human",
+            {"reason": "human_role_requires_human", "role": role.name},
+        )
     if identity.kind != "seat" or identity.role is None:
         raise WriteRefused(
             "PERMISSION_DENIED",

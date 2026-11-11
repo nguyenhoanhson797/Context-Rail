@@ -291,6 +291,11 @@ def test_role_tools_name_canonical_write_tools_only(pack: Pack) -> None:
         ),
         pytest.param((("lead.reach.mood", []),), "unknown key", id="unknown-reach-key"),
         pytest.param(
+            (("lead.reach.read", [{"project": "docs/**"}]),),
+            "bare string",
+            id="project-term-takes-no-value",
+        ),
+        pytest.param(
             (("lead.reach.code.exec", []),), "unknown key", id="unknown-code-key"
         ),
         pytest.param(

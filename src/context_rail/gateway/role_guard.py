@@ -98,12 +98,12 @@ def targets_for(
     """The targets this tool's parameters name, resolved where the index can."""
     if tool_name == "add":
         preset = _text(params.get("preset"))
-        parent = _relation_target(params.get("rel"), "part_of")
+        parents = _relation_targets(params.get("rel"), "part_of")
         return Targets(
-            writes=(parent,) if parent else (),
+            writes=parents,
             preset=preset,
-            parent=parent,
-            relation="part_of" if parent else None,
+            parent=parents[0] if parents else None,
+            relation="part_of" if parents else None,
         )
     if tool_name in ("update", "move"):
         slug = _text(params.get("slug"))
@@ -125,6 +125,16 @@ def targets_for(
             writes=(src,) if src else (),
             reads=(dst,) if dst else (),
             relation=_text(params.get("rel")),
+        )
+    if tool_name == "check":
+        slug = _text(params.get("slug"))
+        target = _text(params.get("target")) or slug
+        writes = [target] if target else []
+        if slug and slug != target and _doc(index, slug) is not None:
+            writes.append(slug)
+        return Targets(
+            writes=tuple(writes),
+            preset=_preset(index, target),
         )
     if tool_name in _ITEM_TOOLS:
         slug = _item_slug(tool_name, params)
@@ -304,13 +314,20 @@ def _check_item(
     reach: ReachSet,
     targets: Targets,
 ) -> dict[str, Any] | None:
-    slug = targets.writes[0] if targets.writes else None
-    if slug is None or not _writes(context, reach, slug):
+    slugs = targets.writes
+    if not slugs:
         return _refuse(
             "write_out_of_reach",
-            f"{slug or 'the item'!r} is outside the seat's write reach",
+            "the item is outside the seat's write reach",
             reach_hint(reach, context.identity.name),
         )
+    for slug in slugs:
+        if not _writes(context, reach, slug):
+            return _refuse(
+                "write_out_of_reach",
+                f"{slug!r} is outside the seat's write reach",
+                reach_hint(reach, context.identity.name),
+            )
     key = _ITEM_TOOLS[tool_name]
     if not _allows(role.can.methods.get(key), targets.preset):
         return _refuse(
@@ -332,13 +349,14 @@ def _check_add(
             reach_hint(reach, context.identity.name),
         )
     if targets.parent is not None:
-        if not _writes(context, reach, targets.parent):
-            return _refuse(
-                "add_outside_reach",
-                f"the parent {targets.parent!r} is outside the seat's write reach",
-                reach_hint(reach, context.identity.name),
-                parent=targets.parent,
-            )
+        for parent in targets.writes:
+            if not _writes(context, reach, parent):
+                return _refuse(
+                    "add_outside_reach",
+                    f"the parent {parent!r} is outside the seat's write reach",
+                    reach_hint(reach, context.identity.name),
+                    parent=parent,
+                )
         return None
     if reach.write_all or preset in reach.write_presets:
         return None
@@ -427,17 +445,18 @@ def _preset(index: Index, slug: str | None) -> str | None:
     return None if row is None else row[1]
 
 
-def _relation_target(entries: Any, relation: str) -> str | None:
+def _relation_targets(entries: Any, relation: str) -> tuple[str, ...]:
     if isinstance(entries, str):
         entries = (entries,)
     if not isinstance(entries, (list, tuple)):
-        return None
+        return ()
+    found: list[str] = []
     for entry in entries:
         if isinstance(entry, str):
             name, _, slug = entry.partition("=")
             if name == relation and slug:
-                return slug
-    return None
+                found.append(slug)
+    return tuple(found)
 
 
 def _allows(value: Any, name: Any) -> bool:

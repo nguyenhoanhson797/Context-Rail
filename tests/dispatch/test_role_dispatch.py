@@ -187,6 +187,40 @@ def test_ledger_and_budget_rollups_still_count_a_role_mode_run(
     assert "implementer" in roles
 
 
+def test_a_human_role_cannot_be_dispatched_by_a_seat(
+    role_git_store: SimpleNamespace,
+) -> None:
+    import yaml
+
+    from helpers import approve_picture
+
+    path = role_git_store.store / "packs" / "scrum" / "pack.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    role = dict(document["operating"]["roles"]["implementer"])
+    role["human"] = True
+    document["operating"]["roles"]["human-worker"] = role
+    path.write_text(
+        yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+    with as_human():
+        assert is_ok(approve_picture(role_git_store.store, actor=None))
+
+    dispatched = as_seat(
+        role_git_store.store,
+        role_git_store.lead,
+        "dispatch",
+        {
+            "item": role_git_store.task,
+            "expect": role_git_store.etag,
+            "profile": "worker",
+            "role": "human-worker",
+            "key": "role-human",
+        },
+    )
+
+    assert refusal(dispatched) == ("PERMISSION_DENIED", "human_role_requires_human")
+
+
 def test_legacy_dispatch_is_unchanged(
     leaf_item: SimpleNamespace, fake_droid: Any, droid_env: dict[str, str]
 ) -> None:

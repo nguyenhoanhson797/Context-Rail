@@ -385,6 +385,8 @@ def _terms(
         ((kind, value),) = entry.items()
         if kind not in READ_TERMS:
             refuse(f"{spot} is an unknown reach term: {kind!r}")
+        if kind in ("project", "anchor"):
+            refuse(f"{spot} term {kind!r} takes no value; write it as a bare string")
         if kind not in allowed:
             refuse(f"{spot} term {kind!r} is read-only")
         terms.append(

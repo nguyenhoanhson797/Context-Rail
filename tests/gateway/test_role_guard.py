@@ -89,6 +89,75 @@ def test_manager_cannot_add_without_a_parent_in_reach(
     assert refusal(added) == ("PERMISSION_DENIED", "add_without_parent")
 
 
+def test_manager_adding_with_two_parents_needs_both_in_reach(
+    role_store: SimpleNamespace,
+) -> None:
+    added = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "add",
+        {
+            "preset": "story",
+            "title": "Two homes",
+            "rel": [f"part_of={role_store.orders}", f"part_of={role_store.billing}"],
+        },
+    )
+
+    assert refusal(added) == ("PERMISSION_DENIED", "add_outside_reach")
+
+
+def test_check_cannot_overwrite_a_check_document_outside_reach(
+    role_store: SimpleNamespace, tmp_path: Path
+) -> None:
+    import json
+
+    spec = tmp_path / "check.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "cmd",
+                "acceptance": False,
+                "cmd": ["py", "-c", "import sys; sys.exit(0)"],
+                "inputs": ["src/*.py"],
+                "timeout_s": 30,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with as_human():
+        created = invoke(
+            "check",
+            {
+                "slug": "foreign-check",
+                "target": role_store.o1,
+                "spec_file": str(spec),
+                "expect": "absent",
+            },
+            store=role_store.store,
+            actor=None,
+        )
+        assert is_ok(created), created
+        shown = invoke(
+            "show", {"slug": "foreign-check"}, store=role_store.store, actor=None
+        )
+    assert is_ok(shown), shown
+
+    overwritten = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "check",
+        {
+            "slug": "foreign-check",
+            "target": role_store.o1,
+            "spec_file": str(spec),
+            "expect": shown["value"]["doc"]["etag"],
+        },
+    )
+
+    assert refusal(overwritten) == ("PERMISSION_DENIED", "write_out_of_reach")
+
+
 def test_manager_adds_a_story_under_its_sprint(role_store: SimpleNamespace) -> None:
     added = as_seat(
         role_store.store,
