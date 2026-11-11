@@ -463,11 +463,7 @@ def _authorize(
         return fail(
             "PERMISSION_DENIED", refusal, {"tool": tool.name, "actor": actor}
         )
-    if (
-        tool.permission == "human"
-        and not actor_named
-        and not (context is not None and context.identity.human)
-    ):
+    if tool.permission == "human" and not actor_named:
         return fail(
             "PERMISSION_DENIED",
             "human-only tools need an explicitly named human; "
