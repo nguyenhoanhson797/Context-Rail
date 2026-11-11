@@ -48,7 +48,35 @@ SESSION_COMMAND = "rail seat open <seat> -- <command>"
 _SEAT_COMMANDS = frozenset(
     {"seat list", "seat open", "seat close", "seat grant", "seat revoke"}
 )
-_WRITE_TABLE = frozenset({"add", "update", "rename", "relocate", "move"})
+_WRITE_TABLE = frozenset(
+    {
+        "add",
+        "update",
+        "rename",
+        "relocate",
+        "move",
+        "link",
+        "dispatch",
+        "review",
+        "merge",
+        "verify",
+        "report",
+        "triage",
+        "execution record",
+        "check",
+        "do",
+        "cto tick",
+    }
+)
+_ITEM_TOOLS = {
+    "dispatch": "dispatch",
+    "review": "review",
+    "merge": "merge",
+    "verify": "verify",
+    "report": "report",
+    "execution record": "execution",
+    "check": "check",
+}
 
 
 @dataclass(frozen=True)
@@ -88,6 +116,27 @@ def targets_for(
         return Targets(
             writes=(slug,) if slug else (),
             preset=_preset(index, slug),
+        )
+    if tool_name == "link":
+        src = _text(params.get("src"))
+        dst = _text(params.get("dst"))
+        return Targets(
+            writes=(src,) if src else (),
+            reads=(dst,) if dst else (),
+            relation=_text(params.get("rel")),
+        )
+    if tool_name in _ITEM_TOOLS:
+        slug = _item_slug(tool_name, params)
+        return Targets(
+            writes=(slug,) if slug else (),
+            preset=_preset(index, slug),
+        )
+    if tool_name == "do":
+        item = _text(params.get("item"))
+        return Targets(
+            writes=(item,) if item else (),
+            preset=_preset(index, item),
+            relation=_text(params.get("action")),
         )
     return Targets()
 
@@ -137,6 +186,17 @@ def authorize_role(
         )
     role = identity.role
     allowed = role_tools(role)
+    if tool.name == "cto tick":
+        if not role.can.methods.get("tick"):
+            return _refuse(
+                "tick_not_in_can",
+                f"role {role.name!r} may not tick",
+                _hint(context.reach, identity.name),
+            )
+        return None
+    if tool.name == "do":
+        targets = targets_for(tool.name, params, context.index)
+        return _check_action(context, role, context.reach, targets)
     if tool.name not in allowed:
         return _refuse(
             "method_not_in_role",
@@ -156,9 +216,108 @@ def authorize_role(
                 _hint(reach, identity.name),
             )
         return None
+    if tool.name == "link":
+        return _check_link(context, role, reach, params)
+    if tool.name == "triage":
+        return None
     if tool.name == "add":
         return _check_add(context, role, reach, targets)
+    if tool.name in _ITEM_TOOLS:
+        return _check_item(context, tool.name, role, reach, targets)
     return _check_document(context, tool.name, role, reach, targets, identity.name)
+
+
+def _check_link(
+    context: Context, role: Any, reach: ReachSet, params: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    relation = _text(params.get("rel"))
+    if not _allows(role.can.methods.get("link"), relation):
+        return _refuse(
+            "relation_not_in_can_link",
+            f"role {role.name!r} may not link {relation!r}",
+            _hint(reach, context.identity.name),
+        )
+    src = _text(params.get("src"))
+    dst = _text(params.get("dst"))
+    if src is None or not _writes(context, reach, src):
+        return _refuse(
+            "write_out_of_reach",
+            f"{src or 'the source'!r} is outside the seat's write reach",
+            _hint(reach, context.identity.name),
+        )
+    if relation == "part_of":
+        if dst is None or not _writes(context, reach, dst):
+            return _refuse(
+                "write_out_of_reach",
+                f"the parent {dst or '?'!r} is outside the seat's write reach",
+                _hint(reach, context.identity.name),
+            )
+        previous = _current_parent(context.index, src)
+        if previous is not None and previous != dst and not _writes(context, reach, previous):
+            return _refuse(
+                "write_out_of_reach",
+                f"the previous parent {previous!r} is outside the seat's write reach",
+                _hint(reach, context.identity.name),
+            )
+        return None
+    if dst is None or not _reads(context, reach, dst):
+        return _refuse(
+            "read_out_of_reach",
+            f"{dst or 'the destination'!r} is outside the seat's read reach",
+            _hint(reach, context.identity.name),
+        )
+    return None
+
+
+def _check_action(
+    context: Context, role: Any, reach: ReachSet, targets: Targets
+) -> dict[str, Any] | None:
+    if not _allows(role.can.methods.get("actions"), targets.relation):
+        return _refuse(
+            "action_not_in_can_actions",
+            f"role {role.name!r} may not run action {targets.relation!r}",
+            _hint(reach, context.identity.name),
+        )
+    slug = targets.writes[0] if targets.writes else None
+    if slug is None:
+        if reach.write_all:
+            return None
+        return _refuse(
+            "write_out_of_reach",
+            "an action without an item needs project write reach",
+            _hint(reach, context.identity.name),
+        )
+    if not _writes(context, reach, slug):
+        return _refuse(
+            "write_out_of_reach",
+            f"{slug!r} is outside the seat's write reach",
+            _hint(reach, context.identity.name),
+        )
+    return None
+
+
+def _check_item(
+    context: Context,
+    tool_name: str,
+    role: Any,
+    reach: ReachSet,
+    targets: Targets,
+) -> dict[str, Any] | None:
+    slug = targets.writes[0] if targets.writes else None
+    if slug is None or not _writes(context, reach, slug):
+        return _refuse(
+            "write_out_of_reach",
+            f"{slug or 'the item'!r} is outside the seat's write reach",
+            _hint(reach, context.identity.name),
+        )
+    key = _ITEM_TOOLS[tool_name]
+    if not _allows(role.can.methods.get(key), targets.preset):
+        return _refuse(
+            f"preset_not_in_can_{key}",
+            f"role {role.name!r} may not {key} {targets.preset!r}",
+            _hint(reach, context.identity.name),
+        )
+    return None
 
 
 def _check_add(
@@ -230,6 +389,27 @@ def _writes(context: Context, reach: ReachSet, slug: str) -> bool:
     if row is None:
         return False
     return reach.can_write(slug, path=row[0], preset=row[1])
+
+
+def _reads(context: Context, reach: ReachSet, slug: str) -> bool:
+    row = _doc(context.index, slug)
+    if row is None:
+        return False
+    return reach.can_read(slug, path=row[0], preset=row[1])
+
+
+def _item_slug(tool_name: str, params: Mapping[str, Any]) -> str | None:
+    if tool_name in ("verify", "check"):
+        return _text(params.get("target")) or _text(params.get("slug"))
+    return _text(params.get("item"))
+
+
+def _current_parent(index: Index, slug: str) -> str | None:
+    row = index.conn.execute(
+        "SELECT dst FROM relations WHERE src = ? AND rel = 'part_of' LIMIT 1",
+        (slug,),
+    ).fetchone()
+    return None if row is None else row[0]
 
 
 def _doc(index: Index, slug: str | None) -> tuple[str, str] | None:

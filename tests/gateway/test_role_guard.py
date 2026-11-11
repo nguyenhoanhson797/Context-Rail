@@ -126,20 +126,37 @@ def test_move_to_a_status_outside_can_move_is_refused(
 def test_a_write_tool_missing_from_the_table_is_refused(
     role_store: SimpleNamespace,
 ) -> None:
-    linked = as_seat(
-        role_store.store,
-        role_store.orders_seat,
-        "link",
-        {
-            "src": role_store.o1,
-            "rel": "depends_on",
-            "dst": role_store.o2,
-            "expect": etag_of(role_store.store, role_store.orders_seat, role_store.o1),
-            "reason": "orders",
-        },
+    from context_rail.gateway.gateway import Context
+    from context_rail.gateway.identity import resolve_identity
+    from context_rail.gateway.role_guard import authorize_role
+    from context_rail.gateway.tools import Tool
+    from context_rail.model.manifest import load_manifest
+    from context_rail.model.pack import load_pack
+
+    manifest = load_manifest(role_store.store)
+    context = Context(
+        store=role_store.store,
+        manifest=manifest,
+        pack=load_pack(manifest.pack, role_store.store),
+        actor="human",
+    )
+    context.identity = resolve_identity(
+        context,
+        actor=None,
+        session=open_test_session(role_store.store, role_store.orders_seat),
+    )
+    future = Tool(
+        name="future write",
+        summary="a write with no rule yet",
+        permission="write",
+        params=(),
+        handler="test:unused",
     )
 
-    assert refusal(linked) == ("PERMISSION_DENIED", "tool_not_for_seats")
+    refused = authorize_role(future, {}, context)
+
+    assert refused is not None
+    assert refused["error"]["details"]["reason"] == "tool_not_for_seats"
 
 
 def test_ops_tools_are_human_only_for_seats(role_store: SimpleNamespace) -> None:
