@@ -17,6 +17,7 @@ from context_rail.kernel.seats import LiveSeat
 from context_rail.model.pack import Pack, load_pack
 from context_rail.model.roles import Role, parse_roles
 from context_rail.store.index import Index
+from helpers import as_human
 
 
 @contextlib.contextmanager
@@ -47,17 +48,17 @@ def custom(store: Path, anchor: Any, read: list[Any], **reach: Any) -> Role:
 
 
 def add(store: Path, preset: str, title: str, *relations: str, **fields: str) -> str:
-    result = invoke(
-        "add",
-        {
-            "preset": preset,
-            "title": title,
-            "rel": list(relations),
-            "set": [f"{key}={value}" for key, value in fields.items()],
-        },
-        store=store,
-        actor="cto",
-    )
+    with as_human():
+        result = invoke(
+            "add",
+            {
+                "preset": preset,
+                "title": title,
+                "rel": list(relations),
+                "set": [f"{key}={value}" for key, value in fields.items()],
+            },
+            store=store,
+        )
     assert is_ok(result), result
     return result["value"]["slug"]
 
