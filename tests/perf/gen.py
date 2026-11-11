@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import yaml
@@ -15,8 +16,13 @@ STATUSES = ("todo", "doing", "done")
 __all__ = ["make_store"]
 
 
-def make_store(root: Path, n: int, seed: int = 0) -> Path:
-    """Write ``n`` valid documents under ``root/context-rail`` and return it."""
+def make_store(root: Path, n: int, seed: int = 0, *, roles: bool = False) -> Path:
+    """Write ``n`` valid documents under ``root/context-rail`` and return it.
+
+    ``roles=True`` adds a local role-mode pack and two live seats: a project
+    lead and one level lead on the first goal. The seats are written as
+    records, so opening the index folds them like any other store.
+    """
     if n < 0:
         raise ValueError(f"a store holds a non-negative number of docs, not {n}")
     store = Path(root) / "context-rail"
@@ -70,7 +76,61 @@ def make_store(root: Path, n: int, seed: int = 0) -> Path:
             tags=["task"],
             relations=relations,
         )
+    if roles:
+        _write_roles(store)
     return store
+
+
+def _write_roles(store: Path) -> None:
+    """Turn the generated store into role mode and grant its two seats."""
+    import context_rail
+    from context_rail.model.pack import load_pack
+    from context_rail.model.starter import starter_roles
+
+    local = store / "packs" / "basic"
+    shutil.copytree(Path(context_rail.__file__).parent / "packs" / "basic", local)
+    pack = load_pack("basic", store)
+    document = yaml.safe_load((local / "pack.yaml").read_text(encoding="utf-8"))
+    document["operating"]["version"] = 2
+    document["operating"]["roles"] = starter_roles(pack)
+    (local / "pack.yaml").write_text(
+        yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+    _grant(store, "seat-lead-1", "lead-1", "lead", "project", "human", "00:00:01")
+    _grant(
+        store, "seat-goal-1", "goal-1", "goal-lead", "g0", "lead-1", "00:00:02"
+    )
+
+
+def _grant(
+    store: Path,
+    record_id: str,
+    seat: str,
+    role: str,
+    anchor: str,
+    granted_by: str,
+    clock: str,
+) -> None:
+    from context_rail.model.seats import SEAT_GRANTED
+
+    from helpers import write_record
+
+    write_record(
+        store,
+        record_id,
+        SEAT_GRANTED,
+        {
+            "schema": 1,
+            "seat": seat,
+            "role": role,
+            "anchor": anchor,
+            "granted_by": granted_by,
+        },
+        at=f"2026-10-28T{clock}Z",
+        actor=granted_by,
+        about=(),
+    )
+
 
 
 def _write(
