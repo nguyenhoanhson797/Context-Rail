@@ -51,17 +51,21 @@ def catalog(
     context: Any,
     lead: bool = True,
     *,
+    presets: frozenset[str] | None = None,
     item: str | None = None,
     limit: int = CATALOG_CHARS,
 ) -> dict[str, Any]:
     """Every document type the pack declares, with its workflow and use line.
 
     A lead sees the whole catalog. A worker sees only the type of the item it
-    was given, so a narrow order never exposes the rest of the project.
+    was given; a seat passes the presets its role names and sees only those, so
+    a narrow order never exposes the rest of the project.
     """
     pack = context.pack
     names = list(pack.presets)
-    if not lead:
+    if presets is not None:
+        names = [name for name in names if name in presets]
+    elif not lead:
         if item is None:
             return {"items": [], "omitted": 0}
         doc = _document(context, item)
