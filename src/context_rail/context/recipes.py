@@ -82,8 +82,14 @@ class Section:
 # ── shared selections ─────────────────────────────────────────────────────
 
 
-def item_rows(ix: Any, pack: Pack) -> list[structure.ItemRow]:
-    """Every Item with its part_of/depends_on edges and newest activity."""
+def item_rows(
+    ix: Any, pack: Pack, *, reach: Any = None
+) -> list[structure.ItemRow]:
+    """Every Item with its part_of/depends_on edges and newest activity.
+
+    ``reach`` filters the rows to what one seat may read; the caller counts what
+    the reach left out by comparing with the unfiltered list.
+    """
     edges: dict[str, dict[str, list[str]]] = {}
     for src, rel, dst in ix.conn.execute(
         "SELECT r.src, r.rel, r.dst FROM relations r JOIN docs d ON d.path = r.src_path "
@@ -93,11 +99,13 @@ def item_rows(ix: Any, pack: Pack) -> list[structure.ItemRow]:
         edges.setdefault(src, {}).setdefault(rel, []).append(dst)
     activity = query.last_activity_ms(ix)
     rows = ix.conn.execute(
-        "SELECT slug, category, status, preset FROM docs "
+        "SELECT slug, category, status, preset, path FROM docs "
         "WHERE primitive = 'item' AND broken = 0"
     ).fetchall()
     result: list[structure.ItemRow] = []
-    for slug, category, status, preset in rows:
+    for slug, category, status, preset, path in rows:
+        if reach is not None and not reach.can_read(slug, path=path, preset=preset):
+            continue
         declared = pack.presets.get(preset or "")
         workflow = pack.workflows[
             declared.workflow if declared is not None else "default"
@@ -604,7 +612,9 @@ def digest(
     index = context.index
     activity = query.digest_rows(index, since, page)
     approval = approval_state(context)
-    items = item_rows(index, context.pack)
+    reach = context.reach
+    items = item_rows(index, context.pack, reach=reach)
+    total_items = len(item_rows(index, context.pack)) if reach is not None else len(items)
     titles = item_titles(index)
     now_ms = int(time.time() * 1000)
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
@@ -614,9 +624,12 @@ def digest(
     rejected, rejected_total = query.rejected_reviews(index, since, page)
     counts = activity["counts"]
     runnable = structure.executable(list(items))
-    recent_reports = activity["reports"]
+    feed = activity["reports"]
+    recent_reports = [
+        row for row in feed if reach is None or _reachable(context, row.get("item"))
+    ]
     operating_state = _operating_state(context)
-    return {
+    result = {
         "summary": {
             "text": _clip(
                 _summary_text(approval, counts, runnable, stuck, long_items)
@@ -667,6 +680,25 @@ def digest(
             "reports": max(counts["reports"] - len(recent_reports), 0),
         },
     }
+    if reach is not None:
+        result["omitted_outside_reach"] = (total_items - len(items)) + (
+            len(feed) - len(recent_reports)
+        )
+    return result
+
+
+def _reachable(context: Context, slug: Any) -> bool:
+    reach = context.reach
+    if reach is None:
+        return True
+    if not isinstance(slug, str) or not slug:
+        return reach.read_all
+    row = context.index.conn.execute(
+        "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1", (slug,)
+    ).fetchone()
+    if row is None:
+        return False
+    return reach.can_read(slug, path=row[0], preset=row[1])
 
 
 def _summary_text(

@@ -112,6 +112,11 @@ def explain(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
 def why(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """The proof one item still needs, and the command that produces it."""
+    from context_rail.gateway.handlers.common import read_refusal
+
+    refused = read_refusal(ctx, args["slug"])
+    if refused is not None:
+        raise refused
     try:
         return surface.why(ctx, args["slug"])
     except surface.SurfaceError as error:

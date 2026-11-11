@@ -11,7 +11,7 @@ import yaml
 from context_rail.core.result import is_ok
 from context_rail.gateway.execution import caller_identity
 from context_rail.gateway.gateway import invoke
-from helpers import open_test_session
+from helpers import as_human, open_test_session
 
 
 def edit_roles(store: Path, change: Any) -> None:
@@ -38,7 +38,8 @@ def refusal(result: dict[str, Any]) -> tuple[str | None, Any]:
 
 
 def etag_of(store: Path, seat: str, slug: str) -> str:
-    shown = as_seat(store, seat, "show", {"slug": slug})
+    with as_human():
+        shown = invoke("show", {"slug": slug}, store=store, actor=None)
     assert is_ok(shown), shown
     return shown["value"]["doc"]["etag"]
 

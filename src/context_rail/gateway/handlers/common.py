@@ -389,6 +389,32 @@ def validate_actor_write(
         raise WriteRefused(exc.code, exc.message, exc.details) from None
 
 
+def read_refusal(ctx: Context, slug: str, *, path: str | None = None) -> WriteRefused | None:
+    """Why a direct read of ``slug`` is outside the caller's reach, or None."""
+    from context_rail.gateway.role_guard import reach_hint
+
+    reach = ctx.reach
+    if reach is None:
+        return None
+    if path is None:
+        row = ctx.index.conn.execute(
+            "SELECT path, preset FROM docs WHERE slug = ? ORDER BY path LIMIT 1",
+            (slug,),
+        ).fetchone()
+    else:
+        row = ctx.index.conn.execute(
+            "SELECT path, preset FROM docs WHERE slug = ? AND path = ?",
+            (slug, path),
+        ).fetchone()
+    if row is not None and reach.can_read(slug, path=row[0], preset=row[1]):
+        return None
+    return WriteRefused(
+        "PERMISSION_DENIED",
+        f"{slug!r} is outside the seat's read reach",
+        {"reason": "out_of_reach", "reach_hint": reach_hint(reach, ctx.identity.name)},
+    )
+
+
 def _requested_fields(values: Any) -> dict[str, Any]:
     """The frontmatter values a ``--set`` list requests, read without refusing."""
     fields: dict[str, Any] = {}

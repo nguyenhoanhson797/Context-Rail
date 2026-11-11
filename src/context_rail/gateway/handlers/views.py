@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.context import operating, recipes
 from context_rail.gateway.confirmation import confirmation_phrase
-from context_rail.gateway.handlers.common import parse_relation_filter
+from context_rail.gateway.handlers.common import parse_relation_filter, read_refusal
 from context_rail.kernel import structure
 from context_rail.model.primitives import CATEGORIES
 from context_rail.store import approval, query
@@ -23,7 +23,7 @@ CHARTER_TARGET = "charter"
 
 
 def find(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Page through the documents matching every filter."""
+    """Page through the documents matching every filter, inside the read reach."""
     return query.find(
         ctx.index,
         primitive=args["primitive"],
@@ -34,6 +34,16 @@ def find(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         text=args["text"],
         rel=parse_relation_filter(args["rel"]),
         limit=args["limit"],
+        allow=_allow(ctx),
+    )
+
+
+def _allow(ctx: Context) -> Any:
+    reach = ctx.reach
+    if reach is None:
+        return None
+    return lambda slug, path, preset: reach.can_read(
+        slug, path=path, preset=preset
     )
 
 
@@ -65,6 +75,9 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         return code_targets.code_view(ctx, slug)
     if not args.get("path"):
         resolve_unique(index, args["slug"])
+    refused = read_refusal(ctx, args["slug"], path=args.get("path"))
+    if refused is not None:
+        raise refused
     try:
         shown = query.show(
             index,
@@ -116,7 +129,12 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Counts, executable items, blockers, stuck and too-long items, each capped."""
     index = ctx.index
-    items = recipes.item_rows(index, ctx.pack)
+    all_items = recipes.item_rows(index, ctx.pack)
+    items = (
+        all_items
+        if ctx.reach is None
+        else recipes.item_rows(index, ctx.pack, reach=ctx.reach)
+    )
     titles = recipes.item_titles(index)
 
     counts = {category: 0 for category in CATEGORIES}
@@ -143,6 +161,9 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     stuck_page, stuck_omitted = _page(stalled)
     too_long_page, too_long_omitted = _page(long_items)
     checks = query.check_states(index)
+    if ctx.reach is not None:
+        visible = {item.slug for item in items}
+        checks = [row for row in checks if row.get("item") in visible]
     states = [
         {
             "check": row["slug"],
@@ -164,7 +185,7 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         len(progress_children) - LIST_CAP, 0
     )
     queue = _queue(ctx, model)
-    return {
+    result = {
         "counts": counts,
         "counts_scope": "every item preset",
         "executable": executable_page,
@@ -191,6 +212,9 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "too_long": too_long_omitted,
         },
     }
+    if ctx.reach is not None:
+        result["omitted_outside_reach"] = len(all_items) - len(items)
+    return result
 
 
 def _focus(ctx: Context, model: Any) -> dict[str, Any]:
@@ -238,13 +262,32 @@ def _groups(ctx: Context, model: Any) -> tuple[list[dict[str, Any]], int]:
 
 def ledger(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Runs with their attempt-counted usage, unknown counters kept apart."""
-    return query.ledger(
+    result = query.ledger(
         ctx.index,
         item=args["item"],
         profile=args["profile"],
         since=args["since"],
         limit=args["limit"],
     )
+    reach = ctx.reach
+    if reach is None:
+        return result
+    runs = result["runs"]
+    kept = [row for row in runs if _run_in_reach(ctx, reach, row.get("item"))]
+    result["runs"] = kept
+    result["omitted_outside_reach"] = len(runs) - len(kept)
+    return result
+
+
+def _run_in_reach(ctx: Context, reach: Any, slug: Any) -> bool:
+    if not isinstance(slug, str) or not slug:
+        return reach.read_all
+    row = ctx.index.conn.execute(
+        "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1", (slug,)
+    ).fetchone()
+    if row is None:
+        return False
+    return reach.can_read(slug, path=row[0], preset=row[1])
 
 
 def digest(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

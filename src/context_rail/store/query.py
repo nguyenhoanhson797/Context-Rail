@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
@@ -101,12 +101,15 @@ def find(
     text: str | None = None,
     rel: tuple[str, str] | None = None,
     limit: int = DEFAULT_LIMIT,
+    allow: Callable[[str, str, str | None], bool] | None = None,
 ) -> dict[str, Any]:
     """Page through documents matching every supplied filter.
 
     Results are ordered by ``updated`` descending, then slug, then path. The
     total counts each document once no matter how many of its rows match, and
-    ``omitted`` reports what the page left behind.
+    ``omitted`` reports what the page left behind. ``allow`` filters a
+    restricted caller's matches by slug, path and preset before paging, and the
+    result then also says how many matches the reach alone left out.
     """
     limit = _bounded(limit, LIMIT_BOUNDS, "limit")
     primitive = _optional_name(primitive, "primitive", PRIMITIVES)
@@ -145,14 +148,28 @@ def find(
     clause = " AND ".join(where)
 
     try:
-        total = ix.conn.execute(
-            f"SELECT COUNT(DISTINCT d.path) FROM docs d WHERE {clause}", params
-        ).fetchone()[0]
-        rows = ix.conn.execute(
-            f"SELECT {_ITEM_COLUMNS} FROM docs d WHERE {clause} "
-            "ORDER BY d.updated DESC, d.slug ASC, d.path ASC LIMIT ?",
-            [*params, limit],
-        ).fetchall()
+        if allow is None:
+            total = ix.conn.execute(
+                f"SELECT COUNT(DISTINCT d.path) FROM docs d WHERE {clause}", params
+            ).fetchone()[0]
+            rows = ix.conn.execute(
+                f"SELECT {_ITEM_COLUMNS} FROM docs d WHERE {clause} "
+                "ORDER BY d.updated DESC, d.slug ASC, d.path ASC LIMIT ?",
+                [*params, limit],
+            ).fetchall()
+            outside_reach = 0
+        else:
+            candidates = ix.conn.execute(
+                f"SELECT {_ITEM_COLUMNS} FROM docs d WHERE {clause} "
+                "ORDER BY d.updated DESC, d.slug ASC, d.path ASC",
+                params,
+            ).fetchall()
+            kept = [
+                row for row in candidates if allow(row[0], row[6], row[3])
+            ]
+            total = len(kept)
+            rows = kept[:limit]
+            outside_reach = len(candidates) - total
     except sqlite3.OperationalError as exc:
         if term is not None and getattr(exc, "sqlite_errorcode", None) == _SQLITE_ERROR:
             raise QueryError(f"malformed text query {term!r}: {exc}") from exc
@@ -170,7 +187,10 @@ def find(
         }
         for slug, title, kind, preset_name, workflow, state, path in rows
     ]
-    return {"items": items, "total": total, "omitted": total - len(items)}
+    result = {"items": items, "total": total, "omitted": total - len(items)}
+    if allow is not None:
+        result["omitted_outside_reach"] = outside_reach
+    return result
 
 
 def show(

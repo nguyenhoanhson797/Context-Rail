@@ -38,7 +38,8 @@ def refusal(result: dict[str, Any]) -> tuple[str | None, Any]:
 
 
 def etag_of(store: Path, seat: str, slug: str) -> str:
-    shown = as_seat(store, seat, "show", {"slug": slug})
+    with as_human():
+        shown = invoke("show", {"slug": slug}, store=store, actor=None)
     assert is_ok(shown), shown
     return shown["value"]["doc"]["etag"]
 

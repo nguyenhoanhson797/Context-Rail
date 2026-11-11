@@ -24,6 +24,7 @@ __all__ = [
     "OPS_HUMAN_ONLY",
     "Targets",
     "authorize_role",
+    "reach_hint",
     "targets_for",
 ]
 
@@ -182,7 +183,7 @@ def authorize_role(
         return _refuse(
             "tool_not_for_seats",
             f"{tool.name!r} has no seat rule; it is refused rather than guessed",
-            _hint(context.reach, identity.name),
+            reach_hint(context.reach, identity.name),
         )
     role = identity.role
     allowed = role_tools(role)
@@ -191,7 +192,7 @@ def authorize_role(
             return _refuse(
                 "tick_not_in_can",
                 f"role {role.name!r} may not tick",
-                _hint(context.reach, identity.name),
+                reach_hint(context.reach, identity.name),
             )
         return None
     if tool.name == "do":
@@ -201,7 +202,7 @@ def authorize_role(
         return _refuse(
             "method_not_in_role",
             f"role {role.name!r} may not call {tool.name!r}",
-            _hint(context.reach, identity.name),
+            reach_hint(context.reach, identity.name),
             tools=sorted(allowed),
         )
     reach = context.reach
@@ -213,7 +214,7 @@ def authorize_role(
             return _refuse(
                 "tool_not_for_seats",
                 "relocating the store needs project write reach",
-                _hint(reach, identity.name),
+                reach_hint(reach, identity.name),
             )
         return None
     if tool.name == "link":
@@ -235,7 +236,7 @@ def _check_link(
         return _refuse(
             "relation_not_in_can_link",
             f"role {role.name!r} may not link {relation!r}",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     src = _text(params.get("src"))
     dst = _text(params.get("dst"))
@@ -243,28 +244,28 @@ def _check_link(
         return _refuse(
             "write_out_of_reach",
             f"{src or 'the source'!r} is outside the seat's write reach",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     if relation == "part_of":
         if dst is None or not _writes(context, reach, dst):
             return _refuse(
                 "write_out_of_reach",
                 f"the parent {dst or '?'!r} is outside the seat's write reach",
-                _hint(reach, context.identity.name),
+                reach_hint(reach, context.identity.name),
             )
         previous = _current_parent(context.index, src)
         if previous is not None and previous != dst and not _writes(context, reach, previous):
             return _refuse(
                 "write_out_of_reach",
                 f"the previous parent {previous!r} is outside the seat's write reach",
-                _hint(reach, context.identity.name),
+                reach_hint(reach, context.identity.name),
             )
         return None
     if dst is None or not _reads(context, reach, dst):
         return _refuse(
             "read_out_of_reach",
             f"{dst or 'the destination'!r} is outside the seat's read reach",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     return None
 
@@ -276,7 +277,7 @@ def _check_action(
         return _refuse(
             "action_not_in_can_actions",
             f"role {role.name!r} may not run action {targets.relation!r}",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     slug = targets.writes[0] if targets.writes else None
     if slug is None:
@@ -285,13 +286,13 @@ def _check_action(
         return _refuse(
             "write_out_of_reach",
             "an action without an item needs project write reach",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     if not _writes(context, reach, slug):
         return _refuse(
             "write_out_of_reach",
             f"{slug!r} is outside the seat's write reach",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     return None
 
@@ -308,14 +309,14 @@ def _check_item(
         return _refuse(
             "write_out_of_reach",
             f"{slug or 'the item'!r} is outside the seat's write reach",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     key = _ITEM_TOOLS[tool_name]
     if not _allows(role.can.methods.get(key), targets.preset):
         return _refuse(
             f"preset_not_in_can_{key}",
             f"role {role.name!r} may not {key} {targets.preset!r}",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     return None
 
@@ -328,14 +329,14 @@ def _check_add(
         return _refuse(
             "preset_not_in_can_add",
             f"role {role.name!r} may not add {preset!r}",
-            _hint(reach, context.identity.name),
+            reach_hint(reach, context.identity.name),
         )
     if targets.parent is not None:
         if not _writes(context, reach, targets.parent):
             return _refuse(
                 "add_outside_reach",
                 f"the parent {targets.parent!r} is outside the seat's write reach",
-                _hint(reach, context.identity.name),
+                reach_hint(reach, context.identity.name),
                 parent=targets.parent,
             )
         return None
@@ -344,7 +345,7 @@ def _check_add(
     return _refuse(
         "add_without_parent",
         "adding outside a parent needs project write reach or a declared write preset",
-        _hint(reach, context.identity.name),
+        reach_hint(reach, context.identity.name),
         preset=preset,
     )
 
@@ -362,7 +363,7 @@ def _check_document(
         return _refuse(
             "write_out_of_reach",
             f"{slug or 'the document'!r} is outside the seat's write reach",
-            _hint(reach, seat),
+            reach_hint(reach, seat),
         )
     if tool_name == "move":
         status = targets.status
@@ -372,14 +373,14 @@ def _check_document(
             return _refuse(
                 "status_not_in_can_move",
                 f"role {role.name!r} may not move {targets.preset!r} to {status!r}",
-                _hint(reach, seat),
+                reach_hint(reach, seat),
             )
         return None
     if not _allows(role.can.methods.get(tool_name), targets.preset):
         return _refuse(
             f"preset_not_in_can_{tool_name}",
             f"role {role.name!r} may not {tool_name} {targets.preset!r}",
-            _hint(reach, seat),
+            reach_hint(reach, seat),
         )
     return None
 
@@ -451,7 +452,7 @@ def _text(value: Any) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def _hint(reach: ReachSet, seat: str) -> str:
+def reach_hint(reach: ReachSet, seat: str) -> str:
     if reach.write_all:
         return f"seat {seat!r} may write the whole project"
     written = ", ".join(sorted(reach.write_slugs)[:8]) or "nothing"
