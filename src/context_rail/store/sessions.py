@@ -29,8 +29,8 @@ __all__ = [
     "SESSIONS_DIR",
     "Session",
     "close_sessions",
+    "drop_expired_sessions",
     "open_session",
-    "prune_sessions",
     "resolve_session",
 ]
 
@@ -137,7 +137,7 @@ def close_sessions(
     return closed
 
 
-def prune_sessions(store: Path, *, now: float | None = None) -> int:
+def drop_expired_sessions(store: Path, *, now: float | None = None) -> int:
     """Remove every expired session; return how many."""
     moment = time.time() if now is None else now
     return sum(

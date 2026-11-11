@@ -12,8 +12,8 @@ from context_rail.core.locate import local_dir
 from context_rail.store.sessions import (
     Session,
     close_sessions,
+    drop_expired_sessions,
     open_session,
-    prune_sessions,
     resolve_session,
 )
 from helpers import open_test_session
@@ -158,12 +158,12 @@ def test_prune_removes_only_expired(tmp_path: Path) -> None:
     fresh, _ = open_session(store, "b", ttl_s=1000, now=1000.0)
     forever, _ = open_session(store, "c@r", run="r", ttl_s=None, now=1000.0)
 
-    assert prune_sessions(store, now=1500.0) == 1
+    assert drop_expired_sessions(store, now=1500.0) == 1
 
     assert resolve_session(store, old, now=1500.0) is None
     assert resolve_session(store, fresh, now=1500.0) is not None
     assert resolve_session(store, forever, now=1500.0) is not None
-    assert prune_sessions(store, now=1500.0) == 0
+    assert drop_expired_sessions(store, now=1500.0) == 0
 
 
 def test_a_corrupt_session_file_resolves_to_none(tmp_path: Path) -> None:
