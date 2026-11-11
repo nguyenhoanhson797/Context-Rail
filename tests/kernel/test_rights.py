@@ -29,8 +29,11 @@ def change(
     acceptance: bool = False,
     decision_id: str | None = None,
     budget_increase: bool = False,
+    rights_widening: bool = False,
 ) -> ChangeFacts:
-    return ChangeFacts(method, protected, acceptance, decision_id, budget_increase)
+    return ChangeFacts(
+        method, protected, acceptance, decision_id, budget_increase, rights_widening
+    )
 
 
 # --- the Stage 1a permission gate -------------------------------------------
@@ -251,3 +254,9 @@ def test_review_separation_different_actor_and_model_is_clean():
 def test_review_separation_refuses_unnamed_actors():
     assert review_separation("", "reviewer-1", "m", "n", False)
     assert review_separation("implementer-1", "", "m", "n", False)
+
+
+def test_rights_widening_fact_makes_human_only(policy) -> None:
+    facts = change(decision_id=CTO_ALONE_IDS[0], rights_widening=True)
+
+    assert decision_class("update", facts, policy) == "human-only"

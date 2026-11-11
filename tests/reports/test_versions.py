@@ -123,15 +123,27 @@ def test_second_change_keeps_the_first_full_text(
 
 
 def test_profile_change_is_versioned(skill_store: Path, tmp_path: Path) -> None:
+    profile_body = tmp_path / "reviewer-profile.md"
+    profile_body.write_text("Draft the review.\n", encoding="utf-8")
     added = invoke(
         "add",
         {
             "preset": "profile",
             "title": "reviewer",
-            "set": ["version=1", "recipe=reviewer"],
+            "set": [
+                "schema=1", "version=1", "recipe=reviewer",
+                "allowed_methods=[find, show, cto brief, ledger, report]",
+                "budget={max_chars: 12000, max_docs: 20}",
+                "model=gpt-5.3-codex",
+                "tools=[read-cli, ls-cli, grep_tool_cli, glob-search-cli]",
+                "skills=[]",
+                "budgets={attempts: 2, seconds: 3600, tokens: null, credits: null}",
+            ],
+            "body_file": str(profile_body),
+            "confirm": "APPROVE reviewer",
         },
         store=skill_store,
-        actor="cto",
+        actor="human",
     )
     assert is_ok(added), added
     rel = "workspace/profiles/reviewer/profile.md"

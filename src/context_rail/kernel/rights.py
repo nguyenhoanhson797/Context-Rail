@@ -41,6 +41,7 @@ class ChangeFacts:
     acceptance: bool
     decision_id: str | None
     budget_increase: bool
+    rights_widening: bool = False
 
 
 def allowed(permission: str, actor: str) -> str | None:
@@ -56,6 +57,8 @@ def allowed(permission: str, actor: str) -> str | None:
 
 def decision_class(method: str, change: ChangeFacts, policy: Charter) -> str:
     """The class one change belongs to, from facts and never from a preset or tag."""
+    if change.rights_widening:
+        return "human-only"
     if change.acceptance or change.budget_increase:
         return "human-only"
     protected_change = change.protected and method not in LIFECYCLE_METHODS

@@ -198,17 +198,20 @@ def protected_change(
     rel = _resolved(context, params)
     acceptance = rel is not None and is_acceptance_path(context.index, rel)
     budget_increase = False
+    rights_widening = False
     if op == "update":
         requested = _requested_fields(params.get("set"))
         acceptance = acceptance or requested.get("acceptance") is True
         if rel is not None:
             budget_increase = _budget_increase(context, rel, requested)
+            rights_widening = _rights_widening(context, rel, requested)
     return rights.ChangeFacts(
         method=op,
         protected=rel is not None and rel in protected_paths(context),
         acceptance=acceptance,
         decision_id="dependency" if relation == "depends_on" else None,
         budget_increase=budget_increase,
+        rights_widening=rights_widening,
     )
 
 
@@ -254,12 +257,16 @@ def _add_facts(context: Context, params: dict[str, Any]) -> rights.ChangeFacts:
         and preset.primitive == "actor"
         and ("budget" in fields or "budgets" in fields)
     )
+    rights_widening = (
+        not context.role_mode and preset is not None and preset.primitive == "actor"
+    )
     return rights.ChangeFacts(
         method="add",
         protected=False,
         acceptance=acceptance,
         decision_id=None,
         budget_increase=budget_increase,
+        rights_widening=rights_widening,
     )
 
 
@@ -337,6 +344,49 @@ def _budget_increase(
             if _increased(old_group.get(cap), after):
                 return True
     return False
+
+
+def _rights_widening(
+    context: Context, rel: str, requested: dict[str, Any]
+) -> bool:
+    """True when an Actor update adds a method or tool the document did not hold."""
+    row = context.index.conn.execute(
+        "SELECT preset FROM docs WHERE path = ?", (rel,)
+    ).fetchone()
+    preset = context.pack.presets.get(row[0]) if row is not None else None
+    if preset is None or preset.primitive != "actor":
+        return False
+    stored: dict[str, Any] = {}
+    for key, value in context.index.conn.execute(
+        "SELECT key, value_json FROM fields WHERE path = ?", (rel,)
+    ):
+        try:
+            stored[key] = json.loads(value)
+        except (TypeError, ValueError):
+            stored[key] = None
+    for key in ("allowed_methods", "tools"):
+        if key not in requested:
+            continue
+        before = stored.get(key)
+        after = requested.get(key)
+        before_set = set(before) if isinstance(before, list) else set()
+        after_set = set(after) if isinstance(after, list) else set()
+        if not after_set <= before_set:
+            return True
+    return False
+
+
+def validate_actor_write(
+    ctx: Context, preset: str, fields: dict[str, Any], body: str
+) -> None:
+    """Refuse an Actor document the parser cannot read, before anything is written."""
+    declared = ctx.pack.presets.get(preset)
+    if declared is None or declared.primitive != "actor":
+        return
+    try:
+        parse_profile(dict(fields), body=body, role_mode=ctx.role_mode)
+    except ModelError as exc:
+        raise WriteRefused(exc.code, exc.message, exc.details) from None
 
 
 def _requested_fields(values: Any) -> dict[str, Any]:

@@ -25,6 +25,11 @@ def _etag(store: Path, slug: str) -> str:
     return invoke("show", {"slug": slug}, store=store)["value"]["doc"]["etag"]
 
 
+def _flow(value: Any) -> str:
+    """One frontmatter value as valid YAML, so a ``None`` stays null."""
+    return yaml.safe_dump(value, default_flow_style=True, sort_keys=False).strip()
+
+
 def _digest(store: Path, rel: str) -> str:
     return hashlib.sha256((store / rel).read_bytes()).hexdigest()
 
@@ -425,7 +430,7 @@ def test_cto_cannot_increase_a_profile_budget(approved_store: Path) -> None:
         "update",
         {
             "slug": "implementer",
-            "set": [f"budgets={increased}"],
+            "set": [f"budgets={_flow(increased)}"],
             "expect": _etag(store, "implementer"),
         },
         store=store,
@@ -437,7 +442,7 @@ def test_cto_cannot_increase_a_profile_budget(approved_store: Path) -> None:
         "update",
         {
             "slug": "implementer",
-            "set": [f"budgets={increased}"],
+            "set": [f"budgets={_flow(increased)}"],
             "expect": _etag(store, "implementer"),
             "confirm": "APPROVE implementer",
         },
@@ -459,7 +464,7 @@ def test_cto_cannot_drop_a_profile_budget_cap(approved_store: Path) -> None:
         "update",
         {
             "slug": "implementer",
-            "set": [f"budgets={bounded}"],
+            "set": [f"budgets={_flow(bounded)}"],
             "expect": _etag(store, "implementer"),
             "confirm": "APPROVE implementer",
         },
@@ -475,7 +480,7 @@ def test_cto_cannot_drop_a_profile_budget_cap(approved_store: Path) -> None:
         "update",
         {
             "slug": "implementer",
-            "set": [f"budgets={partial}"],
+            "set": [f"budgets={_flow(partial)}"],
             "expect": _etag(store, "implementer"),
         },
         store=store,
@@ -496,7 +501,7 @@ def test_cto_may_lower_a_profile_budget(approved_store: Path) -> None:
         "update",
         {
             "slug": "implementer",
-            "set": [f"budgets={lowered}"],
+            "set": [f"budgets={_flow(lowered)}"],
             "expect": _etag(store, "implementer"),
         },
         store=store,

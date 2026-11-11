@@ -28,6 +28,7 @@ from context_rail.gateway.handlers.common import (
     slug_of_path,
     template_body,
     unique_slug,
+    validate_actor_write,
     validate_relation_targets,
     versioned_change_record,
     versioned_kind,
@@ -86,6 +87,8 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         body = load_body(args["body_file"])
         if preset.name == "skill" or preset.primitive == "actor":
             fields["version"] = _initial_version(fields.get("version"), preset.name)
+        if preset.primitive == "actor":
+            validate_actor_write(ctx, preset.name, fields, body or "")
         for targets in relations.values():
             for target in targets:
                 resolve_unique(index, target)
@@ -366,6 +369,8 @@ def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             )
         if versioned == "skill":
             _check_skill_payload(front, doc.slug)
+        if preset is not None and preset.primitive == "actor":
+            validate_actor_write(ctx, preset.name, merged, new_body)
         before_version: int | None = None
         if versioned is not None:
             before_version = document_version(front, rel)
