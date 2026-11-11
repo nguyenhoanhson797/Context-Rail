@@ -228,6 +228,9 @@ def call_daemon(
     actor: str | None,
     actor_env: str | None,
     read_only: bool,
+    session: str | None = None,
+    tty: bool = False,
+    lens: str | None = None,
 ) -> dict[str, Any] | None:
     """Serve one call from the store's daemon; ``None`` means run it direct.
 
@@ -251,6 +254,9 @@ def call_daemon(
                 "params": params,
                 "actor": actor,
                 "actor_env": actor_env,
+                "session": session,
+                "tty": bool(tty),
+                "lens": lens,
                 "token": token,
                 # A busy daemon may reach this request after the caller has
                 # stopped waiting; the daemon declines it rather than run a
@@ -337,8 +343,12 @@ def spawn_daemon(store: Path) -> bool:
         "stderr": subprocess.DEVNULL,
     }
     # The daemon serves every caller and takes each one's identity from the
-    # request, so it must not run as whichever actor happened to start it.
-    options["env"] = {k: v for k, v in os.environ.items() if k != "RAIL_ACTOR"}
+    # request, so it must not run as whichever actor or session started it.
+    options["env"] = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("RAIL_ACTOR", "RAIL_SESSION", "RAIL_RUN")
+    }
     if os.name == "nt":
         options["creationflags"] = _DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP
     else:
@@ -755,6 +765,11 @@ class _DaemonServer:
         actor = actor_raw if isinstance(actor_raw, str) else None
         env_raw = payload.get("actor_env")
         actor_env = env_raw if isinstance(env_raw, str) else None
+        session_raw = payload.get("session")
+        session = session_raw if isinstance(session_raw, str) else None
+        lens_raw = payload.get("lens")
+        lens = lens_raw if isinstance(lens_raw, str) else None
+        tty = payload.get("tty") is True
         if not isinstance(tool, str) or not tool.strip():
             conn.sendall(b'{"ok": false}\n')
             return
@@ -771,7 +786,7 @@ class _DaemonServer:
                 )
                 return
         clear_snapshot_cache()
-        with caller_identity(actor, actor_env):
+        with caller_identity(actor, actor_env, session=session, tty=tty, lens=lens):
             try:
                 result = invoke(tool, params, store=self.store, actor=actor)
             except Exception as exc:

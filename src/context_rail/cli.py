@@ -332,14 +332,19 @@ def main(argv: list[str] | None = None) -> int:
     served = _fast_path(namespace, tool, params, declared)
     if served is not None:
         return _finish(tool, served)
-    from context_rail.gateway.execution import EXPLICIT_ACTOR
+    from context_rail.gateway.execution import caller_identity
     from context_rail.gateway.gateway import invoke
 
-    EXPLICIT_ACTOR.set(namespace.actor)
-    return _finish(
-        tool,
-        invoke(tool, params, store=namespace.store, actor=namespace.actor),
-    )
+    with caller_identity(
+        namespace.actor,
+        os.environ.get("RAIL_ACTOR"),
+        session=caller_session(),
+        tty=_terminal(),
+    ):
+        return _finish(
+            tool,
+            invoke(tool, params, store=namespace.store, actor=namespace.actor),
+        )
 
 
 def _fast_path(
@@ -371,10 +376,27 @@ def _fast_path(
         actor=namespace.actor,
         actor_env=(os.environ.get("RAIL_ACTOR") or "").strip() or None,
         read_only=declared.permission == "read",
+        session=caller_session(),
+        tty=_terminal(),
     )
     if served is None and not daemon.daemon_alive(store):
         daemon.spawn_daemon(store)
     return served
+
+
+def caller_session() -> str | None:
+    """The session token this call carries, from the CLI's environment."""
+    return (os.environ.get("RAIL_SESSION") or "").strip() or None
+
+
+def _terminal() -> bool:
+    """Whether both ends of this call are an interactive terminal."""
+    return _isatty(sys.stdin) and _isatty(sys.stdout)
+
+
+def _isatty(stream: Any) -> bool:
+    probe = getattr(stream, "isatty", None)
+    return bool(probe()) if callable(probe) else False
 
 
 def _daemon_store(option: str | None) -> Path | None:

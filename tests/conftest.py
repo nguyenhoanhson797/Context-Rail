@@ -9,6 +9,7 @@ import itertools
 import json
 import os
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Iterator
 from datetime import datetime, timedelta, timezone
@@ -111,6 +112,19 @@ def isolated_external_code_graph_bins(
         return
     monkeypatch.setenv("RAIL_GRAPHIFY_BIN", str(tmp_path / "missing-graphify"))
     monkeypatch.setenv("RAIL_GITNEXUS_BIN", str(tmp_path / "missing-gitnexus"))
+
+
+@pytest.fixture
+def popen_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[list[str], dict[str, Any]]]:
+    """Record every detached process start instead of running it."""
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def fake(args: list[str], **kwargs: Any) -> SimpleNamespace:
+        calls.append((list(args), kwargs))
+        return SimpleNamespace(pid=0)
+
+    monkeypatch.setattr(subprocess, "Popen", fake)
+    return calls
 
 
 @pytest.fixture

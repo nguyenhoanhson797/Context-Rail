@@ -111,6 +111,9 @@ def try_daemon_invoke(
         actor=actor,
         actor_env=caller_actor_env(),
         read_only=tool.permission == "read",
+        session=caller_session(),
+        tty=HAS_TTY.get(),
+        lens=LENS_SEAT.get(),
     )
 
 

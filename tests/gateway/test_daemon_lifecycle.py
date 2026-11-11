@@ -144,18 +144,6 @@ def store(tmp_path: Path, daemon_enabled: None) -> Path:
     return make_store(tmp_path, 5)
 
 
-@pytest.fixture
-def popen_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[list[str], dict[str, Any]]]:
-    calls: list[tuple[list[str], dict[str, Any]]] = []
-
-    def fake(args: list[str], **kwargs: Any) -> SimpleNamespace:
-        calls.append((list(args), kwargs))
-        return SimpleNamespace(pid=0)
-
-    monkeypatch.setattr(subprocess, "Popen", fake)
-    return calls
-
-
 def test_the_first_call_starts_a_daemon_and_a_later_call_is_served_by_it(
     store: Path, daemons: _Daemons
 ) -> None:
