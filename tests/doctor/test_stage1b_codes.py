@@ -461,6 +461,12 @@ def test_the_doctor_emits_no_other_stage1b_prefix_code() -> None:
         | set(STAGE2_SEVERITIES)
         | set(OPERATING_SEVERITIES)
         | {"daemon_stale", "store_untracked", "approval_unsigned"}
+        | {
+            "seat_role_unknown",
+            "seat_anchor_missing",
+            "role_skill_missing",
+            "session_stale",
+        }
     )
 
 

@@ -31,6 +31,7 @@ __all__ = [
     "close_sessions",
     "close_all_sessions",
     "drop_expired_sessions",
+    "iter_sessions",
     "open_session",
     "resolve_session",
 ]
@@ -150,6 +151,11 @@ def drop_expired_sessions(store: Path, *, now: float | None = None) -> int:
 def close_all_sessions(store: Path) -> int:
     """Remove every session, manual or run; only the human ``seat close --all`` uses it."""
     return sum(_remove(path) for path, _session in _entries(store))
+
+
+def iter_sessions(store: Path) -> Iterator[tuple[Path, Session]]:
+    """Every readable session file, expired or live, with its path."""
+    yield from _entries(store)
 
 
 def _token_id(token: str) -> str:

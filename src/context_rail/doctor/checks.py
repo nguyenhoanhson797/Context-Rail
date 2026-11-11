@@ -19,6 +19,7 @@ files.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,7 +29,7 @@ from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest
 from context_rail.model.pack import Pack, Preset
 from context_rail.model.primitives import FINISHED_CATEGORIES, PRIMITIVES
-from context_rail.model.seats import HUMAN
+from context_rail.model.seats import HUMAN, SEAT_GRANTED
 from context_rail.store.placement import (
     PlacementError,
     expected_paths,
@@ -44,6 +45,7 @@ from context_rail.store.doc import (
 )
 from context_rail.store.index import INVALID_PAYLOAD, Index
 from context_rail.store.location import local_dir
+from context_rail.store.sessions import iter_sessions
 
 __all__ = ["ISSUE_CAP", "SEVERITIES", "gate_report", "run_doctor"]
 
@@ -104,6 +106,10 @@ SEVERITIES: dict[str, str] = {
     "progress_invalid": "error",
     "execution_failed": "warning",
     "execution_missing": "warning",
+    "seat_role_unknown": "error",
+    "seat_anchor_missing": "error",
+    "role_skill_missing": "warning",
+    "session_stale": "warning",
 }
 
 SEVERITIES.update(stage2.SEVERITY)
@@ -201,6 +207,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
         _operating_issues(store, manifest, pack, rows, relations, children, ix)
     )
     issues.extend(_profile_issues(context, rows))
+    issues.extend(_seat_issues(store, pack, ix))
     issues.extend(_adapter_issues(store, ix))
     issues.extend(stage2.issues(store, manifest, pack, ix))
     issues.sort(key=lambda issue: (issue["path"], issue["code"]))
@@ -1143,6 +1150,87 @@ def _run_issues(ix: Index) -> list[dict[str, Any]]:
             )
         )
     return issues
+
+
+def _seat_issues(store: Path, pack: Pack, ix: Index) -> list[dict[str, Any]]:
+    """Broken live seats, missing role skills and expired session files.
+
+    Only a store that declares roles has seats to check; a legacy store must not
+    gain a warning it can never act on.
+    """
+    from context_rail.store import query
+
+    roles = getattr(pack.operating, "roles", None)
+    if not roles:
+        return []
+    issues: list[dict[str, Any]] = []
+    live = query.live_seats(ix)
+    for name, seat in sorted(live.items()):
+        path = _seat_path(ix, name)
+        role = roles.get(seat.role)
+        if role is None:
+            issues.append(
+                _issue(
+                    "seat_role_unknown",
+                    path,
+                    f"seat {name!r} names role {seat.role!r}, which the pack no longer declares",
+                    fix=f"rail seat revoke {name} (or grant a role the pack declares)",
+                    details={"seat": name, "role": seat.role},
+                )
+            )
+            continue
+        if seat.anchor != "project":
+            row = ix.conn.execute(
+                "SELECT 1 FROM docs WHERE slug = ? LIMIT 1", (seat.anchor,)
+            ).fetchone()
+            if row is None:
+                issues.append(
+                    _issue(
+                        "seat_anchor_missing",
+                        path,
+                        f"seat {name!r} is anchored to {seat.anchor!r}, which is not in the store",
+                        fix=f"restore {seat.anchor} or rail seat revoke {name}",
+                        details={"seat": name, "anchor": seat.anchor},
+                    )
+                )
+    for role in roles.values():
+        for skill in role.skills:
+            row = ix.conn.execute(
+                "SELECT preset FROM docs WHERE slug = ? LIMIT 1", (skill,)
+            ).fetchone()
+            if row is None or row[0] != "skill":
+                issues.append(
+                    _issue(
+                        "role_skill_missing",
+                        f"packs/{pack.name}/pack.yaml",
+                        f"role {role.name!r} pins missing skill note {skill!r}",
+                        fix=f"add the skill note {skill} or remove it from role {role.name}",
+                        details={"role": role.name, "skill": skill},
+                    )
+                )
+    moment = time.time()
+    for path, session in iter_sessions(store):
+        if session.expires is not None and moment >= session.expires:
+            issues.append(
+                _issue(
+                    "session_stale",
+                    str(path),
+                    f"the session for seat {session.seat!r} expired and remains",
+                    fix=f"rail seat close {session.seat}",
+                    details={"seat": session.seat, "expires": session.expires},
+                )
+            )
+    return issues
+
+
+def _seat_path(ix: Index, seat: str) -> str:
+    """The store-relative path of the newest grant record for ``seat``."""
+    row = ix.conn.execute(
+        "SELECT path FROM seats WHERE seat = ? AND kind = ? "
+        "ORDER BY at DESC, record_id DESC LIMIT 1",
+        (seat, SEAT_GRANTED),
+    ).fetchone()
+    return row[0] if row is not None else f"records/{seat}.json"
 
 
 def _adapter_issues(store: Path, ix: Index) -> list[dict[str, Any]]:
