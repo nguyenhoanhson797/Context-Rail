@@ -29,7 +29,15 @@ from typing import Any, Callable
 
 from context_rail.core.result import fail, ok
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
-from context_rail.gateway.execution import ACTOR_NAMED, caller_actor_env
+from context_rail.context.reach import ReachError, ReachSet, resolve_reach
+from context_rail.gateway.execution import (
+    ACTOR_NAMED,
+    HUMAN_CHANNEL,
+    caller_actor_env,
+    caller_session,
+    resolve_actor_name,
+)
+from context_rail.gateway.identity import ANONYMOUS, Identity, resolve_identity
 from context_rail.core.tool_names import (
     alias_defaults,
     canonical_methods,
@@ -132,6 +140,29 @@ class Context:
     actor: str
     actor_named: bool = True
     _index: Index | None = field(default=None, repr=False)
+    _identity: Identity | None = field(default=None, repr=False)
+
+    @property
+    def identity(self) -> Identity:
+        """Who this call acts as; ``invoke`` resolves it before a handler runs.
+
+        A context nobody resolved is a name in a store without roles, and no one
+        at all in a store with them.
+        """
+        if self._identity is None:
+            self._identity = (
+                Identity(kind="anonymous", name=ANONYMOUS)
+                if self.role_mode
+                else resolve_identity(self, actor=self.actor, session=None)
+            )
+        return self._identity
+
+    @identity.setter
+    def identity(self, value: Identity) -> None:
+        self._identity = value
+        if self.role_mode:
+            self.__dict__.pop("profile", None)
+        self.__dict__.pop("reach", None)
 
     @property
     def index(self) -> Index:
@@ -160,24 +191,59 @@ class Context:
 
     @cached_property
     def profile(self) -> Profile | None:
-        """The Actor profile the acting name resolves to, when the store has one.
+        """The Actor profile the caller acts under, when the store has one.
+
+        A store without roles resolves the acting name. A store with roles
+        resolves the profile the caller's seat names.
+        """
+        if not self.role_mode:
+            return self.profile_for(self.actor)
+        seat = self.identity.seat
+        return None if seat is None or seat.profile is None else self.profile_for(seat.profile)
+
+    def profile_for(self, name: str) -> Profile | None:
+        """The Actor profile called ``name``, when the store has one.
 
         The lookup reads the placements rail.yaml renders and checks the parsed
         identity, so a fixed placement (the CTO's) never stands in for another
         actor, and narrowing an actor's methods never syncs the index ahead of
         the handler.
         """
-        found = self._actor_document()
+        found = self._actor_document(name)
         if found is None:
             return None
         return parse_profile(found.fields, body=found.body, role_mode=self.role_mode)
+
+    @cached_property
+    def reach(self) -> ReachSet | None:
+        """What the caller's seat (or the seat a lens shows) may read and write.
+
+        ``None`` means unrestricted: a name in a store without roles, the human
+        and a caller with no seat.
+        """
+        seat = self.identity.view_as or self.identity.seat
+        if seat is None:
+            return None
+        role = self.pack.operating.roles.get(seat.role)
+        if role is None:
+            raise WriteRefused(
+                "PERMISSION_DENIED",
+                f"seat {seat.seat!r} holds role {seat.role!r}, which the pack no longer declares",
+                {"reason": "seat_role_unknown", "seat": seat.seat, "role": seat.role},
+            )
+        try:
+            return resolve_reach(self.index, self.pack, role, seat)
+        except ReachError as exc:
+            raise WriteRefused(
+                "PERMISSION_DENIED", str(exc), {"reason": "reach_unresolved", "seat": seat.seat}
+            ) from exc
 
     @cached_property
     def role_mode(self) -> bool:
         """Whether this store's pack declares roles, so seats rather than names act."""
         return bool(getattr(self.pack.operating, "roles", None))
 
-    def _actor_document(self) -> Doc | None:
+    def _actor_document(self, name: str) -> Doc | None:
         candidates: list[tuple[str, Doc]] = []
         for preset in self.pack.presets.values():
             if preset.primitive != "actor":
@@ -187,7 +253,7 @@ class Context:
                     self.manifest,
                     primitive="actor",
                     preset=preset.name,
-                    slug=self.actor,
+                    slug=name,
                 )
             except ModelError:
                 continue
@@ -195,14 +261,14 @@ class Context:
             if not path.is_file():
                 continue
             doc = parse_doc(rel, path.read_bytes())
-            if doc.slug == self.actor:
+            if doc.slug == name:
                 candidates.append((rel, doc))
         if not candidates:
             return None
         if len(candidates) > 1:
             raise WriteRefused(
                 "CONFLICT",
-                f"{self.actor!r} names more than one profile",
+                f"{name!r} names more than one profile",
                 {"paths": sorted(rel for rel, _ in candidates)},
             )
         return candidates[0][1]
@@ -255,6 +321,18 @@ def invoke(
         if tool.name not in {"init", "migrate"}:
             if context is None:
                 context = _open_context(store, resolved_actor, actor_named)
+            context.identity = resolve_identity(
+                context,
+                actor=actor,
+                session=caller_session(),
+                human_channel=HUMAN_CHANNEL.get(),
+            )
+            if context.role_mode:
+                resolved_actor = context.identity.name
+                actor_named = context.identity.kind != "anonymous"
+                context.actor = resolved_actor
+                context.actor_named = actor_named
+                ACTOR_NAMED.set(actor_named)
         _auth_start = time.perf_counter()
         refusal = _authorize(
             tool, params, context, resolved_actor, actor_env, actor_named
@@ -537,12 +615,7 @@ def _resolve_actor(actor: str | None) -> tuple[str, bool]:
     the second value to refuse an unnamed default, so a bare command cannot
     record a human decision by accident.
     """
-    if isinstance(actor, str) and actor.strip():
-        return actor, True
-    from_env = caller_actor_env()
-    if from_env is not None:
-        return from_env, True
-    return "human", False
+    return resolve_actor_name(actor)
 
 
 def _parameters(tool: Tool, args: dict[str, Any] | None) -> dict[str, Any]:

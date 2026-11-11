@@ -33,6 +33,7 @@ from helpers import (
     InjectedFault,
     advance_default_branch,
     approve_picture,
+    as_human,
     compiled_model,
     init_store,
     item_etag,
@@ -92,6 +93,13 @@ def isolated_worktree_root(
 def no_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
     """The suite runs direct unless a test asks for the daemon."""
     monkeypatch.setenv("RAIL_NO_DAEMON", "1")
+
+
+@pytest.fixture(autouse=True)
+def no_ambient_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A developer's own session or run never decides who a test acts as."""
+    for name in ("RAIL_SESSION", "RAIL_RUN"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -978,16 +986,17 @@ def _build_role_store(tmp_path: Path) -> SimpleNamespace:
     (local / "pack.yaml").write_text(
         yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
     )
-    approved = approve_picture(store)
+    with as_human():
+        approved = approve_picture(store, actor=None)
     assert is_ok(approved), approved
 
     def add(preset: str, title: str, *relations: str) -> str:
-        added = invoke(
-            "add",
-            {"preset": preset, "title": title, "rel": list(relations)},
-            store=store,
-            actor="cto",
-        )
+        with as_human():
+            added = invoke(
+                "add",
+                {"preset": preset, "title": title, "rel": list(relations)},
+                store=store,
+            )
         assert is_ok(added), added
         return added["value"]["slug"]
 

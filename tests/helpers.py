@@ -32,12 +32,14 @@ DEFAULT_FAKE_BEHAVIORS = ("success",)
 def child_env(env: Mapping[str, str | None] | None = None) -> dict[str, str]:
     """The environment for a CLI child: this one, plus ``src`` on the path.
 
-    ``RAIL_ACTOR`` is dropped so a developer's shell never changes which actor a
-    test's records name. ``env`` overrides: a string sets, ``None`` removes.
+    ``RAIL_ACTOR``, ``RAIL_SESSION`` and ``RAIL_RUN`` are dropped so a developer's
+    shell never changes which identity a test's records name. ``env`` overrides:
+    a string sets, ``None`` removes.
     """
     child = dict(os.environ)
     child["PYTHONPATH"] = str(_REPO_SRC)
-    child.pop("RAIL_ACTOR", None)
+    for name in ("RAIL_ACTOR", "RAIL_SESSION", "RAIL_RUN"):
+        child.pop(name, None)
     for name, value in (env or {}).items():
         if value is None:
             child.pop(name, None)
@@ -662,16 +664,21 @@ def touch_doc(store: Path, rel: str, **frontmatter: Any) -> None:
 
 
 def approve_picture(
-    store: Path, *, confirmer: str = "validator", expect: str | None = None
+    store: Path,
+    *,
+    confirmer: str = "validator",
+    expect: str | None = None,
+    actor: str | None = "human",
 ) -> dict[str, Any]:
     """Approve the current picture as the human, sending the displayed digest.
 
     ``expect`` defaults to the ``snapshot_digest`` ``show charter`` displays, so
-    a re-approval after a mismatch only needs the new digest passed in.
+    a re-approval after a mismatch only needs the new digest passed in. A store
+    with roles refuses a named actor: pass ``actor=None`` inside ``as_human()``.
     """
     from context_rail.gateway.gateway import invoke
 
-    shown = invoke("show", {"slug": "charter"}, store=store, actor="human")
+    shown = invoke("show", {"slug": "charter"}, store=store, actor=actor)
     if expect is None:
         expect = shown["value"]["approval"]["snapshot_digest"]
     return invoke(
@@ -683,7 +690,7 @@ def approve_picture(
             "expect": expect,
         },
         store=store,
-        actor="human",
+        actor=actor,
     )
 
 
@@ -1281,3 +1288,12 @@ def open_test_session(store: Path, seat: str, **kw: Any) -> str:
 
     token, _ = open_session(store, seat, **kw)
     return token
+
+
+@contextmanager
+def as_human() -> Iterator[None]:
+    """Run gateway calls as the human on the terminal, the way a test stands in for one."""
+    from context_rail.gateway.execution import human_channel
+
+    with human_channel():
+        yield

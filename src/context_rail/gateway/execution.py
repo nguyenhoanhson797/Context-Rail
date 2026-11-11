@@ -12,10 +12,17 @@ from context_rail.store.write import WriteRefused
 EXPLICIT_ACTOR: ContextVar[str | None] = ContextVar("explicit_actor", default=None)
 ACTOR_NAMED: ContextVar[bool] = ContextVar("actor_named", default=True)
 SERVING: ContextVar[bool] = ContextVar("serving", default=False)
+#: Set by a channel only a person can use (a terminal prompt, the UI's per-run
+#: token); an agent's session never sets it.
+HUMAN_CHANNEL: ContextVar[bool] = ContextVar("human_channel", default=False)
 #: The caller's own ``RAIL_ACTOR``, held in a 1-tuple so "the caller named
 #: nothing" differs from "nobody said": unset means read this process.
 _CALLER_ACTOR_ENV: ContextVar[tuple[str | None] | None] = ContextVar(
     "caller_actor_env", default=None
+)
+#: The caller's session token, held the same way as the actor env.
+_CALLER_SESSION: ContextVar[tuple[str | None] | None] = ContextVar(
+    "caller_session", default=None
 )
 
 
@@ -24,17 +31,21 @@ def _named(value: str | None) -> str | None:
 
 
 @contextlib.contextmanager
-def caller_identity(actor: str | None, env_actor: str | None) -> Iterator[None]:
+def caller_identity(
+    actor: str | None, env_actor: str | None, *, session: str | None = None
+) -> Iterator[None]:
     """Run a call as the caller named it, not as this process's environment.
 
     The daemon outlives its callers and was started by one of them, so its own
-    ``RAIL_ACTOR`` says nothing about who is asking.
+    ``RAIL_ACTOR`` and ``RAIL_SESSION`` say nothing about who is asking.
     """
     actor_token = EXPLICIT_ACTOR.set(actor)
     env_token = _CALLER_ACTOR_ENV.set((_named(env_actor),))
+    session_token = _CALLER_SESSION.set((_named(session),))
     try:
         yield
     finally:
+        _CALLER_SESSION.reset(session_token)
         _CALLER_ACTOR_ENV.reset(env_token)
         EXPLICIT_ACTOR.reset(actor_token)
 
@@ -45,6 +56,34 @@ def caller_actor_env() -> str | None:
     if held is not None:
         return held[0]
     return _named(os.environ.get("RAIL_ACTOR"))
+
+
+def caller_session() -> str | None:
+    """The caller's session token: the one a daemon was told, else this process's."""
+    held = _CALLER_SESSION.get()
+    if held is not None:
+        return held[0]
+    return _named(os.environ.get("RAIL_SESSION"))
+
+
+@contextlib.contextmanager
+def human_channel() -> Iterator[None]:
+    """Mark the current call as arriving over a channel only a human can use."""
+    token = HUMAN_CHANNEL.set(True)
+    try:
+        yield
+    finally:
+        HUMAN_CHANNEL.reset(token)
+
+
+def resolve_actor_name(actor: str | None) -> tuple[str, bool]:
+    """The legacy actor and whether the caller named it, defaulting to ``human``."""
+    if isinstance(actor, str) and actor.strip():
+        return actor, True
+    from_env = caller_actor_env()
+    if from_env is not None:
+        return from_env, True
+    return "human", False
 
 
 @contextlib.contextmanager

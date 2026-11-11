@@ -72,7 +72,12 @@ def do(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
     from context_rail.gateway.gateway import invoke
 
-    result = invoke(action.tool, tool_args, store=ctx.store, actor=actor)
+    result = invoke(
+        action.tool,
+        tool_args,
+        store=ctx.store,
+        actor=None if ctx.role_mode else actor,
+    )
     if not result.get("ok"):
         error = result.get("error") or {}
         raise WriteRefused(

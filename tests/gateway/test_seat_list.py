@@ -13,7 +13,7 @@ from helpers import run_cli, write_record
 
 
 def listed(store: Path, **args: object) -> dict:
-    result = invoke("seat list", dict(args), store=store, actor="cto")
+    result = invoke("seat list", dict(args), store=store)
     assert is_ok(result), result
     return result["value"]
 
