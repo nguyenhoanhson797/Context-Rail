@@ -155,7 +155,8 @@ def test_a_non_human_may_not_grant_a_human_role(role_store: SimpleNamespace) -> 
     )
     by_human = grant(role_store.store, "human-2", "human-lead")
 
-    assert refusal(by_seat) == ("PERMISSION_DENIED", "human_role_requires_human")
+    assert by_seat["error"]["code"] == "PERMISSION_DENIED"
+    assert "human-only" in by_seat["error"]["message"]
     assert is_ok(by_human), by_human
 
 

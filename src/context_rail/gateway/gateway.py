@@ -408,6 +408,16 @@ def effective_decision(
         return "human-only"
     if tool.name == "init":
         return "cto-alone" if params.get("draft_file") else "human-only"
+    if (
+        tool.name == "seat grant"
+        and context is not None
+        and context.role_mode
+    ):
+        role = context.pack.operating.roles.get(str(params.get("role") or ""))
+        if role is not None and role.human:
+            return "human-only"
+        if context.identity.kind == "anonymous":
+            return "human-only"
     if tool.name == "adapters sync":
         return "human-only" if params.get("force") else "cto-alone"
     if context is None or context.policy is None:
