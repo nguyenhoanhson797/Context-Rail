@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from context_rail.context.reach import ReachError, resolve_reach
@@ -13,12 +14,15 @@ from context_rail.model.roles import check_profile_narrows, is_name, Role
 from context_rail.model.seats import HUMAN, SEAT_GRANTED, SEAT_KINDS, SEAT_REVOKED
 from context_rail.store import query
 from context_rail.store.lock import store_lock
+from context_rail.store.sessions import close_sessions, open_session
 from context_rail.store.write import WriteRefused, commit
 
 _PROJECT = "project"
 _SKILL_PRESET = "skill"
+_MAX_TTL_HOURS = 168
+_DEFAULT_TTL_HOURS = 12
 
-__all__ = ["seat_grant", "seat_list", "seat_revoke"]
+__all__ = ["seat_close", "seat_grant", "seat_list", "seat_open", "seat_revoke"]
 
 
 def seat_list(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -236,21 +240,160 @@ def _check_revoker(
             f"seat {identity.name!r} may not revoke {seat!r}",
             {"reason": "revoke_denied", "seat": seat},
         )
-    seen: set[str] = set()
-    parent = live[seat].granted_by
-    while parent != HUMAN and parent not in seen:
-        if parent == identity.name:
-            return
-        seen.add(parent)
-        holder = live.get(parent)
-        if holder is None:
-            break
-        parent = holder.granted_by
+    if _is_ancestor(identity.name, seat, live):
+        return
     raise WriteRefused(
         "PERMISSION_DENIED",
         f"seat {identity.name!r} may not revoke {seat!r}",
         {"reason": "revoke_denied", "seat": seat},
     )
+
+
+def seat_open(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Open a session for a live seat the caller may act through.
+
+    The token is present only with ``print_env``; the CLI command form asks for
+    it internally and never prints it.
+    """
+    if not ctx.role_mode:
+        raise WriteRefused(
+            "INVALID_STATE",
+            "this pack declares no roles; open sessions only in a store with roles",
+            {"reason": "no_roles", "command": "rail pack use <pack>"},
+        )
+    identity = ctx.identity
+    seat = _text(args.get("seat"), "seat")
+    hours = _ttl_hours(args.get("ttl_hours"))
+    live = query.live_seats(ctx.index)
+    target = live.get(seat)
+    if target is None:
+        raise WriteRefused(
+            "NOT_FOUND",
+            f"no live seat {seat!r}",
+            {"reason": "seat_unknown", "seat": seat, "live": sorted(live)},
+        )
+    _check_opener(ctx, identity, seat, target, live)
+    token, session = open_session(
+        ctx.store,
+        seat,
+        role=target.role,
+        anchor=target.anchor,
+        profile=target.profile,
+        granted_by=target.granted_by,
+        ttl_s=hours * 3600,
+    )
+    expires = (
+        None
+        if session.expires is None
+        else datetime.fromtimestamp(session.expires, timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    )
+    value: dict[str, Any] = {"seat": seat, "expires": expires}
+    if args.get("print_env"):
+        value["token"] = token
+    return value
+
+
+def seat_close(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Close a seat's sessions, or every known seat's sessions with ``all``."""
+    if not ctx.role_mode:
+        raise WriteRefused(
+            "INVALID_STATE",
+            "this pack declares no roles; close sessions only in a store with roles",
+            {"reason": "no_roles", "command": "rail pack use <pack>"},
+        )
+    identity = ctx.identity
+    if args.get("all") is True:
+        if identity.kind != "human":
+            raise WriteRefused(
+                "PERMISSION_DENIED",
+                "only the human may close every session",
+                {"reason": "close_denied"},
+            )
+        known = sorted({event.seat for event in query.seat_events(ctx.index)})
+        closed = sum(close_sessions(ctx.store, seat=name) for name in known)
+        return {"all": True, "closed": closed}
+    seat = _named(args.get("seat"))
+    if seat is None:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "seat close needs a seat or --all",
+            {"reason": "seat_required"},
+        )
+    live = query.live_seats(ctx.index)
+    if seat not in live:
+        raise WriteRefused(
+            "NOT_FOUND",
+            f"no live seat {seat!r}",
+            {"reason": "seat_unknown", "seat": seat, "live": sorted(live)},
+        )
+    if identity.kind != "human" and identity.name != seat:
+        if identity.kind != "seat" or not _is_ancestor(identity.name, seat, live):
+            raise WriteRefused(
+                "PERMISSION_DENIED",
+                f"seat {identity.name!r} may not close {seat!r}",
+                {"reason": "close_denied", "seat": seat},
+            )
+    return {"seat": seat, "closed": close_sessions(ctx.store, seat=seat)}
+
+
+def _check_opener(
+    ctx: Context, identity: Any, seat: str, target: Any, live: dict[str, Any]
+) -> None:
+    if identity.kind == "human":
+        return
+    if identity.kind != "seat":
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            "only the human or a live seat may open a session",
+            {"reason": "open_denied"},
+        )
+    role = ctx.pack.operating.roles.get(target.role)
+    if role is not None and role.human:
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            f"seat {seat!r} holds a human-only role",
+            {"reason": "human_role_requires_human", "seat": seat},
+        )
+    if identity.name == seat or not _is_ancestor(identity.name, seat, live):
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            f"seat {identity.name!r} may not open {seat!r}",
+            {"reason": "open_denied", "seat": seat},
+        )
+
+
+def _is_ancestor(granter: str, seat: str, live: dict[str, Any]) -> bool:
+    """Whether ``granter`` appears above ``seat`` in the live grant lineage."""
+    seen: set[str] = set()
+    parent = live[seat].granted_by
+    while parent != HUMAN and parent not in seen:
+        if parent == granter:
+            return True
+        seen.add(parent)
+        holder = live.get(parent)
+        if holder is None:
+            return False
+        parent = holder.granted_by
+    return False
+
+
+def _ttl_hours(value: Any) -> int:
+    hours = _DEFAULT_TTL_HOURS if value is None else value
+    if not isinstance(hours, int) or isinstance(hours, bool) or hours < 1:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "ttl_hours must be a positive whole number",
+            {"reason": "ttl_invalid"},
+        )
+    if hours > _MAX_TTL_HOURS:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"ttl_hours must be at most {_MAX_TTL_HOURS}",
+            {"reason": "ttl_too_long", "max": _MAX_TTL_HOURS},
+        )
+    return hours
 
 
 def _check_granter(identity: Any, role_name: str) -> None:

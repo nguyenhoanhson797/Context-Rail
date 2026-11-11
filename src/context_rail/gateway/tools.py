@@ -759,6 +759,37 @@ TOOLS: tuple[Tool, ...] = (
         ),
         handler="context_rail.gateway.handlers.seats:seat_revoke",
     ),
+    Tool(
+        name="seat open",
+        summary="Open a session for a live seat, optionally launching a command.",
+        permission="write",
+        params=(
+            Param(
+                "seat",
+                "str",
+                required=True,
+                positional=True,
+                help="the handle of the live seat",
+            ),
+            Param("ttl_hours", "int", default=12, help="session lifetime in hours"),
+            Param(
+                "print_env",
+                "bool",
+                help="include the one-time token in the result",
+            ),
+        ),
+        handler="context_rail.gateway.handlers.seats:seat_open",
+    ),
+    Tool(
+        name="seat close",
+        summary="Close a seat's sessions, or every session with --all.",
+        permission="write",
+        params=(
+            Param("seat", "str", positional=True, help="the handle of the live seat"),
+            Param("all", "bool", help="close every known seat's sessions"),
+        ),
+        handler="context_rail.gateway.handlers.seats:seat_close",
+    ),
 )
 
 
@@ -780,7 +811,7 @@ for _tool in TOOLS:
 del _tool, _param
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
-_SURFACE_LEAVES = {"init", "approve", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon", "seat list", "seat grant", "seat revoke"}
+_SURFACE_LEAVES = {"init", "approve", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon", "seat list", "seat grant", "seat revoke", "seat open", "seat close"}
 
 
 def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:

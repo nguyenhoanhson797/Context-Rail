@@ -300,7 +300,9 @@ def _expand_legacy(argv: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     """Run one command and return the process exit code."""
-    args = _expand_legacy(list(sys.argv[1:] if argv is None else argv))
+    raw = list(sys.argv[1:] if argv is None else argv)
+    head, command = _split_seat_open(raw)
+    args = _expand_legacy(head)
     try:
         namespace = _parser().parse_args(_join_dash_values(args))
     except SystemExit as exc:
@@ -329,9 +331,64 @@ def main(argv: list[str] | None = None) -> int:
         for name, value in vars(namespace).items()
         if name not in reserved and name in names
     }
+    if command is not None and tool == "seat open":
+        return _seat_open_command(namespace, params, command)
     served = _fast_path(namespace, tool, params, declared)
     if served is not None:
         return _finish(tool, served)
+    return _finish(tool, _direct_invoke(namespace, tool, params))
+
+
+def _split_seat_open(argv: list[str]) -> tuple[list[str], list[str] | None]:
+    """Split ``seat open <seat> ... -- <command ...>`` before argparse sees it."""
+    index = _command_index(argv)
+    if index is None or argv[index : index + 2] != ["seat", "open"]:
+        return argv, None
+    try:
+        cut = argv.index("--", index + 2)
+    except ValueError:
+        return argv, None
+    command = argv[cut + 1 :]
+    return argv[:cut], command or None
+
+
+def _seat_open_command(
+    namespace: argparse.Namespace, params: dict[str, Any], command: list[str]
+) -> int:
+    """Open the seat's session and launch ``command`` with it in the environment."""
+    import subprocess
+
+    from context_rail.core.result import fail
+
+    result = _direct_invoke(namespace, "seat open", {**params, "print_env": True})
+    if result.get("ok") is not True:
+        return _finish("seat open", result)
+    token = (result.get("value") or {}).get("token")
+    if not isinstance(token, str) or not token:
+        return _finish(
+            "seat open",
+            fail("INTERNAL", "the opened session carried no token", {"reason": "no_token"}),
+        )
+    env = dict(os.environ)
+    env["RAIL_SESSION"] = token
+    try:
+        completed = subprocess.run(command, env=env)
+    except OSError as exc:
+        return _finish(
+            "seat open",
+            fail(
+                "PROCESS_ERROR",
+                f"the command could not start: {exc}",
+                {"reason": "command_failed"},
+            ),
+        )
+    return completed.returncode
+
+
+def _direct_invoke(
+    namespace: argparse.Namespace, tool: str, params: dict[str, Any]
+) -> dict[str, Any]:
+    """Run one tool in this process as the caller the CLI was given."""
     from context_rail.gateway.execution import caller_identity
     from context_rail.gateway.gateway import invoke
 
@@ -341,10 +398,7 @@ def main(argv: list[str] | None = None) -> int:
         session=caller_session(),
         tty=_terminal(),
     ):
-        return _finish(
-            tool,
-            invoke(tool, params, store=namespace.store, actor=namespace.actor),
-        )
+        return invoke(tool, params, store=namespace.store, actor=namespace.actor)
 
 
 def _fast_path(
