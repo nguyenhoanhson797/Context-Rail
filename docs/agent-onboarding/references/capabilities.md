@@ -138,6 +138,42 @@ are the explicit escapes. Neither bypasses a gate, a claim or actor permissions.
 Workflow completion counts declared `done`-category states. Execution progress
 comes from execution records only and is never merged with workflow completion.
 
+## Roles, seats and sessions
+
+A pack's version-2 `operating` block may declare `roles`. A role is a name
+mapped to fixed keys: `anchor` (`project`, `{level: CONTAINER}`,
+`{item: [PRESET, ...]}`), `reach` (read/write store terms and code patterns),
+`can` (canonical methods), `sees` (brief recipe), `workspace`
+(`none`/`read`/`write`), `independent_of`, `human` and `skills`. Roles are semantic: changing one changes the digest and
+needs re-approval. The engine never branches on a role name.
+
+A **seat** binds one role to one anchor. Seats are engine records folded into
+the index; grant and revoke records are immutable. The live table cascades a
+revoke through every seat the target granted. A run seat is implicit
+(`<role>@<run-id>`) and lives only while the run is open.
+
+Identity resolution in role mode:
+
+1. A `RAIL_SESSION` token resolves to its seat. The token is stored only as a
+   SHA-256 hash under the local directory (never in the store tree).
+2. A terminal human with no token is the human. `ui serve` is human-only; the
+   UI's per-run channel is the other human proof.
+3. Anything else is anonymous: read tools only, with an empty reach.
+
+`--actor` is refused. Human-only actions need the terminal/UI proof, never a
+session token. The first grant when no seat exists is human-only; after that a
+seat grants only inside its `can.grant` and write reach.
+
+Commands: `seat list|grant|revoke|open|close|show` and the `rail <seat>` lens.
+The lens is read-only unless the session belongs to that seat, and it never
+widens the caller's reach. MCP lists read tools plus the role's write tools; a
+legacy store and the human see the whole table.
+
+A pack without roles is compat mode: the existing name-based `--actor`
+behaviour, no session requirement. `seat` commands and the lens refuse with
+"this pack declares no roles" and point at `rail ops pack use`. `pack create
+--roles` writes a starter role block and operating version 2 into a draft.
+
 ## Placement and metadata
 
 `rail.yaml` maps primitives and presets to path templates:

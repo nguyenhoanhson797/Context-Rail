@@ -109,6 +109,10 @@ approval. A label-only change never needs reapproval.
 | `progress_invalid` | error | fix the operating progress rule |
 | `execution_failed` | warning | inspect the run, or re-run it |
 | `execution_missing` | warning | run the action the operating model expects |
+| `seat_role_unknown` | error | restore the role in the pack, or `rail seat revoke <seat>` |
+| `seat_anchor_missing` | error | restore the anchor document, or `rail seat revoke <seat>` |
+| `role_skill_missing` | warning | add the skill note, or remove it from the role |
+| `session_stale` | warning | `rail seat close <seat>` |
 
 An invalid pack is a `pack validate` error, not a doctor cascade: the compiler
 refuses it before any check runs.

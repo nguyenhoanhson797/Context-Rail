@@ -112,6 +112,55 @@ Every pack also declares the shared base presets (`goal`, `scope`, `task`, `bug`
 none fits, copy one with `rail ops pack create` and edit the copy — never fork
 the engine.
 
+## Roles and seats
+
+A pack's `operating` block, version 2, may declare **roles**. A **seat** binds
+an agent to one role on one anchor: the project or one container. The lead role
+usually sits on the project; a level lead sits on a sprint, scene or phase;
+workers sit on one item.
+Roles are compiled into the approved pack, so changing one needs re-approval.
+
+```bash
+rail ops pack create --name mine --from scrum --roles   # draft with starter roles
+rail --actor human ops pack use --name mine --expect <etag> --confirm "USE PACK mine"
+
+rail seat grant lead-1 --role lead --anchor project     # the human's first seat
+rail seat grant sprint-1 --role sprint-lead --anchor sprint-3 --profile manager
+rail seat list
+rail seat show sprint-1
+rail seat open sprint-1 -- rail next                   # child gets RAIL_SESSION
+rail sprint-1 next                                     # read as that seat
+rail seat close sprint-1                               # or --all (human)
+```
+
+In role mode:
+
+- **The session is the identity.** `RAIL_SESSION` carries the token;
+  `--actor` is refused. Open a session with `rail seat open` and keep its token
+  in the child environment. `--print-env` includes the token once in the JSON
+  result for an MCP client; the command form never prints it.
+- **Reach is enforced on reads and writes.** A seat sees its anchor's subtree,
+  the ancestors and shared notes its role names, and nothing outside it. `find`,
+  `status`, `digest`, `ledger`, `show` and `cto brief` report
+  `omitted_outside_reach`; a direct out-of-reach read is refused with the reach
+  that would cover it.
+- **A lens is read-only.** `rail <seat> <command>` views the store as that seat.
+  With the seat's own session it may read and write; with another seat's session
+  it is read-only and allowed only when the target anchor is in the caller's
+  reach.
+- **Human proof is not a name.** Approving, using a pack, granting a
+  `human: true` role and the first grant when no seat exists need the human on a
+  terminal or through the UI. A session caller can never satisfy a human-only
+  action. A non-human seat may grant only inside its `can.grant` and write
+  reach.
+- **Anonymous is empty.** With no session and no terminal, the caller has read
+  tools and no documents; open a session to work.
+- **Revocation cascades.** Revoking a seat closes its sessions and every seat it
+  granted. A re-granted seat cannot reuse an old session.
+- **Compat is unchanged.** A pack without `roles` keeps the name-based
+  `--actor` behaviour. `rail seat ...` and the lens refuse with "this pack
+  declares no roles" and point at `rail ops pack use`.
+
 ## What "full power" means
 
 The rail is not a task list with extra steps. The same compiled model drives:
@@ -141,7 +190,8 @@ across `basic`, `flow`, `scrum`, `waterfall`, `video` and any custom pack.
   `rail do <action>`, never a hand edit.
 - **Records are immutable.** Do not edit `records/`.
 - **Human-only stays human.** `approve`, `ops migrate` and `ops pack use` need
-  an explicitly named human and the typed phrase.
+  an explicitly named human and the typed phrase. In role mode the human must be
+  on a terminal or use the UI channel; a seat session is never human.
 - **A gate is not a suggestion.** `rail why` names the missing proof and the
   command that produces it.
 

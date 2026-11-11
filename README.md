@@ -368,6 +368,51 @@ writes `.gitnexus`, `.claude` or a GitNexus section into your checkout, and
 - **Quick by default.** A small background helper keeps everyday commands fast
   and stops itself after 10 idle minutes.
 
+## Roles and seats
+
+A pack's `operating` block, version 2, can declare roles: a lead, one lead per hierarchy level
+(sprint lead, scene lead), an implementer and a reviewer, or any names the pack
+chooses. A **seat** binds one agent to one role on one anchor - the whole
+project or one container. Roles live in the approved pack, so widening a role
+changes the semantic digest and needs re-approval.
+
+```bash
+rail seat grant impl-1 --role implementer --anchor send-invoice
+rail seat list
+rail seat open impl-1 -- rail next      # the child gets RAIL_SESSION
+rail impl-1 next                        # read the store as that seat
+rail seat close impl-1
+```
+
+In role mode the session token is the identity: `--actor` is refused. A
+tokenless caller that is not on a terminal has no seat and an empty reach, so
+open a session before reading or writing. `rail seat open` launches a command
+with `RAIL_SESSION` set and never prints the token; `--print-env` includes it
+once in the JSON result for an MCP client. A seat sees only its anchor's
+subtree, the ancestors and shared notes its role declares, and every write is
+checked against the same reach. `rail <seat> ...` is a read-only lens when the
+session belongs to another seat.
+
+Human-only actions - approving the charter or a pack, using a pack, granting a
+`human: true` role, and the first grant when no seat exists yet - need the human
+on a terminal or through the UI, never an agent session. A store whose pack
+declares no roles keeps the name-based `--actor` behaviour unchanged; there
+`rail seat ...` and the lens refuse with "this pack declares no roles" and point
+at `rail ops pack use`.
+
+To opt a pack into role mode, write a draft with starter roles and select it:
+
+```bash
+rail ops pack create --name mine --from scrum --roles
+rail --actor human ops pack use --name mine --expect <rail-yaml-etag> \
+  --confirm "USE PACK mine"
+```
+
+The generated roles are a starting point; edit them in the draft before the
+human approves the new pack. The human's first project seat can then be granted;
+after that, a lead may grant only the roles its own `can.grant` lists and only
+inside its write reach.
+
 ## For engineers
 
 - **Files are the truth.** The store is Markdown, JSON records and `rail.yaml`

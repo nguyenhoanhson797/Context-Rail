@@ -23,7 +23,9 @@ rail --version
 - Without `--store`, the nearest `context-rail` folder above the current
   directory is used.
 - `--actor` defaults to `RAIL_ACTOR`, then `human`; human-only tools require an
-  explicitly named human (`--actor human` or `RAIL_ACTOR=human`).
+  explicitly named human (`--actor human` or `RAIL_ACTOR=human`). A store whose
+  pack declares roles refuses `--actor`: the session token is the identity
+  there.
 - `--no-daemon` (or `RAIL_NO_DAEMON=1`) bypasses the loopback RPC daemon.
   `RAIL_DAEMON_TIMEOUT_MS` tunes the wait (default 2000 ms) and
   `RAIL_DAEMON_IDLE_S` the idle time before it exits (default 600 s).
@@ -81,6 +83,46 @@ permission; `--into` overrides the focus for one call; `--focus-only` filters.
 unclaimed reports by fingerprint; `--report ID --acknowledge` records a
 deliberate acknowledgement for one report that has not reached the recurrence
 threshold, writes a `report.triaged` record and clears the doctor warning.
+
+## Roles and seats
+
+```text
+rail seat list [--all]
+rail seat grant <seat> --role ROLE --anchor SLUG|project [--profile NAME] [--key KEY]
+rail seat revoke <seat> [--key KEY]
+rail seat open <seat> [--ttl-hours N] [--print-env] [-- <command>...]
+rail seat close [<seat> | --all]
+rail seat show [<seat>]
+rail <seat> [command ...]
+```
+
+- A **role** comes from the pack's `operating.roles` (version 2). A **seat** is
+  one role on one anchor: `project` or one container slug. A run seat is
+  implicit: `loop dispatch`/`loop review` open it and close it with the run.
+- `rail seat grant` is human-only for a `human: true` role and for the first
+  grant when no granting seat exists. After that a seat may grant only a role its
+  own `can.grant` lists and only inside its write reach. Revoking a seat closes
+  its sessions and every seat it granted.
+- `rail seat open` writes a session and launches the command with
+  `RAIL_SESSION` set. The token is never printed in the command form;
+  `--print-env` includes it once in the JSON result for an MCP client. Manual
+  sessions expire after `--ttl-hours` (default 12).
+- `rail <seat> ...` is a lens. With that seat's own session it reads and writes
+  as the seat; with another seat's session it is read-only and allowed only when
+  the target anchor is in the caller's read reach; with no session on a terminal
+  it is a read-only view. A lens never widens the caller's reach.
+- In role mode a tokenless caller with no terminal has read tools and an empty
+  reach; open a session to read or write. `--actor` is refused.
+- Human-only actions need the human on a terminal or the UI channel; a session
+  caller is never human. This covers `approve`, `ops migrate`, `ops pack use`,
+  a `human: true` grant and the first bootstrap grant.
+- A pack without `roles` stays in compat mode: the name-based `--actor`
+  behaviour is unchanged and `rail seat ...` / the lens refuse with "this pack
+  declares no roles", pointing at `rail ops pack use`.
+- `rail ops pack create --roles` writes a draft with operating version 2 and
+  starter roles, and does not select it. It refuses a version-1 source and an
+  extending pack that has no own `operating` block. Select the draft with the
+  human-only `ops pack use`.
 
 ## Change surface
 
@@ -149,7 +191,7 @@ rail ops adapters render [--harness agents|claude|cursor|gemini]... [--dry-run]
 rail ops pack list
 rail ops pack show --name NAME
 rail ops pack validate --name NAME
-rail ops pack create --name NAME [--from SOURCE] [--key KEY]
+rail ops pack create --name NAME [--from SOURCE] [--roles] [--key KEY]
 rail --actor human ops pack use --name NAME --expect RAIL_YAML_ETAG [--map OLD=NEW]...
                   [--dry-run] --confirm "USE PACK <name>"
 ```
@@ -193,11 +235,14 @@ MCP clients see the canonical table, generated from the same source as the CLI:
 | Proof | `check`, `verify` |
 | Loop | `dispatch`, `review`, `merge`, `report`, `triage`, `cto tick` |
 | Ops | `doctor`, `ci`, `reindex`, `rollback`, `pack list`, `pack show`, `pack validate`, `pack create`, `pack use`, `measure versions`, `measure fix`, `codegraph setup`, `codegraph refresh`, `codegraph status`, `codegraph adopt`, `sync`, `sync driver`, `adapters sync` |
+| Seats | `seat list`, `seat grant`, `seat revoke`, `seat open`, `seat close`, `seat show` |
 | Transports | `mcp serve`, `ui serve`, `serve daemon` |
 
 Each tool declares a closed object schema, a `permission` (`read`, `write`,
 `human`) and a `decision` (`cto-alone`, `cto-reversible`, `human-only`) in its
-metadata. The envelope is the same as the CLI's.
+metadata. The envelope is the same as the CLI's. In role mode the MCP tool list
+is scoped to the seat's role: read tools plus the write tools its role holds;
+a legacy store and the human see every tool.
 
 ## Compatibility aliases
 
@@ -220,6 +265,8 @@ Hidden compatibility spellings: `inbox`, `read brief`, `repath`,
 | `CONFLICT` | etag changed, adapter conflict, duplicate identity |
 | `INVALID_STATE` | non-executable item, immutable record, wrong recipe |
 | `BUSINESS_RULE_VIOLATED` | a charter gate is not satisfied |
+| `PERMISSION_DENIED` | the caller's role, reach or identity does not allow it |
+| `SESSION_REQUIRED` | a tokenless role-mode caller tried to write; open a seat session |
 | `NO_FOCUS` | the pack needs a parent container and none matches |
 | `AMBIGUOUS_FOCUS` | several containers match; `details.candidates` names them |
 | `INVALID_FOCUS` | `--into` is not a declared hierarchy container |

@@ -45,6 +45,17 @@ rail read ledger [--item <slug>] [--since <iso>]
   acknowledgement for one report below the recurrence threshold; it writes a
   `report.triaged` record and clears the doctor warning.
 
+## Role mode
+
+When the pack declares roles, `loop dispatch` and `loop review` open a run seat
+(`<role>@<id>`) and pass `RAIL_SESSION` to the child instead of `RAIL_ACTOR`.
+The dispatcher must hold the method and the item in its write reach; a seat
+cannot dispatch into a `human: true` role. Independence compares the acting
+seat and its profile with the producing and reviewing run seats, and the code
+reach check re-resolves the producer's patterns from its run seat at review and
+merge. A conflict continuation runs as the dispatching seat. The run seat closes
+with the run, so a crashed launch leaves no usable token.
+
 ## Focus and the queue
 
 The pack names one focus container (the active sprint, the current phase, the

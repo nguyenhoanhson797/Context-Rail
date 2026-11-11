@@ -3,7 +3,8 @@
 Global options, before the command: `--store PATH`, `--actor NAME`.
 `rail --version` prints the package version.
 Human-only tools (`approve`, `ops migrate`, `ops pack use`) need an explicitly
-named human: `--actor human` or `RAIL_ACTOR=human`.
+named human: `--actor human` or `RAIL_ACTOR=human`. A role-mode store refuses
+`--actor`: open a seat session instead.
 Every command accepts `--key` for idempotency where it writes.
 Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
@@ -51,6 +52,45 @@ a skill copied into each profile.
 `init --answers-file` runs the full onboarding pipeline and reports each stage
 plus the next steps. Add `--confirmer NAME` with the `--confirm` phrase to
 record the charter approval in the same call; otherwise approve separately.
+
+## Roles and seats
+
+```text
+rail seat list [--all]
+rail seat grant <seat> --role ROLE --anchor SLUG|project [--profile NAME] [--key KEY]
+rail seat revoke <seat> [--key KEY]
+rail seat open <seat> [--ttl-hours N] [--print-env] [-- <command>...]
+rail seat close [<seat> | --all]
+rail seat show [<seat>]
+rail <seat> [command ...]
+```
+
+A role is declared in a pack's version-2 `operating.roles`; a seat binds one
+role to one anchor (`project` or a container). A run seat is implicit and lasts
+as long as its run.
+
+- `seat grant` is human-only for a `human: true` role and for the first grant
+  when no granting seat exists. A live seat may grant only inside its
+  `can.grant` and write reach. `seat revoke` closes the target's sessions and
+  every seat it granted.
+- `seat open` writes a session and launches the command with `RAIL_SESSION` set.
+  The command form never prints the token; `--print-env` includes it once in the
+  JSON result. Manual sessions expire after `--ttl-hours` (default 12).
+- `rail <seat> ...` is a lens. The seat's own session may read and write; another
+  seat's session gives a read-only view only when the target anchor is inside
+  the caller's read reach; a terminal with no session gets a read-only view.
+- A tokenless caller with no terminal has read tools and an empty reach. In role
+  mode `--actor` is refused.
+- Human-only actions need a terminal human or the UI channel; a session caller
+  is never human.
+- A pack without roles stays in compat mode: name-based `--actor` behaviour is
+  unchanged, and `seat` commands plus the lens refuse with "this pack declares
+  no roles" and point at `ops pack use`.
+- `rail ops pack create --roles` writes a draft with operating version 2 and
+  starter roles, without selecting it; it refuses a version-1 source and an
+  extending pack without its own `operating` block.
+- MCP in role mode lists read tools plus the write tools the seat's role holds;
+  a legacy store and the human still see the whole table.
 
 ## Checks, reports and the loop
 
@@ -101,7 +141,7 @@ rail ops adapters render [--harness agents|claude|cursor|gemini]... [--dry-run]
 rail ops pack list
 rail ops pack show --name NAME
 rail ops pack validate --name NAME
-rail ops pack create --name NAME [--from SOURCE]
+rail ops pack create --name NAME [--from SOURCE] [--roles]
 rail --actor human ops pack use --name NAME --expect RAIL_YAML_ETAG
                     [--map OLD=NEW]... [--dry-run] --confirm "USE PACK <name>"
 ```
@@ -120,7 +160,10 @@ Every former flat command name is still accepted: `status`, `digest`,
 `rename`, `relocate`, `check`, `verify`, `dispatch`, `review`, `merge`,
 `report`, `triage`, `cto tick`, `ci`, `doctor`, `reindex`, `migrate`,
 `rollback`, `pack`, `measure`, `sync`, `adapters sync`, `mcp serve` and
-`ui serve`. The grouped names above are the documented surface.
+`ui serve`. The grouped names above are the documented surface. The `seat`
+commands and the `rail <seat>` lens exist only in a store whose pack declares
+roles; a legacy store keeps the name-based behaviour and refuses them with the
+`pack use` hint.
 
 ## Error codes seen most
 
@@ -131,6 +174,8 @@ Every former flat command name is still accepted: `status`, `digest`,
 | `CONFLICT` | Etag changed since read; re-read and retry |
 | `INVALID_STATE` | Dispatch of a non-executable item, immutable record, wrong profile recipe |
 | `BUSINESS_RULE_VIOLATED` | A charter gate is not satisfied |
+| `PERMISSION_DENIED` | The role, reach or identity does not allow the call |
+| `SESSION_REQUIRED` | A tokenless role-mode caller tried to write |
 | `NO_FOCUS` | The pack needs a parent container and none matches; pass `--into` or `--rel part_of=...` |
 | `AMBIGUOUS_FOCUS` | Several containers match; `error.details.candidates` names them, pass `--into <id>` |
 | `INVALID_FOCUS` | The `--into` slug is not a declared hierarchy container |

@@ -190,6 +190,63 @@ actions:
 explicit `--rel part_of=...`. A required hierarchy with no focus refuses with
 `NO_FOCUS`; it never guesses.
 
+## Roles (pack version 2)
+
+A pack's version-2 `operating` block may add `roles`. A role is a name the pack
+chooses mapped to fixed keys: `anchor`, `reach`, `can`, `sees`, `workspace`,
+`independent_of`, `human` and `skills`. The engine reads the blocks and never
+branches on a role name.
+
+```yaml
+operating:
+  version: 2
+  roles:
+    lead:
+      anchor: project
+      reach: {read: [project], write: [project], code: {read: ["**"], write: []}}
+      can: {add: [story, task], update: [story, task], dispatch: [task], review: [task],
+            merge: [task], grant: [sprint-lead, implementer, reviewer]}
+      sees: {up: 0, down: 1, parts: [title, status, next, blockers], budget: {chars: 12000, docs: 60}}
+      workspace: none
+    sprint-lead:
+      anchor: {level: sprint}
+      reach: {read: [anchor, {up: 1}, {preset: [convention]}], write: [anchor],
+              code: {read: ["**"], write: []}}
+      can: {add: [story], update: [story], dispatch: [story], review: [story],
+            merge: [story], grant: [implementer, reviewer]}
+      sees: {up: 1, down: all, parts: [title, status, next, body, acceptance, blockers], budget: {chars: 8000, docs: 40}}
+      workspace: none
+```
+
+- `anchor` is `project`, `{level: CONTAINER_PRESET}` or `{item: [PRESET, ...]}`.
+- `reach.read` is required; `reach.write`, `reach.code`, `can`, `sees`,
+  `workspace`, `independent_of`, `human` and `skills` default closed. Reach
+  terms are `project`, `anchor`, `{up: N}`, `{related: [REL, ...]}`,
+  `{preset: [...]}` and `{path: "<template>/**"}`; `up` and `related` are
+  read-only. Reach tokens are `{anchor.slug}`, `{anchor.<field>}`,
+  `{up.<preset>.slug}`, `{up.<preset>.title}` and `{up.<preset>.<field>}`;
+  an empty token refuses the grant or dispatch, never widens.
+- `can` values name presets, statuses, relations, actions or roles, all
+  validated against the pack. A method absent from `can` is refused; reads are
+  governed by `reach`.
+- `workspace` is `none`, `read` or `write`; a profile may only narrow its role.
+  `human: true` means only a verified human may hold the seat.
+- `independent_of` names `produce`, `review` or `grant`; a seat may not act on
+  an item where its seat or profile performed one of those steps.
+
+Generate a starting role block from an existing pack:
+
+```bash
+rail ops pack create --name mine --from scrum --roles
+```
+
+`--roles` upgrades the draft to operating version 2 and writes starter roles
+from the pack's own presets, hierarchy and workflows: a project lead, one lead
+per hierarchy level, an implementer and a reviewer. Edit the draft, then select
+it with the human-only `rail ops pack use`. `pack create --roles` refuses a
+version-1 source and a pack that extends another without its own `operating`
+block. Role changes are semantic: they change the digest and need re-approval.
+
 ## Presentation (`surface.yaml`)
 
 Presentation is separate, optional and **not part of the approval**. A missing

@@ -52,6 +52,35 @@ Global options go **before** the command (`rail --store path read status`).
 `change add` takes positional arguments: `rail change add <preset> "<title>"`.
 Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
+## Role mode and seats
+
+A pack's version-2 `operating` block may declare roles: a lead on the project,
+a level lead per sprint/scene/phase, an implementer and a reviewer. A seat binds
+one agent to one role on one anchor. Roles live in the approved pack, so
+changing one needs re-approval.
+
+```powershell
+rail seat list
+rail seat grant sprint-1 --role sprint-lead --anchor sprint-3
+rail seat open sprint-1 -- rail next    # the child gets RAIL_SESSION
+rail sprint-1 next                      # read the store as that seat
+rail seat close sprint-1
+```
+
+- In role mode the session token is the identity and `--actor` is refused.
+  `rail seat open` launches a command with `RAIL_SESSION`; the command form never
+  prints the token.
+- A seat sees its anchor's subtree, the ancestors and shared notes its role
+  declares. Reads and writes outside that reach are refused; lists and digests
+  report `omitted_outside_reach`.
+- A lens (`rail <seat> ...`) is read-only unless the session belongs to that
+  seat, and never widens the caller's reach.
+- Human-only actions need the human on a terminal or the UI channel, never an
+  agent session. The first grant when no seat exists is human-only; after that a
+  seat grants only inside its `can.grant` and write reach.
+- A pack without roles is compat mode: the name-based `--actor` behaviour is
+  unchanged and the seat commands refuse with the `ops pack use` hint.
+
 ## Onboarding a project — what each step generates
 
 | Step | Command | Writes |
@@ -121,6 +150,8 @@ Exact flags: `references/commands.md` in this skill.
 | `AMBIGUOUS_FOCUS` | Two containers match the focus; pass `--into <id>` or finish one |
 | `NO_FOCUS` on `add` | The pack needs a parent; start the container or pass `--rel part_of=<container>` |
 | `approval_mismatch` after a pack upgrade | The semantic digest changed; reapprove `pack:<name>` then the charter |
+| `SESSION_REQUIRED` in a role-mode store | Open a session: `rail seat open <seat> -- <command>` |
+| `--actor` is refused in a role-mode store | The seat is the identity; use `RAIL_SESSION` or a terminal |
 | A check is `stale` | Re-run `rail check run`; a stale pass is not a pass |
 
 ## Invariants worth knowing before changing anything
