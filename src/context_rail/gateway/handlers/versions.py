@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import now_iso
@@ -22,7 +21,6 @@ from context_rail.gateway.handlers.common import (
 )
 from context_rail.kernel.rights import ChangeFacts, decision_class
 from context_rail.store.doc import etag, parse_doc
-from context_rail.store.measure import active_dispatches
 from context_rail.store.versions import (
     TraversalRefused,
     canonical_target,
@@ -71,15 +69,6 @@ def rollback(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"path": rel, "expected": args["expect"], "actual": current_etag},
         )
     prior = prior_version_content(ctx.index, rel, version)
-    profile = _profile_name(rel) if kind == "profile" else None
-    skill = rel if kind == "skill" else None
-    if active_dispatches(ctx.index, profile=profile, skill=skill):
-        raise WriteRefused(
-            "INVALID_STATE",
-            "an active run still reads this target",
-            {"target": rel},
-        )
-
     current_front = doc_frontmatter(current_doc)
     current_version = document_version(current_front, rel)
     prior_doc = parse_doc(rel, prior.text.encode("utf-8"))
@@ -184,13 +173,6 @@ def _acceptance(body: str) -> str:
     start = match.end()
     following = _HEADING.search(body, start)
     return body[start : following.start() if following is not None else len(body)].strip()
-
-
-def _profile_name(rel: str) -> str:
-    path = PurePosixPath(rel)
-    if path.name == "profile.md":
-        return path.parent.name
-    return path.stem
 
 
 def _replayed(store: Any, args: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:

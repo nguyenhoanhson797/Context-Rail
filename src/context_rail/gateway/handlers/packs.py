@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import re
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -44,7 +43,6 @@ from context_rail.store.approval import (
 from context_rail.store.doc import etag
 from context_rail.store.frontmatter_edit import join_frontmatter, split_frontmatter
 from context_rail.store.location import local_dir
-from context_rail.store.lock import StoreLockTimeout, file_lock
 from context_rail.store.packs import (
     copy_plan,
     installed_pack_name,
@@ -59,11 +57,6 @@ from context_rail.store.write import (
     commit,
     replay,
     store_inventory,
-)
-from context_rail.runner.dispatch import (
-    DISPATCH_DIR,
-    LOCK_DIR,
-    acquire_tick_lock,
 )
 
 if TYPE_CHECKING:  # imported lazily by the gateway only when a pack tool runs
@@ -285,113 +278,112 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     target = _load_target(store, name)
     _refuse_pending_intents(store)
 
-    with _quiet(store):
-        if not dry_run:
-            reason = validate_confirmation("pack_use", name, args.get("confirm"))
-            if reason is not None:
-                raise WriteRefused(
-                    "VALIDATION_FAILED",
-                    reason,
-                    {"target": name, "confirm": confirmation_phrase("pack_use", name)},
-                )
-        items = query.items_for_migration(ctx.index)
-        current = ctx.pack
-        explicit, duplicates = parse_map_entries(args["map"])
-        if duplicates:
+    if not dry_run:
+        reason = validate_confirmation("pack_use", name, args.get("confirm"))
+        if reason is not None:
             raise WriteRefused(
                 "VALIDATION_FAILED",
-                "duplicate or malformed status map entries",
-                {"problems": list(duplicates)},
+                reason,
+                {"target": name, "confirm": confirmation_phrase("pack_use", name)},
             )
-        mapping = plan_item_map(current, target, items, explicit)
-        if mapping.problems:
-            raise WriteRefused(
-                "VALIDATION_FAILED",
-                "the store's statuses cannot be mapped into the target pack",
-                {
-                    "problems": [list(problem) for problem in mapping.problems],
-                    "items": _affected_items(items, current, mapping.problems),
-                },
-            )
-        unsupported = _unsupported_fields(items, current, target, mapping.statuses)
-        if unsupported:
-            raise WriteRefused(
-                "VALIDATION_FAILED",
-                "the store uses presets, fields or statuses the target pack "
-                "does not declare",
-                {"unsupported": unsupported},
-            )
-        workflow_changes = _workflow_changes(items, current, target)
-        engine_metadata = _engine_metadata_problems(target, target.name)
-        if engine_metadata:
-            raise WriteRefused(
-                "VALIDATION_FAILED",
-                "the target pack needs defaults on engine-created presets",
-                {"unsupported": engine_metadata},
-            )
+    items = query.items_for_migration(ctx.index)
+    current = ctx.pack
+    explicit, duplicates = parse_map_entries(args["map"])
+    if duplicates:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "duplicate or malformed status map entries",
+            {"problems": list(duplicates)},
+        )
+    mapping = plan_item_map(current, target, items, explicit)
+    if mapping.problems:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "the store's statuses cannot be mapped into the target pack",
+            {
+                "problems": [list(problem) for problem in mapping.problems],
+                "items": _affected_items(items, current, mapping.problems),
+            },
+        )
+    unsupported = _unsupported_fields(items, current, target, mapping.statuses)
+    if unsupported:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "the store uses presets, fields or statuses the target pack "
+            "does not declare",
+            {"unsupported": unsupported},
+        )
+    workflow_changes = _workflow_changes(items, current, target)
+    engine_metadata = _engine_metadata_problems(target, target.name)
+    if engine_metadata:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "the target pack needs defaults on engine-created presets",
+            {"unsupported": engine_metadata},
+        )
 
-        ops = []
-        changes: list[dict[str, str]] = []
-        for row in items:
-            current_data = (store / row["path"]).read_bytes()
-            current_etag = etag(current_data)
-            new_status = mapping.statuses.get(row["slug"], row["status"])
-            data = current_data
-            if new_status != row["status"]:
-                data = _rewrite_status(current_data, new_status)
-                changes.append(
-                    {"slug": row["slug"], "from": row["status"], "to": new_status}
-                )
-            ops.append(Op(row["path"], data, current_etag))
-        changes.sort(key=lambda row: row["slug"])
-        manifest_bytes = _rewrite_manifest(current_manifest, target.name)
-        _require_manifest_served(store, manifest_bytes, target.name)
-        ops.append(Op("rail.yaml", manifest_bytes, etag(current_manifest)))
-        candidate = protected_snapshot(ctx, pack_name=target.name)
-        value = {
+    ops = []
+    changes: list[dict[str, str]] = []
+    for row in items:
+        current_data = (store / row["path"]).read_bytes()
+        current_etag = etag(current_data)
+        new_status = mapping.statuses.get(row["slug"], row["status"])
+        data = current_data
+        if new_status != row["status"]:
+            data = _rewrite_status(current_data, new_status)
+            changes.append(
+                {"slug": row["slug"], "from": row["status"], "to": new_status}
+            )
+        ops.append(Op(row["path"], data, current_etag))
+    changes.sort(key=lambda row: row["slug"])
+    manifest_bytes = _rewrite_manifest(current_manifest, target.name)
+    _require_manifest_served(store, manifest_bytes, target.name)
+    ops.append(Op("rail.yaml", manifest_bytes, etag(current_manifest)))
+    candidate = protected_snapshot(ctx, pack_name=target.name)
+    value = {
+        "from": current.name,
+        "to": target.name,
+        "status_map": dict(mapping.status_map),
+        "changes": changes,
+        "workflow_changes": workflow_changes,
+        "warnings": [],
+        "manifest_etag": etag(manifest_bytes),
+        "record": None,
+    }
+    if dry_run:
+        return value
+
+    record = {
+        "kind": "pack.changed",
+        "preset": "event",
+        "about": [row["slug"] for row in changes],
+        "data": {
+            "schema": 1,
             "from": current.name,
             "to": target.name,
             "status_map": dict(mapping.status_map),
             "changes": changes,
+            "changed_slugs": [row["slug"] for row in changes],
+            "changed_count": len(changes),
             "workflow_changes": workflow_changes,
-            "warnings": [],
-            "manifest_etag": etag(manifest_bytes),
-            "record": None,
-        }
-        if dry_run:
-            return value
-
-        record = {
-            "kind": "pack.changed",
-            "preset": "event",
-            "about": [row["slug"] for row in changes],
-            "data": {
-                "schema": 1,
-                "from": current.name,
-                "to": target.name,
-                "status_map": dict(mapping.status_map),
-                "changes": changes,
-                "changed_slugs": [row["slug"] for row in changes],
-                "changed_count": len(changes),
-                "workflow_changes": workflow_changes,
-                "approval_target": f"pack:{target.name}",
-                "candidate_snapshot": candidate,
-                "candidate_digest": snapshot_digest(candidate),
-            },
-        }
-        inventory = _after_planning(store_inventory(store))
-        result = commit(
-            store,
-            ctx.manifest,
-            ops,
-            record,
-            actor=actor,
-            key=args.get("key"),
-            inventory=inventory,
-        )
-        value["record"] = result["record"]
-        ctx.close()
-        return value
+            "approval_target": f"pack:{target.name}",
+            "candidate_snapshot": candidate,
+            "candidate_digest": snapshot_digest(candidate),
+        },
+    }
+    inventory = _after_planning(store_inventory(store))
+    result = commit(
+        store,
+        ctx.manifest,
+        ops,
+        record,
+        actor=actor,
+        key=args.get("key"),
+        inventory=inventory,
+    )
+    value["record"] = result["record"]
+    ctx.close()
+    return value
 
 
 def _compiled(store: Path, name: str, pack: Any) -> ProjectModel:
@@ -413,27 +405,6 @@ def _after_planning(
 ) -> tuple[tuple[str, str], ...] | None:
     """The inventory the locked publication must still match."""
     return inventory
-
-
-def _quiet(store: Path) -> contextlib.AbstractContextManager[None]:
-    @contextlib.contextmanager
-    def guard() -> Iterator[None]:
-        with acquire_tick_lock(store):
-            folder = local_dir(store) / DISPATCH_DIR / LOCK_DIR
-            if folder.is_dir():
-                for path in sorted(folder.glob("*.lock")):
-                    try:
-                        with file_lock(path, timeout=0):
-                            pass
-                    except StoreLockTimeout:
-                        raise WriteRefused(
-                            "CONFLICT",
-                            "a dispatch is still running",
-                            {"lock": str(path)},
-                        ) from None
-            yield
-
-    return guard()
 
 
 def _refuse_pending_intents(store: Path) -> None:

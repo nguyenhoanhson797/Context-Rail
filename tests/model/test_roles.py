@@ -43,13 +43,9 @@ _ROLES: dict[str, Any] = {
             "check": ["shot"],
             "verify": ["shot"],
             "candidate": ["shot"],
-            "dispatch": ["shot"],
-            "review": ["shot"],
-            "merge": ["shot"],
             "report": ["shot"],
             "triage": ["shot"],
             "execution": ["shot"],
-            "tick": True,
             "actions": ["render", "generate"],
             "grant": ["scene-manager", "implementer", "validator"],
         },
@@ -77,8 +73,7 @@ _ROLES: dict[str, Any] = {
             "update": ["shot"],
             "move": {"shot": ["generating", "review"]},
             "link": ["part_of", "depends_on"],
-            "dispatch": ["shot"],
-            "review": ["shot"],
+            "candidate": ["shot"],
             "grant": ["implementer", "validator"],
         },
         "sees": {
@@ -275,8 +270,8 @@ def test_role_tools_name_canonical_write_tools_only(pack: Pack) -> None:
     assert role_tools(roles["lead"]) == frozenset(CAN_TOOLS.values())
     assert "grant" in CAN_KEYS and "grant" not in CAN_TOOLS
     assert CAN_TOOLS["execution"] == "execution record"
-    assert CAN_TOOLS["tick"] == "cto tick"
     assert CAN_TOOLS["actions"] == "do"
+    assert not {"dispatch", "merge", "tick"} & set(CAN_TOOLS)
 
 
 @pytest.mark.parametrize(
@@ -306,7 +301,7 @@ def test_role_tools_name_canonical_write_tools_only(pack: Pack) -> None:
             (("lead.can.add", ["profile"]),), "profile", id="add-actor-preset"
         ),
         pytest.param(
-            (("lead.can.dispatch", ["note"]),), "not an item preset", id="dispatch-note"
+            (("lead.can.candidate", ["note"]),), "not an item preset", id="candidate-note"
         ),
         pytest.param(
             (("lead.can.move", {"shot": ["nope"]}),),
@@ -546,13 +541,12 @@ def test_a_profile_may_not_add_a_method_outside_its_role(pack: Pack) -> None:
     assert reason is not None and "outside the role" in reason
 
 
-def test_auto_high_needs_a_role_that_may_tick(pack: Pack) -> None:
-    implementer = parse_roles(_roles(), pack)["implementer"]
-    profile = _role_profile(auto="high")
+def test_a_removed_launcher_key_is_refused_in_a_role(pack: Pack) -> None:
+    for key in ("dispatch", "merge", "tick"):
+        raw = _roles(("lead.can." + key, ["shot"] if key != "tick" else True))
 
-    reason = check_profile_narrows(implementer, profile)
-
-    assert reason is not None and "auto: high" in reason
+        with pytest.raises(ModelError, match="unknown key"):
+            parse_roles(raw, pack)
 
 
 def test_a_read_only_workspace_refuses_writing_tools(pack: Pack) -> None:

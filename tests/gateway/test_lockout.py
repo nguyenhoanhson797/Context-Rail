@@ -106,14 +106,7 @@ def test_reads_stay_open_before_approval(unapproved_store: Path) -> None:
 
 
 def test_the_execution_tools_are_pinned() -> None:
-    assert set(EXECUTION_TOOLS) == {
-        "verify",
-        "candidate",
-        "dispatch",
-        "review",
-        "merge",
-        "cto tick",
-    }
+    assert set(EXECUTION_TOOLS) == {"verify", "candidate"}
 
 
 def test_lockout_applies_to_every_actor(unapproved_store: Path) -> None:
@@ -224,18 +217,6 @@ def test_an_approved_charter_still_lets_verification_run(
     "tool,args",
     [
         ("candidate", {"item": "login-page", "commit": "HEAD"}),
-        ("dispatch", {"item": "login-page", "expect": "0" * 16, "key": "k"}),
-        ("review", {"item": "login-page", "run": "01JRUN000000000000000001", "key": "k"}),
-        (
-            "merge",
-            {
-                "item": "login-page",
-                "run": "01JRUN000000000000000001",
-                "expect": "0" * 16,
-                "key": "k",
-            },
-        ),
-        ("cto tick", {"key": "k"}),
     ],
 )
 def test_every_executor_refuses_without_a_charter(

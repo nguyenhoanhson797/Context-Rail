@@ -139,15 +139,10 @@ def seat_grant(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
         _rel, _etag, profile = profile_document(ctx, profile_name)
         reason = check_profile_narrows(role, profile)
         if reason is not None:
-            code = (
-                "profile_auto_high"
-                if profile.auto == "high" and "tick" not in role.can.methods
-                else "profile_widens_role"
-            )
             raise WriteRefused(
                 "VALIDATION_FAILED",
                 reason,
-                {"reason": code, "profile": profile_name},
+                {"reason": "profile_widens_role", "profile": profile_name},
             )
     missing = _missing_skills(ctx, role)
     if missing:

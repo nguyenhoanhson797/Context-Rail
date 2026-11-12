@@ -106,9 +106,7 @@ class Identity:
 
     def may(self, key: str) -> bool:
         """Whether the identity may use the ``can`` key (a write tool family)."""
-        if self.kind == "legacy":
-            return self.lead if key == "tick" else True
-        if self.kind == "human":
+        if self.kind in ("legacy", "human"):
             return True
         if self.kind == "seat" and self.role is not None:
             return bool(self.role.can.methods.get(key))
@@ -239,7 +237,7 @@ def _seat(context: Context, token: str) -> Identity:
         name=seat.seat,
         seat=seat,
         role=role,
-        lead=bool(role.can.methods.get("tick")),
+        lead=role.anchor.kind == "project",
         session=found.id,
     )
 

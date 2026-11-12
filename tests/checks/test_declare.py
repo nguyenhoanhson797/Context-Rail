@@ -475,27 +475,6 @@ def test_a_store_wide_duplicate_slug_is_refused_before_writing(
     assert not (store_with_duplicate / "checks" / "x.md").exists()
 
 
-def test_the_auto_review_check_slug_avoids_a_used_note_slug(
-    verified_run: Any, fake_droid: Any
-) -> None:
-    store = verified_run.store
-    note = invoke(
-        "add", {"preset": "note", "title": "review-login-page"}, store=store, actor="cto"
-    )
-    assert is_ok(note), note
-
-    reviewed = invoke(
-        "review",
-        {"item": verified_run.item, "run": verified_run.run, "key": "slug-avoid"},
-        store=store,
-        actor="cto",
-    )
-
-    assert is_ok(reviewed), reviewed
-    assert (store / "checks" / "review-login-page-2.md").is_file()
-    assert not (store / "checks" / "review-login-page.md").exists()
-
-
 def test_a_replayed_check_does_not_read_the_missing_spec(
     git_approved_store: Any, tmp_path: Path
 ) -> None:

@@ -496,12 +496,13 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
         assert profile.skills
 
 
-def test_cto_profile_runs_at_high_and_cannot_tick_itself() -> None:
+def test_cto_profile_names_the_candidate_tool_and_no_launcher() -> None:
     cto = load_builtin_profile("cto")
     assert cto.auto == "high"
     assert cto.budgets["attempts"] == 1
     assert cto.budgets["seconds"] == 7200
-    assert "dispatch" in cto.allowed_methods
+    assert "candidate" in cto.allowed_methods
+    assert not {"dispatch", "review", "merge", "cto tick"} & set(cto.allowed_methods)
 
 
 def test_unknown_builtin_profile_is_refused() -> None:

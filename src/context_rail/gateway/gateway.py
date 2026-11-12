@@ -42,9 +42,11 @@ from context_rail.gateway.execution import (
 from context_rail.gateway.identity import ANONYMOUS, Identity, resolve_identity
 from context_rail.gateway.role_guard import authorize_role
 from context_rail.core.tool_names import (
+    REMOVED_COMMANDS,
     alias_defaults,
     canonical_methods,
     canonical_tool,
+    removed_message,
 )
 from context_rail.gateway.tools import TOOLS, Param, Tool, daemon_eligible
 from context_rail.gateway.daemon import NO_DAEMON_ENV
@@ -119,7 +121,7 @@ def try_daemon_invoke(
 
 
 #: Tools that execute something; none of them may run before the human approves.
-EXECUTION_TOOLS = ("verify", "candidate", "dispatch", "review", "merge", "cto tick")
+EXECUTION_TOOLS = ("verify", "candidate")
 #: The categories a move may not reach before approval.
 LOCKED_CATEGORIES = ("active", "done")
 #: Generic writes whose decision depends on which documents they would change.
@@ -317,7 +319,6 @@ def invoke(
     """
     _started = time.perf_counter()
     resolved_actor, actor_named = _resolve_actor(actor)
-    actor_env = _actor_env()
     named_token = ACTOR_NAMED.set(actor_named)
     requested = name
     params: dict[str, Any] | None = None
@@ -350,9 +351,7 @@ def invoke(
                 context.actor_named = actor_named
                 ACTOR_NAMED.set(actor_named)
         _auth_start = time.perf_counter()
-        refusal = _authorize(
-            tool, params, context, resolved_actor, actor_env, actor_named
-        )
+        refusal = _authorize(tool, params, context, resolved_actor, actor_named)
         _auth_ms = (time.perf_counter() - _auth_start) * 1000.0
         if refusal is not None:
             return _with_command(refusal, tool.name, params)
@@ -389,25 +388,6 @@ def _usable_context(
         return context if Path(context.store).resolve() == Path(store).resolve() else None
     except OSError:
         return None
-
-
-def _actor_env() -> str | None:
-    """The actor ``RAIL_ACTOR`` names, or None when the caller named none."""
-    return caller_actor_env()
-
-
-def _tick_refusal(identity: Identity, actor_env: str | None) -> str | None:
-    """Whether a tick may start: the lead alone, and only as the outer session.
-
-    A droid child always carries ``RAIL_ACTOR``, so a session that is already
-    running can never nest a second tick; an identity whose role may not tick
-    starts none at all.
-    """
-    if actor_env is not None or os.environ.get("RAIL_RUN"):
-        return "'cto tick' cannot be nested inside a running session"
-    if not identity.may("tick"):
-        return f"the lead alone may start a CTO tick, not {identity.name!r}"
-    return None
 
 
 def effective_decision(
@@ -454,7 +434,6 @@ def _authorize(
     params: dict[str, Any],
     context: Context | None,
     actor: str,
-    actor_env: str | None = None,
     actor_named: bool = True,
 ) -> dict[str, Any] | None:
     """The refusal a call earns before its handler runs, if it earns one."""
@@ -472,10 +451,6 @@ def _authorize(
         )
     if tool.permission == "human" or context is None:
         return None
-    if tool.name == "cto tick":
-        nested = _tick_refusal(context.identity, actor_env)
-        if nested is not None:
-            return fail("PERMISSION_DENIED", nested, {"tool": tool.name, "actor": actor})
     if context.role_mode:
         refusal = authorize_role(tool, params, context)
         if refusal is not None:
@@ -483,13 +458,12 @@ def _authorize(
     else:
         profile = context.profile
         allowed = canonical_methods(profile.allowed_methods) if profile is not None else frozenset()
-        # ``cto tick`` starts the CTO session rather than acting inside one, and
         # ``mcp serve``/``ui serve`` only open transports whose calls are gated one
-        # by one, so none of them is narrowed by the caller's profile. The compiled
+        # by one, so neither is narrowed by the caller's profile. The compiled
         # surface is how every actor reads the pack, so a profile never hides it.
         if (
             profile is not None
-            and tool.name not in ("cto tick", "mcp serve", "ui serve")
+            and tool.name not in ("mcp serve", "ui serve")
             and tool.name not in _COMPILED_SURFACE
             and tool.name not in allowed
         ):
@@ -637,6 +611,12 @@ def _confirmation_target(
 def _tool(name: Any) -> Tool:
     if not isinstance(name, str):
         raise WriteRefused("VALIDATION_FAILED", f"unknown tool {name!r}")
+    if name in REMOVED_COMMANDS:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            removed_message(name),
+            {"reason": "command_removed", "replacement": REMOVED_COMMANDS[name]},
+        )
     canonical = canonical_tool(name)
     if canonical not in _BY_NAME:
         raise WriteRefused("VALIDATION_FAILED", f"unknown tool {name!r}")
@@ -766,8 +746,6 @@ def _with_command(
     canonical = canonical_tool(name) if isinstance(name, str) else ""
     if canonical == "move" and params.get("slug"):
         details["command"] = f"rail read show {params['slug']}"
-    elif canonical in {"dispatch", "merge"} and params.get("item"):
-        details["command"] = f"rail read show {params['item']}"
     elif canonical == "do":
         details["command"] = (
             f"rail explain {params['action']}"

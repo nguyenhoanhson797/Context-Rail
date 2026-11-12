@@ -194,7 +194,7 @@ def test_a_profile_that_widens_its_role_is_refused(role_store: SimpleNamespace) 
     assert refusal(granted) == ("VALIDATION_FAILED", "profile_widens_role")
 
 
-def test_auto_high_for_a_role_without_tick_is_refused(
+def test_the_cto_profile_for_a_narrower_role_is_refused_as_widening(
     role_store: SimpleNamespace,
 ) -> None:
     granted = grant(
@@ -206,7 +206,7 @@ def test_auto_high_for_a_role_without_tick_is_refused(
         as_seat=role_store.lead,
     )
 
-    assert refusal(granted) == ("VALIDATION_FAILED", "profile_auto_high")
+    assert refusal(granted) == ("VALIDATION_FAILED", "profile_widens_role")
 
 
 def test_a_missing_profile_is_refused(role_store: SimpleNamespace) -> None:

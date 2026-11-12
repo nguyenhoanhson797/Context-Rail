@@ -498,9 +498,7 @@ def test_execution_tools_parse_the_charter_before_running(
 
     for tool, args in (
         ("verify", {"target": "send-invoice"}),
-        ("dispatch", {"item": "send-invoice", "expect": "0" * 16, "key": "k"}),
-        ("review", {"item": "send-invoice", "run": "01JRUN000000000000000001", "key": "k"}),
-        ("cto tick", {"key": "k"}),
+        ("candidate", {"item": "send-invoice", "commit": "HEAD"}),
     ):
         result = invoke(tool, args, store=approved_store, actor="cto")
         assert result["ok"] is False, (tool, result)

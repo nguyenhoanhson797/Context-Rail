@@ -17,7 +17,7 @@ def test_aliases_resolve_to_canonical_tools() -> None:
     assert canonical_tool("read status") == "status"
     assert canonical_tool("change repath") == "relocate"
     assert canonical_tool("check run") == "verify"
-    assert canonical_tool("loop dispatch") == "dispatch"
+    assert canonical_tool("loop candidate") == "candidate"
     assert canonical_tool("gate") == "ci"
     assert canonical_tool("overview") == "cto brief"
     assert canonical_tool("status") == "status"
@@ -34,7 +34,7 @@ def test_surface_hides_the_flat_names_but_keeps_them_visible_to_the_parser() -> 
         "read status",
         "change repath",
         "check run",
-        "loop dispatch",
+        "loop candidate",
         "gate",
         "ops doctor",
         "ops pack list",
@@ -67,11 +67,11 @@ def test_legacy_commands_expand_to_the_grouped_surface() -> None:
     from context_rail.cli import _expand_legacy
 
     assert _expand_legacy(["status"]) == ["read", "status"]
-    assert _expand_legacy(["--store", "s", "dispatch", "i"]) == [
+    assert _expand_legacy(["--store", "s", "candidate", "i"]) == [
         "--store",
         "s",
         "loop",
-        "dispatch",
+        "candidate",
         "i",
     ]
     assert _expand_legacy(["sync", "--install"]) == ["ops", "sync", "install"]
@@ -186,9 +186,6 @@ def test_cli_help_shows_the_grouped_surface(tmp_path: Path) -> None:
         "rename",
         "relocate",
         "verify",
-        "dispatch",
-        "review",
-        "merge",
         "report",
         "triage",
         "ci",

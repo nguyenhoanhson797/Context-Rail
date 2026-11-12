@@ -13,8 +13,6 @@ from context_rail.model.cto import parse_profile
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
-from context_rail.runner import protocol
-from context_rail.runner.droid import droid_env, droid_profile
 
 
 def fields(**extra: Any) -> dict[str, Any]:
@@ -87,56 +85,6 @@ def test_a_reviewer_recipe_is_still_read_only_in_role_mode() -> None:
 
     with pytest.raises(ModelError, match="read-only"):
         parse_profile(raw, role_mode=True)
-
-
-def test_droid_env_unit_handles_a_none_recipe() -> None:
-    profile = parse_profile(fields(), role_mode=True)
-
-    launch = droid_profile(profile)
-
-    assert launch.name == "worker"
-    assert droid_profile(profile, name="seat-1").name == "seat-1"
-    assert droid_env(launch.name, "droid")["RAIL_ACTOR"] == "worker"
-
-
-class _Launched(Exception):
-    def __init__(self, extra_env: dict[str, str]) -> None:
-        self.extra_env = extra_env
-
-
-def _launch_env(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, raw: dict[str, Any]
-) -> dict[str, str]:
-    def capture(*_args: Any, **kwargs: Any) -> Any:
-        raise _Launched(kwargs["extra_env"])
-
-    monkeypatch.setattr(protocol, "_run", capture)
-    role = tmp_path / "role.md"
-    order = tmp_path / "order.md"
-    role.write_text("role", encoding="utf-8")
-    order.write_text("order", encoding="utf-8")
-    profile = parse_profile(raw, body="You work.", role_mode=True)
-    with pytest.raises(_Launched) as launched:
-        protocol.run_runner(
-            profile=profile,
-            worktree=tmp_path,
-            confine_to=tmp_path,
-            role_file=role,
-            order_file=order,
-            timeout=5,
-        )
-    return launched.value.extra_env
-
-
-def test_a_runner_launch_names_no_actor_for_a_none_recipe(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    named = _launch_env(monkeypatch, tmp_path, legacy())
-    bare = _launch_env(monkeypatch, tmp_path, fields())
-
-    assert named["RAIL_ACTOR"] == "implementer"
-    assert "RAIL_ACTOR" not in bare
-    assert "RAIL_DROID_BIN" in bare
 
 
 def _context(store: Path, pack: str) -> Context:

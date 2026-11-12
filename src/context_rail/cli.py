@@ -20,6 +20,7 @@ from context_rail.gateway.tools import (
     ALIASES,
     GROUP_SUMMARIES,
     LEGACY_TO_SURFACE,
+    REMOVED_COMMANDS,
     SURFACE_TOOLS,
     TOOLS,
     VISIBLE_PATHS,
@@ -27,6 +28,7 @@ from context_rail.gateway.tools import (
     Tool,
     canonical_tool,
     daemon_eligible,
+    removed_message,
 )
 
 __all__ = ["main"]
@@ -36,6 +38,7 @@ _COMMAND_HEADS = frozenset(
     {tool.name.split()[0] for tool in TOOLS}
     | {alias.split()[0] for alias in ALIASES}
     | {legacy.split()[0] for legacy in LEGACY_TO_SURFACE}
+    | {removed.split()[0] for removed in REMOVED_COMMANDS}
 )
 
 
@@ -307,12 +310,30 @@ def _expand_legacy(argv: list[str]) -> list[str]:
     return argv[:index] + surface.split() + rest
 
 
+def _removed_command(argv: list[str]) -> str | None:
+    """The removed command the argv starts with, if any."""
+    index = _command_index(argv)
+    return None if index is None else _match_path(argv, index, REMOVED_COMMANDS)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one command and return the process exit code."""
     raw = list(sys.argv[1:] if argv is None else argv)
     raw, lens = _split_seat_lens(raw)
     head, command = _split_seat_open(raw)
     args = _expand_legacy(head)
+    removed = _removed_command(args)
+    if removed is not None:
+        from context_rail.core.result import fail
+
+        return _finish(
+            removed,
+            fail(
+                "VALIDATION_FAILED",
+                removed_message(removed),
+                {"reason": "command_removed", "replacement": REMOVED_COMMANDS[removed]},
+            ),
+        )
     try:
         namespace = _parser().parse_args(_join_dash_values(args))
     except SystemExit as exc:

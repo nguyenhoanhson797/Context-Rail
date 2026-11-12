@@ -145,9 +145,7 @@ def test_the_printed_runbook_uses_one_init_mode_and_global_flags_first(
                 assert tokens.index(flag) < sub, (flag, tokens)
 
 
-def test_every_printed_runbook_command_succeeds(
-    tmp_path: Path, fake_droid: Any, droid_env: dict[str, str]
-) -> None:
+def test_every_printed_runbook_command_succeeds(tmp_path: Path) -> None:
     root = tmp_path / "runbook-root"
     completed, facts = _generate(root)
     assert completed.returncode == 0, completed.stderr

@@ -134,15 +134,12 @@ def test_container_true_with_children_is_not_executable():
 
 
 def test_category_and_role_vocabulary_comes_from_the_model() -> None:
-    from context_rail.gateway.handlers.dispatch import common as dispatch_common
     from context_rail.kernel import structure
     from context_rail.model import primitives
     from context_rail.store import adapters
 
     assert structure.FINISHED_CATEGORIES is primitives.FINISHED_CATEGORIES
     assert structure.WORKABLE_CATEGORIES is primitives.WORKABLE_CATEGORIES
-    assert dispatch_common.IMPL_ROLE == primitives.ROLES[1]
-    assert dispatch_common.REVIEW_ROLE == primitives.ROLES[2]
     assert adapters.CLAUDE_ROLES == primitives.ROLES
 
 

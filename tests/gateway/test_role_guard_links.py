@@ -126,36 +126,17 @@ def test_link_relation_outside_can_link_is_refused(
     assert refusal(linked) == ("PERMISSION_DENIED", "relation_not_in_can_link")
 
 
-def test_dispatch_of_an_item_outside_reach_is_refused(
+def test_verify_of_an_item_outside_reach_is_refused(
     role_store: SimpleNamespace,
 ) -> None:
-    dispatched = as_seat(
+    verified = as_seat(
         role_store.store,
         role_store.orders_seat,
-        "dispatch",
-        {
-            "item": role_store.b1,
-            "expect": etag_of(role_store.store, role_store.orders_seat, role_store.b1),
-            "key": "guard-dispatch",
-        },
+        "verify",
+        {"target": role_store.b1},
     )
 
-    assert refusal(dispatched) == ("PERMISSION_DENIED", "write_out_of_reach")
-
-
-def test_review_needs_the_preset_in_can_review(role_store: SimpleNamespace) -> None:
-    def narrow(roles: dict[str, Any]) -> None:
-        roles["sprint-lead"]["can"]["review"] = ["task"]
-
-    edit_roles(role_store.store, narrow)
-    reviewed = as_seat(
-        role_store.store,
-        role_store.orders_seat,
-        "review",
-        {"item": role_store.o1, "run": "01JRUN000000000000000001", "key": "guard-review"},
-    )
-
-    assert refusal(reviewed) == ("PERMISSION_DENIED", "preset_not_in_can_review")
+    assert refusal(verified) == ("PERMISSION_DENIED", "write_out_of_reach")
 
 
 def test_do_action_outside_can_actions_is_refused(
@@ -170,8 +151,3 @@ def test_do_action_outside_can_actions_is_refused(
 
     assert refusal(acted) == ("PERMISSION_DENIED", "action_not_in_can_actions")
 
-
-def test_tick_needs_can_tick(role_store: SimpleNamespace) -> None:
-    ticked = as_seat(role_store.store, role_store.orders_seat, "cto tick", {"key": "guard-tick"})
-
-    assert ticked["error"]["code"] == "PERMISSION_DENIED"

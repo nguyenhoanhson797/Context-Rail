@@ -80,13 +80,9 @@ CAN_TOOLS: dict[str, str] = {
     "check": "check",
     "verify": "verify",
     "candidate": "candidate",
-    "dispatch": "dispatch",
-    "review": "review",
-    "merge": "merge",
     "report": "report",
     "triage": "triage",
     "execution": "execution record",
-    "tick": "cto tick",
     "actions": "do",
 }
 CAN_KEYS = (*CAN_TOOLS, "grant")
@@ -117,7 +113,7 @@ _WRITABLE = {
     "update": ("item", "note"),
     "rename": ("item", "note"),
 }
-_FLAGS = ("relocate", "tick")
+_FLAGS = ("relocate",)
 _NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 _SKILL = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 MAX_NAME_LENGTH = 40
@@ -215,15 +211,12 @@ def role_tools(role: Role) -> frozenset[str]:
 def check_profile_narrows(role: Role, profile: Profile) -> str | None:
     """Why a role-mode profile is wider than its role, or None when it narrows.
 
-    A profile may drop methods the role holds, never add one, ask for high
-    autonomy when the role may not tick, or hold writing tool ids in a read-only
-    workspace.
+    A profile may drop methods the role holds, never add one, or hold writing
+    tool ids in a read-only workspace.
     """
     from context_rail.core.tool_names import canonical_methods
     from context_rail.model.cto import READ_ONLY_TOOL_IDS
 
-    if profile.auto == "high" and "tick" not in role.can.methods:
-        return "the profile sets auto: high, but the role may not tick"
     write_methods = canonical_methods(profile.allowed_methods) & frozenset(
         CAN_TOOLS.values()
     )

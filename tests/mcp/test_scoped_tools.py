@@ -44,7 +44,7 @@ def test_a_validator_session_lists_only_read_and_report_tools(
     assert "report" in listed
     assert "status" in listed
     assert "add" not in listed
-    assert "merge" not in listed
+    assert "candidate" not in listed
 
 
 def test_a_lead_session_lists_its_can_tools(role_store: SimpleNamespace) -> None:
@@ -52,7 +52,8 @@ def test_a_lead_session_lists_its_can_tools(role_store: SimpleNamespace) -> None
 
     listed = {tool["name"] for tool in mcp_list(role_store.store, session=session)}
 
-    assert {"add", "dispatch", "review", "merge", "cto tick"} <= listed
+    assert {"add", "verify", "report", "triage"} <= listed
+    assert not {"dispatch", "merge", "cto tick"} & listed
     assert "init" not in listed
 
 

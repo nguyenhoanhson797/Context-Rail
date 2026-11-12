@@ -283,22 +283,6 @@ def process_alive(pid: int) -> bool:
     return not stat.rpartition(") ")[2].startswith("Z")
 
 
-def write_fake_droid(root: Path, behaviors: Sequence[Any]) -> Path:
-    """Install the scripted fake droid under ``root`` and return its script."""
-    root = Path(root)
-    root.mkdir(parents=True, exist_ok=True)
-    source = Path(__file__).resolve().parent / "fakes" / "droid.py"
-    script = root / "fake-droid.py"
-    script.write_bytes(source.read_bytes())
-    (root / "fake-droid.json").write_text(
-        json.dumps({"behaviors": list(behaviors)}), encoding="utf-8", newline="\n"
-    )
-    (root / "fake-droid-cursor.json").write_text(
-        '{"launches": 0}', encoding="utf-8", newline="\n"
-    )
-    return script
-
-
 def install_fake_codegraph(root: Path, name: str, **settings: Any) -> str:
     """Copy one code-graph fake and its sidecar config into a test directory."""
     root = Path(root)
@@ -310,35 +294,6 @@ def install_fake_codegraph(root: Path, name: str, **settings: Any) -> str:
         json.dumps(settings), encoding="utf-8", newline="\n"
     )
     return str(target)
-
-
-class FakeDroid:
-    """A scripted fake ``droid`` installed under one temporary root."""
-
-    def __init__(self, root: Path, behaviors: Sequence[Any]) -> None:
-        self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=True)
-        self.script = write_fake_droid(self.root, behaviors)
-
-    def set_behaviors(self, behaviors: Sequence[Any]) -> "FakeDroid":
-        """Replace the scripted behaviors and rewind the behavior cursor."""
-        write_fake_droid(self.root, behaviors)
-        return self
-
-    def log(self) -> list[dict[str, Any]]:
-        """One record per launch, in order: argv, env, prompt and session id."""
-        path = self.root / "fake-droid-argv.jsonl"
-        if not path.is_file():
-            return []
-        return [
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-
-    def session_ids(self) -> list[str]:
-        """The session id each launch reported, in order."""
-        return [str(row.get("session_id")) for row in self.log()]
 
 
 def write_record(
@@ -609,29 +564,6 @@ def item_etag(run: Any) -> str:
     return shown["value"]["doc"]["etag"]
 
 
-def merge_call(run: Any, key: str, **extra: Any) -> dict[str, Any]:
-    """Invoke ``rail loop merge`` for one fixture through the gateway as the CTO."""
-    from context_rail.gateway.gateway import invoke
-
-    args: dict[str, Any] = {
-        "item": run.item,
-        "run": run.run,
-        "expect": run.etag,
-        "key": key,
-    }
-    args.update(extra)
-    return invoke("merge", args, store=run.store, actor="cto")
-
-
-def review_call(run: Any, key: str, **extra: Any) -> dict[str, Any]:
-    """Invoke ``rail loop review`` for one fixture through the gateway as the CTO."""
-    from context_rail.gateway.gateway import invoke
-
-    args: dict[str, Any] = {"item": run.item, "run": run.run, "key": key}
-    args.update(extra)
-    return invoke("review", args, store=run.store, actor="cto")
-
-
 def latest_record(store: Path, kind: str) -> dict[str, Any]:
     """The newest JSON Record of ``kind`` by ``(at, id)``.
 
@@ -648,44 +580,6 @@ def latest_record(store: Path, kind: str) -> dict[str, Any]:
     if not found:
         raise LookupError(f"no {kind} record")
     return max(found, key=lambda row: (str(row.get("at") or ""), str(row.get("id") or "")))
-
-
-def default_head(run: Any) -> str:
-    """The canonical default branch HEAD of one dispatch or merge fixture."""
-    return run_git(Path(run.project), "rev-parse", "HEAD").stdout.strip()
-
-
-def remote_head(run: Any) -> str | None:
-    """The bare remote's default branch HEAD, or None when it has no such ref."""
-    remote = getattr(run, "remote", None)
-    if remote is None:
-        return None
-    listed = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(remote),
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            f"refs/heads/{run.branch}",
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    return listed.stdout.strip() or None
-
-
-def advance_default_branch(run: Any, filename: str) -> str:
-    """Commit one human change on the canonical default branch and return it."""
-    project = Path(run.project)
-    target = project / filename
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("human work\n", encoding="utf-8", newline="\n")
-    run_git(project, "add", "--", filename)
-    run_git(project, "commit", "-m", f"human: {filename}")
-    return default_head(run)
 
 
 def touch_doc(store: Path, rel: str, **frontmatter: Any) -> None:

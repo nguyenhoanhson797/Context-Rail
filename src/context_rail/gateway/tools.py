@@ -17,14 +17,17 @@ from context_rail.core.tool_names import (
     ALIASES,
     GROUP_SUMMARIES,
     LEGACY_TO_SURFACE,
+    REMOVED_COMMANDS,
     VISIBLE_ALIASES,
     VISIBLE_PATHS,
     canonical_tool,
+    removed_message,
 )
 
 __all__ = [
     "GROUP_SUMMARIES",
     "LEGACY_TO_SURFACE",
+    "REMOVED_COMMANDS",
     "SURFACE_TOOLS",
     "TOOLS",
     "VISIBLE_PATHS",
@@ -32,6 +35,7 @@ __all__ = [
     "Tool",
     "canonical_tool",
     "daemon_eligible",
+    "removed_message",
     "reserved_seat_names",
 ]
 
@@ -171,7 +175,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("target", "str", required=True, positional=True, help="check or Item slug"),
-            Param("worktree", "str", help="the project checkout or a dispatch worktree", path=True),
+            Param("worktree", "str", help="the project checkout or another worktree of it", path=True),
             Param("verdict", "str", help="pass or fail, for a human check"),
             Param("evidence", "str", repeat=True, help="evidence Record id"),
             Param("confirm", "str", help="the typed phrase PASS or FAIL <check>"),
@@ -195,47 +199,6 @@ TOOLS: tuple[Tool, ...] = (
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.candidates:record_candidate",
-    ),
-    Tool(
-        name="dispatch",
-        summary="Run one implementer in an isolated worktree and verify its candidate.",
-        permission="write",
-        params=(
-            Param("item", "str", required=True, positional=True, help="leaf Item slug"),
-            Param("profile", "str", default="implementer", help="implementer profile name"),
-            Param("role", "str", help="the pack role to dispatch as; picked when unambiguous"),
-            Param("expect", "str", required=True, help="the Item's current etag"),
-            Param("all", "bool", help="dispatch outside the operating focus"),
-            Param("intent", "str", help="a bounded note from the CTO: approach and rejected alternatives"),
-            Param("key", "str", required=True, help="idempotency key"),
-        ),
-        handler="context_rail.gateway.handlers.dispatch:dispatch",
-    ),
-    Tool(
-        name="review",
-        summary="Review one verified candidate in its own worktree and record the verdict.",
-        permission="write",
-        params=(
-            Param("item", "str", required=True, positional=True, help="leaf Item slug"),
-            Param("run", "str", required=True, help="the verified implementer run id"),
-            Param("profile", "str", default="reviewer", help="reviewer profile name"),
-            Param("role", "str", help="the pack role to review as; picked when unambiguous"),
-            Param("key", "str", required=True, help="idempotency key"),
-        ),
-        handler="context_rail.gateway.handlers.dispatch:review",
-    ),
-    Tool(
-        name="merge",
-        summary="Rebase an approved candidate onto the default branch and fast-forward it.",
-        permission="write",
-        params=(
-            Param("item", "str", required=True, positional=True, help="leaf Item slug"),
-            Param("run", "str", required=True, help="the verified implementer run id"),
-            Param("expect", "str", required=True, help="the Item's current etag"),
-            Param("push", "bool", help="push the default branch when the charter allows it"),
-            Param("key", "str", required=True, help="idempotency key"),
-        ),
-        handler="context_rail.gateway.handlers.dispatch:merge",
     ),
     Tool(
         name="report",
@@ -303,16 +266,6 @@ TOOLS: tuple[Tool, ...] = (
         ),
         handler="context_rail.gateway.handlers.cto:brief",
         daemon=True,
-    ),
-    Tool(
-        name="cto tick",
-        summary="Launch one bounded CTO droid session behind the single-instance lock.",
-        permission="write",
-        params=(
-            Param("key", "str", required=True, help="idempotency key"),
-            Param("timeout", "int", help="seconds for the child (default: the CTO profile's)"),
-        ),
-        handler="context_rail.gateway.handlers.cto:tick",
     ),
     Tool(
         name="digest",
@@ -780,7 +733,7 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="seat open",
-        summary="Open a session for a live seat, optionally launching a command.",
+        summary="Open a session for a live seat; with `-- <command>` run that command inside it.",
         permission="write",
         params=(
             Param(
@@ -831,6 +784,7 @@ def reserved_seat_names() -> frozenset[str]:
     names = {tool.name.split()[0] for tool in TOOLS}
     names.update(alias.split()[0] for alias in ALIASES)
     names.update(legacy.split()[0] for legacy in LEGACY_TO_SURFACE)
+    names.update(removed.split()[0] for removed in REMOVED_COMMANDS)
     return frozenset(names | {"human", "project", "help", "seat"})
 
 

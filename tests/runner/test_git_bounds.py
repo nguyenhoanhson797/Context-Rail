@@ -10,12 +10,10 @@ import pytest
 import context_rail.runner.git as git_module
 import context_rail.runner.git_sync as git_sync_module
 from context_rail.runner.git import (
-    CAPTURE_MAX_OUTPUT,
-    capture_changes,
+    diff_names,
     ls_files,
     ls_files_staged,
     status_porcelain,
-    unmerged_paths,
 )
 from context_rail.store.write import WriteRefused
 from helpers import run_git
@@ -60,7 +58,7 @@ def _prove_refused(call: Callable[[], Any]) -> None:
         lambda root: ls_files(root, root),
         lambda root: ls_files_staged(root, root),
         lambda root: status_porcelain(root, root),
-        lambda root: unmerged_paths(root, root),
+        lambda root: diff_names(root, "HEAD", "HEAD"),
     ],
 )
 def test_every_proof_listing_refuses_truncated_output(
@@ -83,38 +81,6 @@ def test_checked_refuses_truncation_centrally(
     )
 
 
-def test_capture_still_reports_truncation_instead_of_refusing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = _repo(tmp_path)
-    base = run_git(root, "rev-parse", "HEAD").stdout.strip()
-    (root / "app.py").write_text("VALUE = 2\n", encoding="utf-8", newline="\n")
-    run_git(root, "commit", "-am", "change the app")
-    real = git_module.run
-    seen: dict[str, int | None] = {}
-
-    def capped(command: list[str], **kwargs: Any) -> dict[str, Any]:
-        seen[command[1]] = kwargs.get("max_output")
-        result = real(command, **kwargs)
-        if command[1] == "diff":
-            result = {**result, "stdout": result["stdout"][:2], "omitted_bytes": 10}
-        return result
-
-    monkeypatch.setattr(git_module, "run", capped)
-
-    capture = capture_changes(
-        worktree=root,
-        confine_to=root,
-        base_commit=base,
-        store_paths=("context-rail",),
-    )
-
-    assert seen["diff"] == CAPTURE_MAX_OUTPUT
-    assert capture["complete"] is False
-    assert capture["reason"] == "truncated"
-    assert capture["omitted"] > 0
-
-
 def test_a_clean_complete_listing_keeps_its_mapping(
     tmp_path: Path,
 ) -> None:
@@ -126,7 +92,6 @@ def test_a_clean_complete_listing_keeps_its_mapping(
     assert list(committed) == ["app.py", "context-rail/rail.yaml"]
     assert staged == committed
     assert status_porcelain(root, root) == ()
-    assert unmerged_paths(root, root) == ()
 
 
 def test_dirty_outside_refuses_truncated_status(

@@ -29,15 +29,11 @@ from context_rail.store.doc import etag
 from context_rail.store.index import Index
 from context_rail.store.location import local_dir
 from helpers import (
-    DEFAULT_FAKE_BEHAVIORS,
-    FakeDroid,
     InjectedFault,
-    advance_default_branch,
     approve_picture,
     as_human,
     compiled_model,
     init_store,
-    item_etag,
     require_git_identity,
     run_git,
     serve_ui,
@@ -75,19 +71,6 @@ updated: '{_STAMP}'
 
 Only this note body mentions dupxnote.
 """
-
-
-@pytest.fixture(autouse=True)
-def isolated_worktree_root(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[Path]:
-    """Every test owns its dispatch worktrees, so sessions cannot collide."""
-    root = tmp_path / "context-rail-worktrees"
-    monkeypatch.setenv("RAIL_WORKTREE_ROOT", str(root))
-    try:
-        yield root
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
@@ -1071,136 +1054,6 @@ def role_store(tmp_path: Path, _role_store_template: SimpleNamespace) -> SimpleN
     return SimpleNamespace(**{**vars(_role_store_template), "store": store})
 
 
-WORKER_SET = [
-    "schema=1",
-    "version=1",
-    "recipe=implementer",
-    "allowed_methods=[find, show, cto brief, ledger, report]",
-    "budget={max_chars: 12000, max_docs: 20}",
-    "model=gpt-5.3-codex",
-    "tools=[read-cli, ls-cli, grep_tool_cli, glob-search-cli, create-cli, edit-cli, execute-cli]",
-    "skills=[]",
-    "budgets={attempts: 2, seconds: 3600, tokens: null, credits: null}",
-]
-
-VALIDATOR_SET = [
-    "schema=1",
-    "version=1",
-    "recipe=reviewer",
-    "allowed_methods=[find, show, cto brief, ledger, report]",
-    "budget={max_chars: 12000, max_docs: 20}",
-    "model=gpt-5.3-review",
-    "tools=[read-cli, ls-cli, grep_tool_cli, glob-search-cli]",
-    "skills=[]",
-    "budgets={attempts: 2, seconds: 3600, tokens: null, credits: null}",
-]
-
-
-@pytest.fixture
-def role_git_store(
-    role_store: SimpleNamespace, tmp_path: Path, fake_droid: Any, droid_env: dict[str, str]
-) -> SimpleNamespace:
-    """The role store in a git checkout with two worker profiles and one task check."""
-    project = tmp_path
-    (project / "src").mkdir(exist_ok=True)
-    (project / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
-    (project / "README.md").write_text("fixture\n", encoding="utf-8")
-
-    body = project.parent / "worker-body.md"
-    body.write_text("Implement one Item.\n", encoding="utf-8")
-    with as_human():
-        profile = invoke(
-            "add",
-            {
-                "preset": "profile",
-                "title": "worker",
-                "set": WORKER_SET,
-                "body_file": str(body),
-                "confirm": "APPROVE worker",
-            },
-            store=role_store.store,
-            actor=None,
-        )
-        assert is_ok(profile), profile
-        validator_body = project.parent / "validator-body.md"
-        validator_body.write_text("Review one Item.\n", encoding="utf-8")
-        validator = invoke(
-            "add",
-            {
-                "preset": "profile",
-                "title": "validator",
-                "set": VALIDATOR_SET,
-                "body_file": str(validator_body),
-                "confirm": "APPROVE validator",
-            },
-            store=role_store.store,
-            actor=None,
-        )
-        assert is_ok(validator), validator
-        task = invoke(
-            "add",
-            {
-                "preset": "task",
-                "title": "Role task",
-                "rel": [f"part_of={role_store.o1}"],
-            },
-            store=role_store.store,
-            actor=None,
-        )
-        assert is_ok(task), task
-        spec = project.parent / "role-unit.json"
-        spec.write_text(
-            json.dumps(
-                {
-                    "schema": 1,
-                    "mode": "cmd",
-                    "acceptance": False,
-                    "cmd": [sys.executable, "-c", UNIT_COMMAND],
-                    "inputs": ["src/*.py"],
-                    "timeout_s": 60,
-                }
-            ),
-            encoding="utf-8",
-        )
-        check = invoke(
-            "check",
-            {
-                "slug": "role-unit",
-                "target": task["value"]["slug"],
-                "spec_file": str(spec),
-                "expect": "absent",
-            },
-            store=role_store.store,
-            actor=None,
-        )
-        assert is_ok(check), check
-
-    run_git(project, "init", "-b", "main")
-    run_git(project, "add", "-A")
-    run_git(project, "commit", "-m", "role dispatch fixture")
-    with as_human():
-        shown = invoke("show", {"slug": task["value"]["slug"]}, store=role_store.store, actor=None)
-    assert is_ok(shown), shown
-    return SimpleNamespace(
-        store=role_store.store,
-        lead=role_store.lead,
-        orders_seat=role_store.orders_seat,
-        billing=role_store.billing,
-        o1=role_store.o1,
-        o2=role_store.o2,
-        b1=role_store.b1,
-        b2=role_store.b2,
-        orders=role_store.orders,
-        billing_seat=role_store.billing_seat,
-        task=task["value"]["slug"],
-        sibling=role_store.b1,
-        root=project,
-        etag=shown["value"]["doc"]["etag"],
-        run=role_store.store,
-    )
-
-
-
 @pytest.fixture
 def unapproved_store(tmp_path: Path, answers: Path) -> Path:
     """A store whose picture exists but the human has not approved yet."""
@@ -1309,122 +1162,6 @@ def build_leaf_item(
         etag=shown["value"]["doc"]["etag"],
         check="unit",
     )
-
-
-@pytest.fixture
-def verified_run(
-    leaf_item: SimpleNamespace,
-    fake_droid: FakeDroid,
-    droid_env: dict[str, str],
-    tmp_path: Path,
-) -> SimpleNamespace:
-    """An approved checkout whose single implementer run verified one candidate.
-
-    The candidate and both worktrees stay on disk, so a review can be launched
-    against exactly the commit the implementer produced. A configured but empty
-    bare remote sits beside the project, so a push can be proven not to happen.
-    """
-    dispatched = invoke(
-        "dispatch",
-        {"item": leaf_item.slug, "expect": leaf_item.etag, "key": "fixture-verified"},
-        store=leaf_item.store,
-        actor="cto",
-    )
-    assert is_ok(dispatched), dispatched
-    assert dispatched["value"]["status"] == "verified", dispatched
-    shown = invoke("show", {"slug": leaf_item.slug}, store=leaf_item.store, actor="cto")
-    assert is_ok(shown), shown
-    worktree = Path(dispatched["value"]["worktree"])
-    candidate = run_git(worktree, "rev-parse", "HEAD").stdout.strip()
-    remote = tmp_path / "remote.git"
-    run_git(tmp_path, "init", "--bare", str(remote))
-    run_git(leaf_item.root, "remote", "add", "origin", str(remote))
-    base = run_git(leaf_item.root, "rev-parse", "HEAD").stdout.strip()
-    return SimpleNamespace(
-        store=leaf_item.store,
-        project=leaf_item.root,
-        root=leaf_item.root,
-        item=leaf_item.slug,
-        slug=leaf_item.slug,
-        etag=shown["value"]["doc"]["etag"],
-        run=dispatched["value"]["run"],
-        dispatch_id=dispatched["value"]["dispatch_id"],
-        dispatch_worktree=worktree,
-        dispatch_branch=dispatched["value"]["branch"],
-        candidate=candidate,
-        remote=remote,
-        branch="main",
-        base=base,
-    )
-
-
-@pytest.fixture
-def rejected_run(
-    verified_run: SimpleNamespace, fake_droid: FakeDroid
-) -> SimpleNamespace:
-    """The verified run after one separated reviewer rejected its candidate."""
-    fake_droid.set_behaviors([{"mode": "review_reject", "review": {"findings": ["no"]}}])
-    rejected = invoke(
-        "review",
-        {"item": verified_run.item, "run": verified_run.run, "key": "fixture-rejected"},
-        store=verified_run.store,
-        actor="cto",
-    )
-    assert is_ok(rejected), rejected
-    assert rejected["value"]["verdict"] == "reject", rejected
-    return SimpleNamespace(
-        **{**vars(verified_run), "etag": item_etag(verified_run)}
-    )
-
-
-@pytest.fixture
-def conflicting_run(verified_run: SimpleNamespace) -> SimpleNamespace:
-    """The verified candidate plus a human commit that touches the same lines.
-
-    The candidate edited ``fake-droid-work.txt``, so moving the default branch
-    with a human edit of that file makes the merge's rebase conflict.
-    """
-    head = advance_default_branch(verified_run, "fake-droid-work.txt")
-    return SimpleNamespace(**{**vars(verified_run), "base": head})
-
-
-@pytest.fixture
-def push_run(verified_run: SimpleNamespace, fake_droid: FakeDroid) -> SimpleNamespace:
-    """The verified candidate in a project whose approved charter allows pushes.
-
-    The bare remote already holds the pre-merge default branch, so the pushed
-    head proves a normal fast-forward.
-    """
-    charter = verified_run.store / "charter.md"
-    text = charter.read_text(encoding="utf-8")
-    assert "allow_push: false" in text
-    charter.write_text(
-        text.replace("allow_push: false", "allow_push: true"),
-        encoding="utf-8",
-        newline="\n",
-    )
-    approved = approve_picture(verified_run.store)
-    assert is_ok(approved), approved
-    run_git(verified_run.project, "push", "origin", verified_run.branch)
-    return SimpleNamespace(**{**vars(verified_run), "etag": item_etag(verified_run)})
-
-
-@pytest.fixture
-def fake_droid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeDroid:
-    """The scripted fake droid, selected for the launcher through its env var."""
-    holder = FakeDroid(tmp_path / "fake-droid", DEFAULT_FAKE_BEHAVIORS)
-    monkeypatch.setenv("RAIL_DROID_BIN", str(holder.script))
-    return holder
-
-
-@pytest.fixture
-def droid_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    """A parent environment with every inherited git and provider secret gone."""
-    for name in list(os.environ):
-        if name.startswith("GIT_") or name in ("GITHUB_TOKEN", "FACTORY_API_KEY"):
-            monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("FACTORY_API_KEY", "SECRET-TEST-7f3a")
-    return dict(os.environ)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -1624,51 +1361,6 @@ def unknown_usage_run(tmp_path: Path) -> SimpleNamespace:
     store = make_store(tmp_path / "unknown-usage", 6)
     write_run(store, "01JUNKNOWNUSAGE0000000001", item="t0", usage={}, at=_VIEW_STAMP)
     return SimpleNamespace(store=store, item="t0")
-
-
-@pytest.fixture
-def tick_with_workers(tmp_path: Path) -> SimpleNamespace:
-    """A CTO tick run beside one worker run, each with its own attempt usage."""
-    store = make_store(tmp_path / "tick", 6)
-    write_run(
-        store,
-        "01JWORKERRUN00000000000001",
-        item="t0",
-        dispatch="dispatch-worker",
-        usage={"input_tokens": 7, "output_tokens": 5, "factory_credits": 1},
-        at=_VIEW_STAMP,
-    )
-    write_run(
-        store,
-        "01JTICKRUN0000000000000001",
-        item=None,
-        role="cto",
-        dispatch="tick-1",
-        usage={"input_tokens": 3, "output_tokens": 2, "factory_credits": 1},
-        at="2026-10-28T12:01:00Z",
-    )
-    return SimpleNamespace(store=store, worker_input=7, tick_input=3)
-
-
-@pytest.fixture
-def tick_holder() -> Callable[..., Any]:
-    """Hold the CTO single-instance lock the way a live tick does.
-
-    Returns a context manager over a store; the lock is taken from this
-    process with the same non-blocking OS primitive a tick uses.
-    """
-    import contextlib
-
-    from context_rail.store.lock import file_lock
-
-    @contextlib.contextmanager
-    def hold(store: Path) -> Any:
-        path = local_dir(Path(store)) / "cto.lock"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with file_lock(path, timeout=0):
-            yield path
-
-    return hold
 
 
 @pytest.fixture

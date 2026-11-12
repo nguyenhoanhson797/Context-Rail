@@ -88,7 +88,7 @@ that can carry a space is quoted.
   2. rail --store "{store}" --actor human check declare "<slug>" --target "<item>" --spec-file "<acceptance.json>" --expect absent --confirm "APPROVE <slug>"
   3. rail --store "{store}" --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"
   4. rail --store "{store}" --actor human gate
-  5. rail --store "{store}" --actor cto loop tick --key pilot-tick-1 --timeout 1800
+  5. rail --store "{store}" --actor human overview
 model check: custom:Deepseek-V4-flash-0 (implementer, CTO) and
              custom:gemini-3.8-flash-LTN-0 (reviewer); never print a key.
 """

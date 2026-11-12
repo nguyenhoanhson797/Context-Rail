@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Callable
 
 import pytest
@@ -28,7 +27,6 @@ from helpers import (
     write_record,
     write_run,
 )
-from perf.gen import make_store
 
 STAGE1B_CODES = {
     "approval_missing": "error",
@@ -40,7 +38,6 @@ STAGE1B_CODES = {
     "review_invalid": "error",
     "report_untriaged": "warning",
     "report_missing": "error",
-    "run_incomplete": "warning",
     "profile_invalid": "error",
     "adapter_modified": "warning",
     "gate_bypassed": "error",
@@ -319,30 +316,6 @@ def _case_report_missing(tmp_path: Path, answers: Path, factory: Callable[..., P
     return store
 
 
-def _case_run_incomplete(tmp_path: Path, answers: Path, factory: Callable[..., Path]) -> Path:
-    store = factory(docs=2)
-    write_record(
-        store,
-        "01JORPHANTICK0000000000001",
-        "tick.started",
-        {
-            "schema": 1,
-            "dispatch_id": "01JORPHANTICK0000000000001",
-            "timeout_s": 7200,
-            "actor": "cto",
-            "profile": "cto",
-            "profile_version": 1,
-            "profile_etag": "0" * 16,
-            "store": str(store.absolute()),
-            "checkout": str(store.parent.absolute()),
-            "model": "custom:Deepseek-V4-flash-0",
-            "autonomy": "high",
-        },
-        at="2026-10-28T12:00:00Z",
-    )
-    return store
-
-
 def _case_profile_invalid(tmp_path: Path, answers: Path, factory: Callable[..., Path]) -> Path:
     store = factory(docs=2)
     path = store / "workspace" / "profiles" / "bad" / "profile.md"
@@ -393,7 +366,6 @@ _CASES = {
     "review_invalid": _case_review_invalid,
     "report_untriaged": _case_report_untriaged,
     "report_missing": _case_report_missing,
-    "run_incomplete": _case_run_incomplete,
     "profile_invalid": _case_profile_invalid,
     "adapter_modified": lambda tmp_path, answers, factory: Path(""),
     "gate_bypassed": _case_gate_bypassed,

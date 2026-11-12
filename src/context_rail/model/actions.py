@@ -24,9 +24,7 @@ WRITE_ALLOWLIST = frozenset(
 )
 READ_ALLOWLIST = frozenset({"next", "status"})
 ALLOWLIST = WRITE_ALLOWLIST | READ_ALLOWLIST
-FORBIDDEN_TOOLS = frozenset(
-    {"do", "cto tick", "pack use", "relocate", "merge", "adapters sync"}
-)
+FORBIDDEN_TOOLS = frozenset({"do", "pack use", "relocate", "adapters sync"})
 RESERVED_ARGS = frozenset({"path", "actor", "key", "profile", "store", "worktree"})
 _PLACEHOLDER = re.compile(r"\{([A-Za-z0-9_.-]+)\}")
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")

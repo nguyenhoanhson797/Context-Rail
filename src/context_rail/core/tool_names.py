@@ -16,11 +16,13 @@ __all__ = [
     "COMPAT_ALIASES",
     "GROUP_SUMMARIES",
     "LEGACY_TO_SURFACE",
+    "REMOVED_COMMANDS",
     "VISIBLE_ALIASES",
     "VISIBLE_PATHS",
     "alias_defaults",
     "canonical_methods",
     "canonical_tool",
+    "removed_message",
 ]
 
 #: The visible daily surface. Each alias points at one canonical tool.
@@ -40,13 +42,9 @@ VISIBLE_ALIASES: dict[str, str] = {
     "check declare": "check",
     "check run": "verify",
     "loop candidate": "candidate",
-    "loop dispatch": "dispatch",
-    "loop review": "review",
-    "loop merge": "merge",
     "loop report": "report",
     "loop triage": "triage",
     "loop execution": "execution record",
-    "loop tick": "cto tick",
     "gate": "ci",
     "ops doctor": "doctor",
     "ops reindex": "reindex",
@@ -112,7 +110,6 @@ LEGACY_TO_SURFACE: dict[str, str] = {
     "show": "read show",
     "ledger": "read ledger",
     "cto brief": "overview",
-    "cto tick": "loop tick",
     "add": "change add",
     "update": "change update",
     "move": "change move",
@@ -122,9 +119,6 @@ LEGACY_TO_SURFACE: dict[str, str] = {
     "check": "check declare",
     "verify": "check run",
     "candidate": "loop candidate",
-    "dispatch": "loop dispatch",
-    "review": "loop review",
-    "merge": "loop merge",
     "report": "loop report",
     "triage": "loop triage",
     "execution record": "loop execution",
@@ -159,6 +153,27 @@ LEGACY_TO_SURFACE: dict[str, str] = {
     "ops adapters sync": "ops adapters render",
 }
 
+_LAUNCHER_REPLACEMENT = (
+    "the rail no longer launches agents: run the work in your own tool, read the "
+    "context with `rail loop brief <item>`, then record the commit with "
+    "`rail loop candidate <item> --commit <sha>`"
+)
+
+#: Launcher commands that were removed, each with the text that replaces it.
+REMOVED_COMMANDS: dict[str, str] = {
+    name: _LAUNCHER_REPLACEMENT
+    for name in (
+        "dispatch",
+        "loop dispatch",
+        "merge",
+        "loop merge",
+        "cto tick",
+        "loop tick",
+        "review",
+        "loop review",
+    )
+}
+
 for _alias, _target in LEGACY_TO_SURFACE.items():
     if _target not in VISIBLE_PATHS:
         raise ValueError(f"legacy command {_alias!r} points outside the surface {_target!r}")
@@ -175,7 +190,7 @@ GROUP_SUMMARIES: dict[str, str] = {
     "read": "Inspect the picture, items, activity and runs.",
     "change": "Add, update, link, move, rename and repath documents.",
     "check": "List, declare or run Checks.",
-    "loop": "Dispatch, review, merge, report and triage work.",
+    "loop": "Record candidates and reports, and triage work.",
     "ops": "Maintain the store, packs, sync, adapters, code graph and measurements.",
     "pack": "Inspect, validate, create and switch packs.",
     "sync": "Integrate clone changes or install git drivers.",
@@ -204,6 +219,11 @@ for _alias, _canonical in ALIASES.items():
     if not _canonical.strip() or _alias == _canonical:
         raise ValueError(f"alias {_alias!r} does not name a distinct canonical tool")
 del _alias, _canonical
+
+
+def removed_message(name: str) -> str:
+    """What a call to the removed command ``name`` is told."""
+    return f"`rail {name}` was removed: {REMOVED_COMMANDS[name]}"
 
 
 def canonical_tool(name: str) -> str:

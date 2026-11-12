@@ -79,7 +79,8 @@ def test_starter_roles_parse_for_every_shipped_pack(name: str, tmp_path: Path) -
     ]
     assert list(roles) == expected
     assert roles["lead"].anchor.kind == "project"
-    assert roles["lead"].can.methods["tick"] is True
+    assert not {"dispatch", "merge", "tick"} & set(roles["lead"].can.methods)
+    assert set(roles["implementer"].can.methods) == {"candidate", "report"}
     assert set(roles["lead"].can.methods["grant"]) == set(expected) - {"lead"}
     assert set(roles["lead"].can.methods["actions"]) == set(pack.actions)
     assert roles["implementer"].workspace == "write"

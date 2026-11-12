@@ -35,48 +35,17 @@ def test_a_refused_move_points_at_show(tmp_path: Path) -> None:
     assert _command(refused) == "rail read show ghost"
 
 
-def test_a_refused_dispatch_points_at_the_approval(tmp_path: Path) -> None:
+def test_a_refused_candidate_points_at_the_approval(tmp_path: Path) -> None:
     store = _store(tmp_path)
 
     refused = invoke(
-        "dispatch",
-        {"item": "a-task", "expect": "0123456789abcdef", "key": "k"},
+        "candidate",
+        {"item": "a-task", "commit": "HEAD", "key": "k"},
         store=store,
         actor="cto",
     )
 
     assert _command(refused).startswith("rail approve charter")
-
-
-def test_a_refused_merge_points_at_the_approval(tmp_path: Path) -> None:
-    store = _store(tmp_path)
-
-    refused = invoke(
-        "merge",
-        {
-            "item": "a-task",
-            "run": "01JRUN000000000000000001",
-            "expect": "0123456789abcdef",
-            "key": "k",
-        },
-        store=store,
-        actor="cto",
-    )
-
-    assert _command(refused).startswith("rail approve charter")
-
-
-def test_dispatch_and_merge_fall_back_to_show_once_approved() -> None:
-    from context_rail.gateway.gateway import _with_command
-
-    refused = {"ok": False, "error": {"code": "NOT_FOUND", "details": {}}}
-
-    dispatch = _with_command(dict(refused), "dispatch", {"item": "a-task"})
-    merge = _with_command(dict(refused), "merge", {"item": "a-task"})
-
-    assert dispatch["error"]["details"]["command"] == "rail read show a-task"
-    assert merge["error"]["details"]["command"] == "rail read show a-task"
-
 
 def test_a_refused_action_points_at_explain(tmp_path: Path) -> None:
     store = _store(tmp_path)

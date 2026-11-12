@@ -3,8 +3,8 @@ schema: 1
 version: 1
 recipe: cto
 allowed_methods: [do, find, show, cto brief, ledger, report, add, update, move, link,
-                  rename, relocate, status, reindex, doctor, check, verify, dispatch,
-                  review, merge, triage, execution record, digest, adapters sync, ci, pack list, pack show,
+                  rename, relocate, status, reindex, doctor, check, verify, candidate,
+                  triage, execution record, digest, adapters sync, ci, pack list, pack show,
                   pack validate, pack create, measure versions, measure fix, rollback,
                   sync, sync driver, mcp serve]
 budget: {max_chars: 12000, max_docs: 20}

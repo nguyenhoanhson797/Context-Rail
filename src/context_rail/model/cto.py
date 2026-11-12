@@ -199,9 +199,6 @@ CTO_METHODS = WORKER_METHODS + (
     "check",
     "verify",
     "candidate",
-    "dispatch",
-    "review",
-    "merge",
     "triage",
     "execution record",
     "digest",
@@ -219,7 +216,7 @@ CTO_METHODS = WORKER_METHODS + (
     "mcp serve",
     "ui serve",
 )
-PROFILE_METHODS = CTO_METHODS + ("init", "approve", "cto tick", "migrate") + tuple(ALIASES)
+PROFILE_METHODS = CTO_METHODS + ("init", "approve", "migrate") + tuple(ALIASES)
 
 REPORT_TARGET_CLASSES = (
     "item",

@@ -95,12 +95,10 @@ def test_adopt_ignores_line_endings_and_bookkeeping_keys(legacy_store: Path) -> 
 
 
 def test_adopt_keeps_the_approval_and_the_doctor_clean(legacy_store: Path) -> None:
-    before = invoke("ci", {}, store=legacy_store, actor="human")
-
     _adopt(legacy_store)
     after = invoke("ci", {}, store=legacy_store, actor="human")
 
-    assert after["ok"] == before["ok"], after
+    assert after["ok"], after
     issues = invoke("doctor", {}, store=legacy_store, actor="human")["value"]["issues"]
     assert not [issue for issue in issues if issue["severity"] == "error"], issues
 
@@ -116,7 +114,7 @@ def test_adopt_dry_run_writes_nothing(legacy_store: Path) -> None:
 
 
 def test_adopt_is_human_only(legacy_store: Path) -> None:
-    result = invoke("codegraph adopt", {}, store=legacy_store, actor="cto")
+    result = invoke("codegraph adopt", {}, store=legacy_store, actor="dev")
 
     assert not result["ok"]
     assert result["error"]["code"] == "PERMISSION_DENIED"

@@ -59,9 +59,6 @@ _WRITE_TABLE = frozenset(
         "relocate",
         "move",
         "link",
-        "dispatch",
-        "review",
-        "merge",
         "verify",
         "candidate",
         "report",
@@ -69,14 +66,10 @@ _WRITE_TABLE = frozenset(
         "execution record",
         "check",
         "do",
-        "cto tick",
     }
 )
 _ITEM_TOOLS = {
     "candidate": "candidate",
-    "dispatch": "dispatch",
-    "review": "review",
-    "merge": "merge",
     "verify": "verify",
     "report": "report",
     "execution record": "execution",
@@ -218,14 +211,6 @@ def authorize_role(
         )
     role = identity.role
     allowed = role_tools(role)
-    if tool.name == "cto tick":
-        if not role.can.methods.get("tick"):
-            return _refuse(
-                "tick_not_in_can",
-                f"role {role.name!r} may not tick",
-                reach_hint(context.reach, identity.name),
-            )
-        return None
     if tool.name == "do":
         targets = targets_for(tool.name, params, context.index)
         return _check_action(context, role, context.reach, targets)

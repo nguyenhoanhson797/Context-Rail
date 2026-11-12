@@ -34,8 +34,7 @@ AGENTS = "AGENTS.md"
 
 _COMMANDS = """\
 - `rail overview` shows what is executable and what needs a human.
-- `rail loop dispatch <item>` runs one Item in an isolated worktree; `rail loop review`
-  and `rail loop merge` gate its result, each with its own run and `--key`.
+- `rail loop candidate <item> --commit <sha>` records the commit your own tool made for an Item.
 - `rail check declare` declares proof and `rail check run` runs it. Unproven work is not done.
 - Human-only actions need the exact phrase the command prints.
 """
@@ -464,16 +463,12 @@ def _agents_payload(skills: list[_Skill], profiles: list[_Profile]) -> str:
         "",
         _COMMANDS.rstrip("\n"),
         "",
-        "`rail loop tick --key <key>` is one bounded CTO session behind a",
-        "single-instance lock; it must be the outer session.",
-        "",
         "## Transports",
         "",
         "The same tool table is available over MCP stdio (`rail --actor cto serve",
         "mcp`, or `rail serve mcp` from inside the project) and in a loopback UI",
         "with `rail serve ui`. MCP keeps the canonical tool",
-        "names (`status`, `next`, `show`, `add`, `move`, `dispatch`, `review`,",
-        "`merge`, ...).",
+        "names (`status`, `next`, `show`, `add`, `move`, `candidate`, ...).",
         "",
         "## Profiles",
         "",

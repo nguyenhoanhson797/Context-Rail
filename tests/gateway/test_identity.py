@@ -41,7 +41,7 @@ def test_legacy_cto_and_human_are_leads(approved_store: Path) -> None:
 
     assert (cto.kind, cto.name, cto.human, cto.lead) == ("legacy", "cto", False, True)
     assert (human.kind, human.name, human.human, human.lead) == ("legacy", "human", True, True)
-    assert cto.may("tick") and cto.may("merge")
+    assert cto.may("update")
 
 
 def test_legacy_worker_is_not_a_lead(approved_store: Path) -> None:
@@ -50,8 +50,7 @@ def test_legacy_worker_is_not_a_lead(approved_store: Path) -> None:
     worker = resolve_identity(context, actor="implementer", session=None)
 
     assert (worker.kind, worker.human, worker.lead) == ("legacy", False, False)
-    assert not worker.may("tick")
-    assert worker.may("merge")
+    assert worker.may("update")
 
 
 def test_legacy_ignores_a_session_token(approved_store: Path) -> None:
@@ -77,7 +76,7 @@ def test_a_session_resolves_its_seat(role_store: SimpleNamespace) -> None:
     assert identity.session is not None and identity.session != token
 
 
-def test_the_lead_role_may_tick_and_a_sprint_lead_may_not(
+def test_the_project_anchored_role_is_the_lead_and_a_sprint_lead_is_not(
     role_store: SimpleNamespace,
 ) -> None:
     context = context_for(role_store.store)
@@ -90,8 +89,8 @@ def test_the_lead_role_may_tick_and_a_sprint_lead_may_not(
         session=open_test_session(role_store.store, role_store.orders_seat),
     )
 
-    assert lead.lead and lead.may("tick")
-    assert not manager.lead and not manager.may("tick")
+    assert lead.lead
+    assert not manager.lead
     assert manager.may("update")
     assert not manager.may("relocate")
 

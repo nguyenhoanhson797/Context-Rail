@@ -43,25 +43,6 @@ def test_ledger_totals_never_present_an_unknown_counter_as_zero(
         assert value["totals"]["known_sum"].get(counter, "absent") != 0
 
 
-def test_ledger_does_not_double_count_tick_and_worker_usage(
-    tick_with_workers: SimpleNamespace,
-) -> None:
-    value = _ledger(tick_with_workers.store)
-    assert value["total"] == 2
-    assert value["totals"]["known_sum"]["input_tokens"] == (
-        tick_with_workers.worker_input + tick_with_workers.tick_input
-    )
-    assert value["totals"]["known_sum"]["output_tokens"] == 5 + 2
-    assert "input_tokens" not in value["unknown_counts"]
-    assert "output_tokens" not in value["unknown_counts"]
-    assert value["unknown_counts"]["cache_read_input_tokens"] == 2
-    roles = [row["role"] for row in value["runs"]]
-    assert sorted(roles) == ["cto", "implementer"]
-    tick = [row for row in value["runs"] if row["role"] == "cto"][0]
-    assert tick["item"] is None
-    assert tick["usage"]["input_tokens"] == tick_with_workers.tick_input
-
-
 def test_ledger_bounds_the_rows_and_reports_the_omissions(tmp_path) -> None:
     from perf.gen import make_store
 

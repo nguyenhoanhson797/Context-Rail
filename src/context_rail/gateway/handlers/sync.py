@@ -26,17 +26,12 @@ from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
 from context_rail.runner import git_sync
 from context_rail.runner.body_merge import merge_body
-from context_rail.runner.dispatch import (
-    DISPATCH_DIR,
-    LOCK_DIR,
-    acquire_tick_lock,
-)
 from context_rail.store.doc import etag, parse_doc
 from context_rail.store.frontmatter_edit import join_frontmatter, split_frontmatter
 from context_rail.store.gitattributes import managed_attributes
 from context_rail.store.index import Index
 from context_rail.store.location import local_dir, owns_path, store_prefixes
-from context_rail.store.lock import StoreLockTimeout, file_lock
+from context_rail.store.lock import StoreLockTimeout, take_exclusive
 from context_rail.store.sync import (
     SyncIntent,
     candidate_differences,
@@ -790,18 +785,18 @@ def _read_diagnostics(scratch: Path) -> list[dict[str, Any]]:
 
 @contextlib.contextmanager
 def _sync_locks(store: Path) -> Iterator[None]:
-    with acquire_tick_lock(store):
-        folder = local_dir(store) / DISPATCH_DIR / LOCK_DIR
-        if folder.is_dir():
-            for path in sorted(folder.glob("*.lock")):
-                try:
-                    with file_lock(path, timeout=0):
-                        pass
-                except StoreLockTimeout:
-                    raise WriteRefused(
-                        "CONFLICT", "a dispatch is still running", {"lock": str(path)}
-                    ) from None
+    """Hold the clone's one sync lock; a second sync meanwhile is a ``CONFLICT``."""
+    path = local_dir(store) / "sync.lock"
+    try:
+        release = take_exclusive(path)
+    except StoreLockTimeout:
+        raise WriteRefused(
+            "CONFLICT", "another sync is running", {"lock": str(path)}
+        ) from None
+    try:
         yield
+    finally:
+        release()
 
 
 def _result(

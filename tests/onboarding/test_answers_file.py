@@ -271,7 +271,7 @@ def test_shipped_profiles_are_materialized_with_the_pinned_fields(
     assert cto["effort"] is None
     assert cto["auto"] == "high"
     assert cto["tools"] == seven
-    assert "cto tick" not in cto["allowed_methods"]
+    assert not {"dispatch", "merge", "cto tick"} & set(cto["allowed_methods"])
 
     implementer = _frontmatter(store / "workspace/profiles/implementer/profile.md")
     assert implementer["recipe"] == "implementer"

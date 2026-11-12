@@ -10,7 +10,6 @@ from pathlib import PurePosixPath
 from context_rail.kernel.measurement import ReportSample, RunSample, UsageSample
 from context_rail.model.cto import USAGE_KEYS, MalformedUsage, usage_value
 from context_rail.store.index import Index
-from context_rail.store.query import record_data
 
 
 def runs_for_versions(
@@ -75,36 +74,6 @@ def reports_after_boundary(
             continue
         found.append(ReportSample(report_id=record_id, at=at, fingerprint=fingerprint))
     return found[:limit], max(0, len(found) - limit)
-
-
-def active_dispatches(
-    ix: Index, *, profile: str | None, skill: str | None
-) -> list[str]:
-    """Dispatch ids that started and never produced a completed run."""
-    ix.sync()
-    rows = ix.conn.execute(
-        "SELECT d.path, d.slug FROM docs d "
-        "JOIN fields k ON k.path = d.path AND k.key = 'kind' "
-        "WHERE k.value_json = ? ORDER BY d.record_at, d.slug",
-        (json.dumps("dispatch.started"),),
-    ).fetchall()
-    active: list[str] = []
-    for path, slug in rows:
-        data = record_data(ix, path)
-        dispatch_id = data.get("dispatch_id") or slug
-        if not isinstance(dispatch_id, str) or not dispatch_id:
-            continue
-        completed = ix.conn.execute(
-            "SELECT 1 FROM runs WHERE dispatch_id = ? LIMIT 1", (dispatch_id,)
-        ).fetchone()
-        if completed is not None:
-            continue
-        if profile is not None and data.get("profile") != profile:
-            continue
-        if skill is not None and not _dispatch_reads_skill(data, skill):
-            continue
-        active.append(dispatch_id)
-    return sorted(set(active))
 
 
 def _matches(
@@ -233,15 +202,4 @@ def _json_object(text: object) -> dict:
     except ValueError:
         return {}
     return value if isinstance(value, dict) else {}
-
-
-def _dispatch_reads_skill(data: dict, skill: str) -> bool:
-    pins = data.get("skills")
-    if isinstance(pins, list):
-        return any(
-            isinstance(pin, dict) and _same_name(pin.get("identity"), skill)
-            for pin in pins
-        )
-    named = data.get("skill")
-    return named is None or _same_name(named, skill)
 

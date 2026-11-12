@@ -235,19 +235,6 @@ def test_two_workflows_offer_different_next_states(tmp_path: Path) -> None:
     assert task["next"] == ["fixing"]
 
 
-def test_the_work_order_sections_put_the_workflow_after_the_objective() -> None:
-    from context_rail.runner.droid import WORK_ORDER_SECTIONS
-
-    assert WORK_ORDER_SECTIONS[:3] == ("objective", "context", "workflow")
-
-
-def test_the_cto_objective_is_queue_driven() -> None:
-    from context_rail.gateway.handlers.cto import _ORDER_OBJECTIVE
-
-    assert "card" in _ORDER_OBJECTIVE
-    assert "Plan executable leaf Items and link them" not in _ORDER_OBJECTIVE
-
-
 def test_explain_workflow_wins_when_a_preset_shares_the_name(tmp_path: Path) -> None:
     _store_path, context = _store(tmp_path)
 

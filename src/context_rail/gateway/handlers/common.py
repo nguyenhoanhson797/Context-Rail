@@ -13,7 +13,7 @@ import yaml
 from context_rail.core.util import dump_frontmatter, load_yaml, slugify
 from context_rail.kernel import gates, rights
 from context_rail.kernel.relations import endpoint_problem, reachable
-from context_rail.model.cto import Profile, parse_profile, parse_report
+from context_rail.model.cto import Profile, parse_profile
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import render_path
 from context_rail.model.metadata import (
@@ -26,7 +26,7 @@ from context_rail.model.primitives import MANAGED_KEYS, RELATIONS
 from context_rail.store.doc import Doc, etag, parse_doc
 from context_rail.store.index import Index
 from context_rail.store.location import PathEscape, confine, worktree_git_dir
-from context_rail.store.write import WriteRefused, commit, resolve_unique
+from context_rail.store.write import WriteRefused, resolve_unique
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -884,35 +884,6 @@ def _read_confined(store: Path, rel: str) -> bytes | None:
     except PathEscape:
         return None
     return path.read_bytes() if path.is_file() else None
-
-
-def bounded(text: str, limit: int) -> str:
-    """Text trimmed to ``limit`` characters with one truncation marker."""
-    text = text.strip()
-    return text if len(text) <= limit else text[: limit - 16] + "\n[truncated]"
-
-
-def required(value: Any, what: str, *, action: str) -> str:
-    """The non-blank text one handler argument must carry, or a refusal."""
-    if not isinstance(value, str) or not value.strip():
-        raise WriteRefused("VALIDATION_FAILED", f"{action} needs {what}")
-    return value.strip()
-
-
-def append_report(
-    ctx: Context, data: dict[str, Any], *, actor: str, about: list[str]
-) -> str | None:
-    """File one validated report Record about the named documents."""
-    parse_report(data)
-    result = commit(
-        ctx.store,
-        ctx.manifest,
-        [],
-        {"kind": "report.filed", "about": list(about), "data": data},
-        actor=actor,
-        index=ctx.index,
-    )
-    return result.get("record")
 
 
 def checkout(ctx: Context, *, action: str) -> tuple[Path, Path]:
