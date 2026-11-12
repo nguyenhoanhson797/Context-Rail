@@ -50,7 +50,7 @@ RECORD_STAMPED_KEYS = frozenset(
 )
 
 #: The policy values a ``pack.yaml`` may set.
-PACK_POLICY_KEYS = ("stuck_hours", "retries", "measurement_min_runs")
+PACK_POLICY_KEYS = ("stuck_hours", "measurement_min_runs")
 
 #: Every field a charter Policy document may carry.
 CHARTER_KEYS = (

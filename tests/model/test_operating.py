@@ -40,7 +40,7 @@ _BASE: dict[str, Any] = {
         "done": ["active"],
         "dropped": ["draft"],
     },
-    "execution": {"review": {"dispatch": False}},
+    "execution": {"review": {"queue": False}},
     "presets": {
         "goal": {"primitive": "item", "tags": ["goal"], "container": True},
         "scope": {"primitive": "item", "tags": ["scope"], "container": True},
@@ -59,7 +59,7 @@ _BASE: dict[str, Any] = {
         "cto": {"primitive": "actor", "tags": []},
         "profile": {"primitive": "actor", "tags": []},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
     "actions": {
         "render": {
             "on": "shot",

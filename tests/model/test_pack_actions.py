@@ -34,7 +34,7 @@ BASE: dict[str, Any] = {
         "cto": {"primitive": "actor", "tags": []},
         "profile": {"primitive": "actor", "tags": []},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
 }
 
 ACTION: dict[str, Any] = {

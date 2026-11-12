@@ -18,7 +18,7 @@ LOCAL_DOCUMENT = {
     "initial": "todo",
     "transitions": {"todo": ["done"], "done": []},
     "presets": {"task": {"primitive": "item", "tags": ["task"]}},
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
 }
 
 

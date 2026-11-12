@@ -52,7 +52,7 @@ _DOCUMENT: dict[str, Any] = {
         "profile": {"primitive": "actor", "tags": []},
         "scope": {"primitive": "item", "tags": ["scope"], "container": True},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
     "operating": {
         "version": 1,
         "unit": "shot",
@@ -131,11 +131,11 @@ def test_an_operating_change_changes_the_semantic_digest(tmp_path: Path) -> None
 #: Recorded before roles existed: a role-less pack must keep its digest, or
 #: every approved store would need approving again.
 _SHIPPED_DIGESTS = {
-    "basic": "045d929092c045e65b0dda8a1797e8abc94b54da48422ef98c0025dd43396cee",
-    "flow": "6ce312aef712b3d7295ebd5c43dbb91c768a761f64c40099877d90c99a0646f1",
-    "scrum": "24efa5803c1e830eff7dd9ba6f35764b3c4dca554e5ffc12af3d39ea50897bbb",
-    "video": "beb029c07fbf32fcfb0b055c246204267a6c705c618d7af9f42fdca3ccaca987",
-    "waterfall": "9062c03e202f28944fd2d9bcd2bfb9172849d052fda7085175c8d74090867ac2",
+    "basic": "8fd286368299e9c49b6137f4fbad453b6e32377d83626c4e707b5a561c53bf9e",
+    "flow": "3449073235b6a71f77da7e6dd4f553da2905b6630371a9fd2735d04e1da6744a",
+    "scrum": "ae9af38ef820d249c4936e6bb0a0a092495457e9a23c8cbed5fca89b4824beff",
+    "video": "ed597248f93c000abaa196449a9be5caf629d952c12f2aba718f4cb9fe7664bb",
+    "waterfall": "3b3e3a27a7f971210a162e078a9fb275311df4c57c98290eb216a4f0005c7bf5",
 }
 
 _LEAD: dict[str, Any] = {

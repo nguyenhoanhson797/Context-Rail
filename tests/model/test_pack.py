@@ -45,7 +45,7 @@ BASE_PACK: dict[str, Any] = {
         "decision": {"primitive": "record", "tags": ["decision"]},
         "check": {"primitive": "check", "tags": []},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
 }
 
 _DELETE = object()
@@ -98,7 +98,7 @@ def test_builtin_basic_pack_matches_pinned_values(tmp_path: Path) -> None:
         "done": ("doing",),
         "dropped": ("todo",),
     }
-    assert p.policy == {"stuck_hours": 24, "retries": 1}
+    assert p.policy == {"stuck_hours": 24}
     expected = {
         "goal": ("item", ("goal",), {}),
         "scope": (
@@ -210,15 +210,12 @@ def test_local_pack_template_override_is_kept(tmp_path: Path) -> None:
         ),
         pytest.param((("policy.mood", "x"),), id="unknown-policy-key"),
         pytest.param((("policy.stuck_hours", _DELETE),), id="missing-stuck-hours"),
-        pytest.param((("policy.retries", _DELETE),), id="missing-retries"),
         pytest.param((("policy.stuck_hours", True),), id="stuck-hours-bool"),
         pytest.param((("policy.stuck_hours", -1),), id="stuck-hours-negative"),
         pytest.param((("policy.stuck_hours", float("nan")),), id="stuck-hours-nan"),
         pytest.param((("policy.stuck_hours", float("inf")),), id="stuck-hours-inf"),
         pytest.param((("policy.stuck_hours", "24"),), id="stuck-hours-string"),
-        pytest.param((("policy.retries", 1.5),), id="retries-float"),
-        pytest.param((("policy.retries", -1),), id="retries-negative"),
-        pytest.param((("policy.retries", True),), id="retries-bool"),
+        pytest.param((("policy.retries", 1),), id="retries-removed"),
         pytest.param((("policy", [("stuck_hours", 24)]),), id="policy-list"),
     ],
 )
@@ -234,7 +231,7 @@ def test_invalid_local_pack_is_refused(
         assert err.value.code == "VALIDATION_FAILED"
 
 
-@pytest.mark.parametrize(("key", "value"), [("stuck_hours", 0.5), ("retries", 0)])
+@pytest.mark.parametrize(("key", "value"), [("stuck_hours", 0.5), ("stuck_hours", 0)])
 def test_policy_values_are_accepted_and_kept(
     tmp_path: Path, key: str, value: float | int
 ) -> None:
@@ -307,7 +304,7 @@ def test_duplicate_policy_keys_refuse(tmp_path: Path) -> None:
     path = tmp_path / "packs" / "basic" / "pack.yaml"
     path.parent.mkdir(parents=True)
     text = yaml.safe_dump(_pack(), sort_keys=False)
-    text = text.replace("policy:\n", "policy:\n  retries: 1\n", 1)
+    text = text.replace("policy:\n", "policy:\n  stuck_hours: 24\n", 1)
     path.write_text(text, encoding="utf-8", newline="\n")
 
     with pytest.raises(ModelError) as caught:
@@ -325,7 +322,7 @@ _SPRINT = {
 _BUGFIX = {
     "initial": "doing",
     "transitions": {"doing": ["done"], "done": ["doing"]},
-    "execution": {"done": {"dispatch": False}},
+    "execution": {"done": {"queue": False}},
     "quality": {"done": {"gate": "bug_done", "checks": ["repro-check"]}},
 }
 
@@ -366,7 +363,7 @@ def test_a_pack_can_declare_named_workflows(tmp_path: Path) -> None:
     )
     bugfix = pack.workflow("bugfix")
     assert bugfix.initial == "doing"
-    assert bugfix.execution == {"done": {"dispatch": False}}
+    assert bugfix.execution == {"done": {"queue": False}}
     assert bugfix.quality == {
         "done": QualityRule(gate="bug_done", checks=("repro-check",))
     }

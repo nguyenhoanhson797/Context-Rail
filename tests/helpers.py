@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from importlib import resources
 import hashlib
 import multiprocessing
 import os
@@ -767,7 +768,7 @@ def nested_pack_document(
             "cto": {"primitive": "actor", "tags": []},
             "profile": {"primitive": "actor", "tags": []},
         },
-        "policy": {"stuck_hours": 24, "retries": 1},
+        "policy": {"stuck_hours": 24},
     }
     if extra:
         document["presets"].update(extra)
@@ -1219,3 +1220,52 @@ def start_repo(seated: SimpleNamespace) -> None:
     run_git(seated.root, "init", "-b", "main")
     run_git(seated.root, "add", "-A")
     run_git(seated.root, "commit", "-m", "picture")
+
+
+LEGACY_PROFILE = """---
+primitive: actor
+preset: profile
+title: Implementer
+tags: []
+schema: 1
+version: 1
+recipe: implementer
+allowed_methods: [do, find, show, dispatch, cto tick, report]
+budget: {max_chars: 12000, max_docs: 20}
+model: gpt-5.3-codex
+effort: null
+auto: medium
+tools: [read-cli, edit-cli]
+skills: []
+budgets: {attempts: 2, seconds: 3600, tokens: null, credits: null}
+---
+# Implementer
+
+Work the item.
+"""
+
+
+def write_legacy_runtime_files(store: Path) -> None:
+    """Make a store look like one written before the engine became runtime neutral.
+
+    The implementer profile gains runtime keys, a local ``basic`` pack carries the
+    dispatch flag, a merge flag and ``policy.retries``, and the charter forgets
+    ``reviewer_different_model``.
+    """
+    store = Path(store)
+    profile = store / "workspace" / "profiles" / "implementer" / "profile.md"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_text(LEGACY_PROFILE, encoding="utf-8", newline="\n")
+    text = (
+        resources.files("context_rail")
+        .joinpath("packs", "basic", "pack.yaml")
+        .read_text(encoding="utf-8")
+    )
+    document = yaml.safe_load(text)
+    document["policy"]["retries"] = 1
+    document["execution"] = {"doing": {"dispatch": False, "merge": True}}
+    write_pack(store, "basic", document)
+    charter = store / "charter.md"
+    lines = charter.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n")
+    kept = [line for line in lines if not line.startswith("reviewer_different_model")]
+    charter.write_text("\n".join(kept), encoding="utf-8", newline="\n")

@@ -15,7 +15,7 @@ transitions:
   verifying: [closed, fixing]
   closed: [fixing]
 execution:
-  review: {dispatch: false}
+  review: {queue: false}
 workflows:
   sprint:
     initial: todo
@@ -28,7 +28,7 @@ workflows:
       done: [doing]
       dropped: [todo]
     execution:
-      review: {dispatch: false}
+      review: {queue: false}
     quality:
       done: {gate: item_done}
   bugfix:
@@ -40,7 +40,7 @@ workflows:
       blocked: [fixing]
       closed: [fixing]
     execution:
-      verifying: {dispatch: false}
+      verifying: {queue: false}
     quality:
       closed: {gate: item_done, checks: [repro-check, acceptance]}
   scope:
@@ -81,7 +81,7 @@ presets:
   cto:        {primitive: actor,  tags: []}
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false, workflow: bugfix}
-policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+policy: {stuck_hours: 24, measurement_min_runs: 10}
 operating:
   version: 1
   unit: story

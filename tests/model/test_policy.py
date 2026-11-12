@@ -523,7 +523,7 @@ def test_answers_return_the_validated_picture() -> None:
 
 
 def test_policy_allowlist_is_extended_once_centrally() -> None:
-    assert PACK_POLICY_KEYS == ("stuck_hours", "retries", "measurement_min_runs")
+    assert PACK_POLICY_KEYS == ("stuck_hours", "measurement_min_runs")
     assert POLICY_KEYS == PACK_POLICY_KEYS + CHARTER_KEYS
     assert not hasattr(pack_module, "POLICY_KEYS")
     assert set(CHARTER_KEYS) == {

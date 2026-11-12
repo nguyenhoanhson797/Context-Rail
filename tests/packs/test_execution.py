@@ -1,4 +1,4 @@
-"""Per-status execution flags: a pack steers dispatch and merge, not just moves."""
+"""Per-status execution flags: a pack steers the work queue, not just moves."""
 
 from __future__ import annotations
 
@@ -29,30 +29,25 @@ def _document(name: str) -> dict:
 def test_statuses_without_flags_keep_the_category_defaults(tmp_path: Path) -> None:
     pack = load_pack("basic", tmp_path)
     workflow = pack.workflow("default")
-    assert workflow.dispatchable("todo")
-    assert workflow.dispatchable("doing")
-    assert not workflow.dispatchable("blocked")
-    assert not workflow.dispatchable("done")
-    assert workflow.mergeable("doing")
-    assert workflow.mergeable("todo")
-    assert not workflow.mergeable("done")
-    assert not workflow.mergeable("dropped")
+    assert workflow.queued("todo")
+    assert workflow.queued("doing")
+    assert not workflow.queued("blocked")
+    assert not workflow.queued("done")
 
 
 @pytest.mark.parametrize("name", ["flow", "scrum"])
-def test_shipped_packs_stop_dispatching_an_item_in_review(
+def test_shipped_packs_keep_an_item_in_review_out_of_the_queue(
     name: str, tmp_path: Path
 ) -> None:
     pack = load_pack(name, tmp_path)
     workflow = pack.workflow("default")
-    assert workflow.dispatchable("doing" if name == "scrum" else "building")
-    assert not workflow.dispatchable("review")
-    assert workflow.mergeable("review")
+    assert workflow.queued("doing" if name == "scrum" else "building")
+    assert not workflow.queued("review")
 
 
 def test_an_unknown_execution_status_refuses(tmp_path: Path) -> None:
     document = _document("slim")
-    document["execution"] = {"nope": {"dispatch": False}}
+    document["execution"] = {"nope": {"queue": False}}
     write_pack(tmp_path, "slim", document)
     with pytest.raises(ModelError) as caught:
         load_pack("slim", tmp_path)
@@ -70,14 +65,14 @@ def test_an_unknown_execution_flag_refuses(tmp_path: Path) -> None:
 
 def test_a_non_boolean_flag_refuses(tmp_path: Path) -> None:
     document = _document("slim")
-    document["execution"] = {"doing": {"dispatch": "no"}}
+    document["execution"] = {"doing": {"queue": "no"}}
     write_pack(tmp_path, "slim", document)
     with pytest.raises(ModelError) as caught:
         load_pack("slim", tmp_path)
     assert caught.value.code == "VALIDATION_FAILED"
 
 
-def test_the_kernel_skips_a_row_the_pack_marks_non_dispatchable() -> None:
+def test_the_kernel_skips_a_row_the_pack_marks_unqueued() -> None:
     rows = [
         structure.ItemRow(
             slug="open",
@@ -92,16 +87,16 @@ def test_the_kernel_skips_a_row_the_pack_marks_non_dispatchable() -> None:
             part_of=(),
             depends_on=(),
             last_activity_ms=None,
-            dispatchable=False,
+            queued=False,
         ),
     ]
     assert structure.executable(rows) == ["open"]
 
 
-def test_status_leaves_a_non_dispatchable_item_out(tmp_path: Path) -> None:
+def test_status_leaves_a_unqueued_item_out(tmp_path: Path) -> None:
     store = init_store(tmp_path)
     document = _document("basic")
-    document["execution"] = {"doing": {"dispatch": False}}
+    document["execution"] = {"doing": {"queue": False}}
     write_pack(store, "basic", document)
 
     created = invoke("add", {"preset": "task", "title": "Task"}, store=store, actor="cto")[

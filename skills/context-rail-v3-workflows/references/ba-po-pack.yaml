@@ -51,7 +51,7 @@ transitions:
   verifying: [closed, fixing]
   closed: [fixing]
 execution:
-  review: {dispatch: false}
+  review: {queue: false}
 
 workflows:
   # A story is accepted by the BA, then the PO, before it may start.
@@ -68,7 +68,7 @@ workflows:
       done: [doing]
       dropped: [intake]
     execution:
-      review: {dispatch: false}
+      review: {queue: false}
     quality:
       done: {gate: item_done}
   # The analysis pack itself: two review steps, then a proof-bearing sign-off.
@@ -92,7 +92,7 @@ workflows:
       blocked: [fixing]
       closed: [fixing]
     execution:
-      verifying: {dispatch: false}
+      verifying: {queue: false}
     quality:
       closed: {gate: item_done, checks: [repro-check]}
 
@@ -127,7 +127,7 @@ presets:
   cto:        {primitive: actor, tags: []}
   profile:    {primitive: actor, tags: []}
 
-policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+policy: {stuck_hours: 24, measurement_min_runs: 10}
 
 actions:
   send-to-ba:

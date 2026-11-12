@@ -79,7 +79,7 @@ SPRINT = Workflow(
         "done": ("doing",),
         "dropped": ("todo",),
     },
-    execution={"review": {"dispatch": False}},
+    execution={"review": {"queue": False}},
     quality={},
     statuses=STATUSES,
 )
@@ -93,7 +93,7 @@ BUGFIX = Workflow(
         "verifying": ("closed", "fixing"),
         "closed": ("fixing",),
     },
-    execution={"verifying": {"dispatch": False}},
+    execution={"verifying": {"queue": False}},
     quality={},
     statuses=STATUSES,
 )
@@ -106,7 +106,6 @@ def test_the_same_move_depends_on_the_workflow() -> None:
 
 
 def test_execution_flags_come_from_the_workflow() -> None:
-    assert SPRINT.mergeable("review")
-    assert not SPRINT.dispatchable("review")
-    assert BUGFIX.dispatchable("fixing")
-    assert not BUGFIX.dispatchable("verifying")
+    assert not SPRINT.queued("review")
+    assert BUGFIX.queued("fixing")
+    assert not BUGFIX.queued("verifying")

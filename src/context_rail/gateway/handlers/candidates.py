@@ -336,7 +336,7 @@ def _item_rows(ctx: Context) -> list[structure.ItemRow]:
                 part_of=tuple(sorted(edges.get(name, {}).get("part_of", ()))),
                 depends_on=tuple(sorted(edges.get(name, {}).get("depends_on", ()))),
                 last_activity_ms=None,
-                dispatchable=workflow.dispatchable(status or ""),
+                queued=workflow.queued(status or ""),
                 preset=preset or None,
                 workflow=workflow.name,
                 container=declared.container if declared is not None else None,

@@ -30,7 +30,7 @@ presets:
   cto:        {primitive: actor,  tags: []}
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
-policy: {stuck_hours: 24, retries: 1}
+policy: {stuck_hours: 24}
 operating:
   version: 1
   unit: task

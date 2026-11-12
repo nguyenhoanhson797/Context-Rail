@@ -32,7 +32,7 @@ class ItemRow:
     part_of: tuple[str, ...]
     depends_on: tuple[str, ...]
     last_activity_ms: int | None
-    dispatchable: bool = True
+    queued: bool = True
     preset: str | None = None
     workflow: str = "default"
     container: bool | None = None
@@ -48,7 +48,7 @@ class Score:
 
 
 def executable(items: list[ItemRow], held: dict[str, str] | None = None) -> list[str]:
-    """Leaf items that are open, dispatchable and unblocked, sorted.
+    """Leaf items that are open, queued and unblocked, sorted.
 
     ``held`` lets a caller that already asked :func:`blocked` reuse the answer
     instead of walking every dependency again.
@@ -66,7 +66,7 @@ def executable(items: list[ItemRow], held: dict[str, str] | None = None) -> list
         item.slug
         for item in items
         if item.category in WORKABLE_CATEGORIES
-        and item.dispatchable
+        and item.queued
         and item.slug not in held
         and not is_container(item)
     )

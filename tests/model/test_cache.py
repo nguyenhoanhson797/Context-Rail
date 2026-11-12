@@ -36,7 +36,7 @@ _PLAIN: dict[str, Any] = {
         "profile": {"primitive": "actor", "tags": []},
         "scope": {"primitive": "item", "tags": ["scope"], "container": True},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
 }
 
 

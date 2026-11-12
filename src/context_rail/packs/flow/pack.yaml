@@ -11,7 +11,7 @@ transitions:
   shipped: [building]
   dropped: [backlog]
 execution:
-  review: {dispatch: false}
+  review: {queue: false}
 presets:
   goal:       {primitive: item,   tags: [goal], container: true}
   scope:      {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
@@ -35,7 +35,7 @@ presets:
   cto:        {primitive: actor,  tags: []}
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
-policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+policy: {stuck_hours: 24, measurement_min_runs: 10}
 operating:
   version: 1
   unit: story

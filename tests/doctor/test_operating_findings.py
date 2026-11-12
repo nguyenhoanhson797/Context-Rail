@@ -284,7 +284,7 @@ def test_an_invalid_pack_is_a_validation_refusal_not_a_doctor_cascade(
         "presets": {
             "sprint": {"primitive": "item", "tags": ["sprint"], "container": True}
         },
-        "policy": {"stuck_hours": 24, "retries": 1},
+        "policy": {"stuck_hours": 24},
         "operating": {
             "version": 1,
             "unit": "ghost",

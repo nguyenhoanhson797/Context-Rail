@@ -163,7 +163,7 @@ def _custom_pack(name: str = "custom") -> dict:
                 "template": "templates/task.md",
             }
         },
-        "policy": {"stuck_hours": 1, "retries": 0},
+        "policy": {"stuck_hours": 1},
     }
 
 

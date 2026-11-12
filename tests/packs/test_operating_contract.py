@@ -44,7 +44,7 @@ _DOCUMENT: dict[str, Any] = {
         "profile": {"primitive": "actor", "tags": []},
         "scope": {"primitive": "item", "tags": ["scope"], "container": True},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
     "operating": {
         "version": 1,
         "unit": "shot",
@@ -106,7 +106,7 @@ def test_pack_show_reports_a_neutral_model(tmp_path: Path) -> None:
             "initial": "todo",
             "transitions": {"todo": ["done", "dropped"], "done": [], "dropped": []},
             "presets": {"task": {"primitive": "item", "tags": ["task"]}},
-            "policy": {"stuck_hours": 24, "retries": 1},
+            "policy": {"stuck_hours": 24},
         },
     )
 
@@ -254,7 +254,7 @@ def test_the_video_pack_compiles_with_shots_and_scenes(tmp_path: Path) -> None:
     )
 
 
-def test_no_builtin_workflow_dispatches_a_status_its_pack_holds_back(
+def test_no_builtin_workflow_queues_a_status_its_pack_holds_back(
     tmp_path: Path,
 ) -> None:
     from context_rail.model.pack import load_pack
@@ -264,12 +264,12 @@ def test_no_builtin_workflow_dispatches_a_status_its_pack_holds_back(
         held = [
             status
             for status, flags in pack.execution.items()
-            if flags.get("dispatch") is False
+            if flags.get("queue") is False
         ]
         for workflow in pack.workflows.values():
             for status in held:
                 if status in workflow.transitions:
-                    assert not workflow.dispatchable(status), (name, workflow.name, status)
+                    assert not workflow.queued(status), (name, workflow.name, status)
 
 
 def test_video_render_runs_are_execution_records_not_statuses(tmp_path: Path) -> None:

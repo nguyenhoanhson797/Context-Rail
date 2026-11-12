@@ -116,7 +116,7 @@ def item_rows(
                 part_of=_ordered(edges.get(slug, {}).get("part_of", ())),
                 depends_on=_ordered(edges.get(slug, {}).get("depends_on", ())),
                 last_activity_ms=activity.get(slug),
-                dispatchable=workflow.dispatchable(status or ""),
+                queued=workflow.queued(status or ""),
                 preset=preset or None,
                 workflow=workflow.name,
                 container=declared.container if declared is not None else None,

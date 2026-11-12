@@ -48,7 +48,7 @@ _PLAIN: dict[str, Any] = {
         "profile": {"primitive": "actor", "tags": []},
         "scope": {"primitive": "item", "tags": ["scope"], "container": True},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
 }
 
 _STUDIO: dict[str, Any] = {
@@ -92,7 +92,7 @@ _STUDIO: dict[str, Any] = {
         "cto": {"primitive": "actor", "tags": []},
         "profile": {"primitive": "actor", "tags": []},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
     "operating": {
         "version": 1,
         "unit": "shot",

@@ -60,7 +60,7 @@ _DOCUMENT = {
         "profile": {"primitive": "actor", "tags": []},
         "scope": {"primitive": "item", "tags": ["scope"], "container": True},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
     "operating": {
         "version": 1,
         "unit": "shot",

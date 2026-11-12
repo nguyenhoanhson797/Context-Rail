@@ -21,7 +21,7 @@ transitions:
   blocked: [doing, dropped]
   dropped: [draft]
 execution:
-  review: {dispatch: false}
+  review: {queue: false}
 workflows:
   scene:
     initial: draft
@@ -35,7 +35,7 @@ workflows:
       blocked: [storyboard, generating, review, dropped]
       dropped: [draft]
     execution:
-      review: {dispatch: false}
+      review: {queue: false}
     quality:
       approved: {gate: item_done}
   shot:
@@ -50,7 +50,7 @@ workflows:
       blocked: [generating, review, dropped]
       dropped: [draft]
     execution:
-      review: {dispatch: false}
+      review: {queue: false}
     quality:
       approved: {gate: item_done}
   asset:
@@ -84,7 +84,7 @@ presets:
   cto:        {primitive: actor,  tags: []}
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
-policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10, code_graph: none}
+policy: {stuck_hours: 24, measurement_min_runs: 10, code_graph: none}
 operating:
   version: 1
   unit: shot

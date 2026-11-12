@@ -27,7 +27,6 @@ from context_rail.model.fields import relative_path, reserved_fields
 from context_rail.model.operating import OperatingSpec, parse_operating
 from context_rail.model.primitives import (
     CATEGORIES,
-    FINISHED_CATEGORIES,
     PACK_POLICY_KEYS,
     PRIMITIVES,
     WORKABLE_CATEGORIES,
@@ -81,7 +80,9 @@ PRESET_KEYS = (
     "workflow",
     "container",
 )
-EXECUTION_KEYS = ("dispatch", "merge")
+EXECUTION_KEYS = ("queue",)
+RENAMED_EXECUTION_KEYS = {"dispatch": "queue"}
+REMOVED_EXECUTION_KEYS = ("merge",)
 WORKFLOW_KEYS = ("initial", "transitions", "execution", "quality")
 QUALITY_KEYS = ("gate", "checks")
 LAYOUT_FILE = "layout.yaml"
@@ -135,19 +136,12 @@ class Workflow:
     quality: dict[str, QualityRule]
     statuses: dict[str, str] = field(default_factory=dict)
 
-    def dispatchable(self, status: str) -> bool:
-        """Whether an Item in ``status`` may be dispatched under this workflow."""
+    def queued(self, status: str) -> bool:
+        """Whether an Item in ``status`` may appear in the work queue."""
         declared = self.execution.get(status, {})
-        if "dispatch" in declared:
-            return declared["dispatch"]
+        if "queue" in declared:
+            return declared["queue"]
         return self.statuses.get(status) in WORKABLE_CATEGORIES
-
-    def mergeable(self, status: str) -> bool:
-        """Whether an Item in ``status`` may be merged under this workflow."""
-        declared = self.execution.get(status, {})
-        if "merge" in declared:
-            return declared["merge"]
-        return self.statuses.get(status) not in FINISHED_CATEGORIES
 
     def gate_for(self, target: str) -> str | None:
         """The gate this workflow evaluates on entering ``target``, if any."""
@@ -563,6 +557,14 @@ def _execution(raw: Any, statuses: dict[str, str]) -> dict[str, dict[str, bool]]
         if status not in statuses:
             _refuse(f"execution names undeclared status {status!r}")
         flags = _mapping(raw_flags, f"execution.{status}")
+        for key in flags:
+            if key in RENAMED_EXECUTION_KEYS:
+                _refuse(
+                    f"execution.{status}.{key} was renamed "
+                    f"{RENAMED_EXECUTION_KEYS[key]!r}; run rail ops upgrade"
+                )
+            if key in REMOVED_EXECUTION_KEYS:
+                _refuse(f"execution.{status}.{key} was removed; run rail ops upgrade")
         unknown = sorted(set(flags) - set(EXECUTION_KEYS))
         if unknown:
             _refuse(f"execution.{status} has unknown key(s): " + ", ".join(unknown))
@@ -673,12 +675,13 @@ def _fields(raw: Any, preset: str) -> dict[str, tuple[str, ...]]:
 
 def _policy(raw: Any) -> dict[str, Any]:
     policy = _mapping(raw, "policy")
+    if "retries" in policy:
+        _refuse("policy key 'retries' was removed; run rail ops upgrade")
     unknown = sorted(set(policy) - set(PACK_POLICY_KEYS) - {"code_graph"})
     if unknown:
         _refuse("unknown policy key(s): " + ", ".join(unknown))
-    missing = [key for key in ("stuck_hours", "retries") if key not in policy]
-    if missing:
-        _refuse("pack.yaml policy is missing " + ", ".join(missing))
+    if "stuck_hours" not in policy:
+        _refuse("pack.yaml policy is missing stuck_hours")
 
     stuck_hours = policy["stuck_hours"]
     if isinstance(stuck_hours, bool) or not isinstance(stuck_hours, (int, float)):
@@ -686,13 +689,7 @@ def _policy(raw: Any) -> dict[str, Any]:
     if not math.isfinite(stuck_hours) or stuck_hours < 0:
         _refuse("policy stuck_hours must be finite and non-negative")
 
-    retries = policy["retries"]
-    if isinstance(retries, bool) or not isinstance(retries, int):
-        _refuse("policy retries must be a non-negative integer")
-    if retries < 0:
-        _refuse("policy retries must be a non-negative integer")
-
-    result: dict[str, Any] = {"stuck_hours": stuck_hours, "retries": retries}
+    result: dict[str, Any] = {"stuck_hours": stuck_hours}
     if "measurement_min_runs" in policy:
         minimum = policy["measurement_min_runs"]
         if isinstance(minimum, bool) or not isinstance(minimum, int):

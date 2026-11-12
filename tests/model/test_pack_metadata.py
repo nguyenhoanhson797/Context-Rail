@@ -36,7 +36,7 @@ BASE: dict[str, Any] = {
         "vision": {"primitive": "note", "tags": []},
         "wont": {"primitive": "note", "tags": []},
     },
-    "policy": {"stuck_hours": 24, "retries": 1},
+    "policy": {"stuck_hours": 24},
 }
 
 

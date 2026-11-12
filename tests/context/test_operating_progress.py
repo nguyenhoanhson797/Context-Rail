@@ -110,7 +110,7 @@ def test_a_project_without_a_hierarchy_has_one_wide_group(tmp_path: Path) -> Non
                 "task": {"primitive": "item", "tags": ["task"]},
                 "note": {"primitive": "note", "tags": []},
             },
-            "policy": {"stuck_hours": 24, "retries": 1},
+            "policy": {"stuck_hours": 24},
         },
     )
     copy_pack_templates(store, "plain")
@@ -287,7 +287,7 @@ def _mixed_document() -> dict[str, Any]:
             "cto": {"primitive": "actor", "tags": []},
             "profile": {"primitive": "actor", "tags": []},
         },
-        "policy": {"stuck_hours": 24, "retries": 1},
+        "policy": {"stuck_hours": 24},
         "operating": {
             "version": 1,
             "unit": "task",
