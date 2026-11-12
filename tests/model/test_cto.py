@@ -480,8 +480,6 @@ def test_effort_defaults_to_null_and_accepts_supported_levels() -> None:
 
 def test_allowed_methods_use_exact_tool_names() -> None:
     with pytest.raises(ModelError):
-        parse_profile(profile_fields(allowed_methods=["brief"]))
-    with pytest.raises(ModelError):
         parse_profile(profile_fields(allowed_methods=["cto_brief"]))
     with pytest.raises(ModelError):
         parse_profile(profile_fields(allowed_methods=[]))

@@ -81,6 +81,7 @@ def seat_brief_for(
     granted_by: str,
     seat: str | None = None,
     extra_parts: Mapping[str, str] | None = None,
+    max_chars: int | None = None,
 ) -> dict[str, Any]:
     """The brief a role would read anchored at ``anchor``, with no live seat needed.
 
@@ -99,7 +100,7 @@ def seat_brief_for(
         granted_by=granted_by,
         granted_at=now_iso(),
     )
-    return seat_brief(context, live, role, extra_parts=extra_parts)
+    return seat_brief(context, live, role, max_chars=max_chars, extra_parts=extra_parts)
 
 
 def _documents(context: Context, seat: LiveSeat, role: Role) -> list[str]:

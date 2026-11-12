@@ -133,7 +133,9 @@ _CONFIRM_SLUG = {
     "rename": "old",
     "check": "slug",
 }
-_COMPILED_SURFACE = frozenset({"types", "next", "model", "explain", "why", "seat list"})
+_COMPILED_SURFACE = frozenset(
+    {"types", "next", "model", "explain", "why", "seat list", "brief"}
+)
 
 
 @dataclass

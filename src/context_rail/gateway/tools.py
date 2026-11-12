@@ -184,6 +184,18 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.checks:verify",
     ),
     Tool(
+        name="brief",
+        summary="Read the context an agent needs to work an Item: objective, checks, scope and how to record results.",
+        permission="read",
+        params=(
+            Param("item", "str", required=True, positional=True, help="leaf Item slug"),
+            Param("role", "str", help="implementer or reviewer; with roles, a pack role"),
+            Param("commit", "str", help="the candidate a reviewer judges: a sha, a branch or HEAD"),
+            Param("max_chars", "int", help="character budget (100-32000); only lowers the default"),
+        ),
+        handler="context_rail.gateway.handlers.briefs:brief",
+    ),
+    Tool(
         name="candidate",
         summary="Record a commit any tool produced for an Item, with its changed files and usage.",
         permission="write",

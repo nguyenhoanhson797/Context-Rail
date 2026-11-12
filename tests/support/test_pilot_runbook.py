@@ -131,7 +131,7 @@ def test_the_printed_runbook_uses_one_init_mode_and_global_flags_first(
     assert completed.returncode == 0, completed.stderr
 
     steps = _runbook_lines(completed.stdout)
-    assert len(steps) == 5, steps
+    assert len(steps) == 6, steps
 
     init_step = steps[0]
     modes = [flag for flag in ("--interview", "--answers-file", "--draft-file") if flag in init_step]

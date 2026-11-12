@@ -25,6 +25,7 @@ from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import DEFAULT_MANIFEST
 from context_rail.model.pack import Pack, load_pack
 from context_rail.model.policy import DECISION_RIGHTS, HUMAN_ONLY_IDS
+from context_rail.model.seats import SEAT_GRANTED
 from context_rail.store.doc import etag
 from context_rail.store.index import Index
 from context_rail.store.location import local_dir
@@ -1786,3 +1787,37 @@ def operating_video_store(tmp_path: Path) -> SimpleNamespace:
         second_shot=second_shot,
         asset=asset,
     )
+
+
+@pytest.fixture
+def seated(role_store: SimpleNamespace, tmp_path: Path) -> SimpleNamespace:
+    """A role store in a checkout with a task and an implementer seat on it."""
+    root = tmp_path
+    (root / "src").mkdir(exist_ok=True)
+    (root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "docs").mkdir(exist_ok=True)
+    (root / "docs" / "x.md").write_text("x\n", encoding="utf-8")
+    with as_human():
+        added = invoke(
+            "add",
+            {"preset": "task", "title": "Seated", "rel": [f"part_of={role_store.o1}"]},
+            store=role_store.store,
+            actor=None,
+        )
+    assert is_ok(added), added
+    task = added["value"]["slug"]
+    write_record(
+        role_store.store,
+        "seat-impl-1",
+        SEAT_GRANTED,
+        {
+            "schema": 1,
+            "seat": "impl-1",
+            "role": "implementer",
+            "anchor": task,
+            "granted_by": role_store.lead,
+        },
+        at="2026-11-10T10:03:00Z",
+        actor=role_store.lead,
+    )
+    return SimpleNamespace(store=role_store.store, root=root, task=task, seat="impl-1")

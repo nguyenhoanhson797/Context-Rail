@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -1212,3 +1213,9 @@ def as_human() -> Iterator[None]:
 
     with human_channel():
         yield
+
+
+def start_repo(seated: SimpleNamespace) -> None:
+    run_git(seated.root, "init", "-b", "main")
+    run_git(seated.root, "add", "-A")
+    run_git(seated.root, "commit", "-m", "picture")

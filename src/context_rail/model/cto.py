@@ -161,7 +161,7 @@ WORKER_TOOL_IDS = (
 READ_ONLY_TOOL_IDS = ("read-cli", "ls-cli", "grep_tool_cli", "glob-search-cli")
 TOOL_IDS = WORKER_TOOL_IDS
 
-WORKER_METHODS = ("find", "show", "cto brief", "ledger", "report")
+WORKER_METHODS = ("find", "show", "cto brief", "brief", "ledger", "report")
 #: Every method a CTO profile may use; nested ticketing is not one of them.
 CTO_METHODS = WORKER_METHODS + (
     "do",
