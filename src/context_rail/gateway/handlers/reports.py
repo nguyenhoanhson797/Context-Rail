@@ -1,7 +1,7 @@
-"""Reports and triage: one report per run, then fixes, proposals and exports.
+"""Reports and triage: one report per attempt, then fixes, proposals and exports.
 
-A run owes exactly one structured report, and nothing-to-report is a report of
-its own rather than an empty file. Triage reads only reports no triage Record
+A candidate (or a legacy run) may carry one structured report, and
+nothing-to-report is a report of its own rather than an empty file. Triage reads only reports no triage Record
 has claimed, groups them by the report's exact fingerprint, and acts once the
 charter's thresholds are met: a fix Item the CTO may own, a proposal Note for a
 human-only decision, or an ``engine-issues`` export kept inside the store.
@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import now_iso
 from context_rail.gateway.handlers.common import (
+    checkout,
     compose_doc,
     prepare_document_fields,
     preset_for,
@@ -26,7 +27,6 @@ from context_rail.gateway.handlers.common import (
     slug_of_path,
     unique_slug,
 )
-from context_rail.kernel.budgets import RunFacts
 from context_rail.kernel.triage import (
     CTO_OWNED_CLASSES,
     ClusterDecision,
@@ -38,6 +38,7 @@ from context_rail.kernel.triage import (
 from context_rail.model.cto import REPORT_KEYS, Report, parse_report
 from context_rail.model.manifest import render_path
 from context_rail.model.policy import DEFAULT_THRESHOLDS
+from context_rail.runner import git
 from context_rail.store import query
 from context_rail.store.placement import (
     PlacementContext,
@@ -64,13 +65,25 @@ _RESERVED_NAME = re.compile(r"(con|prn|aux|nul|com[0-9]|lpt[0-9])", re.IGNORECAS
 
 
 def report(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """File the one report a run owes, or refuse the second one."""
+    """File one report, or refuse a second one for the same candidate or run."""
     item = args.get("item")
-    run = args["run"]
+    run = args.get("run")
+    revision = args.get("candidate")
+    if not item and not run:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "a report needs the item it is about, or the legacy run it belongs to",
+            {"param": "item"},
+        )
+    if revision is not None and not item:
+        raise WriteRefused(
+            "VALIDATION_FAILED", "--candidate needs the item it belongs to", {"param": "item"}
+        )
     payload = _load_report_file(args["report_file"])
     if item is not None:
         payload["item"] = item
     payload["run"] = run
+    payload["candidate"] = None
     payload.setdefault("schema", 1)
     parsed = parse_report(payload)
     data = _report_data(parsed)
@@ -85,20 +98,31 @@ def report(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if saved is not None:
             return _report_value(index, saved)
         index.sync()
-        existing = query.report_for_run(index, run)
-        if existing is not None:
-            raise WriteRefused(
-                "CONFLICT",
-                f"run {run!r} already has report {existing!r}",
-                {"run": run, "report": existing},
-            )
-        linked = query.report_named_by_run(index, run)
-        if linked is not None:
-            raise WriteRefused(
-                "CONFLICT",
-                f"run {run!r} already links report {linked!r}",
-                {"run": run, "report": linked},
-            )
+        if revision is not None:
+            bound = _recorded_candidate(ctx, item, revision)
+            held = query.report_for_candidate(index, bound["record_id"])
+            if held is not None:
+                raise WriteRefused(
+                    "CONFLICT",
+                    f"candidate {revision!r} already has report {held!r}",
+                    {"candidate": bound["record_id"], "report": held},
+                )
+            data["candidate"] = bound["record_id"]
+        if run is not None:
+            existing = query.report_for_run(index, run)
+            if existing is not None:
+                raise WriteRefused(
+                    "CONFLICT",
+                    f"run {run!r} already has report {existing!r}",
+                    {"run": run, "report": existing},
+                )
+            linked = query.report_named_by_run(index, run)
+            if linked is not None:
+                raise WriteRefused(
+                    "CONFLICT",
+                    f"run {run!r} already links report {linked!r}",
+                    {"run": run, "report": linked},
+                )
         result = commit(
             store,
             ctx.manifest,
@@ -150,19 +174,8 @@ def triage(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if not rows:
             return value
         facts, members = _facts(rows)
-        runs = tuple(
-            RunFacts(
-                item=None,
-                role="implementer",
-                attempts=0,
-                seconds=0.0,
-                usage=(),
-                failed=bool(row["failed"]),
-                run_id=row["run"],
-            )
-            for row in query.triage_runs(index, _run_ids(rows))
-        )
-        for decision in cluster_reports(facts, runs, thresholds):
+        attempts = tuple(query.attempt_facts(index, _candidate_ids(rows)))
+        for decision in cluster_reports(facts, attempts, thresholds):
             cluster_rows = members[decision.fingerprint]
             if acknowledge:
                 action = "acknowledged"
@@ -254,6 +267,7 @@ def _report_data(parsed: Report) -> dict[str, Any]:
         "target": parsed.target,
         "item": parsed.item,
         "run": parsed.run,
+        "candidate": parsed.candidate,
         "nothing_to_report": parsed.nothing_to_report,
         "what_happened": parsed.what_happened,
         "expected": parsed.expected,
@@ -274,6 +288,20 @@ def _report_value(index: Any, result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _recorded_candidate(ctx: Context, item: str, revision: str) -> dict[str, Any]:
+    root, _git_dir = checkout(ctx, action="binding a report to a candidate")
+    commit = git.resolve_commit(root, revision)
+    found = None if commit is None else query.candidate_for_commit(ctx.index, item, commit)
+    if found is None:
+        raise WriteRefused(
+            "NOT_FOUND",
+            f"{revision!r} is not a recorded candidate of {item!r}; record it with "
+            f"`rail loop candidate {item} --commit <sha>`",
+            {"item": item, "candidate": revision},
+        )
+    return found
+
+
 def _thresholds(ctx: Context) -> TriageThresholds:
     policy = ctx.policy
     thresholds = DEFAULT_THRESHOLDS if policy is None else policy.thresholds
@@ -283,9 +311,9 @@ def _thresholds(ctx: Context) -> TriageThresholds:
     )
 
 
-def _run_ids(rows: Sequence[dict[str, Any]]) -> list[str]:
-    """The runs a page of reports is attributed to, ignoring an unattributed one."""
-    return [run for run in (_attributed_run(row) for row in rows) if run is not None]
+def _candidate_ids(rows: Sequence[dict[str, Any]]) -> list[str]:
+    """The candidate records a page of reports is bound to."""
+    return [row["candidate"] for row in rows if row.get("candidate")]
 
 
 def _attributed_run(row: dict[str, Any]) -> str | None:
@@ -306,12 +334,15 @@ def _attributed_run(row: dict[str, Any]) -> str | None:
 
 
 def _vote_identity(row: dict[str, Any]) -> str:
-    """The run a report votes for; a report no run names votes alone.
+    """The attempt a report votes for; a report naming none votes alone.
 
-    A store can hold real reports that no run names; treating every one of them
-    as one unknown run would merge unrelated reports into a single vote and no
-    cluster could ever reach the threshold.
+    A store can hold real reports that name no candidate or run; treating every
+    one of them as one unknown attempt would merge unrelated reports into a
+    single vote and no cluster could ever reach the threshold.
     """
+    candidate = row.get("candidate")
+    if isinstance(candidate, str) and candidate:
+        return candidate
     run_id = _attributed_run(row)
     if run_id is not None:
         return run_id
@@ -328,7 +359,7 @@ def _facts(
         facts.append(
             ReportFacts(
                 record_id=row["record_id"],
-                run_id=_vote_identity(row),
+                attempt_id=_vote_identity(row),
                 target_class=row["target_class"],
                 target=row["target"],
                 fingerprint=fingerprint,

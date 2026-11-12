@@ -58,7 +58,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 8
+INDEX_SCHEMA = 9
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -233,6 +233,7 @@ _SCHEMA = (
         record_id TEXT NOT NULL,
         item TEXT,
         run_id TEXT,
+        candidate_id TEXT,
         target_class TEXT NOT NULL,
         target TEXT NOT NULL,
         fingerprint TEXT,
@@ -244,6 +245,7 @@ _SCHEMA = (
     """,
     "CREATE INDEX reports_fingerprint_at ON reports(fingerprint, at)",
     "CREATE INDEX reports_run ON reports(run_id)",
+    "CREATE INDEX reports_candidate ON reports(candidate_id)",
     # The digest and the brief read human waits by class on every call, so the
     # scan stays a seek no matter how many reports the store holds.
     *_SEEK_INDEXES,
@@ -404,6 +406,7 @@ _PROJECTION_COLUMNS = {
         "record_id",
         "item",
         "run_id",
+        "candidate_id",
         "target_class",
         "target",
         "fingerprint",
@@ -1095,6 +1098,7 @@ def _report_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[s
                 record_id,
                 report.item,
                 report.run,
+                report.candidate,
                 report.target_class,
                 report.target,
                 report.fingerprint,

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from context_rail.kernel.budgets import RunFacts
 from context_rail.kernel.triage import (
+    AttemptFacts,
     ClusterDecision,
     ReportFacts,
     TriageThresholds,
@@ -28,8 +28,8 @@ def report(
     )
 
 
-def run(run_id: str = "run1", failed: bool = False) -> RunFacts:
-    return RunFacts(None, "implementer", 1, 1.0, (), failed=failed, run_id=run_id)
+def run(run_id: str = "run1", failed: bool = False) -> AttemptFacts:
+    return AttemptFacts(run_id, failed=failed)
 
 
 def test_one_report_is_deferred():
@@ -67,6 +67,17 @@ def test_a_failed_run_weighs_two():
 def test_a_report_from_an_unknown_run_weighs_one():
     thresholds = TriageThresholds(triage_reports=1, triage_weight=2)
     assert cluster_reports((report(run_id="missing"),), (), thresholds)[0].action == "deferred"
+
+
+def test_cluster_reports_counts_attempt_ids():
+    reports = (report("r1", "cand-a"), report("r2", "cand-b"), report("r3", "cand-b"))
+    attempts = (AttemptFacts("cand-a", failed=True), AttemptFacts("cand-b"))
+
+    decision = cluster_reports(reports, attempts, THRESHOLDS)[0]
+
+    assert decision.runs == ("cand-a", "cand-b")
+    assert decision.weight == 3
+    assert decision.action == "fix"
 
 
 def test_an_acknowledged_cluster_asks_for_no_fix():

@@ -8,7 +8,14 @@ from typing import Any
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import latest_record, records_of, write_record, write_run
+from helpers import (
+    latest_record,
+    records_of,
+    write_candidate,
+    write_record,
+    write_review_verdict,
+    write_run,
+)
 
 STAMP = "2026-10-28T12:00:00Z"
 FINGERPRINT = "item|t0|the button submits|the form reloaded"
@@ -25,6 +32,7 @@ def _seed_report(
     record_id: str,
     *,
     run: str | None = None,
+    candidate: str | None = None,
     fingerprint: str = FINGERPRINT,
     target_class: str = "item",
     target: str = "t0",
@@ -41,6 +49,7 @@ def _seed_report(
             "target": target,
             "item": "t0",
             "run": run,
+            "candidate": candidate,
             "nothing_to_report": False,
             "what_happened": "the button did nothing",
             "expected": "the button submits",
@@ -63,28 +72,20 @@ def _doctor_codes(store: Path) -> list[str]:
 # ── attribution through the run's report link ─────────────────────────────
 
 
-def test_dispatch_shaped_reports_weigh_two_for_a_failed_run(store_factory: Any) -> None:
+def test_candidate_reports_weigh_two_for_a_rejected_candidate(store_factory: Any) -> None:
     store = store_factory(docs=3)
-    good_report = _seed_report(store, "01JREPORT0000000000000901", run=None, at=STAMP)
-    bad_report = _seed_report(store, "01JREPORT0000000000000902", run=None, at=STAMP)
-    write_run(
-        store,
-        "01JRUN000000000000000901",
-        item="t0",
-        status="verified",
-        report=good_report,
-        at=STAMP,
+    good, bad = "01JCAND000000000000000901", "01JCAND000000000000000902"
+    write_candidate(store, good, "t0", "a" * 40, at=STAMP)
+    write_candidate(store, bad, "t0", "b" * 40, at=STAMP)
+    write_review_verdict(store, "01JREVIEW000000000000902", "t0", "b" * 40, at=STAMP)
+    good_report = _seed_report(
+        store, "01JREPORT0000000000000901", candidate=good, at=STAMP
     )
-    write_run(
-        store,
-        "01JRUN000000000000000902",
-        item="t0",
-        status="failed",
-        report=bad_report,
-        at=STAMP,
+    bad_report = _seed_report(
+        store, "01JREPORT0000000000000902", candidate=bad, at=STAMP
     )
 
-    result = _triage(store, "k-dispatch-shape")
+    result = _triage(store, "k-candidate-shape")
 
     assert is_ok(result), result
     record = latest_record(store, "report.triaged")

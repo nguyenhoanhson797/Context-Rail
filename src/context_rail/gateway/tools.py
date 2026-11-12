@@ -217,11 +217,12 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="report",
-        summary="File the one structured report a completed run owes.",
+        summary="File one structured report about an Item, optionally bound to a recorded candidate.",
         permission="write",
         params=(
-            Param("item", "str", positional=True, help="the Item the run worked on"),
-            Param("run", "str", required=True, help="the run's Record id"),
+            Param("item", "str", positional=True, help="the Item the report is about"),
+            Param("candidate", "str", help="a recorded candidate of the Item: a sha, a branch or HEAD"),
+            Param("run", "str", help="a legacy run's Record id"),
             Param("report_file", "str", required=True, help="strict JSON report file", path=True),
             Param("key", "str", help="idempotency key"),
         ),

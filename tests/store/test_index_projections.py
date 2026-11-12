@@ -90,8 +90,8 @@ def truth_files(store: Path) -> dict[Path, bytes]:
     }
 
 
-def test_index_schema_eight_keeps_the_base_tables_and_fts():
-    assert INDEX_SCHEMA == 8
+def test_index_schema_nine_keeps_the_base_tables_and_fts():
+    assert INDEX_SCHEMA == 9
 
 
 def test_open_creates_the_typed_tables(store_factory):
@@ -104,9 +104,9 @@ def test_open_creates_the_typed_tables(store_factory):
             index.conn.execute(
                 "SELECT value FROM meta WHERE key = 'schema'"
             ).fetchone()[0]
-            == "8"
+            == "9"
         )
-        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 9
 
 
 def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):

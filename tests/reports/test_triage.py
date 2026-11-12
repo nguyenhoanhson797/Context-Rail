@@ -10,7 +10,14 @@ from typing import Any
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import latest_record, records_of, write_record, write_run
+from helpers import (
+    latest_record,
+    records_of,
+    write_candidate,
+    write_record,
+    write_review_verdict,
+    write_run,
+)
 
 TRIAGE_VALUE_KEYS = {"triaged", "deferred", "fix_items", "proposals", "engine_issues"}
 
@@ -154,7 +161,7 @@ def test_two_distinct_failing_runs_create_a_linked_fix(
     )
 
 
-def test_a_failed_run_doubles_the_weight(
+def test_a_rejected_candidate_doubles_the_weight(
     triage_store_two_reports: SimpleNamespace,
 ) -> None:
     store = triage_store_two_reports.store
@@ -363,22 +370,34 @@ def test_an_engine_export_bounds_its_report_lines(store_factory: Any) -> None:
     assert "1 more report(s) omitted" in text
 
 
-def test_a_rejected_run_doubles_the_weight(store_factory: Any, tmp_path: Path) -> None:
+def test_a_rejected_review_doubles_the_weight(
+    store_factory: Any, tmp_path: Path
+) -> None:
     store = store_factory(docs=2)
-    write_run(store, "01JRUN000000000000000801", item="t0")
-    write_run(
-        store, "01JRUN000000000000000802", item="t0", accepted=False
-    )
-    for number, run in enumerate(
-        ("01JRUN000000000000000801", "01JRUN000000000000000802")
-    ):
-        _file_report(
+    write_candidate(store, "01JCAND000000000000000801", "t0", "a" * 40)
+    write_candidate(store, "01JCAND000000000000000802", "t0", "b" * 40)
+    write_review_verdict(store, "01JREVIEW000000000000802", "t0", "b" * 40)
+    for number, candidate in enumerate(("01JCAND000000000000000801", "01JCAND000000000000000802")):
+        write_record(
             store,
-            "t0",
-            run,
-            tmp_path / f"reject-{number}.json",
-            target_class="item",
-            target="t0",
+            f"01JREPORT000000000000080{number + 1}",
+            "report.filed",
+            {
+                "schema": 1,
+                "target_class": "item",
+                "target": "t0",
+                "item": "t0",
+                "run": None,
+                "candidate": candidate,
+                "nothing_to_report": False,
+                "what_happened": "the button did nothing",
+                "expected": "the button submits",
+                "observed": "the form reloaded",
+                "impact": "medium",
+                "evidence": [],
+                "fingerprint": "item|t0|the button submits|the form reloaded",
+            },
+            at="2026-11-12T12:00:00Z",
         )
 
     result = _triage(store, "k-rejected")

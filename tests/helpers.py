@@ -363,6 +363,34 @@ def write_candidate(
     )
 
 
+def write_review_verdict(
+    store: Path,
+    record_id: str,
+    item: str,
+    commit: str,
+    *,
+    verdict: str = "reject",
+    reviewer: str = "qa",
+    at: str = "2026-11-12T11:00:00Z",
+) -> Path:
+    """Write one `review.verdict` Record bound to a candidate commit."""
+    return write_record(
+        store,
+        record_id,
+        "review.verdict",
+        {
+            "schema": 1,
+            "item": item,
+            "reviewer_actor": reviewer,
+            "candidate_commit": commit,
+            "verdict": verdict,
+        },
+        at=at,
+        actor=reviewer,
+        about=(item,),
+    )
+
+
 def write_run(
     store: Path,
     run_id: str,

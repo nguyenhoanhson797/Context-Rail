@@ -239,6 +239,7 @@ REPORT_KEYS = (
     "target",
     "item",
     "run",
+    "candidate",
     "nothing_to_report",
     "what_happened",
     "expected",
@@ -399,6 +400,7 @@ class Report:
     impact: str
     evidence: tuple[str, ...]
     fingerprint: str | None
+    candidate: str | None = None
 
 
 @dataclass(frozen=True)
@@ -767,6 +769,7 @@ def parse_report(data: dict[str, Any]) -> Report:
         impact=impact,
         evidence=evidence,
         fingerprint=_optional_bounded(payload.get("fingerprint"), "report.fingerprint"),
+        candidate=_optional_string(payload.get("candidate"), "report.candidate"),
     )
 
 

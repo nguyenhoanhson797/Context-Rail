@@ -1,8 +1,8 @@
 """Triage: which report clusters have earned a fix, a proposal or an export.
 
-Grouping is the exact fingerprint. One vote per distinct run, doubled when that
-run recorded a failure or a rejected Check. Nothing to report is acknowledged
-without a fix, engine clusters are exported for engine work, and a cluster the
+Grouping is the exact fingerprint. One vote per distinct attempt (a recorded
+candidate, or a legacy run), doubled when that attempt was rejected or failed a
+Check. Nothing to report is acknowledged without a fix, engine clusters are exported for engine work, and a cluster the
 CTO does not own becomes a proposal for a human.
 """
 
@@ -12,10 +12,9 @@ import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from context_rail.kernel.budgets import RunFacts
-
 __all__ = [
     "ACTIONS",
+    "AttemptFacts",
     "CTO_OWNED_CLASSES",
     "ENGINE_CLASS",
     "ClusterDecision",
@@ -36,11 +35,19 @@ class ReportFacts:
     """One filed report, as the index projects it."""
 
     record_id: str
-    run_id: str
+    attempt_id: str
     target_class: str
     target: str
     fingerprint: str
     nothing_to_report: bool = False
+
+
+@dataclass(frozen=True)
+class AttemptFacts:
+    """One attempt a report can vote for, and whether it failed."""
+
+    attempt_id: str
+    failed: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,7 +93,7 @@ def _normalized(text: str) -> str:
 
 def cluster_reports(
     reports: Sequence[ReportFacts],
-    runs: Sequence[RunFacts],
+    attempts: Sequence[AttemptFacts],
     thresholds: TriageThresholds,
     *,
     engine_cluster: bool = False,
@@ -94,7 +101,7 @@ def cluster_reports(
     """Group reports by exact fingerprint and decide every cluster."""
     if thresholds.triage_reports < 1 or thresholds.triage_weight < 1:
         raise ValueError("triage thresholds must be positive")
-    failed = {run.run_id for run in runs if run.run_id and run.failed}
+    failed = {attempt.attempt_id for attempt in attempts if attempt.attempt_id and attempt.failed}
     groups: dict[str, list[ReportFacts]] = {}
     for report in reports:
         key = report.fingerprint or f"report:{report.record_id}"
@@ -114,7 +121,7 @@ def _decide(
     engine_cluster: bool,
 ) -> ClusterDecision:
     voting = [member for member in members if not member.nothing_to_report]
-    distinct_runs = tuple(sorted({member.run_id or UNKNOWN_RUN for member in voting}))
+    distinct_runs = tuple(sorted({member.attempt_id or UNKNOWN_RUN for member in voting}))
     weight = sum(2 if run_id in failed else 1 for run_id in distinct_runs)
     reports = tuple(sorted(member.record_id for member in members))
     action, reason = _action(fingerprint, members, distinct_runs, weight, thresholds, engine_cluster)

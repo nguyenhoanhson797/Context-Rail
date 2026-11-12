@@ -18,6 +18,7 @@ REPORT_KEYS = {
     "target",
     "item",
     "run",
+    "candidate",
     "nothing_to_report",
     "what_happened",
     "expected",

@@ -37,7 +37,9 @@ from helpers import (
     require_git_identity,
     run_git,
     serve_ui,
+    write_candidate,
     write_record,
+    write_review_verdict,
     write_run,
 )
 from perf.gen import make_store
@@ -406,6 +408,7 @@ def _report_data(**overrides: Any) -> dict[str, Any]:
         "target": "t0",
         "item": "t0",
         "run": None,
+        "candidate": None,
         "nothing_to_report": False,
         "what_happened": "the login form signed a user in with a bad password",
         "expected": "a bad password is refused",
@@ -464,23 +467,24 @@ def triage_store(tmp_path: Path) -> SimpleNamespace:
 
 @pytest.fixture
 def triage_store_two_reports(tmp_path: Path) -> SimpleNamespace:
-    """Two runs, one failed, whose reports share one exact fingerprint."""
+    """Two candidates, one rejected, whose reports share one exact fingerprint."""
     store = make_store(tmp_path / "triage-two", 3)
     fingerprint = "item|t0|a bad password is refused|the form signed the user in"
-    good = "01JRUN000000000000000301"
-    bad = "01JRUN000000000000000302"
-    write_run(store, good, item="t0", status="verified", at=_REPORT_STAMP)
-    write_run(store, bad, item="t0", status="failed", at=_REPORT_STAMP)
+    good = "01JCAND000000000000000301"
+    bad = "01JCAND000000000000000302"
+    write_candidate(store, good, "t0", "a" * 40, at=_REPORT_STAMP)
+    write_candidate(store, bad, "t0", "b" * 40, at=_REPORT_STAMP)
+    write_review_verdict(store, "01JREVIEW000000000000302", "t0", "b" * 40, at=_REPORT_STAMP)
     first = _seed_report(
-        store, "01JREPORT0000000000000301", run=good, fingerprint=fingerprint
+        store, "01JREPORT0000000000000301", candidate=good, fingerprint=fingerprint
     )
     second = _seed_report(
-        store, "01JREPORT0000000000000302", run=bad, fingerprint=fingerprint
+        store, "01JREPORT0000000000000302", candidate=bad, fingerprint=fingerprint
     )
     return SimpleNamespace(
         store=store,
         item="t0",
-        runs=(good, bad),
+        candidates=(good, bad),
         report_ids=(first, second),
         fingerprint=fingerprint,
     )

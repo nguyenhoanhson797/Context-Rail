@@ -1,4 +1,4 @@
-﻿"""Bounded reads over the index: find, show, records and activity.
+"""Bounded reads over the index: find, show, records and activity.
 
 Every query here runs as SQL over the index. Only ``show`` opens a store file,
 and only the requested document; nothing in this module launches a process,
@@ -16,6 +16,7 @@ from typing import Any
 
 from context_rail.core.util import canonical_iso
 from context_rail.kernel.seats import LiveSeat, fold
+from context_rail.kernel.triage import AttemptFacts
 from context_rail.model.cto import USAGE_KEYS
 from context_rail.model.primitives import CATEGORIES, PRIMITIVES, RELATIONS
 from context_rail.model.seats import SeatEvent
@@ -48,6 +49,7 @@ __all__ = [
     "records_about",
     "rejected_reviews",
     "count_reports_by_fingerprint",
+    "report_for_candidate",
     "report_for_run",
     "report_named_by_run",
     "reports_by_fingerprint",
@@ -59,7 +61,7 @@ __all__ = [
     "seat_events",
     "show",
     "totals_for_runs",
-    "triage_runs",
+    "attempt_facts",
     "untriaged_reports",
     "worker_totals",
 ]
@@ -777,7 +779,7 @@ def count_reports_by_fingerprint(ix: Index, fingerprint: str) -> int:
 #: its report before the run exists, so a runless report is attributed through
 #: the run whose payload names it; ``linked_run`` is that run's Record id.
 _REPORT_SELECT = (
-    "SELECT p.record_id, p.item, p.run_id, p.target_class, p.target, "
+    "SELECT p.record_id, p.item, p.run_id, p.candidate_id, p.target_class, p.target, "
     'p.fingerprint, p.impact, p."nothing", p.at, p.data_json, p.path, '
     "(SELECT r.record_id FROM runs r "
     "WHERE json_extract(r.data_json, '$.report') = p.record_id "
@@ -795,6 +797,7 @@ def _report_row(row: Sequence[Any]) -> dict[str, Any]:
         record_id,
         item,
         run_id,
+        candidate_id,
         target_class,
         target,
         fingerprint,
@@ -810,6 +813,7 @@ def _report_row(row: Sequence[Any]) -> dict[str, Any]:
         "record_id": record_id,
         "item": item,
         "run": run_id,
+        "candidate": candidate_id,
         "linked_run": linked_run,
         "target_class": target_class,
         "target": target,
@@ -867,45 +871,56 @@ def report_named_by_run(ix: Index, run_id: str) -> str | None:
     return row[0]
 
 
-def triage_runs(ix: Index, run_ids: Sequence[str]) -> list[dict[str, Any]]:
-    """The runs a page of reports names, with the failure evidence it carries.
+def attempt_facts(
+    ix: Index, candidate_ids: Sequence[str] | None = None
+) -> list[AttemptFacts]:
+    """Whether each recorded candidate failed, from reviews and Check verdicts.
 
-    A run counts as failed when its own outcome says so, when its latest
-    evaluation recorded no acceptance, or when a Check failed on its candidate.
-    Reading it here keeps triage's weight a fact of the index, never of a
-    report's prose.
+    A candidate failed when its newest review rejected it or a Check failed on
+    exactly its commit. Reading it here keeps triage's weight a fact of the
+    index, never of a report's prose.
     """
-    ids = sorted({run_id for run_id in run_ids if isinstance(run_id, str) and run_id})
-    if not ids:
-        return []
-    marks = ",".join("?" for _ in ids)
-    failed: set[str] = set()
-    candidates: dict[str, str] = {}
-    for record_id, status, accepted, candidate in ix.conn.execute(
-        f"SELECT record_id, status, accepted, candidate_commit FROM runs "
-        f"WHERE record_id IN ({marks})",
-        ids,
-    ):
-        if status == "failed" or (accepted is not None and not accepted):
-            failed.add(record_id)
-        if candidate:
-            candidates[record_id] = candidate
-    if candidates:
-        candidate_marks = ",".join("?" for _ in candidates)
-        rejected = {
-            row[0]
-            for row in ix.conn.execute(
-                "SELECT DISTINCT candidate_commit FROM verdicts "
-                f"WHERE passed = 0 AND candidate_commit IN ({candidate_marks})",
-                list(candidates.values()),
-            )
-        }
-        failed.update(
-            record_id
-            for record_id, candidate in candidates.items()
-            if candidate in rejected
-        )
-    return [{"run": record_id, "failed": record_id in failed} for record_id in ids]
+    if candidate_ids is None:
+        rows = ix.conn.execute(
+            "SELECT record_id, item, commit_sha FROM candidates "
+            "ORDER BY at DESC, record_id DESC LIMIT ?",
+            (REPORT_LIMIT_BOUNDS[1],),
+        ).fetchall()
+    else:
+        ids = sorted({value for value in candidate_ids if isinstance(value, str) and value})
+        if not ids:
+            return []
+        marks = ",".join("?" for _ in ids)
+        rows = ix.conn.execute(
+            "SELECT record_id, item, commit_sha FROM candidates "
+            f"WHERE record_id IN ({marks}) ORDER BY record_id",
+            ids,
+        ).fetchall()
+    found: list[AttemptFacts] = []
+    for record_id, item, commit in rows:
+        latest = ix.conn.execute(
+            "SELECT r.verdict FROM reviews r JOIN docs d ON d.path = r.path "
+            "WHERE r.item = ? AND r.candidate_commit = ? "
+            "ORDER BY d.record_at DESC, r.record_id DESC LIMIT 1",
+            (item, commit),
+        ).fetchone()
+        rejected = latest is not None and latest[0] == "reject"
+        failing = ix.conn.execute(
+            "SELECT 1 FROM verdicts WHERE passed = 0 AND candidate_commit = ? LIMIT 1",
+            (commit,),
+        ).fetchone()
+        found.append(AttemptFacts(record_id, failed=rejected or failing is not None))
+    return found
+
+
+def report_for_candidate(ix: Index, candidate_id: str) -> str | None:
+    """The Record id of the report already bound to a candidate record, if any."""
+    row = ix.conn.execute(
+        "SELECT record_id FROM reports WHERE candidate_id = ? "
+        "ORDER BY at DESC, record_id DESC LIMIT 1",
+        (candidate_id,),
+    ).fetchone()
+    return None if row is None else row[0]
 
 
 def review_for(ix: Index, candidate: str) -> dict[str, Any] | None:
