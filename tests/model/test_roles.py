@@ -87,7 +87,7 @@ _ROLES: dict[str, Any] = {
                 "next",
                 "body",
                 "acceptance",
-                "runs",
+                "candidates",
                 "records",
             ],
             "budget": {"chars": 8000, "docs": 40},

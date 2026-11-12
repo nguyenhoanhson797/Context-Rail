@@ -222,7 +222,6 @@ TOOLS: tuple[Tool, ...] = (
         params=(
             Param("item", "str", positional=True, help="the Item the report is about"),
             Param("candidate", "str", help="a recorded candidate of the Item: a sha, a branch or HEAD"),
-            Param("run", "str", help="a legacy run's Record id"),
             Param("report_file", "str", required=True, help="strict JSON report file", path=True),
             Param("key", "str", help="idempotency key"),
         ),
@@ -297,12 +296,12 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="ledger",
-        summary="List runs with attempt-counted usage and unknown counters kept apart.",
+        summary="List recorded candidates with usage and verdicts; unknown counters stay apart.",
         permission="read",
         params=(
             Param("item", "str", help="Item slug"),
             Param("profile", "str", help="profile name"),
-            Param("since", "str", help="UTC timestamp: runs that ended from then on"),
+            Param("since", "str", help="UTC timestamp: candidates recorded from then on"),
             Param("limit", "int", default=20, help="rows (1-100)"),
         ),
         handler="context_rail.gateway.handlers.views:ledger",
@@ -383,8 +382,8 @@ TOOLS: tuple[Tool, ...] = (
             Param("target", "str", required=True, help="skill path or profile name"),
             Param("before", "int", required=True, help="the older version"),
             Param("after", "int", required=True, help="the newer version"),
-            Param("since", "str", help="UTC timestamp: runs from then on"),
-            Param("until", "str", help="UTC timestamp: runs until then"),
+            Param("since", "str", help="UTC timestamp: candidates from then on"),
+            Param("until", "str", help="UTC timestamp: candidates until then"),
         ),
         handler="context_rail.gateway.handlers.measure:measure_versions",
     ),

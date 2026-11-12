@@ -37,15 +37,15 @@ def test_seeded_items_are_named_by_the_digest(digest_store: SimpleNamespace) -> 
 def test_seeding_appends_records_instead_of_rewriting_any(
     digest_store: SimpleNamespace,
 ) -> None:
-    before = len(records_of(digest_store.store, "run.completed"))
+    before = len(records_of(digest_store.store, "candidate.recorded"))
 
     seeded = seed_activity(
         digest_store.store, stuck=digest_store.stuck, too_long=digest_store.too_long
     )
 
-    runs = records_of(digest_store.store, "run.completed")
-    assert len(runs) == before + 1
-    assert seeded.too_long in [record["id"] for record in runs]
+    candidates = records_of(digest_store.store, "candidate.recorded")
+    assert len(candidates) == before + 1
+    assert seeded.too_long in [record["id"] for record in candidates]
     assert seeded.stuck in [
         record["id"] for record in records_of(digest_store.store, "item.updated")
     ]
@@ -65,7 +65,7 @@ def test_a_seeded_item_is_stuck_by_its_quiet_activity(
     assert row["last_activity"]
 
 
-def test_a_seeded_run_shows_unknown_usage_beside_its_runtime(
+def test_a_seeded_candidate_shows_unknown_usage_beside_its_runtime(
     digest_store: SimpleNamespace,
 ) -> None:
     seed_activity(

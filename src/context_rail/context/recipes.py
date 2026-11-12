@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.context import budget as budget_module
 from context_rail.kernel import budgets, structure
-from context_rail.model.cto import USAGE_KEYS
 from context_rail.store import query
 
 if TYPE_CHECKING:
@@ -559,9 +558,10 @@ def _brief_sections(
     quality_section = by_key["quality"]
     quality_section.fixed.extend(_quality_lines(activity))
     rejected, rejected_total = query.rejected_reviews(context.index, limit=limit)
-    available = [_run_line(row) for row in activity["runs"]]
+    available = [_candidate_line(row) for row in activity["candidates"]]
     available.extend(
-        f"review rejected {row['review']} — {row['item'] or '-'} (run {row['run'] or '-'})"
+        f"review rejected {row['review']} — {row['item'] or '-'} "
+        f"(commit {(row['candidate_commit'] or '-')[:12]})"
         for row in rejected
     )
     available.extend(
@@ -652,7 +652,7 @@ def digest(
                 "executable": len(runnable),
                 "stuck": len(stuck),
                 "too_long": len(long_items),
-                "runs": counts["runs"],
+                "candidates": counts["candidates"],
                 "reports": counts["reports"],
                 "untriaged_reports": counts["untriaged_reports"],
             },
@@ -672,7 +672,7 @@ def digest(
                 "approved": activity["quality"]["reviews"]["approve"],
                 "rejected": activity["quality"]["reviews"]["reject"],
             },
-            "runs": activity["quality"]["runs"],
+            "candidates": activity["quality"]["candidates"],
             "rejected_reviews": list(rejected),
         },
         "usage": activity["usage"],
@@ -753,7 +753,7 @@ def _summary_text(
         f"approval {approval['state']}; {len(runnable)} executable, "
         f"{len(stuck)} stuck, {len(too_long)} too long, "
         f"{counts['untriaged_reports']} untriaged report(s) of {counts['reports']}, "
-        f"{counts['runs']} run(s)"
+        f"{counts['candidates']} candidate(s)"
     )
 
 
@@ -921,12 +921,12 @@ def _quality_lines(activity: dict[str, Any]) -> list[str]:
     quality = activity["quality"]
     checks = quality["verdicts"]
     reviews = quality["reviews"]
-    runs = quality["runs"]
+    candidates = quality["candidates"]
     return [
         f"checks: {checks['passed']} passed, {checks['failed']} failed; "
         f"reviews: {reviews['approve']} approved, {reviews['reject']} rejected; "
-        f"runs: {runs['accepted']} accepted, {runs['rejected']} rejected, "
-        f"{runs['pending']} pending",
+        f"candidates: {candidates['accepted']} approved, {candidates['rejected']} rejected, "
+        f"{candidates['pending']} unreviewed",
         f"usage: {_usage_text(activity['usage'])}",
     ]
 
@@ -1043,14 +1043,16 @@ def _report_line(row: dict[str, Any]) -> str:
     )
 
 
-def _run_line(row: dict[str, Any]) -> str:
-    accepted = {True: "accepted", False: "rejected", None: "pending"}[row.get("accepted")]
+def _candidate_line(row: dict[str, Any]) -> str:
     usage = row.get("usage") or {}
-    unknown = sum(1 for key in USAGE_KEYS if usage.get(key) == "unknown")
+    unknown = sum(1 for value in usage.values() if value == "unknown")
+    verdict = row.get("verdict") or "unreviewed"
+    duration = row.get("duration_s")
+    spent = "unknown time" if duration is None else f"{duration:g}s"
     return (
-        f"run {row.get('run')} {row.get('role')} {row.get('item') or '(no item)'} "
-        f"{row.get('status')} {accepted} {row.get('duration_s')}s "
-        f"{row.get('attempt_count')} attempt(s), {unknown} unknown usage counter(s)"
+        f"candidate {row.get('candidate')} {row.get('item') or '(no item)'} "
+        f"attempt {row.get('attempt')} by {row.get('actor')} {verdict}, {spent}, "
+        f"{unknown} unknown usage counter(s)"
     )
 
 
@@ -1083,9 +1085,11 @@ def _gate_marks(gate: Any) -> str:
 def _budget_text(caps: dict[str, Any] | None) -> str:
     if not caps:
         return "no limit"
+    named = ("attempts", "seconds", "tokens", "credits")
+    extra = sorted(key for key in caps if key not in named and caps[key] is not None)
     return ", ".join(
         f"{key} {caps.get(key) if caps.get(key) is not None else 'no limit'}"
-        for key in ("attempts", "seconds", "tokens", "credits")
+        for key in (*named, *extra)
     )
 
 
@@ -1093,7 +1097,7 @@ def _usage_text(usage: dict[str, dict[str, Any]]) -> str:
     known = usage.get("known_sum") or {}
     unknown = usage.get("unknown_attempts") or {}
     parts: list[str] = []
-    for key in USAGE_KEYS:
+    for key in sorted({*known, *unknown}):
         if key in known:
             part = f"{key} {known[key]}"
             if unknown.get(key):

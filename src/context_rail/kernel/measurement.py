@@ -1,12 +1,11 @@
-"""Pure measurement: run summaries, version comparison and fix recurrence."""
+"""Pure measurement: attempt summaries, version comparison and fix recurrence."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
-from context_rail.model.cto import USAGE_KEYS
 
 IMPROVED = "improved"
 REGRESSED = "regressed"
@@ -15,30 +14,31 @@ INSUFFICIENT = "insufficient-data"
 _THRESHOLD = Fraction(1, 10)
 
 
-@dataclass(frozen=True)
-class UsageSample:
-    input_tokens: int | float | None
-    output_tokens: int | float | None
-    cache_read_input_tokens: int | float | None
-    cache_creation_input_tokens: int | float | None
-    factory_credits: int | float | None
+UNKNOWN_STRATUM = "unknown"
 
 
 @dataclass(frozen=True)
-class RunSample:
-    run_id: str
-    role: str
-    model: str
-    profile: str
-    profile_version: int
-    skills: tuple[tuple[str, int], ...]
-    item: str | None
-    attempt_count: int | None
+class AttemptSample:
+    """One recorded candidate, as far as measurement needs to know it.
+
+    A missing role or model is its own stratum, ``"unknown"``, so attempts
+    recorded by tools that name neither are only ever compared with each other.
+    """
+
+    attempt_id: str
+    role: str | None
+    model: str | None
     accepted: bool | None
-    duration_s: float | None
-    usage: UsageSample
-    completed: bool
-    in_flight: bool
+    usage: Mapping[str, int | float | None]
+    profile_version: int | None = None
+    skills: tuple[tuple[str, int], ...] = ()
+    attempt: int | None = None
+    duration_s: float | None = None
+    item: str | None = None
+
+    @property
+    def stratum(self) -> tuple[str, str]:
+        return (self.role or UNKNOWN_STRATUM, self.model or UNKNOWN_STRATUM)
 
 
 @dataclass(frozen=True)
@@ -72,9 +72,8 @@ class UsageTotal:
 
 
 @dataclass(frozen=True)
-class RunSummary:
+class AttemptSummary:
     n: int
-    in_flight: int
     pending: int
     pass_rate: Rate
     attempts: Metric
@@ -92,8 +91,8 @@ class VersionComparison:
     usage: dict[str, str]
     reason: str | None
     strata: dict[str, dict[tuple[str, str], int]]
-    before: RunSummary
-    after: RunSummary
+    before: AttemptSummary
+    after: AttemptSummary
 
 
 @dataclass(frozen=True)
@@ -104,58 +103,49 @@ class RecurrenceSummary:
     uncertainty: str | None
 
 
-def summarize_runs(runs: Sequence[RunSample]) -> RunSummary:
-    """Summarize implementer runs, excluding pending review and in-flight runs."""
-    counted = [
-        run
-        for run in runs
-        if run.role == "implementer" and run.completed and not run.in_flight
-    ]
-    in_flight = sum(
-        1 for run in runs if run.role == "implementer" and run.in_flight
-    )
-    decided = [run for run in counted if run.accepted is not None]
-    numerator = sum(1 for run in decided if run.accepted is True)
-    attempts = [
-        run.attempt_count
-        for run in counted
-        if isinstance(run.attempt_count, int) and not isinstance(run.attempt_count, bool)
+def summarize_attempts(attempts: Sequence[AttemptSample]) -> AttemptSummary:
+    """Summarize recorded candidates; one without a verdict yet is pending."""
+    decided = [sample for sample in attempts if sample.accepted is not None]
+    numerator = sum(1 for sample in decided if sample.accepted is True)
+    ordinals = [
+        sample.attempt
+        for sample in attempts
+        if isinstance(sample.attempt, int) and not isinstance(sample.attempt, bool)
     ]
     durations = [
-        run.duration_s
-        for run in counted
-        if isinstance(run.duration_s, (int, float))
-        and not isinstance(run.duration_s, bool)
-        and run.duration_s >= 0
+        sample.duration_s
+        for sample in attempts
+        if isinstance(sample.duration_s, (int, float))
+        and not isinstance(sample.duration_s, bool)
+        and sample.duration_s >= 0
     ]
     strata: dict[tuple[str, str], int] = {}
-    for run in counted:
-        key = (run.role, run.model)
-        strata[key] = strata.get(key, 0) + 1
-    return RunSummary(
-        n=len(counted),
-        in_flight=in_flight,
-        pending=sum(1 for run in counted if run.accepted is None),
+    for sample in attempts:
+        strata[sample.stratum] = strata.get(sample.stratum, 0) + 1
+    return AttemptSummary(
+        n=len(attempts),
+        pending=sum(1 for sample in attempts if sample.accepted is None),
         pass_rate=Rate(numerator=numerator, denominator=len(decided)),
-        attempts=_metric(attempts),
+        attempts=_metric(ordinals),
         duration=_metric(durations),
-        usage=_usage_totals(counted),
+        usage=_usage_totals(attempts),
         strata=strata,
     )
 
 
 def compare_versions(
-    before: RunSummary, after: RunSummary, *, min_runs: int = 10
+    before: AttemptSummary, after: AttemptSummary, *, min_runs: int = 10
 ) -> VersionComparison:
     """Label each metric with an explicit threshold, never guessing a value."""
     strata = {"before": dict(before.strata), "after": dict(after.strata)}
+    keys = sorted({*before.usage, *after.usage})
     if set(before.strata) != set(after.strata):
         return VersionComparison(
             pass_rate=INCONCLUSIVE,
             attempts=INCONCLUSIVE,
             duration=INCONCLUSIVE,
             quality=INCONCLUSIVE,
-            usage={key: INCONCLUSIVE for key in USAGE_KEYS},
+            usage={key: INCONCLUSIVE for key in keys},
             reason="mismatched_strata",
             strata=strata,
             before=before,
@@ -167,7 +157,7 @@ def compare_versions(
             attempts=INSUFFICIENT,
             duration=INSUFFICIENT,
             quality=INSUFFICIENT,
-            usage={key: INSUFFICIENT for key in USAGE_KEYS},
+            usage={key: INSUFFICIENT for key in keys},
             reason=INSUFFICIENT,
             strata=strata,
             before=before,
@@ -177,9 +167,12 @@ def compare_versions(
     pass_rate = _rate_label(before.pass_rate, after.pass_rate)
     attempts_label = _metric_label(before.attempts, after.attempts, min_runs)
     duration_label = _metric_label(before.duration, after.duration, min_runs)
+    unseen = UsageTotal(total="unknown", coverage="unknown", known_n=0)
     usage_labels = {
-        key: _usage_label(before.usage[key], after.usage[key], min_runs)
-        for key in USAGE_KEYS
+        key: _usage_label(
+            before.usage.get(key, unseen), after.usage.get(key, unseen), min_runs
+        )
+        for key in keys
     }
     labels = (pass_rate, attempts_label, duration_label)
     if REGRESSED in labels:
@@ -246,19 +239,19 @@ def _metric(values: Sequence[int | float]) -> Metric:
     return Metric(mean=sum(Fraction(value) for value in values) / len(values), known_n=len(values))
 
 
-def _usage_totals(runs: Sequence[RunSample]) -> dict[str, UsageTotal]:
+def _usage_totals(attempts: Sequence[AttemptSample]) -> dict[str, UsageTotal]:
     totals: dict[str, UsageTotal] = {}
-    for key in USAGE_KEYS:
-        values = [getattr(run.usage, key) for run in runs]
+    for key in sorted({name for sample in attempts for name in sample.usage}):
+        values = [sample.usage.get(key) for sample in attempts]
         known = [
             value
             for value in values
             if isinstance(value, (int, float)) and not isinstance(value, bool)
         ]
-        if not runs or not known:
+        if not known:
             totals[key] = UsageTotal(total="unknown", coverage="unknown", known_n=0)
             continue
-        coverage = "complete" if len(known) == len(runs) else "partial"
+        coverage = "complete" if len(known) == len(attempts) else "partial"
         totals[key] = UsageTotal(total=sum(known), coverage=coverage, known_n=len(known))
     return totals
 

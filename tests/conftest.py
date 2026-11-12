@@ -40,7 +40,6 @@ from helpers import (
     write_candidate,
     write_record,
     write_review_verdict,
-    write_run,
 )
 from perf.gen import make_store
 
@@ -159,21 +158,20 @@ def indexed_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
 
 
 @pytest.fixture
-def seeded_runs_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
-    """A small store with one Check and one full implementer run.
+def seeded_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
+    """A small store with one Check and one reviewed candidate.
 
     The store holds the projected shapes the CTO reads: a Check doc, a passing
-    verdict, a completed run with two attempts and a skill pin, its candidate
-    evaluation, a report, a review and a human approval.
+    verdict, a recorded candidate carrying usage and a skill pin, an approving
+    review, a report bound to the candidate and a human approval.
     """
     store = make_store(tmp_path / "seeded", 12)
     item = "login-page"
     candidate = "a" * 40
     check_slug = "unit"
     check_at = "2026-10-28T10:05:00Z"
-    run_id = "01JRUN000000000000000001"
+    candidate_id = "01JCANDIDATE00000000000001"
     verdict_id = "01JVERDICT000000000000001"
-    evaluation_id = "01JEVALUATION00000000001"
     report_id = "01JREPORT0000000000000001"
     review_id = "01JREVIEW0000000000000001"
     approval_id = "01JAPPROVAL00000000000001"
@@ -234,83 +232,28 @@ The login test suite passes.
         at=check_at,
         about=(check_slug, item),
     )
-    attempts = [
-        {
-            "number": 1,
-            "session_id": "s1",
-            "start": "2026-10-28T10:00:00Z",
-            "end": "2026-10-28T10:00:12Z",
-            "duration_s": 12.0,
-            "exit": 1,
-            "timed_out": False,
-            "usage": {"input_tokens": 1, "output_tokens": 2},
-            "status": "failed",
-        },
-        {
-            "number": 2,
-            "session_id": "s1",
-            "start": "2026-10-28T10:00:12Z",
-            "end": "2026-10-28T10:00:32Z",
-            "duration_s": 20.0,
-            "exit": 0,
-            "timed_out": False,
-            "usage": {"input_tokens": 1, "output_tokens": 2},
-            "status": "completed",
-        },
-    ]
-    write_record(
+    write_candidate(
         store,
-        run_id,
-        "run.completed",
-        {
-            "schema": 1,
-            "dispatch_id": "dispatch-1",
-            "role": "implementer",
-            "actor": "cto",
-            "profile": "implementer",
-            "profile_version": 1,
-            "profile_etag": "0123456789abcdef",
-            "skills": [
-                {
-                    "identity": "workspace/skills/test-first.md",
-                    "version": 1,
-                    "etag": "abcdef0123456789",
-                }
-            ],
-            "model": "custom:Deepseek-V4-flash-0",
-            "item": item,
-            "session_id": "s1",
-            "started_at": "2026-10-28T10:00:00Z",
-            "ended_at": "2026-10-28T10:00:32Z",
-            "duration_s": 32.0,
-            "exit": 0,
-            "status": "completed",
-            "attempts": attempts,
-            "candidate_commit": None,
-            "accepted": None,
-            "verdicts": [verdict_id],
-            "files_changed": ["src/login.py"],
-            "commits_changed": [candidate],
-            "usage": {"input_tokens": 2, "output_tokens": 4},
-        },
+        candidate_id,
+        item,
+        candidate,
+        actor="implementer",
         at="2026-10-28T10:00:32Z",
-        about=(item,),
-    )
-    write_record(
-        store,
-        evaluation_id,
-        "run.evaluated",
-        {
-            "schema": 1,
-            "run": run_id,
-            "candidate_commit": candidate,
-            "accepted": True,
-            "check_verdicts": [verdict_id],
-            "review": review_id,
-            "at": "2026-10-28T10:10:00Z",
-        },
-        at="2026-10-28T10:10:00Z",
-        about=(item,),
+        attempt=2,
+        files_changed=["src/login.py"],
+        seat_role="implementer",
+        profile="implementer",
+        profile_version=1,
+        skills=[
+            {
+                "identity": "workspace/skills/test-first.md",
+                "version": 1,
+                "etag": "abcdef0123456789",
+            }
+        ],
+        model="custom:Deepseek-V4-flash-0",
+        usage={"input_tokens": 2, "output_tokens": 4},
+        duration_s=32.0,
     )
     write_record(
         store,
@@ -321,7 +264,8 @@ The login test suite passes.
             "target_class": "engine",
             "target": "parser",
             "item": item,
-            "run": run_id,
+            "run": None,
+            "candidate": candidate_id,
             "nothing_to_report": False,
             "what_happened": "the parser dropped a token",
             "expected": "every token is kept",
@@ -333,26 +277,14 @@ The login test suite passes.
         at="2026-10-28T10:11:00Z",
         about=(item,),
     )
-    write_record(
+    write_review_verdict(
         store,
         review_id,
-        "review.verdict",
-        {
-            "schema": 1,
-            "item": item,
-            "implementation_run": run_id,
-            "implementer_actor": "implementer",
-            "reviewer_actor": "reviewer",
-            "implementer_model": "custom:Deepseek-V4-flash-0",
-            "reviewer_model": "custom:gemini-3.8-flash-LTN-0",
-            "candidate_commit": candidate,
-            "verdict": "approve",
-            "findings": [],
-            "evidence": [run_id],
-            "profile_version": 1,
-        },
+        item,
+        candidate,
+        verdict="approve",
+        reviewer="reviewer",
         at="2026-10-28T10:12:00Z",
-        about=(item,),
     )
     write_record(
         store,
@@ -384,11 +316,9 @@ The login test suite passes.
             item=item,
             check=check_slug,
             check_etag=check_etag,
-            run=run_id,
-            dispatch="dispatch-1",
+            candidate_id=candidate_id,
             candidate=candidate,
             verdict=verdict_id,
-            evaluation=evaluation_id,
             report=report_id,
             review=review_id,
             approval=approval_id,
@@ -434,12 +364,10 @@ def report_payload() -> Callable[..., dict[str, Any]]:
 
 @pytest.fixture
 def completed_run(tmp_path: Path) -> SimpleNamespace:
-    """A store with one verified run and the report file that run owes."""
+    """A store with one item and a valid report file about it."""
     store = make_store(tmp_path / "completed", 3)
-    run = "01JRUN000000000000000101"
-    write_run(store, run, item="t0", status="verified")
     report_file = _write_report_file(tmp_path / "rail-report.json", _report_data())
-    return SimpleNamespace(store=store, item="t0", run=run, report_file=report_file)
+    return SimpleNamespace(store=store, item="t0", report_file=report_file)
 
 
 def _seed_report(
@@ -455,7 +383,6 @@ def triage_store(tmp_path: Path) -> SimpleNamespace:
     """One nonempty report whose single run recorded no failure."""
     store = make_store(tmp_path / "triage-one", 3)
     run = "01JRUN000000000000000201"
-    write_run(store, run, item="t0", status="verified", at=_REPORT_STAMP)
     report = _seed_report(
         store,
         "01JREPORT0000000000000201",
@@ -504,8 +431,6 @@ def triage_store_human_target(tmp_path: Path, answers: Path) -> SimpleNamespace:
     assert is_ok(approved), approved
     fingerprint = "item|charter|the charter keeps the budget|the budget grew"
     runs = ("01JRUN000000000000000401", "01JRUN000000000000000402")
-    for run in runs:
-        write_run(store, run, item="charter", status="verified", at=_REPORT_STAMP)
     reports = (
         _seed_report(
             store,
@@ -542,8 +467,7 @@ def triage_store_engine(tmp_path: Path) -> SimpleNamespace:
     fingerprint = "engine|parser|every token is kept|one token is lost"
     runs = ("01JRUN000000000000000501", "01JRUN000000000000000502")
     for run in runs:
-        write_run(store, run, item="t0", status="verified", at=_REPORT_STAMP)
-    reports = (
+        reports = (
         _seed_report(
             store,
             "01JREPORT0000000000000501",
@@ -597,7 +521,6 @@ def triage_store_nothing(tmp_path: Path) -> SimpleNamespace:
     """One nothing-to-report record, filed by a verified run."""
     store = make_store(tmp_path / "triage-nothing", 3)
     run = "01JRUN000000000000000601"
-    write_run(store, run, item="t0", status="verified", at=_REPORT_STAMP)
     report = _seed_report(
         store,
         "01JREPORT0000000000000601",
@@ -1361,9 +1284,17 @@ def large_brief_store(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def unknown_usage_run(tmp_path: Path) -> SimpleNamespace:
-    """One implementer run whose attempt reported no usage at all."""
+    """One candidate whose recorder reported its counters as unknown."""
     store = make_store(tmp_path / "unknown-usage", 6)
-    write_run(store, "01JUNKNOWNUSAGE0000000001", item="t0", usage={}, at=_VIEW_STAMP)
+    write_candidate(
+        store, "01JUNKNOWNUSAGE0000000001", "t0",
+        "9" * 40,
+        usage={"input_tokens": "unknown", "factory_credits": "unknown"},
+        duration_s=1.0,
+        profile="implementer",
+        model="custom:Deepseek-V4-flash-0",
+        at=_VIEW_STAMP,
+    )
     return SimpleNamespace(store=store, item="t0")
 
 
@@ -1402,14 +1333,6 @@ def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNames
     )
     # The candidates and the wait sit inside the rolling window a digest queries with
     # ``since = now - 24h``, so the fixture keeps working as real time moves on.
-    write_run(
-        store,
-        "01JLONGRUN00000000000000001",
-        item=too_long,
-        dispatch="dispatch-long",
-        duration=120.0,
-        at=_hours_ago(1),
-    )
     for number in range(5):
         write_candidate(
             store,
@@ -1417,6 +1340,11 @@ def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNames
             too_long,
             str(number) * 40,
             at=_hours_ago(1),
+            **(
+                {"duration_s": 120.0, "usage": {"input_tokens": 100, "factory_credits": "unknown"}}
+                if number == 0
+                else {}
+            ),
         )
     _write_report(
         store,

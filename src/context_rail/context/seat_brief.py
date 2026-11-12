@@ -28,7 +28,7 @@ __all__ = ["seat_brief", "seat_brief_for"]
 
 _EXTRA_ONLY = ("diff", "evidence", "code_area")
 _BODY_CHARS = 200
-_RUNS = 3
+_CANDIDATES = 3
 _RECORDS = 3
 
 
@@ -271,17 +271,16 @@ def _line(
     if part == "waits":
         values = _field(context, slug, "waits")
         return f"- {slug}: {values}" if values else None
-    if part == "runs":
-        rows = context.index.conn.execute(
-            'SELECT record_id, status, role FROM runs WHERE item = ? '
-            'ORDER BY "end" DESC, record_id DESC LIMIT ?',
-            (slug, _RUNS),
-        ).fetchall()
+    if part == "candidates":
+        rows = query.candidates_for(context.index, slug, limit=_CANDIDATES)
         return (
             "- "
             + slug
             + ": "
-            + "; ".join(f"{run} {state} {who}" for run, state, who in rows)
+            + "; ".join(
+                f"attempt {row['attempt']} {row['commit'][:12]} by {row['actor']}"
+                for row in rows
+            )
             if rows
             else None
         )

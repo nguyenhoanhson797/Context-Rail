@@ -363,6 +363,48 @@ def write_candidate(
     )
 
 
+def write_attempt(
+    store: Path,
+    record_id: str,
+    *,
+    item: str = "t0",
+    commit: str | None = None,
+    model: str = "custom:Deepseek-V4-flash-0",
+    profile: str = "implementer",
+    profile_version: int = 1,
+    skills: Sequence[tuple[str, int]] = (),
+    usage: dict[str, Any] | None = None,
+    duration_s: float = 60.0,
+    attempt: int = 1,
+    seat_role: str | None = None,
+    at: str = "2026-10-28T12:00:00Z",
+    actor: str = "dev",
+) -> Path:
+    """Write one candidate carrying the attribution measurement reads."""
+    pins = [
+        {"identity": identity, "version": version, "etag": f"{index:016x}"}
+        for index, (identity, version) in enumerate(skills, start=1)
+    ]
+    sha = commit or (record_id.encode().hex() + "0" * 40)[:40]
+    extra: dict[str, Any] = {} if seat_role is None else {"seat_role": seat_role}
+    return write_candidate(
+        store,
+        record_id,
+        item,
+        sha,
+        actor=actor,
+        at=at,
+        attempt=attempt,
+        model=model,
+        profile=profile,
+        profile_version=profile_version,
+        skills=pins,
+        usage={} if usage is None else dict(usage),
+        duration_s=duration_s,
+        **extra,
+    )
+
+
 def write_review_verdict(
     store: Path,
     record_id: str,
@@ -389,174 +431,6 @@ def write_review_verdict(
         actor=reviewer,
         about=(item,),
     )
-
-
-def write_run(
-    store: Path,
-    run_id: str,
-    *,
-    item: str | None = "t0",
-    role: str = "implementer",
-    status: str = "verified",
-    candidate: str | None = None,
-    at: str = "2026-10-28T12:00:00Z",
-    dispatch: str = "dispatch-1",
-    report: str | None = None,
-    accepted: bool | None = None,
-    usage: dict[str, Any] | None = None,
-    duration: float = 1.0,
-    files_changed: Sequence[str] | None = None,
-    symbols_changed: Sequence[str] | None = None,
-    profile: str | None = None,
-    actor: str | None = None,
-    model: str | None = None,
-    seat: str | None = None,
-    seat_role: str | None = None,
-    dispatcher: str | None = None,
-) -> Path:
-    """Write one completed-run Record with a valid payload and return its path.
-
-    ``status`` is the run's own outcome; ``candidate`` lets a failing Check
-    verdict bind to the run for triage weighting; ``report`` is the Record id
-    the run points at, as a dispatch writes it; ``accepted`` is the run's
-    outcome attribution when no evaluation exists; ``role`` names the run's own
-    role, so a CTO tick run carries ``item: None`` as the design pins it;
-    ``usage`` is the counters an attempt reported (absent counters stay
-    ``unknown``) and ``duration`` is the run's measured seconds.
-    """
-    failed = status == "failed"
-    counters = {"input_tokens": 2, "output_tokens": 3} if usage is None else usage
-    seat_fields = {}
-    if seat is not None:
-        seat_fields = {
-            "seat": seat,
-            "seat_role": seat_role,
-            "dispatcher": dispatcher,
-        }
-    return write_record(
-        store,
-        run_id,
-        "run.completed",
-        {
-            "schema": 1,
-            "dispatch_id": dispatch,
-            "role": role,
-            "actor": role if actor is None else actor,
-            "profile": role if profile is None else profile,
-            "profile_version": 1,
-            "skills": [],
-            "model": "custom:Deepseek-V4-flash-0" if model is None else model,
-            "item": item,
-            "started_at": at,
-            "ended_at": at,
-            "duration_s": duration,
-            "exit": 1 if failed else 0,
-            "status": status,
-            "attempts": [
-                {
-                    "number": 1,
-                    "start": at,
-                    "end": at,
-                    "duration_s": duration,
-                    "status": "failed" if failed else "completed",
-                    "usage": dict(counters),
-                }
-            ],
-            "candidate_commit": candidate,
-            "accepted": accepted,
-            "verdicts": [],
-            "usage": dict(counters),
-            "report": report,
-            **seat_fields,
-            **({} if files_changed is None else {"files_changed": list(files_changed)}),
-            **(
-                {}
-                if symbols_changed is None
-                else {"symbols_changed": list(symbols_changed)}
-            ),
-        },
-        at=at,
-        about=() if item is None else (item,),
-    )
-
-
-def write_versioned_run(
-    store: Path,
-    run_id: str,
-    *,
-    item: str = "t0",
-    role: str = "implementer",
-    model: str = "custom:Deepseek-V4-flash-0",
-    profile: str = "implementer",
-    profile_version: int = 1,
-    skills: Sequence[tuple[str, int]] = (),
-    attempts: int = 1,
-    duration_s: float = 60.0,
-    accepted: bool | None = None,
-    usage: dict[str, Any] | None = None,
-    at: str = "2026-10-28T12:00:00Z",
-) -> Path:
-    """Write one completed run with skill pins and, when given, its evaluation."""
-    counters = {} if usage is None else dict(usage)
-    pins = [
-        {"identity": identity, "version": version, "etag": f"{index:016x}"}
-        for index, (identity, version) in enumerate(skills, start=1)
-    ]
-    path = write_record(
-        store,
-        run_id,
-        "run.completed",
-        {
-            "schema": 1,
-            "dispatch_id": f"dispatch-{run_id}",
-            "role": role,
-            "actor": "cto",
-            "profile": profile,
-            "profile_version": profile_version,
-            "skills": pins,
-            "model": model,
-            "item": item,
-            "started_at": at,
-            "ended_at": at,
-            "duration_s": duration_s,
-            "exit": 0,
-            "status": "completed",
-            "attempts": [
-                {
-                    "number": number,
-                    "start": at,
-                    "end": at,
-                    "duration_s": duration_s,
-                    "status": "completed",
-                    "usage": dict(counters),
-                }
-                for number in range(1, attempts + 1)
-            ],
-            "candidate_commit": None,
-            "accepted": None,
-            "verdicts": [],
-            "usage": dict(counters),
-            "report": None,
-        },
-        at=at,
-        about=(item,),
-    )
-    if accepted is not None:
-        write_record(
-            store,
-            f"{run_id}-eval",
-            "run.evaluated",
-            {
-                "schema": 1,
-                "run": run_id,
-                "accepted": accepted,
-                "at": at,
-                "candidate_commit": None,
-            },
-            at=at,
-            about=(item,),
-        )
-    return path
 
 
 def records_of(store: Path, kind: str) -> list[dict[str, Any]]:

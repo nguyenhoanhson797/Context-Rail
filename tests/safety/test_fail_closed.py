@@ -103,7 +103,6 @@ _ARGS: dict[str, dict[str, Any]] = {
     "do": {"action": "start", "item": "t0"},
     "report": {
         "item": "t0",
-        "run": "01JRUN000000000000000001",
         "report_file": "missing.json",
     },
     "triage": {},

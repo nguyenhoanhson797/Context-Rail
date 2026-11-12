@@ -116,7 +116,7 @@ def code_view(context: Any, target: str, *, limit: int = CARD_CHARS) -> dict[str
     view.setdefault("callees", [])
     view.setdefault("contains", [])
     view["items"] = items
-    view["runs"] = [row["record"] for row in touches]
+    view["candidates"] = [row["record"] for row in touches]
     view["decisions"] = _decisions(context.index, items)
     view["notes"] = notes
     if commit is not None and not ids and not touches and not notes:

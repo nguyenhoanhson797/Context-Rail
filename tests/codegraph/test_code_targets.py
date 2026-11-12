@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from helpers import git, write_record, write_run
+from helpers import git, write_candidate, write_record
 
 from context_rail.context.code_targets import (
     looks_like_code_target,
@@ -50,17 +50,17 @@ def _snapshot(commit: str) -> Snapshot:
 
 @pytest.fixture
 def code_store(git_approved_store: SimpleNamespace) -> SimpleNamespace:
-    """The approved store with a snapshot at HEAD, a run, a decision and a code note."""
+    """The approved store with a snapshot at HEAD, a candidate, a decision and a code note."""
     store, root = git_approved_store.store, git_approved_store.root
     head = git(root, "rev-parse", "HEAD").strip()
     save_snapshot(store, _snapshot(head))
-    write_run(
+    write_candidate(
         store,
-        "01JRUN000000000000000000C1",
-        item="feature-a",
+        "01JCAND00000000000000000C1",
+        "feature-a",
+        "1" * 40,
         at="2026-10-28T10:00:00Z",
         files_changed=["src/app.py"],
-        symbols_changed=["src/app.py:total"],
     )
     write_record(
         store,
@@ -98,7 +98,7 @@ def test_why_on_a_symbol_combines_both_graphs(code_store: SimpleNamespace) -> No
     assert value["callers"] == ["src/pay.py:pay"]
     assert value["callees"] == ["src/pay.py:pay"]
     assert value["items"] == ["feature-a"]
-    assert value["runs"] == ["01JRUN000000000000000000C1"]
+    assert value["candidates"] == ["01JCAND00000000000000000C1"]
     assert [row["reason"] for row in value["decisions"]] == ["totals never go below zero"]
     assert value["notes"] == ["src-app-py"]
     assert value["graph"] == f"fresh @{code_store.head[:7]}"
@@ -111,6 +111,8 @@ def test_show_on_a_path_matches_why(code_store: SimpleNamespace) -> None:
     assert shown["ok"] and why["ok"], (shown, why)
     assert shown["value"] == why["value"]
     assert shown["value"]["kind"] == "file"
+    assert shown["value"]["items"] == ["feature-a"]
+    assert shown["value"]["candidates"] == ["01JCAND00000000000000000C1"]
     assert shown["value"]["contains"] == [
         "src/app.py:Cart.run",
         "src/app.py:Order.run",
@@ -159,12 +161,12 @@ def test_without_a_snapshot_the_answer_says_so(
     git_approved_store: SimpleNamespace,
 ) -> None:
     store = git_approved_store.store
-    write_run(
+    write_candidate(
         store,
-        "01JRUN000000000000000000D1",
-        item="feature-a",
+        "01JCAND00000000000000000D1",
+        "feature-a",
+        "2" * 40,
         files_changed=["src/app.py"],
-        symbols_changed=["src/app.py:total"],
     )
 
     value = _why(store, "src/app.py")["value"]

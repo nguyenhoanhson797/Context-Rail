@@ -96,7 +96,7 @@ SEES_PARTS = (
     "acceptance",
     "blockers",
     "waits",
-    "runs",
+    "candidates",
     "records",
     "evidence",
     "diff",

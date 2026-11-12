@@ -1,4 +1,4 @@
-"""Strict Check, verdict, profile, report, run and usage payloads."""
+"""Strict Check, verdict, profile, and report payloads."""
 
 from __future__ import annotations
 
@@ -12,17 +12,12 @@ from context_rail.model.cto import (
     READ_ONLY_TOOL_IDS,
     REPORT_TARGET_CLASSES,
     WORKER_TOOL_IDS,
-    MalformedUsage,
-    aggregate_usage,
     load_builtin_profile,
     load_builtin_skills,
     parse_check,
     parse_profile,
     parse_report,
-    parse_run,
-    parse_usage,
     parse_verdict,
-    usage_value,
 )
 from context_rail.model.errors import ModelError
 
@@ -72,82 +67,6 @@ def report_data(**over: Any) -> dict[str, Any]:
         "impact": "low",
         "evidence": [],
         "fingerprint": "item|login-page|||",
-    }
-    base.update(over)
-    return base
-
-
-def attempt_data(**over: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
-        "number": 1,
-        "session_id": "sess-1",
-        "start": "2026-10-28T00:00:00Z",
-        "end": "2026-10-28T00:05:00Z",
-        "duration_s": 300,
-        "exit": 0,
-        "timed_out": False,
-        "usage": {
-            "input_tokens": 100,
-            "output_tokens": 50,
-            "cache_read_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "factory_credits": 0,
-        },
-        "runner_digest": "sha256:1",
-        "verdicts": [],
-        "status": "completed",
-    }
-    base.update(over)
-    return base
-
-
-def aggregate(counter: str = "input_tokens", value: int = 100) -> dict[str, Any]:
-    known = {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cache_read_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "factory_credits": 0,
-    }
-    known[counter] = value
-    unknown = dict.fromkeys(known, 0)
-    return {"known_sum": known, "unknown_attempts": unknown}
-
-
-def run_data(**over: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
-        "schema": 1,
-        "dispatch_id": "01J00000000000000000000001",
-        "role": "implementer",
-        "actor": "implementer",
-        "profile": "implementer",
-        "profile_version": 1,
-        "profile_etag": "sha256:profile",
-        "skills": [
-            {
-                "identity": "workspace/skills/test-first.md",
-                "version": 1,
-                "etag": "sha256:skill",
-            }
-        ],
-        "model": "custom:Deepseek-V4-flash-0",
-        "item": "login-page",
-        "session_id": "sess-1",
-        "started_at": "2026-10-28T00:00:00Z",
-        "ended_at": "2026-10-28T00:10:00Z",
-        "duration_s": 600,
-        "exit": 0,
-        "status": "completed",
-        "attempts": [attempt_data()],
-        "candidate_commit": "abc123",
-        "accepted": None,
-        "verdicts": [],
-        "files_changed": ["src/app.py"],
-        "commits_changed": ["abc123"],
-        "capture": {"complete": True, "reason": None, "omitted": 0},
-        "usage": aggregate(),
-        "runner_digest": "sha256:run",
-        "report": "01J00000000000000000000002",
     }
     base.update(over)
     return base
@@ -762,143 +681,3 @@ def test_report_required_keys_and_types_are_strict() -> None:
 
 
 # ── Usage ─────────────────────────────────────────────────────────────────
-
-
-def test_missing_usage_fields_normalize_to_unknown() -> None:
-    parsed = parse_usage({})
-    assert parsed["factory_credits"] == "unknown"
-    assert parsed["input_tokens"] == "unknown"
-    assert usage_value({}, "output_tokens") == "unknown"
-
-
-def test_reported_zero_is_kept() -> None:
-    parsed = parse_usage({"factory_credits": 0, "input_tokens": 9487})
-    assert parsed["factory_credits"] == 0
-    assert parsed["input_tokens"] == 9487
-    assert parsed["cache_creation_input_tokens"] == "unknown"
-
-
-def test_reported_fractional_credits_are_kept() -> None:
-    assert parse_usage({"factory_credits": 12.5})["factory_credits"] == 12.5
-
-
-@pytest.mark.parametrize(
-    "raw",
-    [
-        pytest.param({"input_tokens": True}, id="bool"),
-        pytest.param({"input_tokens": None}, id="null"),
-        pytest.param({"input_tokens": -1}, id="negative"),
-        pytest.param({"factory_credits": "1.5"}, id="numeric-string"),
-        pytest.param({"output_tokens": float("inf")}, id="inf"),
-        pytest.param({"output_tokens": float("nan")}, id="nan"),
-        pytest.param({"output_tokens": [1]}, id="list"),
-    ],
-)
-def test_malformed_usage_raises(raw: dict[str, Any]) -> None:
-    with pytest.raises(MalformedUsage) as excinfo:
-        parse_usage(raw)
-    assert excinfo.value.code == "VALIDATION_FAILED"
-    assert excinfo.value.key in raw
-
-
-def test_usage_rejects_unknown_counters_and_non_mappings() -> None:
-    with pytest.raises(MalformedUsage):
-        parse_usage({"input_tokens": 1, "total_cost": 2})
-    with pytest.raises(MalformedUsage):
-        parse_usage(["input_tokens"])
-
-
-def test_aggregate_usage_never_counts_unknown_as_zero() -> None:
-    attempts = [
-        {"usage": {"input_tokens": 10, "output_tokens": "unknown", "factory_credits": 0}},
-        {"usage": {"input_tokens": "unknown", "output_tokens": 5}},
-    ]
-    totals = aggregate_usage(attempts)
-    assert totals["known_sum"]["input_tokens"] == 10
-    assert totals["unknown_attempts"]["input_tokens"] == 1
-    assert totals["known_sum"]["output_tokens"] == 5
-    assert totals["unknown_attempts"]["output_tokens"] == 1
-    assert totals["known_sum"]["factory_credits"] == 0
-    assert totals["unknown_attempts"]["factory_credits"] == 1
-
-
-def test_aggregate_usage_sums_every_known_counter() -> None:
-    attempts = [
-        {"usage": {"input_tokens": 1, "output_tokens": 2, "cache_read_input_tokens": 3, "cache_creation_input_tokens": 4, "factory_credits": 5}},
-        {"usage": {"input_tokens": 10, "output_tokens": 20, "cache_read_input_tokens": 30, "cache_creation_input_tokens": 40, "factory_credits": 0}},
-    ]
-    totals = aggregate_usage(attempts)
-    assert totals["known_sum"]["input_tokens"] == 11
-    assert totals["known_sum"]["factory_credits"] == 5
-    assert all(count == 0 for count in totals["unknown_attempts"].values())
-
-
-# ── Runs ──────────────────────────────────────────────────────────────────
-
-
-def test_valid_run_parses_with_attempt_count() -> None:
-    run = parse_run(run_data())
-    assert run.dispatch_id == "01J00000000000000000000001"
-    assert run.attempts == (attempt_data(),)
-    assert run.attempt_count == 1
-    assert run.usage["known_sum"]["input_tokens"] == 100
-
-
-def test_run_accepts_the_aggregate_usage_shape() -> None:
-    run = parse_run(run_data(usage=aggregate("factory_credits", 0)))
-    assert run.usage["known_sum"]["factory_credits"] == 0
-    assert run.usage["unknown_attempts"]["factory_credits"] == 0
-
-
-def test_run_normalizes_a_raw_usage_block() -> None:
-    run = parse_run(run_data(usage={"factory_credits": 0, "input_tokens": 7}))
-    assert run.usage["known_sum"]["factory_credits"] == 0
-    assert run.usage["known_sum"]["input_tokens"] == 7
-    assert run.usage["unknown_attempts"]["output_tokens"] == 1
-
-
-def test_run_usage_missing_fields_become_unknown() -> None:
-    run = parse_run(run_data(usage={}))
-    assert run.usage["known_sum"]["factory_credits"] == 0
-    assert run.usage["unknown_attempts"]["factory_credits"] == 1
-
-
-def test_run_rejects_malformed_attempt_usage() -> None:
-    with pytest.raises(ModelError) as excinfo:
-        parse_run(run_data(attempts=[attempt_data(usage={"input_tokens": -3})]))
-    assert excinfo.value.code == "VALIDATION_FAILED"
-    with pytest.raises(MalformedUsage):
-        parse_run(run_data(attempts=[attempt_data(usage={"output_tokens": True})]))
-
-
-def test_attempt_usage_missing_fields_become_unknown() -> None:
-    run = parse_run(run_data(attempts=[attempt_data(usage={})]))
-    assert run.attempts[0]["usage"]["input_tokens"] == "unknown"
-
-
-def test_run_attempt_keys_are_strict() -> None:
-    with pytest.raises(ModelError):
-        parse_run(run_data(attempts=[attempt_data(colour="red")]))
-    bad = attempt_data()
-    del bad["number"]
-    with pytest.raises(ModelError):
-        parse_run(run_data(attempts=[bad]))
-    with pytest.raises(ModelError):
-        parse_run(run_data(attempts="one"))
-
-
-def test_run_unknown_key_and_schema_are_refused() -> None:
-    with pytest.raises(ModelError) as excinfo:
-        parse_run(run_data(schema=2))
-    assert excinfo.value.code == "SCHEMA_UNSUPPORTED"
-    with pytest.raises(ModelError):
-        parse_run(run_data(colour="red"))
-
-
-def test_run_role_and_times_are_strict() -> None:
-    with pytest.raises(ModelError):
-        parse_run(run_data(role="manager"))
-    with pytest.raises(ModelError):
-        parse_run(run_data(duration_s=-1))
-    with pytest.raises(ModelError):
-        parse_run(run_data(started_at=""))

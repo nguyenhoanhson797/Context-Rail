@@ -22,11 +22,10 @@ from typing import Any
 
 from context_rail.core.util import canonical_iso, sha256_hex
 from context_rail.model.candidate import CANDIDATE_KIND, parse_candidate
-from context_rail.model.cto import parse_check, parse_report, parse_run, parse_verdict
+from context_rail.model.cto import parse_check, parse_report, parse_verdict
 from context_rail.model.errors import ModelError
 from context_rail.model.execution import EXECUTION_KIND, parse_execution
 from context_rail.model.fields import (
-    boolean,
     integer,
     mapping,
     no_unknown,
@@ -58,7 +57,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 9
+INDEX_SCHEMA = 10
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -159,63 +158,6 @@ _SCHEMA = (
     )
     """,
     'CREATE INDEX verdicts_check_at ON verdicts("check", at DESC)',
-    """
-    CREATE TABLE runs(
-        path TEXT PRIMARY KEY,
-        record_id TEXT NOT NULL,
-        dispatch_id TEXT NOT NULL,
-        role TEXT NOT NULL,
-        item TEXT NOT NULL,
-        actor TEXT NOT NULL,
-        profile TEXT NOT NULL,
-        model TEXT NOT NULL,
-        "start" TEXT NOT NULL,
-        "end" TEXT NOT NULL,
-        duration_s REAL NOT NULL,
-        status TEXT NOT NULL,
-        attempt_count INTEGER NOT NULL,
-        profile_version INTEGER,
-        profile_etag TEXT,
-        candidate_commit TEXT,
-        accepted INTEGER,
-        data_json TEXT NOT NULL
-    )
-    """,
-    "CREATE INDEX runs_item_end ON runs(item, \"end\" DESC)",
-    "CREATE INDEX runs_dispatch_role ON runs(dispatch_id, role)",
-    "CREATE INDEX runs_profile_version ON runs(profile, profile_version)",
-    """
-    CREATE TABLE run_skills(
-        run_id TEXT NOT NULL,
-        identity TEXT NOT NULL,
-        version INTEGER NOT NULL,
-        etag TEXT,
-        PRIMARY KEY(run_id, identity)
-    )
-    """,
-    "CREATE INDEX run_skills_identity ON run_skills(identity, version, run_id)",
-    """
-    CREATE TABLE run_evaluations(
-        path TEXT PRIMARY KEY,
-        record_id TEXT NOT NULL,
-        run_id TEXT NOT NULL,
-        candidate_commit TEXT,
-        accepted INTEGER,
-        at TEXT,
-        data_json TEXT NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE run_attempts(
-        run_id TEXT NOT NULL,
-        number INTEGER NOT NULL,
-        duration_s REAL,
-        exit INTEGER,
-        timed_out INTEGER NOT NULL,
-        usage_json TEXT NOT NULL,
-        PRIMARY KEY(run_id, number)
-    )
-    """,
     """
     CREATE TABLE code_touch(
         path TEXT NOT NULL,
@@ -336,8 +278,6 @@ _SCHEMA = (
 _PATH_TABLES = (
     "checks",
     "verdicts",
-    "runs",
-    "run_evaluations",
     "reports",
     "approvals",
     "reviews",
@@ -369,37 +309,6 @@ _PROJECTION_COLUMNS = {
         "runner_digest",
         "data_json",
     ),
-    "runs": (
-        "path",
-        "record_id",
-        "dispatch_id",
-        "role",
-        "item",
-        "actor",
-        "profile",
-        "model",
-        '"start"',
-        '"end"',
-        "duration_s",
-        "status",
-        "attempt_count",
-        "profile_version",
-        "profile_etag",
-        "candidate_commit",
-        "accepted",
-        "data_json",
-    ),
-    "run_skills": ("run_id", "identity", "version", "etag"),
-    "run_evaluations": (
-        "path",
-        "record_id",
-        "run_id",
-        "candidate_commit",
-        "accepted",
-        "at",
-        "data_json",
-    ),
-    "run_attempts": ("run_id", "number", "duration_s", "exit", "timed_out", "usage_json"),
     "code_touch": ("path", "symbol", "item", "record", "at"),
     "reports": (
         "path",
@@ -477,17 +386,13 @@ _PROJECTION_COLUMNS = {
     ),
 }
 
-_RUN_KIND = "run.completed"
 _VERDICT_KIND = "check.verdict"
-_EVALUATION_KIND = "run.evaluated"
 _REPORT_KIND = "report.filed"
 _APPROVAL_KIND = "approval.recorded"
 _REVIEW_KIND = "review.verdict"
 _PROJECTED_KINDS = frozenset(
     {
-        _RUN_KIND,
         _VERDICT_KIND,
-        _EVALUATION_KIND,
         _REPORT_KIND,
         _APPROVAL_KIND,
         _REVIEW_KIND,
@@ -498,7 +403,6 @@ _PROJECTED_KINDS = frozenset(
         SEAT_REVOKED,
     }
 )
-_EVALUATION_KEYS = ("schema", "run", "candidate_commit", "accepted", "check_verdicts", "review", "at")
 _TRIAGE_KEYS = ("schema", "reports", "cluster", "weight", "action", "outputs")
 _TRIAGE_ACTIONS = ("deferred", "acknowledged", "fix", "proposal", "export")
 _APPROVAL_KEYS = (
@@ -721,11 +625,9 @@ class Index:
     ) -> None:
         for path in removed:
             row = conn.execute("SELECT rowid FROM docs WHERE path = ?", (path,)).fetchone()
-            refresh: set[str] = set()
             if row is not None:
-                refresh = self._clear(conn, path, row[0])
+                self._clear(conn, path, row[0])
             conn.execute("DELETE FROM docs WHERE path = ?", (path,))
-            self._refresh_runs(conn, refresh)
         targets = [*added, *changed]
         for start in range(0, len(targets), READ_BATCH):
             chunk = targets[start : start + READ_BATCH]
@@ -761,11 +663,10 @@ class Index:
         workflow = declared.workflow if declared is not None else "default"
         record_at = _record_at(doc)
         projected: list[tuple[str, tuple[Any, ...]]] = []
-        refresh: set[str] = set()
         problems = list(doc.problems)
         if not broken:
             try:
-                projected, refresh = _projection(doc)
+                projected = _projection(doc)
             except ModelError:
                 problems.append(INVALID_PAYLOAD)
         values = (
@@ -796,9 +697,8 @@ class Index:
         if rowid is None:
             rowid = cursor.lastrowid
         else:
-            refresh |= self._clear(conn, doc.path, rowid)
+            self._clear(conn, doc.path, rowid)
         if broken:
-            self._refresh_runs(conn, refresh)
             return
         if doc.fields:
             conn.executemany(
@@ -825,7 +725,6 @@ class Index:
             (rowid, doc.slug, doc.title or "", doc.body[:FTS_BODY_CAP], doc.path),
         )
         self._write_projection(conn, projected)
-        self._refresh_runs(conn, refresh)
 
     def _write_projection(
         self, conn: sqlite3.Connection, rows: list[tuple[str, tuple[Any, ...]]]
@@ -839,54 +738,13 @@ class Index:
             )
 
     @staticmethod
-    def _refresh_runs(conn: sqlite3.Connection, run_ids: set[str]) -> None:
-        """Bind each run to its newest candidate evaluation, else its own payload."""
-        for run_id in sorted(run_ids):
-            row = conn.execute(
-                "SELECT data_json FROM runs WHERE record_id = ?", (run_id,)
-            ).fetchone()
-            if row is None:
-                continue
-            latest = conn.execute(
-                "SELECT candidate_commit, accepted FROM run_evaluations "
-                "WHERE run_id = ? ORDER BY at DESC, record_id DESC LIMIT 1",
-                (run_id,),
-            ).fetchone()
-            if latest is None:
-                payload = json.loads(row[0])
-                candidate = payload.get("candidate_commit")
-                accepted = payload.get("accepted")
-                if accepted is not None:
-                    accepted = 1 if accepted else 0
-            else:
-                candidate, accepted = latest
-            conn.execute(
-                "UPDATE runs SET candidate_commit = ?, accepted = ? WHERE record_id = ?",
-                (candidate, accepted, run_id),
-            )
-
-    @staticmethod
-    def _clear(conn: sqlite3.Connection, path: str, rowid: int) -> set[str]:
-        """Drop one document's rows; return run ids whose derived state moved."""
-        refresh: set[str] = set()
-        run = conn.execute(
-            "SELECT record_id FROM runs WHERE path = ?", (path,)
-        ).fetchone()
-        if run is not None:
-            refresh.add(run[0])
-            conn.execute("DELETE FROM run_skills WHERE run_id = ?", (run[0],))
-            conn.execute("DELETE FROM run_attempts WHERE run_id = ?", (run[0],))
-            conn.execute("DELETE FROM code_touch WHERE record = ?", (run[0],))
+    def _clear(conn: sqlite3.Connection, path: str, rowid: int) -> None:
+        """Drop every row one document contributed."""
         candidate = conn.execute(
             "SELECT record_id FROM candidates WHERE path = ?", (path,)
         ).fetchone()
         if candidate is not None:
             conn.execute("DELETE FROM code_touch WHERE record = ?", (candidate[0],))
-        evaluation = conn.execute(
-            "SELECT run_id FROM run_evaluations WHERE path = ?", (path,)
-        ).fetchone()
-        if evaluation is not None:
-            refresh.add(evaluation[0])
         report = conn.execute(
             "SELECT record_id FROM reports WHERE path = ?", (path,)
         ).fetchone()
@@ -901,7 +759,6 @@ class Index:
         conn.execute("DELETE FROM relations WHERE src_path = ?", (path,))
         conn.execute("DELETE FROM tags WHERE path = ?", (path,))
         conn.execute("DELETE FROM docs_fts WHERE rowid = ?", (rowid,))
-        return refresh
 
 
 def pack_hash(pack: Pack) -> str:
@@ -919,42 +776,38 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def _projection(doc: Doc) -> tuple[list[tuple[str, tuple[Any, ...]]], set[str]]:
+def _projection(doc: Doc) -> list[tuple[str, tuple[Any, ...]]]:
     """The typed rows one document contributes, or an empty list for no shape."""
     if doc.primitive == "check":
-        return [("checks", _check_row(doc))], set()
+        return [("checks", _check_row(doc))]
     if doc.primitive != "record":
-        return [], set()
+        return []
     kind = doc.fields.get("kind")
     if kind is None:
-        return [], set()
+        return []
     if not isinstance(kind, str):
         raise ModelError("VALIDATION_FAILED", "record kind must be text")
     if kind not in _PROJECTED_KINDS:
-        return [], set()
+        return []
     data = doc.fields.get("data")
     if not isinstance(data, dict):
         raise ModelError("VALIDATION_FAILED", "record data must be a mapping")
     record_id = _record_id(doc)
     if kind == _VERDICT_KIND:
-        return _verdict_rows(doc, record_id, data), set()
-    if kind == _RUN_KIND:
-        return _run_rows(doc, record_id, data)
-    if kind == _EVALUATION_KIND:
-        return _evaluation_rows(doc, record_id, data)
+        return _verdict_rows(doc, record_id, data)
     if kind == _REPORT_KIND:
-        return _report_rows(doc, record_id, data), set()
+        return _report_rows(doc, record_id, data)
     if kind == TRIAGE_KIND:
-        return _triage_rows(record_id, data), set()
+        return _triage_rows(record_id, data)
     if kind == _APPROVAL_KIND:
-        return _approval_rows(doc, record_id, data), set()
+        return _approval_rows(doc, record_id, data)
     if kind == EXECUTION_KIND:
-        return _execution_rows(doc, record_id, data), set()
+        return _execution_rows(doc, record_id, data)
     if kind == CANDIDATE_KIND:
-        return _candidate_rows(doc, record_id, data), set()
+        return _candidate_rows(doc, record_id, data)
     if kind in SEAT_KINDS:
-        return _seat_rows(doc, record_id, kind, data), set()
-    return _review_rows(doc, record_id, data), set()
+        return _seat_rows(doc, record_id, kind, data)
+    return _review_rows(doc, record_id, data)
 
 
 def _check_row(doc: Doc) -> tuple[Any, ...]:
@@ -1000,92 +853,6 @@ def _verdict_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[
             ),
         )
     ]
-
-
-def _run_rows(
-    doc: Doc, record_id: str, data: dict[str, Any]
-) -> tuple[list[tuple[str, tuple[Any, ...]]], set[str]]:
-    run = parse_run(data)
-    rows: list[tuple[str, tuple[Any, ...]]] = [
-        (
-            "runs",
-            (
-                doc.path,
-                record_id,
-                run.dispatch_id,
-                run.role,
-                run.item,
-                run.actor,
-                run.profile,
-                run.model,
-                run.started_at,
-                run.ended_at,
-                run.duration_s,
-                run.status,
-                run.attempt_count,
-                run.data.get("profile_version", 1),
-                run.data.get("profile_etag"),
-                None,
-                None,
-                _json(data),
-            ),
-        )
-    ]
-    for skill in run.data.get("skills", []):
-        rows.append(
-            (
-                "run_skills",
-                (record_id, skill["identity"], skill["version"], skill["etag"]),
-            )
-        )
-    for attempt in run.attempts:
-        rows.append(
-            (
-                "run_attempts",
-                (
-                    record_id,
-                    attempt["number"],
-                    attempt["duration_s"],
-                    attempt["exit"],
-                    1 if attempt["timed_out"] else 0,
-                    _json(attempt["usage"]),
-                ),
-            )
-        )
-    touched = [(path, None) for path in run.data.get("files_changed", [])]
-    touched += [
-        (symbol.partition(":")[0], symbol if ":" in symbol else None)
-        for symbol in run.data.get("symbols_changed", [])
-    ]
-    for path, symbol in touched:
-        rows.append(
-            ("code_touch", (path, symbol, run.item, record_id, run.ended_at))
-        )
-    return rows, {record_id}
-
-
-def _evaluation_rows(
-    doc: Doc, record_id: str, data: dict[str, Any]
-) -> tuple[list[tuple[str, tuple[Any, ...]]], set[str]]:
-    payload = _strict(data, _EVALUATION_KEYS, "run evaluation", ("run", "accepted", "at"))
-    run_id = string(payload["run"], "run evaluation.run")
-    accepted = payload["accepted"]
-    if accepted is not None:
-        accepted = boolean(accepted, "run evaluation.accepted")
-    candidate = _optional_text(payload.get("candidate_commit"), "run evaluation.candidate_commit")
-    string_list(payload.get("check_verdicts", []), "run evaluation.check_verdicts", allow_empty=True)
-    _optional_text(payload.get("review"), "run evaluation.review")
-    at = _timestamp(payload["at"], "run evaluation.at")
-    row = (
-        doc.path,
-        record_id,
-        run_id,
-        candidate,
-        None if accepted is None else int(accepted),
-        at,
-        _json(data),
-    )
-    return [("run_evaluations", row)], {run_id}
 
 
 def _report_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[str, tuple[Any, ...]]]:

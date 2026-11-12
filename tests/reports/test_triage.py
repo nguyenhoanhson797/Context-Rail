@@ -16,7 +16,6 @@ from helpers import (
     write_candidate,
     write_record,
     write_review_verdict,
-    write_run,
 )
 
 TRIAGE_VALUE_KEYS = {"triaged", "deferred", "fix_items", "proposals", "engine_issues"}
@@ -27,7 +26,7 @@ def _triage(store: Path, key: str | None = None) -> dict:
     return invoke("triage", args, store=store, actor="cto")
 
 
-def _file_report(store: Path, item: str, run: str, path: Path, **overrides: Any) -> str:
+def _file_report(store: Path, item: str, path: Path, **overrides: Any) -> str:
     payload = {
         "schema": 1,
         "target_class": "engine",
@@ -43,7 +42,7 @@ def _file_report(store: Path, item: str, run: str, path: Path, **overrides: Any)
     path.write_text(json.dumps(payload), encoding="utf-8", newline="\n")
     result = invoke(
         "report",
-        {"item": item, "run": run, "report_file": str(path)},
+        {"item": item, "report_file": str(path)},
         store=store,
         actor="cto",
     )
@@ -299,13 +298,10 @@ def test_an_engine_export_is_named_after_its_cluster(
     store_factory: Any, tmp_path: Path
 ) -> None:
     store = store_factory(docs=2)
-    runs = ("01JRUN000000000000000701", "01JRUN000000000000000702")
-    for number, run in enumerate(runs):
-        write_run(store, run, item="t0", at="2026-10-28T12:00:00Z")
+    for number in range(2):
         _file_report(
             store,
             "t0",
-            run,
             tmp_path / f"engine-{number}.json",
             evidence=[f"evidence-{number}"],
         )

@@ -43,7 +43,7 @@ from context_rail.store.git_index import (
     read_index,
     selected_stats,
 )
-from context_rail.store.location import local_dir, worktree_git_dir
+from context_rail.store.location import worktree_git_dir
 from context_rail.store.lock import store_lock
 from context_rail.store.placement import (
     PlacementContext,

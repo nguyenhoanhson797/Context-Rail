@@ -74,7 +74,6 @@ SEVERITIES: dict[str, str] = {
     "review_invalid": "error",
     "report_untriaged": "warning",
     "budget_exceeded": "warning",
-    "report_missing": "error",
     "profile_invalid": "error",
     "adapter_modified": "warning",
     "gate_bypassed": "error",
@@ -121,7 +120,6 @@ _APPROVE = (
 )
 _RELOCATE = "rail change repath"
 _TRIAGE = "rail loop triage"
-_REPORT = "rail loop report <item> --run <run> --report-file <file>"
 _CHARTER = "charter.md"
 _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
 _FRESHNESS_CODES = {"stale": "check_stale", "unknown": "check_unknown"}
@@ -1089,35 +1087,8 @@ def _budget_issues(ix: Index, policy: Any) -> list[dict[str, Any]]:
 
 
 def _report_issues(ix: Index) -> list[dict[str, Any]]:
-    """One issue per run with no report, and one per nonempty report triage never saw."""
+    """One issue per nonempty report triage never saw."""
     issues: list[dict[str, Any]] = []
-    report_ids = {row[0] for row in ix.conn.execute("SELECT record_id FROM reports")}
-    reported = {
-        row[0]
-        for row in ix.conn.execute(
-            "SELECT DISTINCT run_id FROM reports WHERE run_id IS NOT NULL"
-        )
-    }
-    for path, record_id, data_json in ix.conn.execute(
-        "SELECT path, record_id, data_json FROM runs ORDER BY path"
-    ):
-        if record_id in reported:
-            continue
-        try:
-            data = json.loads(data_json)
-        except ValueError:
-            data = {}
-        named = data.get("report") if isinstance(data, dict) else None
-        if isinstance(named, str) and named in report_ids:
-            continue
-        issues.append(
-            _issue(
-                "report_missing",
-                path,
-                f"run {record_id!r} has no report",
-                fix=_REPORT,
-            )
-        )
     for path, record_id in ix.conn.execute(
         "SELECT p.path, p.record_id FROM reports p WHERE p.\"nothing\" = 0 AND NOT EXISTS "
         "(SELECT 1 FROM triaged_reports t WHERE t.report_id = p.record_id) "

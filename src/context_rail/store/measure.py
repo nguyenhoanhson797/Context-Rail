@@ -1,4 +1,4 @@
-﻿"""Store adapters that turn indexed facts into pure measurement samples."""
+"""Store adapters that turn indexed facts into pure measurement samples."""
 
 from __future__ import annotations
 
@@ -7,12 +7,13 @@ import math
 from collections.abc import Sequence
 from pathlib import PurePosixPath
 
-from context_rail.kernel.measurement import ReportSample, RunSample, UsageSample
-from context_rail.model.cto import USAGE_KEYS, MalformedUsage, usage_value
+from context_rail.kernel.measurement import AttemptSample, ReportSample
+from context_rail.model.candidate import UNKNOWN_USAGE, parse_usage_map
+from context_rail.model.errors import ModelError
 from context_rail.store.index import Index
 
 
-def runs_for_versions(
+def candidates_for_versions(
     ix: Index,
     *,
     kind: str,
@@ -20,29 +21,34 @@ def runs_for_versions(
     versions: Sequence[int],
     since: str | None,
     until: str | None,
-) -> tuple[list[RunSample], dict[str, int]]:
-    """Completed implementer runs attributed to one version set, with exclusions."""
+) -> tuple[list[AttemptSample], dict[str, int]]:
+    """Recorded candidates attributed to one version set, with exclusions.
+
+    A candidate is attributed by the profile or skill pins its own record
+    carries, and its outcome is the newest review verdict on its commit, else a
+    failed Check on that commit, else undecided.
+    """
     ix.sync()
     wanted = set(versions)
     excluded = {"unattributed": 0, "malformed": 0, "out_of_window": 0, "in_flight": 0}
-    samples: list[RunSample] = []
+    samples: list[AttemptSample] = []
+    verdicts = _latest_verdicts(ix)
+    failed = _failed_commits(ix)
     rows = ix.conn.execute(
-        "SELECT record_id, role, model, profile, profile_version, item, "
-        "attempt_count, accepted, duration_s, data_json, status, start, end "
-        "FROM runs ORDER BY record_id"
+        "SELECT record_id, item, commit_sha, at, data_json FROM candidates "
+        "ORDER BY record_id"
     ).fetchall()
-    for row in rows:
-        if row[0] is None:
-            continue
-        stamp = row[12] or row[11]
-        if not _in_window(stamp, since, until):
+    for record_id, item, commit, at, data_json in rows:
+        if not _in_window(at, since, until):
             excluded["out_of_window"] += 1
             continue
-        data = _json_object(row[9])
-        if not _matches(row, data, kind, target, wanted):
+        data = _json_object(data_json)
+        if not _matches(data, kind, target, wanted):
             excluded["unattributed"] += 1
             continue
-        sample, malformed = _sample(row, data)
+        sample, malformed = _sample(
+            record_id, item, data, _outcome(verdicts.get((item, commit)), commit in failed)
+        )
         if malformed:
             excluded["malformed"] += 1
         samples.append(sample)
@@ -76,21 +82,46 @@ def reports_after_boundary(
     return found[:limit], max(0, len(found) - limit)
 
 
-def _matches(
-    row: tuple, data: dict, kind: str, target: str, versions: set[int]
-) -> bool:
+def _latest_verdicts(ix: Index) -> dict[tuple[str, str], str]:
+    latest: dict[tuple[str, str], str] = {}
+    rows = ix.conn.execute(
+        "SELECT r.item, r.candidate_commit, r.verdict FROM reviews r "
+        "JOIN docs d ON d.path = r.path WHERE r.candidate_commit IS NOT NULL "
+        "ORDER BY d.record_at, r.record_id"
+    )
+    for item, commit, verdict in rows:
+        latest[(item, commit)] = verdict
+    return latest
+
+
+def _failed_commits(ix: Index) -> set[str]:
+    return {
+        commit
+        for (commit,) in ix.conn.execute(
+            "SELECT DISTINCT candidate_commit FROM verdicts "
+            "WHERE passed = 0 AND candidate_commit IS NOT NULL"
+        )
+    }
+
+
+def _outcome(verdict: str | None, check_failed: bool) -> bool | None:
+    if verdict == "approve":
+        return True
+    if verdict == "reject":
+        return False
+    return False if check_failed else None
+
+
+def _matches(data: dict, kind: str, target: str, versions: set[int]) -> bool:
     if kind == "profile":
-        profile = row[3] or data.get("profile")
-        version = row[4] if row[4] is not None else data.get("profile_version")
-        return _same_name(profile, target) and version in versions
+        return _same_name(data.get("profile"), target) and data.get("profile_version") in versions
     pins = data.get("skills")
     if not isinstance(pins, list):
         return False
     for pin in pins:
         if not isinstance(pin, dict):
             continue
-        identity = pin.get("identity")
-        if _same_name(identity, target) and pin.get("version") in versions:
+        if _same_name(pin.get("identity"), target) and pin.get("version") in versions:
             return True
     return False
 
@@ -103,21 +134,12 @@ def _same_name(value: object, target: str) -> bool:
     return PurePosixPath(value).stem == PurePosixPath(target).stem
 
 
-def _sample(row: tuple, data: dict) -> tuple[RunSample, bool]:
+def _sample(
+    record_id: str, item: str, data: dict, accepted: bool | None
+) -> tuple[AttemptSample, bool]:
     malformed = False
-    raw_attempts = data.get("attempt_count")
-    if raw_attempts is not None:
-        if isinstance(raw_attempts, bool) or not isinstance(raw_attempts, int) or raw_attempts < 0:
-            attempts = None
-            malformed = True
-        else:
-            attempts = raw_attempts
-    elif isinstance(row[6], int) and not isinstance(row[6], bool):
-        attempts = row[6]
-    else:
-        attempts = None
-
     raw_duration = data.get("duration_s")
+    duration: float | None = None
     if raw_duration is not None:
         if (
             isinstance(raw_duration, bool)
@@ -125,29 +147,18 @@ def _sample(row: tuple, data: dict) -> tuple[RunSample, bool]:
             or not math.isfinite(raw_duration)
             or raw_duration < 0
         ):
-            duration = None
             malformed = True
         else:
             duration = float(raw_duration)
-    elif (
-        isinstance(row[8], (int, float))
-        and not isinstance(row[8], bool)
-        and math.isfinite(row[8])
-        and row[8] >= 0
-    ):
-        duration = float(row[8])
-    else:
-        duration = None
 
-    usage_raw = data.get("usage")
     usage: dict[str, int | float | None] = {}
-    for key in USAGE_KEYS:
-        try:
-            value = usage_value(usage_raw, key)
-        except MalformedUsage:
-            value = "unknown"
-            malformed = True
-        usage[key] = None if value == "unknown" else value
+    try:
+        parsed = parse_usage_map(data.get("usage", {}), "candidate.usage")
+    except ModelError:
+        parsed = {}
+        malformed = True
+    for key, value in parsed.items():
+        usage[key] = None if value == UNKNOWN_USAGE else value
 
     pins = data.get("skills")
     skills: tuple[tuple[str, int], ...] = ()
@@ -159,27 +170,19 @@ def _sample(row: tuple, data: dict) -> tuple[RunSample, bool]:
             and isinstance(pin.get("identity"), str)
             and isinstance(pin.get("version"), int)
         )
-
-    sample = RunSample(
-        run_id=row[0],
-        role=row[1] or "implementer",
-        model=row[2] or "",
-        profile=row[3] or "",
-        profile_version=row[4] if isinstance(row[4], int) else 1,
+    version = data.get("profile_version")
+    attempt = data.get("attempt")
+    sample = AttemptSample(
+        attempt_id=record_id,
+        role=data.get("seat_role") if isinstance(data.get("seat_role"), str) else None,
+        model=data.get("model") if isinstance(data.get("model"), str) else None,
+        accepted=accepted,
+        usage=usage,
+        profile_version=version if isinstance(version, int) and not isinstance(version, bool) else None,
         skills=skills,
-        item=row[5],
-        attempt_count=attempts,
-        accepted=None if row[7] is None else bool(row[7]),
+        attempt=attempt if isinstance(attempt, int) and not isinstance(attempt, bool) else None,
         duration_s=duration,
-        usage=UsageSample(
-            usage["input_tokens"],
-            usage["output_tokens"],
-            usage["cache_read_input_tokens"],
-            usage["cache_creation_input_tokens"],
-            usage["factory_credits"],
-        ),
-        completed=True,
-        in_flight=False,
+        item=item,
     )
     return sample, malformed
 
@@ -202,4 +205,3 @@ def _json_object(text: object) -> dict:
     except ValueError:
         return {}
     return value if isinstance(value, dict) else {}
-

@@ -187,7 +187,7 @@ ALIAS_DEFAULTS: dict[str, dict[str, object]] = {
 
 #: One sentence for a group head that has no single canonical tool.
 GROUP_SUMMARIES: dict[str, str] = {
-    "read": "Inspect the picture, items, activity and runs.",
+    "read": "Inspect the picture, items, activity and candidates.",
     "change": "Add, update, link, move, rename and repath documents.",
     "check": "List, declare or run Checks.",
     "loop": "Record candidates and reports, and triage work.",

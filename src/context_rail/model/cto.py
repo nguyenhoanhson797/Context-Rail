@@ -1,15 +1,13 @@
-"""Strict payloads for Checks, verdicts, profiles, reports, runs and usage.
+"""Strict payloads for Checks, verdicts, profiles, and reports.
 
-A payload the engine cannot read exactly is refused. Usage is the one place
-where absence is not an error: a counter the runner did not report is the
-literal ``"unknown"``, never a zero.
+A payload the engine cannot read exactly is refused.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from importlib import resources
-from typing import Any, Sequence
+from typing import Any
 
 from context_rail.core.util import load_yaml
 from context_rail.model.candidate import parse_budget_caps
@@ -18,7 +16,6 @@ from context_rail.model.fields import (
     boolean,
     finite_number,
     integer,
-    is_number,
     mapping,
     no_unknown,
     refuse,
@@ -33,7 +30,6 @@ from context_rail.core.tool_names import ALIASES
 from context_rail.model.pack import canonical_pack_name
 
 __all__ = [
-    "ATTEMPT_KEYS",
     "CHECK_KEYS",
     "CHECK_MODES",
     "CHECK_SCHEMA",
@@ -55,24 +51,17 @@ __all__ = [
     "REPORT_MAX_EVIDENCE",
     "REPORT_SCHEMA",
     "REPORT_TARGET_CLASSES",
-    "RUN_KEYS",
-    "RUN_SCHEMA",
     "SKILL_SCHEMA",
-    "SYMBOLS_CHANGED_MAX",
     "TOOL_IDS",
     "UNKNOWN",
-    "USAGE_KEYS",
     "VERDICT_KEYS",
     "VERDICT_SCHEMA",
     "WORKER_METHODS",
     "WORKER_TOOL_IDS",
     "Check",
-    "MalformedUsage",
     "Profile",
     "Report",
-    "Run",
     "Verdict",
-    "aggregate_usage",
     "load_builtin_profile",
     "load_builtin_skills",
     "load_pack_profile",
@@ -80,15 +69,12 @@ __all__ = [
     "parse_check",
     "parse_profile",
     "parse_report",
-    "parse_run",
-    "parse_usage",
     "parse_verdict",
-    "usage_value",
 ]
 
 UNKNOWN = "unknown"
 
-CHECK_SCHEMA = VERDICT_SCHEMA = PROFILE_SCHEMA = REPORT_SCHEMA = RUN_SCHEMA = 1
+CHECK_SCHEMA = VERDICT_SCHEMA = PROFILE_SCHEMA = REPORT_SCHEMA = 1
 SKILL_SCHEMA = 1
 
 CHECK_MODES = ("cmd", "exists", "evidence", "review", "human")
@@ -139,14 +125,6 @@ VERDICT_KEYS = (
     "evidence",
     "reason",
     "candidate_commit",
-)
-
-USAGE_KEYS = (
-    "input_tokens",
-    "output_tokens",
-    "cache_read_input_tokens",
-    "cache_creation_input_tokens",
-    "factory_credits",
 )
 
 PROFILE_RECIPES = ("cto", "implementer", "reviewer")
@@ -250,83 +228,7 @@ REPORT_KEYS = (
 )
 _NARRATIVE_KEYS = ("what_happened", "expected", "observed")
 
-ATTEMPT_KEYS = (
-    "number",
-    "session_id",
-    "start",
-    "end",
-    "duration_s",
-    "exit",
-    "timed_out",
-    "usage",
-    "runner_digest",
-    "argv_digest",
-    "verdicts",
-    "status",
-)
-RUN_KEYS = (
-    "schema",
-    "dispatch_id",
-    "role",
-    "actor",
-    "profile",
-    "profile_version",
-    "profile_etag",
-    "skills",
-    "model",
-    "item",
-    "session_id",
-    "started_at",
-    "ended_at",
-    "duration_s",
-    "exit",
-    "status",
-    "attempts",
-    "candidate_commit",
-    "accepted",
-    "verdicts",
-    "files_changed",
-    "commits_changed",
-    "capture",
-    "usage",
-    "runner",
-    "runner_digest",
-    "argv_digest",
-    "intent",
-    "report",
-    "code_area",
-    "symbols_changed",
-    "seat",
-    "seat_role",
-    "dispatcher",
-)
 CODE_AREA_MAX = 50
-SYMBOLS_CHANGED_MAX = 200
-_RUN_REQUIRED = (
-    "schema",
-    "dispatch_id",
-    "role",
-    "actor",
-    "profile",
-    "model",
-    "item",
-    "started_at",
-    "ended_at",
-    "duration_s",
-    "status",
-    "attempts",
-    "usage",
-)
-CAPTURE_KEYS = ("complete", "reason", "omitted")
-SKILL_PIN_KEYS = ("identity", "version", "etag")
-
-
-class MalformedUsage(ModelError):
-    """A usage counter that is present but cannot be a reported number."""
-
-    def __init__(self, key: str, message: str) -> None:
-        super().__init__("VALIDATION_FAILED", message)
-        self.key = key
 
 
 @dataclass(frozen=True)
@@ -401,31 +303,6 @@ class Report:
     evidence: tuple[str, ...]
     fingerprint: str | None
     candidate: str | None = None
-
-
-@dataclass(frozen=True)
-class Run:
-    """A validated run payload, with its attempts and normalized usage."""
-
-    schema: int
-    dispatch_id: str
-    role: str
-    actor: str
-    profile: str
-    model: str
-    item: str
-    started_at: str
-    ended_at: str
-    duration_s: int | float
-    status: str
-    attempts: tuple[dict[str, Any], ...]
-    usage: dict[str, dict[str, Any]]
-    data: dict[str, Any]
-
-    @property
-    def attempt_count(self) -> int:
-        """How many attempts this run recorded."""
-        return len(self.attempts)
 
 
 # ── Checks ────────────────────────────────────────────────────────────────
@@ -765,244 +642,7 @@ def parse_report(data: dict[str, Any]) -> Report:
 # ── Usage ─────────────────────────────────────────────────────────────────
 
 
-def usage_value(raw: Any, key: str) -> int | float | str:
-    """One counter: ``"unknown"`` when absent, the reported number when valid."""
-    if key not in USAGE_KEYS:
-        raise ValueError(f"unknown usage counter {key!r}")
-    data = mapping(raw, "usage")
-    if key not in data:
-        return UNKNOWN
-    value = data[key]
-    if value == UNKNOWN and isinstance(value, str):
-        return UNKNOWN
-    if not is_number(value) or value < 0:
-        raise MalformedUsage(
-            key, f"usage.{key} must be a finite non-negative number or \"unknown\""
-        )
-    return value
-
-
-def parse_usage(raw: Any) -> dict[str, int | float | str]:
-    """Normalize one usage block; a missing counter becomes ``"unknown"``."""
-    if not isinstance(raw, dict):
-        raise MalformedUsage("*", "usage must be a mapping of counters")
-    unknown = sorted(set(raw) - set(USAGE_KEYS))
-    if unknown:
-        raise MalformedUsage(
-            unknown[0], "usage has unknown counter(s): " + ", ".join(unknown)
-        )
-    return {key: usage_value(raw, key) for key in USAGE_KEYS}
-
-
-def aggregate_usage(attempts: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Sum known counters and count unknown ones; never treat unknown as zero."""
-    known: dict[str, Any] = dict.fromkeys(USAGE_KEYS, 0)
-    unknown: dict[str, int] = dict.fromkeys(USAGE_KEYS, 0)
-    for attempt in attempts:
-        raw = attempt.get("usage") if isinstance(attempt, dict) else None
-        if not isinstance(raw, dict):
-            for key in USAGE_KEYS:
-                unknown[key] += 1
-            continue
-        extra = sorted(set(raw) - set(USAGE_KEYS))
-        if extra:
-            raise MalformedUsage(
-                extra[0], "usage has unknown counter(s): " + ", ".join(extra)
-            )
-        for key in USAGE_KEYS:
-            try:
-                value = usage_value(raw, key)
-            except MalformedUsage:
-                unknown[key] += 1
-                continue
-            if value == UNKNOWN:
-                unknown[key] += 1
-            else:
-                known[key] += value
-    return {"known_sum": known, "unknown_attempts": unknown}
-
-
 # ── Runs ──────────────────────────────────────────────────────────────────
-
-
-def parse_run(data: dict[str, Any]) -> Run:
-    """Validate a completed-run payload, its attempts and its usage."""
-    payload = mapping(data, "run")
-    schema = schema_version(payload, RUN_SCHEMA, "run")
-    no_unknown(payload, RUN_KEYS, "run")
-    require(payload, _RUN_REQUIRED, "run")
-
-    role = string(payload["role"], "run.role")
-    if role not in PROFILE_RECIPES:
-        refuse("run.role must be one of " + ", ".join(PROFILE_RECIPES))
-
-    raw_attempts = payload["attempts"]
-    if not isinstance(raw_attempts, list) or not raw_attempts:
-        refuse("run.attempts must be a non-empty list")
-    attempts = tuple(_attempt(entry, index) for index, entry in enumerate(raw_attempts))
-    numbers = [attempt["number"] for attempt in attempts]
-    if len(set(numbers)) != len(numbers):
-        refuse("run.attempts must not repeat an attempt number")
-
-    normalized = dict(payload)
-    normalized["attempts"] = [dict(attempt) for attempt in attempts]
-    normalized["usage"] = _run_usage(payload["usage"])
-    normalized["skills"] = _skill_pins(payload.get("skills", []))
-    if "capture" in payload:
-        normalized["capture"] = _capture(payload["capture"])
-
-    integer(payload.get("profile_version", 1), "run.profile_version", positive=True)
-    _optional_string(payload.get("profile_etag"), "run.profile_etag")
-    _optional_string(payload.get("session_id"), "run.session_id")
-    _optional_int(payload.get("exit"), "run.exit")
-    if "accepted" in payload and payload["accepted"] is not None:
-        boolean(payload["accepted"], "run.accepted")
-    for key in (
-        "candidate_commit",
-        "runner",
-        "runner_digest",
-        "argv_digest",
-        "intent",
-        "report",
-        "seat",
-        "seat_role",
-        "dispatcher",
-    ):
-        _optional_string(payload.get(key), f"run.{key}")
-    for key in ("verdicts", "files_changed", "commits_changed"):
-        string_list(payload.get(key, []), f"run.{key}", allow_empty=True)
-    area = string_list(payload.get("code_area", []), "run.code_area", allow_empty=True)
-    if len(area) > CODE_AREA_MAX:
-        refuse(f"run.code_area holds at most {CODE_AREA_MAX} entries")
-    symbols = string_list(
-        payload.get("symbols_changed", []), "run.symbols_changed", allow_empty=True
-    )
-    if len(symbols) > SYMBOLS_CHANGED_MAX:
-        refuse(f"run.symbols_changed holds at most {SYMBOLS_CHANGED_MAX} entries")
-
-    return Run(
-        schema=schema,
-        dispatch_id=string(payload["dispatch_id"], "run.dispatch_id"),
-        role=role,
-        actor=string(payload["actor"], "run.actor"),
-        profile=string(payload["profile"], "run.profile"),
-        model=string(payload["model"], "run.model"),
-        item=_run_item(payload["item"], role),
-        started_at=string(payload["started_at"], "run.started_at"),
-        ended_at=string(payload["ended_at"], "run.ended_at"),
-        duration_s=finite_number(payload["duration_s"], "run.duration_s", minimum=0),
-        status=string(payload["status"], "run.status"),
-        attempts=attempts,
-        usage=normalized["usage"],
-        data=normalized,
-    )
-
-
-def _run_item(raw: Any, role: str) -> str:
-    """A worker run names its Item; the CTO's own tick run has none."""
-    if raw is None and role == "cto":
-        return ""
-    return string(raw, "run.item")
-
-
-def _attempt(raw: Any, index: int) -> dict[str, Any]:
-    data = mapping(raw, f"run.attempts[{index}]")
-    no_unknown(data, ATTEMPT_KEYS, f"run.attempts[{index}]")
-    require(
-        data,
-        ("number", "start", "end", "duration_s", "status"),
-        f"run.attempts[{index}]",
-    )
-    normalized = dict(data)
-    normalized["number"] = integer(
-        data["number"], f"run.attempts[{index}].number", positive=True
-    )
-    normalized["start"] = string(data["start"], f"run.attempts[{index}].start")
-    normalized["end"] = string(data["end"], f"run.attempts[{index}].end")
-    normalized["duration_s"] = finite_number(
-        data["duration_s"], f"run.attempts[{index}].duration_s", minimum=0
-    )
-    normalized["status"] = string(data["status"], f"run.attempts[{index}].status")
-    normalized["usage"] = parse_usage(data.get("usage", {}))
-    normalized["timed_out"] = boolean(
-        data.get("timed_out", False), f"run.attempts[{index}].timed_out"
-    )
-    normalized["session_id"] = _optional_string(
-        data.get("session_id"), f"run.attempts[{index}].session_id"
-    )
-    normalized["runner_digest"] = _optional_string(
-        data.get("runner_digest"), f"run.attempts[{index}].runner_digest"
-    )
-    argv_digest = _optional_string(
-        data.get("argv_digest"), f"run.attempts[{index}].argv_digest"
-    )
-    if argv_digest is not None:
-        normalized["argv_digest"] = argv_digest
-    normalized["exit"] = _optional_int(data.get("exit"), f"run.attempts[{index}].exit")
-    normalized["verdicts"] = list(
-        string_list(
-            data.get("verdicts", []),
-            f"run.attempts[{index}].verdicts",
-            allow_empty=True,
-        )
-    )
-    return normalized
-
-
-def _run_usage(raw: Any) -> dict[str, dict[str, Any]]:
-    data = mapping(raw, "run.usage")
-    if set(data) == {"known_sum", "unknown_attempts"}:
-        known = mapping(data["known_sum"], "run.usage.known_sum")
-        unknown = mapping(data["unknown_attempts"], "run.usage.unknown_attempts")
-        no_unknown(known, USAGE_KEYS, "run.usage.known_sum")
-        no_unknown(unknown, USAGE_KEYS, "run.usage.unknown_attempts")
-        require(known, USAGE_KEYS, "run.usage.known_sum")
-        require(unknown, USAGE_KEYS, "run.usage.unknown_attempts")
-        return {
-            "known_sum": {
-                key: finite_number(known[key], f"run.usage.known_sum.{key}", minimum=0)
-                for key in USAGE_KEYS
-            },
-            "unknown_attempts": {
-                key: integer(
-                    unknown[key], f"run.usage.unknown_attempts.{key}", minimum=0
-                )
-                for key in USAGE_KEYS
-            },
-        }
-    return aggregate_usage([{"usage": data}])
-
-
-def _skill_pins(raw: Any) -> list[dict[str, Any]]:
-    if not isinstance(raw, list):
-        refuse("run.skills must be a list")
-    pins: list[dict[str, Any]] = []
-    for index, entry in enumerate(raw):
-        data = mapping(entry, f"run.skills[{index}]")
-        no_unknown(data, SKILL_PIN_KEYS, f"run.skills[{index}]")
-        require(data, SKILL_PIN_KEYS, f"run.skills[{index}]")
-        pins.append(
-            {
-                "identity": relative_path(data["identity"], f"run.skills[{index}].identity"),
-                "version": integer(
-                    data["version"], f"run.skills[{index}].version", positive=True
-                ),
-                "etag": string(data["etag"], f"run.skills[{index}].etag"),
-            }
-        )
-    return pins
-
-
-def _capture(raw: Any) -> dict[str, Any]:
-    data = mapping(raw, "run.capture")
-    no_unknown(data, CAPTURE_KEYS, "run.capture")
-    return {
-        "complete": boolean(
-            data.get("complete", False), "run.capture.complete"
-        ),
-        "reason": _optional_string(data.get("reason"), "run.capture.reason"),
-        "omitted": integer(data.get("omitted", 0), "run.capture.omitted", minimum=0),
-    }
 
 
 # ── Built-in pack resources ───────────────────────────────────────────────

@@ -342,7 +342,7 @@ def _held_reason(ctx: Context, reason: str) -> str:
 
 
 def ledger(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Runs with their attempt-counted usage, unknown counters kept apart."""
+    """Candidates with the usage they reported, unknown counters kept apart."""
     result = query.ledger(
         ctx.index,
         item=args["item"],
@@ -353,19 +353,19 @@ def ledger(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     reach = ctx.reach
     if reach is None:
         return result
-    runs = result["runs"]
-    kept = [row for row in runs if _run_in_reach(ctx, reach, row.get("item"))]
-    result["runs"] = kept
-    result["totals"] = query.totals_for_runs(
+    listed = result["candidates"]
+    kept = [row for row in listed if _item_in_reach(ctx, reach, row.get("item"))]
+    result["candidates"] = kept
+    result["totals"] = query.totals_for_candidates(
         ctx.index, [row["record_id"] for row in kept]
     )
     unknown = result["totals"]["unknown_attempts"]
     result["unknown_counts"] = unknown
-    result["omitted_outside_reach"] = len(runs) - len(kept)
+    result["omitted_outside_reach"] = len(listed) - len(kept)
     return result
 
 
-def _run_in_reach(ctx: Context, reach: Any, slug: Any) -> bool:
+def _item_in_reach(ctx: Context, reach: Any, slug: Any) -> bool:
     if not isinstance(slug, str) or not slug:
         return reach.read_all
     row = ctx.index.conn.execute(

@@ -10,7 +10,7 @@ from typing import Any
 from context_rail.core.result import is_ok
 from context_rail.gateway.execution import caller_identity
 from context_rail.gateway.gateway import invoke
-from helpers import as_human, open_test_session, write_run
+from helpers import as_human, open_test_session, write_candidate
 
 
 def as_seat(store: Path, seat: str, tool: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -68,13 +68,13 @@ def test_status_counts_only_the_seats_subtree(role_store: SimpleNamespace) -> No
 
 
 def test_ledger_filters_to_reachable_items(role_store: SimpleNamespace) -> None:
-    write_run(role_store.store, "run-reach-o1", item=role_store.o1)
-    write_run(role_store.store, "run-reach-b1", item=role_store.b1)
+    write_candidate(role_store.store, "cand-reach-o1", role_store.o1, "1" * 40)
+    write_candidate(role_store.store, "cand-reach-b1", role_store.b1, "2" * 40)
 
     ledger = as_seat(role_store.store, role_store.orders_seat, "ledger", {"limit": 20})
 
     assert is_ok(ledger), ledger
-    assert {row["item"] for row in ledger["value"]["runs"]} == {role_store.o1}
+    assert {row["item"] for row in ledger["value"]["candidates"]} == {role_store.o1}
     assert ledger["value"]["omitted_outside_reach"] == 1
 
 
@@ -88,13 +88,12 @@ def test_digest_lists_only_reachable_reports(
     role_store: SimpleNamespace, tmp_path: Path, report_payload: Any
 ) -> None:
     for item, run_id in ((role_store.o1, "run-report-o1"), (role_store.b1, "run-report-b1")):
-        write_run(role_store.store, run_id, item=item)
         path = tmp_path / f"{run_id}.json"
         path.write_text(json.dumps(report_payload(item=item)), encoding="utf-8")
         with as_human():
             filed = invoke(
                 "report",
-                {"item": item, "run": run_id, "report_file": str(path)},
+                {"item": item, "report_file": str(path)},
                 store=role_store.store,
                 actor=None,
             )

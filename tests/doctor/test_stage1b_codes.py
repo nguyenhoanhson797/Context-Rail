@@ -25,7 +25,7 @@ from helpers import (
     run_git,
     touch_doc,
     write_record,
-    write_run,
+    write_candidate,
 )
 
 STAGE1B_CODES = {
@@ -37,7 +37,6 @@ STAGE1B_CODES = {
     "check_unknown": "warning",
     "review_invalid": "error",
     "report_untriaged": "warning",
-    "report_missing": "error",
     "profile_invalid": "error",
     "adapter_modified": "warning",
     "gate_bypassed": "error",
@@ -229,36 +228,9 @@ def _case_review_invalid(tmp_path: Path, answers: Path, factory: Callable[..., P
         "add", {"preset": "task", "title": "Login page"}, store=store, actor="cto"
     )
     assert is_ok(added), added
-    run_id = "01JREVIEWCASE000000000001"
-    report_id = "01JREVIEWREPORT000000001"
     candidate = "a" * 40
-    write_run(
-        store,
-        run_id,
-        item="login-page",
-        candidate=candidate,
-        status="verified",
-        report=report_id,
-    )
-    write_record(
-        store,
-        report_id,
-        "report.filed",
-        {
-            "schema": 1,
-            "target_class": "item",
-            "target": "login-page",
-            "item": "login-page",
-            "run": run_id,
-            "nothing_to_report": True,
-            "what_happened": "",
-            "expected": "",
-            "observed": "",
-            "impact": "low",
-            "evidence": [],
-        },
-        at="2026-10-28T12:00:00Z",
-        about=("login-page",),
+    write_candidate(
+        store, "01JREVIEWCASE000000000001", "login-page", candidate, actor="implementer"
     )
     write_record(
         store,
@@ -267,7 +239,7 @@ def _case_review_invalid(tmp_path: Path, answers: Path, factory: Callable[..., P
         {
             "schema": 1,
             "item": "login-page",
-            "implementation_run": run_id,
+            "implementation_run": None,
             "implementer_actor": "implementer",
             "reviewer_actor": "implementer",
             "implementer_model": "custom:Deepseek-V4-flash-0",
@@ -275,7 +247,7 @@ def _case_review_invalid(tmp_path: Path, answers: Path, factory: Callable[..., P
             "candidate_commit": candidate,
             "verdict": "approve",
             "findings": [],
-            "evidence": [run_id],
+            "evidence": [],
             "profile_version": 1,
         },
         at="2026-10-28T12:00:00Z",
@@ -307,12 +279,6 @@ def _case_report_untriaged(tmp_path: Path, answers: Path, factory: Callable[...,
         at="2026-10-28T12:00:00Z",
         about=("t0",),
     )
-    return store
-
-
-def _case_report_missing(tmp_path: Path, answers: Path, factory: Callable[..., Path]) -> Path:
-    store = factory(docs=2)
-    write_run(store, "01JREPORTLESS00000000001", item="t0")
     return store
 
 
@@ -365,7 +331,6 @@ _CASES = {
     "check_unknown": _case_check_unknown,
     "review_invalid": _case_review_invalid,
     "report_untriaged": _case_report_untriaged,
-    "report_missing": _case_report_missing,
     "profile_invalid": _case_profile_invalid,
     "adapter_modified": lambda tmp_path, answers, factory: Path(""),
     "gate_bypassed": _case_gate_bypassed,

@@ -80,15 +80,15 @@ def _require_item(index: object, slug: str, what: str) -> None:
 
 
 def seed_activity(store: Path, *, stuck: str, too_long: str) -> Seeded:
-    """Write the quiet activity and the over-budget run into one pilot store.
+    """Write the quiet activity and the over-budget candidate into one pilot store.
 
     The quiet Record is the ``item.updated`` kind a real Item move appends, and
-    the run is the ``run.completed`` payload a dispatch writes. Only their
-    stamps and measurements are unusual, which is exactly what the digest's
-    stuck and too-long selections read.
+    the candidate is the ``candidate.recorded`` payload ``rail loop candidate``
+    writes. Only their stamps and measurements are unusual, which is exactly
+    what the digest's stuck and too-long selections read.
     """
     from context_rail.core.util import new_ulid
-    from helpers import write_candidate, write_record, write_run
+    from helpers import write_candidate, write_record
 
     store = Path(store)
     if not store.is_dir():
@@ -111,23 +111,14 @@ def seed_activity(store: Path, *, stuck: str, too_long: str) -> Seeded:
         at=quiet_at,
         about=(stuck,),
     )
-    write_run(
-        store,
-        spent,
-        item=too_long,
-        status="failed",
-        at=run_at,
-        dispatch=f"seed-{too_long}",
-        duration=LONG_SECONDS,
-        usage={},
-    )
     write_candidate(
         store,
-        new_ulid(),
+        spent,
         too_long,
         "c" * 40,
         at=run_at,
         duration_s=LONG_SECONDS,
+        usage={"input_tokens": "unknown"},
     )
     return Seeded(stuck=quiet, too_long=spent, quiet_at=quiet_at, run_at=run_at)
 
@@ -152,7 +143,7 @@ def _digest_names(store: Path, stuck: str, too_long: str) -> dict[str, object]:
 def main(argv: list[str] | None = None) -> int:
     """Seed one pilot store and print what the digest now names."""
     parser = argparse.ArgumentParser(
-        description="Seed old activity and an over-budget run into a pilot store."
+        description="Seed old activity and an over-budget candidate into a pilot store."
     )
     parser.add_argument("--store", required=True, help="the pilot store folder")
     parser.add_argument("--stuck", required=True, help="an active Item that should look stuck")

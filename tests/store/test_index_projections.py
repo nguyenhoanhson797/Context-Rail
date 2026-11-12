@@ -24,16 +24,13 @@ from helpers import (
     workflow_pack_document,
     write_pack,
     write_record,
+    write_review_verdict,
 )
 from perf.gen import make_store
 
 REQUIRED_TABLES = {
     "checks",
     "verdicts",
-    "runs",
-    "run_skills",
-    "run_evaluations",
-    "run_attempts",
     "code_touch",
     "reports",
     "triaged_reports",
@@ -90,8 +87,8 @@ def truth_files(store: Path) -> dict[Path, bytes]:
     }
 
 
-def test_index_schema_nine_keeps_the_base_tables_and_fts():
-    assert INDEX_SCHEMA == 9
+def test_index_schema_ten_keeps_the_base_tables_and_fts():
+    assert INDEX_SCHEMA == 10
 
 
 def test_open_creates_the_typed_tables(store_factory):
@@ -104,9 +101,10 @@ def test_open_creates_the_typed_tables(store_factory):
             index.conn.execute(
                 "SELECT value FROM meta WHERE key = 'schema'"
             ).fetchone()[0]
-            == "9"
+            == "10"
         )
-        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert not {"runs", "run_skills", "run_evaluations", "run_attempts"} & names
 
 
 def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
@@ -231,24 +229,24 @@ def test_corrupt_database_is_rebuilt_with_the_typed_tables(store_factory):
     assert truth_files(store) == before
 
 
-def test_verdict_and_run_projection_roundtrip(seeded_runs_store):
-    ix = seeded_runs_store.ix
-    row = ledger(ix, item="login-page")["runs"][0]
-    assert row["attempt_count"] == 2
-    assert row["candidate_commit"] == seeded_runs_store.candidate
-    assert row["accepted"] is True
+def test_verdict_and_candidate_projection_roundtrip(seeded_store):
+    ix = seeded_store.ix
+    row = ledger(ix, item="login-page")["candidates"][0]
+    assert row["attempt"] == 2
+    assert row["commit"] == seeded_store.candidate
+    assert row["verdict"] == "approve"
     ix.rebuild()
-    assert ledger(ix, item="login-page")["runs"] == [row]
+    assert ledger(ix, item="login-page")["candidates"] == [row]
 
 
-def test_usage_is_not_multiplied_by_joins(seeded_runs_store):
-    totals = ledger(seeded_runs_store.ix, item="login-page")["totals"]
+def test_usage_is_not_multiplied_by_joins(seeded_store):
+    totals = ledger(seeded_store.ix, item="login-page")["totals"]
     assert totals["known_sum"]["output_tokens"] == 4
 
 
-def test_projection_rows_are_replaced_not_duplicated(seeded_runs_store):
-    ix = seeded_runs_store.ix
-    path = record_file(seeded_runs_store.store, seeded_runs_store.verdict)
+def test_projection_rows_are_replaced_not_duplicated(seeded_store):
+    ix = seeded_store.ix
+    path = record_file(seeded_store.store, seeded_store.verdict)
 
     def fail(payload: dict) -> None:
         payload["data"]["passed"] = False
@@ -267,67 +265,53 @@ def test_projection_rows_are_replaced_not_duplicated(seeded_runs_store):
     )
 
 
-def test_latest_evaluation_decides_the_run(seeded_runs_store):
-    ix = seeded_runs_store.ix
-    second = "b" * 40
-    write_record(
-        seeded_runs_store.store,
-        "01JEVALUATION00000000002",
-        "run.evaluated",
-        {
-            "schema": 1,
-            "run": seeded_runs_store.run,
-            "candidate_commit": second,
-            "accepted": False,
-            "check_verdicts": [],
-            "review": None,
-            "at": "2026-10-28T10:30:00Z",
-        },
+def test_latest_review_decides_the_candidate(seeded_store):
+    ix = seeded_store.ix
+    write_review_verdict(
+        seeded_store.store,
+        "01JREVIEW00000000000000002",
+        seeded_store.item,
+        seeded_store.candidate,
+        verdict="reject",
         at="2026-10-28T10:30:00Z",
-        about=(seeded_runs_store.item,),
     )
     ix.sync()
-    row = ledger(ix, item="login-page")["runs"][0]
-    assert row["candidate_commit"] == second
-    assert row["accepted"] is False
+    row = ledger(ix, item="login-page")["candidates"][0]
+    assert row["verdict"] == "reject"
 
 
-def test_removing_an_evaluation_falls_back_to_the_run(seeded_runs_store):
-    ix = seeded_runs_store.ix
-    record_file(seeded_runs_store.store, seeded_runs_store.evaluation).unlink()
+def test_removing_a_review_leaves_the_candidate_undecided(seeded_store):
+    ix = seeded_store.ix
+    record_file(seeded_store.store, seeded_store.review).unlink()
     ix.sync()
-    row = ledger(ix, item="login-page")["runs"][0]
-    assert row["candidate_commit"] is None
-    assert row["accepted"] is None
-    assert scalar(ix, "SELECT count(*) FROM run_evaluations") == 0
+    row = ledger(ix, item="login-page")["candidates"][0]
+    assert row["verdict"] is None
 
 
-def test_removed_resources_drop_their_child_rows(seeded_runs_store):
-    ix = seeded_runs_store.ix
-    assert scalar(ix, "SELECT count(*) FROM run_skills") == 1
-    assert scalar(ix, "SELECT count(*) FROM run_attempts") == 2
-    record_file(seeded_runs_store.store, seeded_runs_store.run).unlink()
+def test_removed_candidates_drop_their_code_touch_rows(seeded_store):
+    ix = seeded_store.ix
+    assert scalar(ix, "SELECT count(*) FROM candidates") == 1
+    assert scalar(ix, "SELECT count(*) FROM code_touch") == 1
+    record_file(seeded_store.store, seeded_store.candidate_id).unlink()
     ix.sync()
-    assert scalar(ix, "SELECT count(*) FROM runs") == 0
-    assert scalar(ix, "SELECT count(*) FROM run_skills") == 0
-    assert scalar(ix, "SELECT count(*) FROM run_attempts") == 0
+    assert scalar(ix, "SELECT count(*) FROM candidates") == 0
+    assert scalar(ix, "SELECT count(*) FROM code_touch") == 0
 
 
-def test_malformed_typed_payload_is_a_problem_without_proof(seeded_runs_store):
-    ix = seeded_runs_store.ix
-    path = record_file(seeded_runs_store.store, seeded_runs_store.run)
+def test_malformed_typed_payload_is_a_problem_without_proof(seeded_store):
+    ix = seeded_store.ix
+    path = record_file(seeded_store.store, seeded_store.candidate_id)
 
     def corrupt(payload: dict) -> None:
-        payload["data"]["not_a_run_key"] = 1
+        payload["data"]["not_a_candidate_key"] = 1
 
     rewrite_record(path, corrupt)
     ix.sync()
-    assert scalar(ix, "SELECT count(*) FROM runs") == 0
-    assert scalar(ix, "SELECT count(*) FROM run_attempts") == 0
+    assert scalar(ix, "SELECT count(*) FROM candidates") == 0
     problems, broken = ix.conn.execute(
         "SELECT problems, broken FROM docs WHERE path LIKE 'records/%' "
         "AND slug = ?",
-        (seeded_runs_store.run,),
+        (seeded_store.candidate_id,),
     ).fetchone()
     assert "invalid_payload" in json.loads(problems)
     assert broken == 0
@@ -335,10 +319,10 @@ def test_malformed_typed_payload_is_a_problem_without_proof(seeded_runs_store):
 
 @pytest.mark.parametrize("kind", [["event"], {"name": "event"}])
 def test_a_non_text_record_kind_records_an_invalid_payload(
-    seeded_runs_store, kind
+    seeded_store, kind
 ) -> None:
-    ix = seeded_runs_store.ix
-    path = record_file(seeded_runs_store.store, seeded_runs_store.run)
+    ix = seeded_store.ix
+    path = record_file(seeded_store.store, seeded_store.candidate_id)
 
     def corrupt(payload: dict) -> None:
         payload["kind"] = kind
@@ -348,7 +332,7 @@ def test_a_non_text_record_kind_records_an_invalid_payload(
 
     problems, broken = ix.conn.execute(
         "SELECT problems, broken FROM docs WHERE path LIKE 'records/%' AND slug = ?",
-        (seeded_runs_store.run,),
+        (seeded_store.candidate_id,),
     ).fetchone()
     assert "invalid_payload" in json.loads(problems)
     assert broken == 0
@@ -356,9 +340,9 @@ def test_a_non_text_record_kind_records_an_invalid_payload(
     assert scalar(ix, "SELECT count(*) FROM verdicts") == 1
 
 
-def test_malformed_check_contributes_no_check_row(seeded_runs_store):
-    ix = seeded_runs_store.ix
-    path = seeded_runs_store.store / "checks" / "broken.md"
+def test_malformed_check_contributes_no_check_row(seeded_store):
+    ix = seeded_store.ix
+    path = seeded_store.store / "checks" / "broken.md"
     path.write_text(
         "---\nprimitive: check\nschema: 1\nmode: widget\nacceptance: true\n---\n",
         encoding="utf-8",
@@ -369,18 +353,18 @@ def test_malformed_check_contributes_no_check_row(seeded_runs_store):
     assert scalar(ix, "SELECT count(*) FROM checks") == 1
 
 
-def test_triage_record_links_its_reports(seeded_runs_store):
-    ix = seeded_runs_store.ix
+def test_triage_record_links_its_reports(seeded_store):
+    ix = seeded_store.ix
     assert [row["report"] for row in untriaged_reports(ix)] == [
-        seeded_runs_store.report
+        seeded_store.report
     ]
     write_record(
-        seeded_runs_store.store,
+        seeded_store.store,
         TRIAGE_ID,
         "report.triaged",
         {
             "schema": 1,
-            "reports": [seeded_runs_store.report],
+            "reports": [seeded_store.report],
             "cluster": "engine|parser|every token is kept|one token is lost",
             "weight": 2,
             "action": "fix",
@@ -394,30 +378,30 @@ def test_triage_record_links_its_reports(seeded_runs_store):
     assert scalar(ix, "SELECT count(*) FROM triaged_reports") == 1
 
 
-def test_unknown_projection_evidence_is_not_granted(seeded_runs_store):
-    """A report whose payload is valid but whose parent run is missing still projects."""
-    ix = seeded_runs_store.ix
-    store = seeded_runs_store.store
-    record_file(store, seeded_runs_store.run).unlink()
+def test_unknown_projection_evidence_is_not_granted(seeded_store):
+    """A report whose payload is valid but whose candidate is missing still projects."""
+    ix = seeded_store.ix
+    store = seeded_store.store
+    record_file(store, seeded_store.candidate_id).unlink()
     ix.sync()
     reports = untriaged_reports(ix)
-    assert [row["report"] for row in reports] == [seeded_runs_store.report]
-    assert scalar(ix, "SELECT count(*) FROM runs") == 0
+    assert [row["report"] for row in reports] == [seeded_store.report]
+    assert scalar(ix, "SELECT count(*) FROM candidates") == 0
 
 
 @pytest.mark.parametrize("kind", ["approval.recorded", "review.verdict"])
-def test_unknown_keys_in_later_payloads_are_refused(seeded_runs_store, kind):
-    ix = seeded_runs_store.ix
+def test_unknown_keys_in_later_payloads_are_refused(seeded_store, kind):
+    ix = seeded_store.ix
     table = "approvals" if kind == "approval.recorded" else "reviews"
     assert scalar(ix, f"SELECT count(*) FROM {table}") == 1
     record_id = (
-        seeded_runs_store.approval if kind == "approval.recorded" else seeded_runs_store.review
+        seeded_store.approval if kind == "approval.recorded" else seeded_store.review
     )
 
     def corrupt(payload: dict) -> None:
         payload["data"]["smuggled"] = True
 
-    rewrite_record(record_file(seeded_runs_store.store, record_id), corrupt)
+    rewrite_record(record_file(seeded_store.store, record_id), corrupt)
     ix.sync()
     assert scalar(ix, f"SELECT count(*) FROM {table}") == 0
 

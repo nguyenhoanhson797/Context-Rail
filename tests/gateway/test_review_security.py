@@ -19,7 +19,7 @@ from helpers import (
     open_test_session,
     serving_daemon,
     write_record,
-    write_run,
+    write_candidate,
 )
 
 
@@ -451,22 +451,22 @@ def test_a_finished_dependency_outside_reach_does_not_keep_the_item_blocked(
     assert task not in status["value"]["blocked"]
 
 
-def test_ledger_totals_count_only_runs_inside_reach(
+def test_ledger_totals_count_only_candidates_inside_reach(
     role_store: SimpleNamespace,
 ) -> None:
-    write_run(
+    write_candidate(
         role_store.store,
         "01JREACHINSIDE0000000000001",
-        item=role_store.o1,
-        dispatch="inside",
+        role_store.o1,
+        "1" * 40,
         usage={"input_tokens": 7},
         at="2026-11-11T10:00:00Z",
     )
-    write_run(
+    write_candidate(
         role_store.store,
         "01JREACHOUTSIDE000000000000",
-        item=role_store.b1,
-        dispatch="outside",
+        role_store.b1,
+        "2" * 40,
         usage={"input_tokens": 11},
         at="2026-11-11T10:01:00Z",
     )

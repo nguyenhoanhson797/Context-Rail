@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +13,6 @@ from helpers import (
     write_candidate,
     write_record,
     write_review_verdict,
-    write_run,
 )
 
 STAMP = "2026-10-28T12:00:00Z"
@@ -69,7 +67,7 @@ def _doctor_codes(store: Path) -> list[str]:
     return [issue["code"] for issue in result["value"]["issues"]]
 
 
-# ── attribution through the run's report link ─────────────────────────────
+# ── attribution to the candidate a report is bound to ─────────────────────
 
 
 def test_candidate_reports_weigh_two_for_a_rejected_candidate(store_factory: Any) -> None:
@@ -93,58 +91,6 @@ def test_candidate_reports_weigh_two_for_a_rejected_candidate(store_factory: Any
     assert record["data"]["weight"] == 3
 
 
-def test_two_reports_on_one_linked_run_count_once(store_factory: Any) -> None:
-    store = store_factory(docs=3)
-    run = "01JRUN000000000000000903"
-    linked = _seed_report(store, "01JREPORT0000000000000903", run=None, at=STAMP)
-    named = _seed_report(store, "01JREPORT0000000000000904", run=run, at=STAMP)
-    write_run(store, run, item="t0", status="failed", report=linked, at=STAMP)
-
-    result = _triage(store, "k-dedupe")
-
-    assert is_ok(result), result
-    assert sorted(result["value"]["deferred"]) == sorted([linked, named])
-    assert records_of(store, "report.triaged") == []
-
-
-def test_a_second_report_for_a_dispatch_linked_run_is_refused(
-    store_factory: Any, tmp_path: Path
-) -> None:
-    store = store_factory(docs=2)
-    run = "01JRUN000000000000000905"
-    report_id = _seed_report(store, "01JREPORT0000000000000905", run=None, at=STAMP)
-    write_run(store, run, item="t0", status="verified", report=report_id, at=STAMP)
-    report_file = tmp_path / "second.json"
-    report_file.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "target_class": "item",
-                "target": "t0",
-                "nothing_to_report": False,
-                "what_happened": "the form reloaded again",
-                "expected": "the button submits",
-                "observed": "the form reloaded",
-                "impact": "medium",
-                "evidence": [],
-            }
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    result = invoke(
-        "report",
-        {"item": "t0", "run": run, "report_file": str(report_file)},
-        store=store,
-        actor="cto",
-    )
-
-    assert result["ok"] is False, result
-    assert result["error"]["code"] == "CONFLICT"
-    assert len(records_of(store, "report.filed")) == 1
-
-
 # ── the bounded engine-issues export ──────────────────────────────────────
 
 
@@ -153,7 +99,6 @@ def test_an_engine_export_is_rewritten_not_appended_across_recurrences(
 ) -> None:
     store = store_factory(docs=3)
     for number, run in enumerate(("01JRUN000000000000000911", "01JRUN000000000000000912")):
-        write_run(store, run, item="t0", status="verified", at=STAMP)
         _seed_report(
             store,
             f"01JREPORT00000000000009{number + 11}",
@@ -172,7 +117,6 @@ def test_an_engine_export_is_rewritten_not_appended_across_recurrences(
     assert path.is_file()
 
     for number, run in enumerate(("01JRUN000000000000000913", "01JRUN000000000000000914")):
-        write_run(store, run, item="t0", status="verified", at=STAMP)
         _seed_report(
             store,
             f"01JREPORT00000000000009{number + 13}",
@@ -206,7 +150,6 @@ def test_a_reused_triage_key_after_new_reports_does_the_new_work(
 ) -> None:
     store = store_factory(docs=3)
     for number, run in enumerate(("01JRUN000000000000000921", "01JRUN000000000000000922")):
-        write_run(store, run, item="t0", status="verified", at=STAMP)
         _seed_report(
             store,
             f"01JREPORT00000000000009{number + 21}",
@@ -221,7 +164,6 @@ def test_a_reused_triage_key_after_new_reports_does_the_new_work(
     assert len(fixes_before) == 1
 
     for number, run in enumerate(("01JRUN000000000000000923", "01JRUN000000000000000924")):
-        write_run(store, run, item="t0", status="verified", at=STAMP)
         _seed_report(
             store,
             f"01JREPORT00000000000009{number + 23}",

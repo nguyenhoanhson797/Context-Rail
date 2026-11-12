@@ -12,7 +12,7 @@ import pytest
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import run_cli, write_record, write_run
+from helpers import run_cli, write_record, write_review_verdict
 
 DIGEST_KEYS = {
     "summary",
@@ -77,7 +77,7 @@ def test_digest_quality_separates_implementations_from_reviews(
 ) -> None:
     value = _digest(digest_store.store)
     quality = value["quality"]
-    assert quality["runs"]["accepted"] >= 0
+    assert quality["candidates"]["accepted"] >= 0
     assert quality["reviews"]["rejected"] >= 0
     assert isinstance(quality["rejected_reviews"], list)
     assert quality["checks"]["passed"] >= 0
@@ -121,60 +121,32 @@ def test_cli_digest_names_the_stuck_and_too_long_items(
     assert value["summary"]["text"]
 
 
-def _reject_review(store: Path, item: str, run: str, record_id: str, at: str) -> None:
-    write_record(
-        store,
-        record_id,
-        "review.verdict",
-        {
-            "schema": 1,
-            "item": item,
-            "implementation_run": run,
-            "implementer_actor": "implementer",
-            "reviewer_actor": "reviewer",
-            "implementer_model": "custom:Deepseek-V4-flash-0",
-            "reviewer_model": "custom:gemini-3.8-flash-LTN-0",
-            "candidate_commit": "b" * 40,
-            "verdict": "reject",
-            "findings": ["the form still accepts a bad password"],
-            "evidence": [run],
-            "profile_version": 1,
-        },
-        at=at,
-        about=(item,),
-    )
+def _reject_review(store: Path, item: str, commit: str, record_id: str, at: str) -> None:
+    write_review_verdict(store, record_id, item, commit, verdict="reject", at=at)
 
 
-def test_digest_reads_implementation_runs_not_the_newest_run_row(
-    seeded_runs_store: SimpleNamespace,
+def test_digest_counts_a_candidate_by_its_latest_verdict(
+    seeded_store: SimpleNamespace,
 ) -> None:
-    """A reviewer's row keeps ``accepted`` null; its verdict is not the outcome."""
-    store = seeded_runs_store.store
-    item = seeded_runs_store.item
-    write_run(
-        store,
-        "01JREVIEWERRUN00000000001",
-        item=item,
-        role="reviewer",
-        at="2026-10-28T10:30:00Z",
-    )
+    store = seeded_store.store
+    item = seeded_store.item
+    first = _digest(store, since="2026-10-28T00:00:00Z")["quality"]
+    assert first["candidates"] == {"accepted": 1, "rejected": 0, "pending": 0}
     _reject_review(
         store,
         item,
-        seeded_runs_store.run,
+        seeded_store.candidate,
         "01JREJECTREVIEW0000000001",
         "2026-10-28T10:31:00Z",
     )
-    value = _digest(store, since="2026-10-28T00:00:00Z")
-    quality = value["quality"]
-    assert quality["runs"] == {"accepted": 1, "rejected": 0, "pending": 0}
+    quality = _digest(store, since="2026-10-28T00:00:00Z")["quality"]
+    assert quality["candidates"] == {"accepted": 0, "rejected": 1, "pending": 0}
     assert quality["reviews"] == {"approved": 1, "rejected": 1}
     assert [row["review"] for row in quality["rejected_reviews"]] == [
         "01JREJECTREVIEW0000000001"
     ]
-    rows = invoke("ledger", {"item": item}, store=store, actor="cto")["value"]["runs"]
-    reviewer = [row for row in rows if row["role"] == "reviewer"][0]
-    assert reviewer["accepted"] is None
+    rows = invoke("ledger", {"item": item}, store=store, actor="cto")["value"]["candidates"]
+    assert [row["verdict"] for row in rows] == ["reject"]
 
 
 def test_reversible_decisions_read_the_class_from_the_record_payload(
@@ -239,28 +211,8 @@ def _reversible_decision(store: Path, record_id: str, *, at: str) -> None:
     )
 
 
-def _cto_rejection(store: Path, record_id: str, *, run: str, item: str, at: str) -> None:
-    write_record(
-        store,
-        record_id,
-        "review.verdict",
-        {
-            "schema": 1,
-            "item": item,
-            "implementation_run": run,
-            "implementer_actor": "implementer",
-            "reviewer_actor": "reviewer",
-            "implementer_model": "custom:Deepseek-V4-flash-0",
-            "reviewer_model": "custom:gemini-3.8-flash-LTN-0",
-            "candidate_commit": "b" * 40,
-            "verdict": "reject",
-            "findings": ["no"],
-            "evidence": [],
-            "profile_version": 1,
-        },
-        at=at,
-        about=(item,),
-    )
+def _cto_rejection(store: Path, record_id: str, *, commit: str, item: str, at: str) -> None:
+    write_review_verdict(store, record_id, item, commit, verdict="reject", at=at)
 
 
 def test_a_human_wait_outside_the_newest_report_page_still_surfaces(
@@ -292,16 +244,16 @@ def test_human_waits_report_a_truthful_omission_count(
 
 
 def test_reversible_decisions_and_rejections_report_a_real_omission(
-    seeded_runs_store: SimpleNamespace,
+    seeded_store: SimpleNamespace,
 ) -> None:
-    store = seeded_runs_store.store
+    store = seeded_store.store
     for index in range(3):
         _reversible_decision(store, f"01JREVERSIBLE{index:013d}", at=_iso_minutes(10 + index))
         _cto_rejection(
             store,
             f"01JREJECTION{index:014d}",
-            run=seeded_runs_store.run,
-            item=seeded_runs_store.item,
+            commit=seeded_store.candidate,
+            item=seeded_store.item,
             at=_iso_minutes(10 + index),
         )
     value = _digest(store, since="2026-10-28T00:00:00Z", limit=2)

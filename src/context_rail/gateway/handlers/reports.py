@@ -1,7 +1,7 @@
 """Reports and triage: one report per attempt, then fixes, proposals and exports.
 
-A candidate (or a legacy run) may carry one structured report, and
-nothing-to-report is a report of its own rather than an empty file. Triage reads only reports no triage Record
+A candidate may carry one structured report, and nothing-to-report is a report
+of its own rather than an empty file. Triage reads only reports no triage Record
 has claimed, groups them by the report's exact fingerprint, and acts once the
 charter's thresholds are met: a fix Item the CTO may own, a proposal Note for a
 human-only decision, or an ``engine-issues`` export kept inside the store.
@@ -65,24 +65,20 @@ _RESERVED_NAME = re.compile(r"(con|prn|aux|nul|com[0-9]|lpt[0-9])", re.IGNORECAS
 
 
 def report(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """File one report, or refuse a second one for the same candidate or run."""
+    """File one report, or refuse a second one for the same candidate."""
     item = args.get("item")
-    run = args.get("run")
     revision = args.get("candidate")
-    if not item and not run:
+    if not item:
         raise WriteRefused(
-            "VALIDATION_FAILED",
-            "a report needs the item it is about, or the legacy run it belongs to",
-            {"param": "item"},
+            "VALIDATION_FAILED", "a report needs the item it is about", {"param": "item"}
         )
     if revision is not None and not item:
         raise WriteRefused(
             "VALIDATION_FAILED", "--candidate needs the item it belongs to", {"param": "item"}
         )
     payload = _load_report_file(args["report_file"])
-    if item is not None:
-        payload["item"] = item
-    payload["run"] = run
+    payload["item"] = item
+    payload["run"] = None
     payload["candidate"] = None
     payload.setdefault("schema", 1)
     parsed = parse_report(payload)
@@ -108,21 +104,6 @@ def report(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                     {"candidate": bound["record_id"], "report": held},
                 )
             data["candidate"] = bound["record_id"]
-        if run is not None:
-            existing = query.report_for_run(index, run)
-            if existing is not None:
-                raise WriteRefused(
-                    "CONFLICT",
-                    f"run {run!r} already has report {existing!r}",
-                    {"run": run, "report": existing},
-                )
-            linked = query.report_named_by_run(index, run)
-            if linked is not None:
-                raise WriteRefused(
-                    "CONFLICT",
-                    f"run {run!r} already links report {linked!r}",
-                    {"run": run, "report": linked},
-                )
         result = commit(
             store,
             ctx.manifest,
@@ -317,19 +298,10 @@ def _candidate_ids(rows: Sequence[dict[str, Any]]) -> list[str]:
 
 
 def _attributed_run(row: dict[str, Any]) -> str | None:
-    """The run a report belongs to, by its own field or the run's report link.
-
-    Dispatch files its report before the run exists, so a runless report is
-    attributed through the completion payload that names it. Without that,
-    every production report would vote alone and the failure evidence a run
-    recorded could never double its weight.
-    """
+    """The legacy run a report names, kept only so an old record still votes."""
     run_id = row.get("run")
     if isinstance(run_id, str) and run_id:
         return run_id
-    linked = row.get("linked_run")
-    if isinstance(linked, str) and linked:
-        return linked
     return None
 
 

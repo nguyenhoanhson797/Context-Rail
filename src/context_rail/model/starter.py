@@ -30,7 +30,7 @@ _LEVEL_PARTS = [
     "body",
     "acceptance",
     "blockers",
-    "runs",
+    "candidates",
     "records",
 ]
 _IMPLEMENTER_PARTS = ["title", "body", "acceptance", "code_area", "records"]

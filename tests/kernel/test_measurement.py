@@ -5,27 +5,43 @@ from fractions import Fraction
 import pytest
 
 from context_rail.kernel.measurement import (
-    RunSample,
-    UsageSample,
+    AttemptSample,
     compare_versions,
     measure_recurrence,
-    summarize_runs,
+    summarize_attempts,
 )
 
-NO_USAGE = UsageSample(None, None, None, None, None)
+
+def _attempt(
+    attempt_id: str,
+    *,
+    accepted: bool | None,
+    attempt: int | None = 1,
+    duration: float | None = 60.0,
+    role: str | None = "implementer",
+    model: str | None = "m1",
+    version: int = 1,
+    usage: dict | None = None,
+) -> AttemptSample:
+    return AttemptSample(
+        attempt_id,
+        role,
+        model,
+        accepted,
+        {} if usage is None else usage,
+        1,
+        (("test-first", version),),
+        attempt,
+        duration,
+        "t0",
+    )
 
 
-def _run(run_id: str, *, accepted: bool | None, attempts: int | None = 1, duration: float | None = 60.0,
-         in_flight: bool = False, role: str = "implementer", model: str = "m1", version: int = 1) -> RunSample:
-    return RunSample(run_id, role, model, "implementer", 1, (("test-first", version),), "t0",
-                     attempts, accepted, duration, NO_USAGE, not in_flight, in_flight)
-
-
-def _cohort(prefix: str, passes: int, fails: int, pending: int = 0, *, version: int = 1) -> list[RunSample]:
-    runs = [_run(f"{prefix}-p{i}", accepted=True, version=version) for i in range(passes)]
-    runs += [_run(f"{prefix}-f{i}", accepted=False, version=version) for i in range(fails)]
-    runs += [_run(f"{prefix}-n{i}", accepted=None, version=version) for i in range(pending)]
-    return runs
+def _cohort(prefix: str, passes: int, fails: int, pending: int = 0, *, version: int = 1) -> list[AttemptSample]:
+    items = [_attempt(f"{prefix}-p{i}", accepted=True, version=version) for i in range(passes)]
+    items += [_attempt(f"{prefix}-f{i}", accepted=False, version=version) for i in range(fails)]
+    items += [_attempt(f"{prefix}-n{i}", accepted=None, version=version) for i in range(pending)]
+    return items
 
 
 @pytest.mark.parametrize(("before", "after", "label"), [
@@ -34,45 +50,66 @@ def _cohort(prefix: str, passes: int, fails: int, pending: int = 0, *, version: 
     (_cohort("b", 5, 5), _cohort("a", 4, 6), "regressed"),
 ])
 def test_pass_rate_labels_at_the_threshold(before, after, label) -> None:
-    result = compare_versions(summarize_runs(before), summarize_runs(after))
+    result = compare_versions(summarize_attempts(before), summarize_attempts(after))
     assert result.pass_rate == label
 
 
-def test_nine_comparable_runs_is_insufficient_data() -> None:
-    result = compare_versions(summarize_runs(_cohort("b", 5, 4)), summarize_runs(_cohort("a", 9, 1)))
+def test_nine_comparable_candidates_is_insufficient_data() -> None:
+    result = compare_versions(
+        summarize_attempts(_cohort("b", 5, 4)), summarize_attempts(_cohort("a", 9, 1))
+    )
     assert result.pass_rate == "insufficient-data"
 
 
-def test_retries_are_one_sample_and_inflight_runs_are_excluded() -> None:
-    runs = [_run("r1", accepted=True, attempts=2), _run("r2", accepted=None, in_flight=True)]
-    summary = summarize_runs(runs)
-    assert summary.n == 1 and summary.in_flight == 1
-    assert summary.attempts.mean == Fraction(2, 1)
+def test_an_undecided_candidate_is_pending_and_not_in_the_pass_rate() -> None:
+    summary = summarize_attempts(
+        [_attempt("r1", accepted=True, attempt=2), _attempt("r2", accepted=None)]
+    )
+    assert summary.n == 2 and summary.pending == 1
+    assert summary.pass_rate.numerator == 1 and summary.pass_rate.denominator == 1
+    assert summary.attempts.mean == Fraction(3, 2)
 
 
-def test_malformed_and_absent_counters_are_excluded_from_their_metric_only() -> None:
-    runs = [_run("r1", accepted=True, duration=None), _run("r2", accepted=True, attempts=None)]
-    summary = summarize_runs(runs)
+def test_absent_counters_are_excluded_from_their_metric_only() -> None:
+    summary = summarize_attempts(
+        [_attempt("r1", accepted=True, duration=None), _attempt("r2", accepted=True, attempt=None)]
+    )
     assert summary.n == 2
     assert summary.duration.known_n == 1 and summary.attempts.known_n == 1
     assert summary.pass_rate.numerator == 2 and summary.pass_rate.denominator == 2
 
 
-def test_reviewer_runs_never_enter_the_pass_rate() -> None:
-    reviewer = _run("rv", accepted=True, role="reviewer")
-    assert summarize_runs([reviewer]).pass_rate.denominator == 0
-
-
 def test_all_unknown_cost_is_unknown_not_zero() -> None:
-    summary = summarize_runs(_cohort("b", 10, 0))
+    attempts = [
+        _attempt(f"b{i}", accepted=True, usage={"factory_credits": None}) for i in range(10)
+    ]
+    summary = summarize_attempts(attempts)
     assert summary.usage["factory_credits"].coverage == "unknown"
     assert summary.usage["factory_credits"].total == "unknown"
 
 
+def test_usage_keys_are_whatever_the_candidates_reported() -> None:
+    summary = summarize_attempts(
+        [
+            _attempt("a", accepted=True, usage={"tool_calls": 3}),
+            _attempt("b", accepted=True, usage={"tool_calls": 4}),
+        ]
+    )
+    assert summary.usage["tool_calls"].total == 7
+    assert summary.usage["tool_calls"].coverage == "complete"
+
+
+def test_an_attempt_that_names_no_role_or_model_is_its_own_stratum() -> None:
+    summary = summarize_attempts(
+        [_attempt("a", accepted=True, role=None, model=None), _attempt("b", accepted=True)]
+    )
+    assert summary.strata == {("unknown", "unknown"): 1, ("implementer", "m1"): 1}
+
+
 def test_mismatched_strata_are_inconclusive_with_counts() -> None:
-    before = [_run(f"b{i}", accepted=True, model="m1") for i in range(10)]
-    after = [_run(f"a{i}", accepted=True, model="m2") for i in range(10)]
-    result = compare_versions(summarize_runs(before), summarize_runs(after))
+    before = [_attempt(f"b{i}", accepted=True, model="m1") for i in range(10)]
+    after = [_attempt(f"a{i}", accepted=True, model="m2") for i in range(10)]
+    result = compare_versions(summarize_attempts(before), summarize_attempts(after))
     assert result.pass_rate == "inconclusive"
     assert result.reason == "mismatched_strata" and result.strata["before"] == {("implementer", "m1"): 10}
 
