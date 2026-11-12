@@ -901,21 +901,26 @@ def _gate_issues(context: Any, policy: Any) -> list[dict[str, Any]]:
 
 def _gate_row(context: Any, policy: Any, slug: str, path: str) -> dict[str, Any]:
     """One Item's gate decision, read from indexed checks and the newest review."""
-    from context_rail.gateway.handlers.common import check_gate_state, review_gate_state
+    from context_rail.gateway.handlers.common import (
+        check_gate_state,
+        gate_candidate,
+        review_gate_state,
+    )
     from context_rail.store import query
 
     gate = "scope_done" if slug in policy.project.get("scope", ()) else "item_done"
     review = review_gate_state(query.review_for_item(context.index, slug))
     from context_rail.kernel import gates as gate_rules
 
+    states = [check_gate_state(context, row) for row in query.check_states(context.index, slug)]
     decision = gate_rules.evaluate_gate(
         policy,
         gate,
         slug,
-        [check_gate_state(context, row) for row in query.check_states(context.index, slug)],
+        states,
         review,
         _human_fact(context.index, slug, context.pack),
-        review.candidate if review is not None else None,
+        gate_candidate(context.index, slug, review, states),
     )
     return {
         "item": slug,
@@ -1008,7 +1013,7 @@ def _review_issues(ix: Index, policy: Any) -> list[dict[str, Any]]:
     """
     from context_rail.kernel.rights import review_separation
 
-    different_model = True if policy is None else policy.reviewer_different_model
+    different_model = False if policy is None else policy.reviewer_different_model
     issues: list[dict[str, Any]] = []
     for path, record_id, data_json in ix.conn.execute(
         "SELECT r.path, r.record_id, r.data_json FROM reviews r JOIN docs d "

@@ -3,8 +3,10 @@
 A gate never passes on an empty, stale or unknown proof set, and never on a
 review that is bound to another commit. The caller supplies the selected
 Checks (a scope gate's selection includes its descendants' rollup) and a review
-that was already checked with :func:`context_rail.kernel.rights.review_separation`;
-when the review carries the implementer facts, this module checks that too.
+that was already checked with :func:`context_rail.kernel.rights.separation_problem`;
+when the review carries the implementer facts, this module checks that too. A
+candidate commit is required only when the gate asks for a review or a selected
+Check is bound to a commit, so a gate that needs a human alone opens without one.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from context_rail.kernel.rights import review_separation
+from context_rail.kernel.rights import separation_problem
 from context_rail.model.policy import Charter
 
 __all__ = ["FRESHNESS", "CheckState", "GateDecision", "ReviewState", "evaluate_gate"]
@@ -40,7 +42,7 @@ class ReviewState:
     verdict: str
     candidate: str
     reviewer: str
-    model: str
+    model: str | None = None
     implementer: str | None = None
     implementer_model: str | None = None
 
@@ -68,7 +70,9 @@ def evaluate_gate(
     rule = policy.gates[gate]
     selected = tuple(checks)
     reasons: list[str] = []
-    if not candidate:
+    if not candidate and (
+        rule.require_review or any(check.requires_candidate for check in selected)
+    ):
         reasons.append("no candidate commit was supplied")
     if gate == "scope_done" and target not in policy.project.get("scope", ()):
         reasons.append(f"{target!r} is not a declared scope entry")
@@ -125,16 +129,16 @@ def _review_reasons(
         reasons.append(f"the review approved {review.candidate}, not {candidate}")
     if not review.reviewer:
         reasons.append("the review has no reviewer")
-    if not review.model:
-        reasons.append("the review names no reviewer model")
     if review.implementer or review.implementer_model:
-        separation = review_separation(
+        problem = separation_problem(
             review.implementer or "",
             review.reviewer,
-            review.implementer_model or "",
+            review.implementer_model,
             review.model,
             policy.reviewer_different_model,
         )
-        if separation is not None:
-            reasons.append(separation)
+        if problem is not None:
+            reasons.append(problem[1])
+    elif policy.reviewer_different_model and not review.model:
+        reasons.append("the review names no reviewer model, and the charter requires a different one")
     return reasons

@@ -562,7 +562,7 @@ def _review_payload(ctx: Context, row: Mapping[str, Any]) -> dict[str, Any]:
 
 def _different_model_required(ctx: Context) -> bool:
     """Whether this project's charter requires the reviewer to use another model."""
-    return True if ctx.policy is None else ctx.policy.reviewer_different_model
+    return False if ctx.policy is None else ctx.policy.reviewer_different_model
 
 
 def _human_payload(

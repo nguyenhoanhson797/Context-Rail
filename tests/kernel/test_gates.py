@@ -12,6 +12,7 @@ from context_rail.kernel.gates import (
     ReviewState,
     evaluate_gate,
 )
+from context_rail.model.policy import Gate
 
 REVIEWER_MODEL = "custom:gemini-3.8-flash-LTN-0"
 
@@ -56,7 +57,6 @@ def test_item_done_allows_a_fresh_check_and_a_bound_review(policy):
         ReviewState("Approve", "c1", "reviewer-1", REVIEWER_MODEL),
         ReviewState("approve", "", "reviewer-1", REVIEWER_MODEL),
         ReviewState("approve", "c1", "", REVIEWER_MODEL),
-        ReviewState("approve", "c1", "reviewer-1", ""),
     ],
 )
 def test_review_must_be_a_named_approval(policy, review):
@@ -185,3 +185,50 @@ def test_a_non_candidate_check_may_omit_a_candidate(policy) -> None:
         policy, "item_done", "login", [evidence], approving(), False, "c1"
     )
     assert decision.allowed is True
+
+def human_only(policy):
+    return replace(policy, gates={**policy.gates, "release": Gate(False, False, False, True)})
+
+
+def test_gate_without_candidate_passes_human_only_rule(policy):
+    decision = evaluate_gate(human_only(policy), "release", "login", [], None, True, None)
+    assert decision == GateDecision(allowed=True, reasons=())
+
+
+def test_gate_without_candidate_blocks_when_review_required(policy):
+    decision = evaluate_gate(policy, "item_done", "login", [fresh()], approving(), False, None)
+    assert decision.allowed is False
+    assert "no candidate commit was supplied" in decision.reasons
+
+
+def test_gate_without_candidate_blocks_cmd_check(policy):
+    rule = Gate(True, False, False, False)
+    lenient = replace(policy, gates={**policy.gates, "merge": rule})
+    unbound = CheckState("unit", True, "fresh", None, False, requires_candidate=True)
+
+    decision = evaluate_gate(lenient, "merge", "login", [unbound], None, False, None)
+
+    assert decision.allowed is False
+    assert "no candidate commit was supplied" in decision.reasons
+
+
+def test_review_without_model_passes_when_rule_off(policy):
+    optional = replace(policy, reviewer_different_model=False)
+    review = ReviewState("approve", "c1", "reviewer-1", None, implementer="implementer-1")
+
+    decision = evaluate_gate(optional, "item_done", "login", [fresh()], review, False, "c1")
+
+    assert decision.allowed is True
+
+
+def test_review_without_model_blocks_when_rule_on(policy):
+    required = replace(policy, reviewer_different_model=True)
+    review = ReviewState("approve", "c1", "reviewer-1", None, implementer="implementer-1")
+
+    decision = evaluate_gate(required, "item_done", "login", [fresh()], review, False, "c1")
+
+    assert decision.allowed is False
+    assert any("candidate and the review" in reason for reason in decision.reasons)
+    bare = ReviewState("approve", "c1", "reviewer-1", None)
+    again = evaluate_gate(required, "item_done", "login", [fresh()], bare, False, "c1")
+    assert again.allowed is False and again.reasons

@@ -14,6 +14,7 @@ from context_rail.gateway.handlers.common import (
     default_parent,
     doc_frontmatter,
     document_version,
+    gate_candidate,
     load_body,
     parse_relations,
     parse_set_values,
@@ -806,9 +807,10 @@ def _response(store: Path, index: Index, result: dict[str, Any]) -> dict[str, An
 def _require_gate(ctx: Context, doc: Doc, target: str, actor: str) -> None:
     """Refuse a move the workflow's gate, or the done default, does not allow.
 
-    The newest separated review of the Item supplies the candidate commit the
-    gate binds its Checks to; without a review the newest Check's candidate is
-    used, so an approval is never implied by the transition itself.
+    The newest review of the Item supplies the candidate commit the gate binds
+    its Checks to; without one the newest recorded candidate is used, then the
+    newest Check's candidate, so an approval is never implied by the transition
+    itself.
     """
     policy = ctx.policy
     if policy is None:
@@ -834,9 +836,7 @@ def _require_gate(ctx: Context, doc: Doc, target: str, actor: str) -> None:
         missing = [slug for slug in required if slug not in by_slug]
     states = [check_gate_state(ctx, row) for row in selected]
     review = review_gate_state(query.review_for_item(ctx.index, doc.slug))
-    candidate = review.candidate if review is not None else next(
-        (state.candidate for state in states if state.candidate), None
-    )
+    candidate = gate_candidate(ctx.index, doc.slug, review, states)
     decision = gates.evaluate_gate(
         policy,
         name,

@@ -23,6 +23,7 @@ from context_rail.model.metadata import (
 )
 from context_rail.model.pack import Pack, Preset, canonical_pack_name
 from context_rail.model.primitives import MANAGED_KEYS, RELATIONS
+from context_rail.store import query
 from context_rail.store.doc import Doc, etag, parse_doc
 from context_rail.store.index import Index
 from context_rail.store.location import PathEscape, confine, worktree_git_dir
@@ -746,10 +747,30 @@ def review_gate_state(review: dict[str, Any] | None) -> gates.ReviewState | None
         verdict=str(review.get("verdict") or ""),
         candidate=str(review.get("candidate_commit") or ""),
         reviewer=str(review.get("reviewer") or ""),
-        model=str(data.get("reviewer_model") or ""),
+        model=str(data.get("reviewer_model") or "") or None,
         implementer=str(data.get("implementer_actor") or "") or None,
         implementer_model=str(data.get("implementer_model") or "") or None,
     )
+
+
+def gate_candidate(
+    index: Index,
+    slug: str,
+    review: gates.ReviewState | None,
+    states: list[gates.CheckState],
+) -> str | None:
+    """The commit a gate binds its proofs to for one Item.
+
+    The newest review's commit wins, then the newest recorded candidate, then
+    the commit a Check was proven against, so a transition never implies an
+    approval and a gate with no review still names the work it judged.
+    """
+    if review is not None and review.candidate:
+        return review.candidate
+    latest = query.latest_candidate(index, slug)
+    if latest is not None:
+        return str(latest["commit"])
+    return next((state.candidate for state in states if state.candidate), None)
 
 
 def record_path_for(index: Index, record_id: str | None) -> str | None:

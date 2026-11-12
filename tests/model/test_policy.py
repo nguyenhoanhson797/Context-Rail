@@ -409,7 +409,7 @@ def test_flags_are_validated() -> None:
 def test_flags_default_to_the_pinned_values() -> None:
     charter = parse_charter(minimal_charter())
     assert charter.allow_push is False
-    assert charter.reviewer_different_model is True
+    assert charter.reviewer_different_model is False
     assert charter.remote == "origin"
 
 

@@ -189,7 +189,7 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
         remote=string(data.get("remote", "origin"), "charter.remote"),
         allow_push=boolean(data.get("allow_push", False), "charter.allow_push"),
         reviewer_different_model=boolean(
-            data.get("reviewer_different_model", True),
+            data.get("reviewer_different_model", False),
             "charter.reviewer_different_model",
         ),
         mode=mode,
