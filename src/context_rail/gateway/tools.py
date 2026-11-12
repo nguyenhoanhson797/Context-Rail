@@ -175,7 +175,7 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("target", "str", required=True, positional=True, help="check or Item slug"),
-            Param("worktree", "str", help="the project checkout or another worktree of it", path=True),
+            Param("worktree", "str", help="the project checkout or a git worktree of it", path=True),
             Param("verdict", "str", help="pass or fail, for a human check"),
             Param("evidence", "str", repeat=True, help="evidence Record id"),
             Param("confirm", "str", help="the typed phrase PASS or FAIL <check>"),

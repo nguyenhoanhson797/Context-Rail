@@ -10,6 +10,7 @@ proof, and nothing is ever staged to make a check pass.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -317,7 +318,8 @@ def freshness_of(
     """How much a stored verdict still says about a checkout, from files only.
 
     ``worktree`` names the checkout the proof should describe, which is the
-    dispatch worktree while its candidate has not reached the default branch.
+    git worktree a candidate was made in while it has not reached the project
+    checkout.
     """
     if row is None:
         return "missing"
@@ -943,25 +945,15 @@ def _resolve_worktree(ctx: Context, value: Any) -> Path:
             "VALIDATION_FAILED", "worktree must be an absolute path", {"worktree": text}
         )
     resolved = candidate.resolve()
-    if resolved == canonical or _registered_worktree(ctx, resolved):
+    known = {os.path.normcase(str(canonical))}
+    try:
+        known.update(os.path.normcase(str(path)) for path in git_runner.worktree_paths(canonical))
+    except WriteRefused:
+        pass
+    if os.path.normcase(str(resolved)) in known:
         return resolved
     raise WriteRefused(
         "VALIDATION_FAILED",
-        "worktree must be the project checkout or a registered dispatch worktree",
+        "worktree must be the project checkout or a git worktree of it",
         {"worktree": text, "canonical": str(canonical)},
     )
-
-
-def _registered_worktree(ctx: Context, candidate: Path) -> bool:
-    folder = local_dir(ctx.store) / "dispatch"
-    if not folder.is_dir():
-        return False
-    for path in folder.glob("*.json"):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        worktree = payload.get("worktree") if isinstance(payload, dict) else None
-        if isinstance(worktree, str) and Path(worktree).resolve() == candidate:
-            return True
-    return False
