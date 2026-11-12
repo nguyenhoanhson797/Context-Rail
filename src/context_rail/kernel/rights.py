@@ -22,6 +22,7 @@ __all__ = [
     "allowed_decision",
     "decision_class",
     "review_separation",
+    "separation_problem",
 ]
 
 PERMISSIONS = ("read", "write", "human")
@@ -106,6 +107,47 @@ def allowed_decision(
     return None
 
 
+def separation_problem(
+    implementer: str,
+    reviewer: str,
+    implementer_model: str | None,
+    reviewer_model: str | None,
+    require_different_model: bool,
+) -> tuple[str, str] | None:
+    """Return ``(reason, message)`` when the review is not separated, else ``None``.
+
+    The reason is ``separation`` when the reviewer is the implementer or shares
+    its model, and ``model_required`` when the charter asks for a different model
+    and a side has not named one.
+    """
+    if not implementer or not reviewer:
+        return "separation", "both the implementer and the reviewer must be named"
+    if implementer == reviewer:
+        return (
+            "separation",
+            f"the reviewer must be a different actor from the implementer, not {reviewer!r}",
+        )
+    if require_different_model:
+        missing = [
+            side
+            for side, model in (("candidate", implementer_model), ("review", reviewer_model))
+            if not model
+        ]
+        if missing:
+            return (
+                "model_required",
+                "the charter requires a different reviewer model, so the "
+                + " and the ".join(missing)
+                + " must name the model used",
+            )
+        if implementer_model == reviewer_model:
+            return (
+                "separation",
+                f"the reviewer must use a different model from {implementer_model!r}",
+            )
+    return None
+
+
 def review_separation(
     implementer: str,
     reviewer: str,
@@ -114,16 +156,10 @@ def review_separation(
     require_different_model: bool,
 ) -> str | None:
     """Return ``None`` when the review is separated, else the reason it is not."""
-    if not implementer or not reviewer:
-        return "both the implementer and the reviewer must be named"
-    if implementer == reviewer:
-        return f"the reviewer must be a different actor from the implementer, not {reviewer!r}"
-    if require_different_model:
-        if not implementer_model or not reviewer_model:
-            return "both models must be named when the charter requires a different reviewer model"
-        if implementer_model == reviewer_model:
-            return f"the reviewer must use a different model from {implementer_model!r}"
-    return None
+    problem = separation_problem(
+        implementer, reviewer, implementer_model, reviewer_model, require_different_model
+    )
+    return None if problem is None else problem[1]
 
 
 def _class_of(decision_id: str, rights: dict[str, tuple[str, ...]]) -> str | None:

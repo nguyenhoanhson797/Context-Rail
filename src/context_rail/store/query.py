@@ -1163,6 +1163,19 @@ def human_proposals(ix: Index, limit: int = 20) -> tuple[list[dict[str, Any]], i
     return found, _scalar(ix, f"SELECT COUNT(*) FROM docs d {where}")
 
 
+def review_by_record(ix: Index, record_id: str) -> dict[str, Any] | None:
+    """The review a record id names, or None."""
+    record_id = _text(record_id, "record")
+    row = ix.conn.execute(
+        "SELECT item, candidate_commit, verdict FROM reviews WHERE record_id = ?",
+        (record_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    item, commit, verdict = row
+    return {"record_id": record_id, "item": item, "commit": commit, "verdict": verdict}
+
+
 def rejected_reviews(
     ix: Index, since: str | None = None, limit: int = 20
 ) -> tuple[list[dict[str, Any]], int]:

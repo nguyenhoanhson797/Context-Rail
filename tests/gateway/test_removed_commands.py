@@ -27,7 +27,8 @@ LAUNCHER_MODULES = (
 
 def test_removed_commands_name_their_replacements() -> None:
     assert {"dispatch", "loop dispatch", "merge", "loop merge"} <= set(REMOVED_COMMANDS)
-    assert {"cto tick", "loop tick", "review", "loop review"} <= set(REMOVED_COMMANDS)
+    assert {"cto tick", "loop tick"} <= set(REMOVED_COMMANDS)
+    assert not {"review", "loop review"} & set(REMOVED_COMMANDS)
     for replacement in REMOVED_COMMANDS.values():
         assert "rail loop brief" in replacement
         assert "rail loop candidate" in replacement

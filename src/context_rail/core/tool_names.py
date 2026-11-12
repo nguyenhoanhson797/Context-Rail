@@ -42,6 +42,7 @@ VISIBLE_ALIASES: dict[str, str] = {
     "check declare": "check",
     "check run": "verify",
     "loop candidate": "candidate",
+    "loop review": "review",
     "loop report": "report",
     "loop triage": "triage",
     "loop execution": "execution record",
@@ -119,6 +120,7 @@ LEGACY_TO_SURFACE: dict[str, str] = {
     "check": "check declare",
     "verify": "check run",
     "candidate": "loop candidate",
+    "review": "loop review",
     "report": "loop report",
     "triage": "loop triage",
     "execution record": "loop execution",
@@ -169,8 +171,6 @@ REMOVED_COMMANDS: dict[str, str] = {
         "loop merge",
         "cto tick",
         "loop tick",
-        "review",
-        "loop review",
     )
 }
 

@@ -106,7 +106,7 @@ def test_reads_stay_open_before_approval(unapproved_store: Path) -> None:
 
 
 def test_the_execution_tools_are_pinned() -> None:
-    assert set(EXECUTION_TOOLS) == {"verify", "candidate"}
+    assert set(EXECUTION_TOOLS) == {"verify", "candidate", "review"}
 
 
 def test_lockout_applies_to_every_actor(unapproved_store: Path) -> None:
@@ -217,6 +217,7 @@ def test_an_approved_charter_still_lets_verification_run(
     "tool,args",
     [
         ("candidate", {"item": "login-page", "commit": "HEAD"}),
+        ("review", {"item": "login-page", "commit": "HEAD", "verdict": "approve"}),
     ],
 )
 def test_every_executor_refuses_without_a_charter(

@@ -86,7 +86,9 @@ def test_starter_roles_parse_for_every_shipped_pack(name: str, tmp_path: Path) -
     assert roles["implementer"].workspace == "write"
     assert roles["reviewer"].workspace == "read"
     assert roles["reviewer"].independent_of == ("produce",)
-    assert roles["reviewer"].write == () and roles["reviewer"].code_write == ()
+    assert set(roles["reviewer"].can.methods) == {"review", "report"}
+    assert [term.kind for term in roles["reviewer"].write] == ["anchor"]
+    assert roles["reviewer"].code_write == ()
     for preset in _levels(pack):
         lead = roles[f"{preset}-lead"]
         assert lead.anchor.kind == "level" and lead.anchor.presets == (preset,)

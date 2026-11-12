@@ -37,6 +37,7 @@ _REFUSED_TOOLS = (
     "check list",
     "verify",
     "candidate",
+    "review",
     "do",
     "report",
     "triage",
@@ -98,6 +99,7 @@ _ARGS: dict[str, dict[str, Any]] = {
     "check list": {},
     "verify": {"target": "smoke"},
     "candidate": {"item": "t0", "commit": "HEAD"},
+    "review": {"item": "t0", "commit": "HEAD", "verdict": "approve"},
     "do": {"action": "start", "item": "t0"},
     "report": {
         "item": "t0",

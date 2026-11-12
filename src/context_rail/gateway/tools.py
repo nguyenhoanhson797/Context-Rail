@@ -201,6 +201,21 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.candidates:record_candidate",
     ),
     Tool(
+        name="review",
+        summary="Record a reviewer's verdict on a candidate commit any tool produced.",
+        permission="write",
+        params=(
+            Param("item", "str", required=True, positional=True, help="leaf Item slug"),
+            Param("commit", "str", required=True, help="the candidate: a sha, a branch or HEAD"),
+            Param("verdict", "str", required=True, help="approve or reject"),
+            Param("notes_file", "str", help="markdown notes, at most 4000 characters", path=True),
+            Param("model", "str", help="the model that reviewed it (free text)"),
+            Param("harness", "str", help="the tool that reviewed it (free text)"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.candidates:record_review",
+    ),
+    Tool(
         name="report",
         summary="File the one structured report a completed run owes.",
         permission="write",

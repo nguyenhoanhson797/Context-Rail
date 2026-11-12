@@ -524,7 +524,11 @@ _REVIEW_KEYS = (
     "findings",
     "evidence",
     "profile_version",
+    "candidate_record",
+    "notes",
+    "harness",
 )
+_REVIEW_REQUIRED = ("schema", "item", "reviewer_actor", "candidate_commit", "verdict")
 _REVIEW_VERDICTS = ("approve", "reject")
 
 
@@ -1131,20 +1135,28 @@ def _approval_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple
 
 
 def _review_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[str, tuple[Any, ...]]]:
-    payload = _strict(data, _REVIEW_KEYS, "review", _REVIEW_KEYS[1:])
+    payload = _strict(data, _REVIEW_KEYS, "review", _REVIEW_REQUIRED)
     item = string(payload["item"], "review.item")
-    run_id = string(payload["implementation_run"], "review.implementation_run")
-    string(payload["implementer_actor"], "review.implementer_actor")
+    run_id = _optional_text(payload.get("implementation_run"), "review.implementation_run")
+    for name in (
+        "implementer_actor",
+        "implementer_model",
+        "reviewer_model",
+        "candidate_record",
+        "notes",
+        "harness",
+    ):
+        _optional_text(payload.get(name), f"review.{name}")
     reviewer = string(payload["reviewer_actor"], "review.reviewer_actor")
-    string(payload["implementer_model"], "review.implementer_model")
-    string(payload["reviewer_model"], "review.reviewer_model")
     candidate = string(payload["candidate_commit"], "review.candidate_commit")
     verdict = string(payload["verdict"], "review.verdict")
     if verdict not in _REVIEW_VERDICTS:
         refuse("review.verdict must be approve or reject")
-    string_list(payload["findings"], "review.findings", allow_empty=True)
-    string_list(payload["evidence"], "review.evidence", allow_empty=True)
-    integer(payload["profile_version"], "review.profile_version", positive=True)
+    for name in ("findings", "evidence"):
+        if payload.get(name) is not None:
+            string_list(payload[name], f"review.{name}", allow_empty=True)
+    if payload.get("profile_version") is not None:
+        integer(payload["profile_version"], "review.profile_version", positive=True)
     row = (doc.path, record_id, item, run_id, candidate, reviewer, verdict, _json(data))
     return [("reviews", row)]
 

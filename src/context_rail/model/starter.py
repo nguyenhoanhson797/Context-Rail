@@ -170,8 +170,12 @@ def _implementer(leaves: list[str], notes: list[str]) -> dict[str, Any]:
 def _reviewer(leaves: list[str], notes: list[str]) -> dict[str, Any]:
     return {
         "anchor": {"item": leaves},
-        "reach": {"read": _worker_read(notes), "write": [], "code": dict(_CODE_READ)},
-        "can": {"report": leaves},
+        "reach": {
+            "read": _worker_read(notes),
+            "write": ["anchor"],
+            "code": dict(_CODE_READ),
+        },
+        "can": {"review": leaves, "report": leaves},
         "sees": {
             "up": 1,
             "relations": ["depends_on"],

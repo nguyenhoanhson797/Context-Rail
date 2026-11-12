@@ -43,6 +43,7 @@ _ROLES: dict[str, Any] = {
             "check": ["shot"],
             "verify": ["shot"],
             "candidate": ["shot"],
+            "review": ["shot"],
             "report": ["shot"],
             "triage": ["shot"],
             "execution": ["shot"],

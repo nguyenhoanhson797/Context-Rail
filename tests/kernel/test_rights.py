@@ -13,6 +13,7 @@ from context_rail.kernel.rights import (
     allowed_decision,
     decision_class,
     review_separation,
+    separation_problem,
 )
 from context_rail.model.errors import ModelError
 from context_rail.model.policy import DECISION_RIGHTS, HUMAN_ONLY_IDS, parse_charter
@@ -260,3 +261,19 @@ def test_rights_widening_fact_makes_human_only(policy) -> None:
     facts = change(decision_id=CTO_ALONE_IDS[0], rights_widening=True)
 
     assert decision_class("update", facts, policy) == "human-only"
+
+
+def test_separation_problem_names_its_reason() -> None:
+    assert separation_problem("dev", "dev", "m", "n", False)[0] == "separation"
+    assert separation_problem("dev", "qa", "m", "m", True)[0] == "separation"
+    assert separation_problem("dev", "qa", "m", "n", True) is None
+    assert separation_problem("dev", "qa", None, None, False) is None
+
+
+def test_separation_problem_asks_for_the_missing_model() -> None:
+    reason, message = separation_problem("dev", "qa", None, "n", True)
+    assert reason == "model_required" and message.endswith("the candidate must name the model used")
+    reason, message = separation_problem("dev", "qa", "m", "", True)
+    assert reason == "model_required" and message.endswith("the review must name the model used")
+    both = separation_problem("dev", "qa", None, None, True)[1]
+    assert both.endswith("the candidate and the review must name the model used")

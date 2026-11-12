@@ -199,6 +199,7 @@ CTO_METHODS = WORKER_METHODS + (
     "check",
     "verify",
     "candidate",
+    "review",
     "triage",
     "execution record",
     "digest",

@@ -80,6 +80,7 @@ CAN_TOOLS: dict[str, str] = {
     "check": "check",
     "verify": "verify",
     "candidate": "candidate",
+    "review": "review",
     "report": "report",
     "triage": "triage",
     "execution": "execution record",
