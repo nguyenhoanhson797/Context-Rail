@@ -39,6 +39,7 @@ __all__ = [
     "index_path",
     "local_dir",
     "owns_path",
+    "project_root",
     "store_prefixes",
     "worktree_git_dir",
 ]
@@ -137,3 +138,17 @@ def confine(store: Path, rel: str) -> Path:
     if not target.is_relative_to(root):
         raise PathEscape(f"{rel!r} resolves outside the store")
     return target
+
+
+def project_root(store: Path) -> Path:
+    """The Git worktree that holds the canonical store."""
+    # The write module imports this one, so the refusal type loads on demand.
+    from context_rail.store.write import WriteRefused
+
+    located = worktree_git_dir(Path(store))
+    if located is None:
+        raise WriteRefused(
+            "INTEGRATION_FAILURE",
+            "the canonical store is not inside a Git worktree",
+        )
+    return located[1]

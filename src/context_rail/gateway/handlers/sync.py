@@ -617,7 +617,7 @@ def _head_now(root: Path) -> str:
 
 
 def _root(store: Path) -> Path:
-    from context_rail.runner.dispatch import project_root
+    from context_rail.store.location import project_root
 
     root = project_root(store)
     if root is None or not (Path(root) / ".git").exists():

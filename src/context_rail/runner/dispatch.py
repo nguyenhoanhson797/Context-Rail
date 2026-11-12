@@ -1,4 +1,4 @@
-﻿"""Local dispatch state: worktrees, branches, locks and progress.
+"""Local dispatch state: worktrees, branches, locks and progress.
 
 Dispatch truth is a pair of immutable Records; this module only keeps the
 control files that make a launch survivable: where its worktree lives, which
@@ -29,7 +29,7 @@ from context_rail.runner.control import (
     read_control,
     write_control,
 )
-from context_rail.store.location import local_dir, worktree_git_dir
+from context_rail.store.location import local_dir, project_root
 from context_rail.model.primitives import WINDOWS_RESERVED_NAMES
 from context_rail.store.lock import StoreLockTimeout, file_lock, take_exclusive
 from context_rail.store.write import WriteRefused
@@ -98,17 +98,6 @@ class DispatchPaths:
     root: Path
     worktree: Path
     branch: str
-
-
-def project_root(store: Path) -> Path:
-    """The Git worktree that holds the canonical store."""
-    located = worktree_git_dir(Path(store))
-    if located is None:
-        raise WriteRefused(
-            "INTEGRATION_FAILURE",
-            "the canonical store is not inside a Git worktree",
-        )
-    return located[1]
 
 
 def worktree_root(store: Path) -> Path:

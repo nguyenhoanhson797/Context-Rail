@@ -147,6 +147,47 @@ def test_extra_parts_are_included_only_when_declared(
     assert "a big diff" not in with_extra["text"]
 
 
+def test_seat_brief_for_a_role_and_anchor_without_a_live_seat(
+    role_store: SimpleNamespace,
+) -> None:
+    from context_rail.context.seat_brief import seat_brief_for
+    from context_rail.gateway.gateway import Context
+    from context_rail.model.manifest import load_manifest
+    from context_rail.model.pack import load_pack
+
+    task = implementer_seat(role_store.store, role_store.o1)
+    manifest = load_manifest(role_store.store)
+    context = Context(
+        store=role_store.store,
+        manifest=manifest,
+        pack=load_pack(manifest.pack, role_store.store),
+        actor="human",
+    )
+
+    brief = seat_brief_for(
+        context,
+        role_name="implementer",
+        anchor=task,
+        profile=None,
+        granted_by=role_store.lead,
+        extra_parts={"code_area": "src/app.py", "diff": "a big diff"},
+    )
+
+    assert brief["anchor"] == task
+    assert brief["seat"] == "implementer"
+    assert task in brief["documents"]
+    assert "src/app.py" in brief["text"]
+    assert "a big diff" not in brief["text"]
+    with pytest.raises(LookupError):
+        seat_brief_for(
+            context,
+            role_name="no-such-role",
+            anchor=task,
+            profile=None,
+            granted_by=role_store.lead,
+        )
+
+
 @pytest.mark.parametrize("budget", [80, 200, 600, 2000, 12000])
 def test_brief_never_exceeds_max_chars(
     role_store: SimpleNamespace, budget: int

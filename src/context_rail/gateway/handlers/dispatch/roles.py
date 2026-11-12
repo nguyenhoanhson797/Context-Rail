@@ -12,8 +12,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from context_rail.context.reach import ReachError, resolve_reach
-from context_rail.context.seat_brief import seat_brief
-from context_rail.core.util import now_iso
+from context_rail.context.seat_brief import seat_brief_for
 from context_rail.kernel.seats import LiveSeat
 from context_rail.model.roles import check_profile_narrows
 from context_rail.store import query
@@ -176,15 +175,15 @@ def run_seat_brief(
     extra_parts: Mapping[str, str] | None = None,
 ) -> str:
     """The brief a run seat may read, rendered as the order's context section."""
-    live = LiveSeat(
-        seat=seat,
-        role=role.name,
+    return seat_brief_for(
+        context,
+        role_name=role.name,
         anchor=item,
         profile=profile_name,
         granted_by=dispatcher,
-        granted_at=now_iso(),
-    )
-    return seat_brief(context, live, role, extra_parts=extra_parts)["text"]
+        seat=seat,
+        extra_parts=extra_parts,
+    )["text"]
 
 
 def code_reach_text(role: Role) -> str:

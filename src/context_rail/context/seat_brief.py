@@ -14,16 +14,17 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.context import recipes
 from context_rail.context.reach import ReachError, resolve_reach
+from context_rail.core.util import now_iso
 from context_rail.kernel import structure
 from context_rail.kernel.reach import ancestors, descendants, one_hop
+from context_rail.kernel.seats import LiveSeat
 from context_rail.store import query
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
-    from context_rail.kernel.seats import LiveSeat
     from context_rail.model.roles import Role
 
-__all__ = ["seat_brief"]
+__all__ = ["seat_brief", "seat_brief_for"]
 
 _EXTRA_ONLY = ("diff", "evidence", "code_area")
 _BODY_CHARS = 200
@@ -69,6 +70,36 @@ def seat_brief(
         "seat": seat.seat,
         "anchor": seat.anchor,
     }
+
+
+def seat_brief_for(
+    context: Context,
+    *,
+    role_name: str,
+    anchor: str,
+    profile: str | None,
+    granted_by: str,
+    seat: str | None = None,
+    extra_parts: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """The brief a role would read anchored at ``anchor``, with no live seat needed.
+
+    A tool that works an item has no session to read the brief through, so the
+    seat is stood up for this one read and never recorded. An unknown role is a
+    ``LookupError``; callers name the roles the pack declares.
+    """
+    role = context.pack.operating.roles.get(role_name)
+    if role is None:
+        raise LookupError(f"unknown role {role_name!r}")
+    live = LiveSeat(
+        seat=seat or role_name,
+        role=role_name,
+        anchor=anchor,
+        profile=profile,
+        granted_by=granted_by,
+        granted_at=now_iso(),
+    )
+    return seat_brief(context, live, role, extra_parts=extra_parts)
 
 
 def _documents(context: Context, seat: LiveSeat, role: Role) -> list[str]:

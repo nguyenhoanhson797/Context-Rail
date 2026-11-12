@@ -11,7 +11,6 @@ from code_fixtures import with_body as _with_body
 from helpers import approve_picture, latest_record, run_git
 
 from context_rail.gateway.handlers.dispatch import code_area
-from context_rail.model.codegraph import Edge, MemoryGraph, Node, Snapshot
 from context_rail.model.cto import parse_run
 from context_rail.model.errors import ModelError
 from context_rail.runner import dispatch as local_dispatch
@@ -51,57 +50,6 @@ def test_a_fallback_line_keeps_the_reason() -> None:
     line = code_area._graph_line(ensured, "c1")
 
     assert line == "graph: builtin @c1 (fallback: graphify is not installed)"
-
-
-def test_no_seeds_means_no_predicted_area() -> None:
-    graph = MemoryGraph(
-        Snapshot(
-            provider="builtin",
-            provider_version="1",
-            commit="c1",
-            built_at="2026-11-07T00:00:00Z",
-            calls=True,
-            lines=True,
-            files_listed=1,
-            files_parsed=1,
-            skipped=(),
-            nodes=(Node("a.py", "file", "a.py", "a.py", None, None),),
-            edges=(),
-        )
-    )
-
-    area = code_area.predict_area(graph, text="Make it faster.")
-
-    assert area.seeds == ()
-    assert code_area.render_area(graph_line="graph: builtin @c1", area=area) == (
-        "no code area predicted (mention a path or path:Symbol in the item)"
-    )
-
-
-def test_an_ambiguous_mention_is_not_a_seed() -> None:
-    nodes = (
-        Node("a.py", "file", "a.py", "a.py", None, None),
-        Node("a.py:A.run", "method", "run", "a.py", 1, 2),
-        Node("a.py:B.run", "method", "run", "a.py", 3, 4),
-    )
-    graph = MemoryGraph(
-        Snapshot(
-            provider="builtin",
-            provider_version="1",
-            commit="c1",
-            built_at="2026-11-07T00:00:00Z",
-            calls=True,
-            lines=True,
-            files_listed=1,
-            files_parsed=1,
-            skipped=(),
-            nodes=nodes,
-            edges=(Edge("a.py", "a.py:A.run", "contains", "extracted"),),
-        )
-    )
-
-    assert code_area.predict_area(graph, text="see a.py:run").seeds == ()
-    assert code_area.predict_area(graph, text="see a.py:A.run").seeds == ("a.py:A.run",)
 
 
 def test_the_area_is_recorded_in_progress_and_on_the_run(
@@ -176,22 +124,6 @@ def test_code_graph_none_leaves_the_section_empty(leaf_item, fake_droid, droid_e
     assert result["ok"], result
     assert _section(leaf, result["value"]["dispatch_id"]) == "(none)"
     assert not (local_dir(leaf.store) / "codegraph" / "graph.sqlite").exists()
-
-
-def test_the_rendered_area_never_exceeds_its_bound() -> None:
-    area = code_area.Area(
-        seeds=tuple(
-            f"src/billing/discounts/module_{index:03d}.py:apply_function_{index:03d}"
-            for index in range(50)
-        ),
-        callers=(),
-    )
-
-    text = code_area.render_area(graph_line="graph: builtin @abc1234 (fresh)", area=area)
-
-    assert len(text) <= code_area.CODE_AREA_CHARS
-    assert text.startswith("graph: builtin @abc1234 (fresh)")
-    assert "more)" in text
 
 
 def test_parse_run_bounds_code_area() -> None:

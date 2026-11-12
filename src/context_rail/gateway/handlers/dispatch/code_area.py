@@ -6,22 +6,23 @@ it shows up as a line in the work order and a warning on the result.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from context_rail.model.codegraph import (
-    Neighbors,
-    effective_code_graph,
-    resolve,
-    symbols_in,
-    tests_reaching,
-    upstream,
+from context_rail.context.code_area import (
+    CODE_AREA_CHARS,
+    CODE_AREA_ENTRIES,
+    Area,
+    configured_graph,
+    fit_lines,
+    predict_area,
+    render_area,
 )
-from context_rail.model.cto import CODE_AREA_MAX, SYMBOLS_CHANGED_MAX
+from context_rail.model.codegraph import symbols_in, tests_reaching, upstream
+from context_rail.model.cto import SYMBOLS_CHANGED_MAX
 from context_rail.runner import dispatch as local_dispatch
 from context_rail.runner import git as git_runner
 from context_rail.runner.codegraph import Ensured, ensure_snapshot
@@ -45,24 +46,6 @@ __all__ = [
     "review_code_lines",
 ]
 
-CODE_AREA_CHARS = 2000
-CODE_AREA_ENTRIES = CODE_AREA_MAX
-NO_AREA = "no code area predicted (mention a path or path:Symbol in the item)"
-_TOKEN = re.compile(r"[\w.\-/]+\.[A-Za-z0-9]+(?::[A-Za-z_][\w.]*)?")
-_OVERLAPS_SHOWN = 3
-_HISTORY_FILES = 5
-
-
-@dataclass(frozen=True)
-class Area:
-    """Seed nodes the work will touch and the nodes that depend on them."""
-
-    seeds: tuple[str, ...]
-    callers: tuple[str, ...]
-
-    def entries(self) -> tuple[str, ...]:
-        return (self.seeds + self.callers)[:CODE_AREA_ENTRIES]
-
 
 @dataclass(frozen=True)
 class Prepared:
@@ -71,95 +54,6 @@ class Prepared:
     section: str
     entries: tuple[str, ...]
     warnings: tuple[str, ...]
-
-
-def predict_area(
-    graph: Neighbors,
-    *,
-    text: str,
-    globs: Sequence[str] = (),
-    earlier: Sequence[str] = (),
-) -> Area:
-    """Seeds from mentions in ``text``, check input globs, then earlier changes."""
-    seeds: list[str] = []
-
-    def add(ids: Sequence[str]) -> None:
-        for node_id in ids:
-            if node_id not in seeds:
-                seeds.append(node_id)
-
-    for token in _TOKEN.findall(text):
-        found = resolve(graph, token.rstrip("."))
-        if len(found) == 1:
-            add(found)
-    files = graph.files()
-    for pattern in globs:
-        add([path for path in files if fnmatchcase(path, pattern)])
-    for path in earlier:
-        add(resolve(graph, path))
-    seeds = seeds[:CODE_AREA_ENTRIES]
-
-    targets = list(seeds)
-    for node_id in seeds:
-        node = graph.node(node_id)
-        if node is not None and node.kind == "file":
-            targets += [inner.id for inner in graph.by_file(node_id) if inner.kind != "file"]
-    callers = tuple(
-        node_id
-        for node_id in upstream(graph, targets, depth=1, limit=CODE_AREA_ENTRIES)
-        if node_id not in seeds
-    )
-    return Area(tuple(seeds), callers)
-
-
-def render_area(
-    *,
-    graph_line: str,
-    area: Area,
-    overlaps: Sequence[dict[str, Any]] = (),
-    history: Sequence[str] = (),
-) -> str:
-    """The work-order text, never longer than :data:`CODE_AREA_CHARS`."""
-    if not area.seeds:
-        return NO_AREA
-    lists: list[tuple[str, list[str]]] = [
-        ("likely touch", list(area.seeds)),
-        ("called by", list(area.callers)),
-    ]
-    if history:
-        lists.append(("history", list(history[:_HISTORY_FILES])))
-    tails = [
-        f"overlap: {entry['item']} (active) predicted {', '.join(entry['files'])} "
-        "-> coordinate or merge after it"
-        for entry in list(overlaps)[:_OVERLAPS_SHOWN]
-    ]
-    return _fit([graph_line], lists, tails)
-
-
-def _fit(
-    head: Sequence[str], lists: list[tuple[str, list[str]]], tails: Sequence[str] = ()
-) -> str:
-    """Join the lines, dropping entries from the longest list until it fits."""
-    dropped = [0] * len(lists)
-    while True:
-        lines = list(head)
-        for (label, entries), gone in zip(lists, dropped, strict=True):
-            if entries:
-                more = f" (+{gone} more)" if gone else ""
-                lines.append(f"{label}: {', '.join(entries)}{more}")
-        lines += tails
-        text = "\n".join(lines)
-        if len(text) <= CODE_AREA_CHARS:
-            return text
-        longest = max(
-            (index for index, (_label, entries) in enumerate(lists) if len(entries) > 1),
-            key=lambda index: len(", ".join(lists[index][1])),
-            default=None,
-        )
-        if longest is None:
-            return text[: CODE_AREA_CHARS - 1] + "…"
-        lists[longest][1].pop()
-        dropped[longest] += 1
 
 
 def changed_symbols(
@@ -236,7 +130,7 @@ def review_code_lines(ctx: Context, slug: str, run: dict[str, Any]) -> str:
             )
         )
     lists.append(("tests reaching the change, not declared as checks", tests))
-    return _fit([], lists)
+    return fit_lines([], lists)
 
 
 def _base_of(store: Path, data: dict[str, Any]) -> str | None:
@@ -309,11 +203,6 @@ def prepare(
         for entry in overlaps
     )
     return Prepared(section, entries, warnings)
-
-
-def configured_graph(ctx: Context) -> str:
-    """The resolved provider choice for this store."""
-    return effective_code_graph(ctx.manifest.code_graph, ctx.pack.policy.get("code_graph"))
 
 
 def _graph_line(ensured: Ensured, base: str) -> str:
