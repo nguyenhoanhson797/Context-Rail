@@ -119,7 +119,7 @@ def try_daemon_invoke(
 
 
 #: Tools that execute something; none of them may run before the human approves.
-EXECUTION_TOOLS = ("verify", "dispatch", "review", "merge", "cto tick")
+EXECUTION_TOOLS = ("verify", "candidate", "dispatch", "review", "merge", "cto tick")
 #: The categories a move may not reach before approval.
 LOCKED_CATEGORIES = ("active", "done")
 #: Generic writes whose decision depends on which documents they would change.

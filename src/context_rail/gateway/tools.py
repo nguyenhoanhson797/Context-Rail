@@ -180,6 +180,23 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.checks:verify",
     ),
     Tool(
+        name="candidate",
+        summary="Record a commit any tool produced for an Item, with its changed files and usage.",
+        permission="write",
+        params=(
+            Param("item", "str", required=True, positional=True, help="leaf Item slug"),
+            Param("commit", "str", required=True, help="the commit: a sha, a branch or HEAD"),
+            Param("base", "str", help="the commit the work started from (default: where it left the default branch)"),
+            Param("profile", "str", help="the profile document the work followed"),
+            Param("model", "str", help="the model that produced it (free text)"),
+            Param("harness", "str", help="the tool that produced it (free text)"),
+            Param("usage", "str", repeat=True, help="a usage counter as NAME=NUMBER or NAME=unknown"),
+            Param("duration", "str", help="seconds the work took"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.candidates:record_candidate",
+    ),
+    Tool(
         name="dispatch",
         summary="Run one implementer in an isolated worktree and verify its candidate.",
         permission="write",

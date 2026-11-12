@@ -198,6 +198,7 @@ CTO_METHODS = WORKER_METHODS + (
     "doctor",
     "check",
     "verify",
+    "candidate",
     "dispatch",
     "review",
     "merge",

@@ -26,6 +26,7 @@ __all__ = [
     "QueryError",
     "approval_for",
     "brief_rows",
+    "candidate_by_record",
     "candidate_count",
     "candidate_for_commit",
     "candidates_for",
@@ -651,6 +652,15 @@ def latest_candidate(ix: Index, item: str) -> dict[str, Any] | None:
     """The newest candidate recorded for ``item``, or None."""
     rows = candidates_for(ix, item, limit=1)
     return rows[0] if rows else None
+
+
+def candidate_by_record(ix: Index, record_id: str) -> dict[str, Any] | None:
+    """The candidate a record id names, or None."""
+    record_id = _text(record_id, "record")
+    row = ix.conn.execute(
+        f"{_CANDIDATE_SELECT} WHERE record_id = ?", (record_id,)
+    ).fetchone()
+    return None if row is None else _candidate_row(row)
 
 
 def candidate_count(ix: Index, item: str) -> int:

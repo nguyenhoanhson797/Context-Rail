@@ -6,7 +6,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import yaml
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import Context, invoke
@@ -17,7 +16,7 @@ from context_rail.gateway.handlers.independence import (
 from context_rail.kernel.seats import LiveSeat
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
-from helpers import approve_picture, as_human, write_candidate, write_record
+from helpers import as_human, restrict_code_write, write_candidate, write_record
 
 SHA = "a" * 40
 
@@ -57,18 +56,6 @@ def write_review(store: Path, record_id: str, item: str, reviewer: str) -> None:
         actor=reviewer,
         about=(item,),
     )
-
-
-def restrict_code_write(store: Path, patterns: list[str]) -> None:
-    path = store / "packs" / "scrum" / "pack.yaml"
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    document["operating"]["roles"]["implementer"]["reach"]["code"]["write"] = patterns
-    path.write_text(
-        yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
-    )
-    with as_human():
-        approved = approve_picture(store, actor=None)
-    assert is_ok(approved), approved
 
 
 @pytest.fixture

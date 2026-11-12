@@ -79,6 +79,7 @@ CAN_TOOLS: dict[str, str] = {
     "relocate": "relocate",
     "check": "check",
     "verify": "verify",
+    "candidate": "candidate",
     "dispatch": "dispatch",
     "review": "review",
     "merge": "merge",

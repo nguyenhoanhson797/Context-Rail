@@ -742,6 +742,35 @@ def approve_picture(
     )
 
 
+def edit_roles(store: Path, edit: Callable[[dict[str, Any]], None]) -> None:
+    """Change the scrum pack's declared roles in place and approve the result.
+
+    ``edit`` receives the ``operating.roles`` mapping. The pack is a semantic
+    document, so the human approves the edited picture again before any seat
+    acts on it.
+    """
+    from context_rail.core.result import is_ok
+
+    path = Path(store) / "packs" / "scrum" / "pack.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    edit(document["operating"]["roles"])
+    path.write_text(
+        yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+    with as_human():
+        approved = approve_picture(store, actor=None)
+    assert is_ok(approved), approved
+
+
+def restrict_code_write(store: Path, patterns: list[str]) -> None:
+    """Narrow the implementer role's code write reach to ``patterns``."""
+
+    def edit(roles: dict[str, Any]) -> None:
+        roles["implementer"]["reach"]["code"]["write"] = patterns
+
+    edit_roles(store, edit)
+
+
 def make_pilot_repo(root: Path) -> Any:
     """Create the pilot project and its bare remote under ``root`` in-process."""
     from support.pilot_repo import build_pilot

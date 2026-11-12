@@ -163,7 +163,7 @@ def _implementer(leaves: list[str], notes: list[str]) -> dict[str, Any]:
             "write": ["anchor"],
             "code": {"read": ["**"], "write": ["**"]},
         },
-        "can": {"report": leaves},
+        "can": {"candidate": leaves, "report": leaves},
         "sees": {
             "up": 1,
             "relations": ["depends_on"],

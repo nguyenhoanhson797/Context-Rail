@@ -63,6 +63,7 @@ _WRITE_TABLE = frozenset(
         "review",
         "merge",
         "verify",
+        "candidate",
         "report",
         "triage",
         "execution record",
@@ -72,6 +73,7 @@ _WRITE_TABLE = frozenset(
     }
 )
 _ITEM_TOOLS = {
+    "candidate": "candidate",
     "dispatch": "dispatch",
     "review": "review",
     "merge": "merge",
