@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from context_rail.model.candidate import parse_budget_caps
 from context_rail.model.errors import ModelError
 from context_rail.model.fields import (
     boolean,
@@ -104,7 +105,6 @@ DEFAULT_BUDGETS: dict[str, dict[str, Any]] = {
     "project": {"attempts": None, "seconds": None, "tokens": None, "credits": None},
 }
 BUDGET_SCOPES = ("item", "project")
-BUDGET_KEYS = ("attempts", "seconds", "tokens", "credits")
 DEFAULT_THRESHOLDS: dict[str, Any] = {
     "stuck_hours": 24,
     "near_budget_ratio": 0.8,
@@ -332,30 +332,8 @@ def _budgets(raw: Any) -> dict[str, dict[str, Any]]:
         entry = mapping(
             data[scope] if scope in data else DEFAULT_BUDGETS[scope], f"charter.budgets.{scope}"
         )
-        no_unknown(entry, BUDGET_KEYS, f"charter.budgets.{scope}")
-        budgets[scope] = {
-            "attempts": _optional_number(
-                entry.get("attempts"), f"charter.budgets.{scope}.attempts", integer_only=True
-            ),
-            "seconds": _optional_number(
-                entry.get("seconds"), f"charter.budgets.{scope}.seconds"
-            ),
-            "tokens": _optional_number(
-                entry.get("tokens"), f"charter.budgets.{scope}.tokens"
-            ),
-            "credits": _optional_number(
-                entry.get("credits"), f"charter.budgets.{scope}.credits"
-            ),
-        }
+        budgets[scope] = parse_budget_caps(entry, f"charter.budgets.{scope}")
     return budgets
-
-
-def _optional_number(value: Any, what: str, *, integer_only: bool = False) -> Any:
-    if value is None:
-        return None
-    if integer_only:
-        return integer(value, what, positive=True)
-    return finite_number(value, what, positive=True)
 
 
 def _thresholds(raw: Any) -> dict[str, Any]:

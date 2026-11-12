@@ -88,7 +88,7 @@ def seed_activity(store: Path, *, stuck: str, too_long: str) -> Seeded:
     stuck and too-long selections read.
     """
     from context_rail.core.util import new_ulid
-    from helpers import write_record, write_run
+    from helpers import write_candidate, write_record, write_run
 
     store = Path(store)
     if not store.is_dir():
@@ -120,6 +120,14 @@ def seed_activity(store: Path, *, stuck: str, too_long: str) -> Seeded:
         dispatch=f"seed-{too_long}",
         duration=LONG_SECONDS,
         usage={},
+    )
+    write_candidate(
+        store,
+        new_ulid(),
+        too_long,
+        "c" * 40,
+        at=run_at,
+        duration_s=LONG_SECONDS,
     )
     return Seeded(stuck=quiet, too_long=spent, quiet_at=quiet_at, run_at=run_at)
 

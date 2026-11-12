@@ -1,55 +1,46 @@
-"""Budgets: what a run used, what an item has left, and which items are too long.
+"""Budgets: what an item's candidates used, what is left, and which items run long.
 
-Usage is never zero-filled. A counter a run did not report is unknown, and an
-incomplete total is reported beside its unknown count instead of being summed as
-if it were complete. Unknown usage never blocks on its own, and never hides the
-attempts and time that were measured locally.
+Usage is never zero-filled. A counter a candidate did not report is unknown, and
+an incomplete total is reported beside its unknown count instead of being summed
+as if it were complete. Unknown usage never blocks on its own, and never hides
+the attempts and time that were measured locally. A budget only warns: nothing
+here refuses work.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from context_rail.kernel.structure import FINISHED_CATEGORIES
-from context_rail.model.cto import USAGE_KEYS
-from context_rail.model.primitives import ROLES
 
 __all__ = [
     "STATES",
-    "USAGE_COUNTERS",
-    "ATTEMPT_TOKEN_COUNTERS",
-    "WORKER_ROLES",
-    "AttemptUsage",
     "Budget",
     "BudgetState",
+    "CandidateFacts",
     "ItemFacts",
-    "RunFacts",
     "UsageTotals",
     "budget_state",
-    "launch_refusal",
     "too_long",
     "usage_totals",
 ]
 
 UNKNOWN = "unknown"
 STATES = ("ok", "near", "exceeded")
-USAGE_COUNTERS = USAGE_KEYS
-ATTEMPT_TOKEN_COUNTERS = ("input_tokens", "output_tokens")
-WORKER_ROLES = (ROLES[1], ROLES[2])
-#: The role that spends the launch budget; a review is an attempt's outcome.
-IMPLEMENTER_ROLE = ROLES[1]
+#: Caps measured from the candidate count and recorded durations, not a counter.
+_LOCAL_CAPS = ("attempts", "seconds")
 
 
 @dataclass(frozen=True)
-class AttemptUsage:
-    """One attempt's usage; cache counters are folded in by the caller."""
+class CandidateFacts:
+    """What one recorded candidate says it cost."""
 
-    input_tokens: int | float | str
-    output_tokens: int | float | str
-    factory_credits: int | float | str = UNKNOWN
+    item: str
+    duration_s: float | None
+    usage: Mapping[str, int | float | str]
 
 
 @dataclass(frozen=True)
@@ -61,26 +52,10 @@ class UsageTotals:
 
 
 @dataclass(frozen=True)
-class RunFacts:
-    """What one run used, measured by the caller."""
-
-    item: str | None
-    role: str
-    attempts: int
-    seconds: float
-    usage: tuple[AttemptUsage, ...]
-    failed: bool = False
-    run_id: str | None = None
-
-
-@dataclass(frozen=True)
 class Budget:
-    """A cap; ``None`` means no numeric limit."""
+    """Caps by name: ``attempts``, ``seconds`` or a usage counter; ``None`` is no limit."""
 
-    attempts: int | None
-    seconds: float | None
-    tokens: int | None
-    credits: int | None
+    caps: Mapping[str, int | float | None]
 
 
 @dataclass(frozen=True)
@@ -102,74 +77,62 @@ class ItemFacts:
     dependencies: tuple[str, ...]
 
 
-def usage_totals(attempts: Sequence[dict[str, Any]]) -> UsageTotals:
-    """Sum every known counter and count the attempts that reported unknown."""
-    known: dict[str, int | float] = {counter: 0 for counter in USAGE_COUNTERS}
-    unknown: dict[str, int] = {counter: 0 for counter in USAGE_COUNTERS}
-    for attempt in attempts:
-        raw = attempt.get("usage") if isinstance(attempt, dict) else None
-        usage = raw if isinstance(raw, dict) else {}
-        for counter in USAGE_COUNTERS:
-            number = _known_number(usage.get(counter, UNKNOWN))
+def usage_totals(usages: Sequence[Mapping[str, Any]]) -> UsageTotals:
+    """Sum every known counter and count the usages that reported it unknown."""
+    named: list[str] = []
+    maps = [usage if isinstance(usage, Mapping) else {} for usage in usages]
+    for usage in maps:
+        for key in usage:
+            if key not in named:
+                named.append(key)
+    known: dict[str, int | float] = {key: 0 for key in named}
+    unknown: dict[str, int] = {key: 0 for key in named}
+    for usage in maps:
+        for key in named:
+            number = _known_number(usage.get(key, UNKNOWN))
             if number is None:
-                unknown[counter] += 1
+                unknown[key] += 1
             else:
-                known[counter] += number
+                known[key] += number
     return UsageTotals(known_sum=known, unknown_attempts=unknown)
 
 
 def budget_state(
-    runs: Sequence[RunFacts], budget: Budget, near_ratio: float
+    candidates: Sequence[CandidateFacts], budget: Budget, near_ratio: float
 ) -> BudgetState:
-    """The item's budget state: exceeded only strictly above a non-null cap.
-
-    Only worker roles count; a CTO tick run is not this Item's work.
-    """
-    runs = [run for run in runs if run.role in WORKER_ROLES]
-    tokens, unknown_tokens = _token_usage(runs)
-    credits, unknown_credits = _credit_usage(runs)
-    unknown: dict[str, int] = {}
-    if unknown_tokens:
-        unknown["tokens"] = unknown_tokens
-    if unknown_credits:
-        unknown["credits"] = unknown_credits
-    used_attempts = sum(run.attempts for run in runs)
-    used_seconds = sum(run.seconds for run in runs)
+    """The item's budget state: exceeded only strictly above a non-null cap."""
     state = "ok"
     reasons: list[str] = []
-    for label, used, cap in (
-        ("attempts", used_attempts, budget.attempts),
-        ("seconds", used_seconds, budget.seconds),
-        ("tokens", tokens, budget.tokens),
-        ("credits", credits, budget.credits),
-    ):
-        state, reason = _measure(state, label, used, cap, near_ratio)
+    unknown: dict[str, int] = {}
+    for name, cap in budget.caps.items():
+        if cap is None:
+            continue
+        if name == "attempts":
+            used: int | float = len(candidates)
+        elif name == "seconds":
+            durations = [_known_number(item.duration_s) for item in candidates]
+            used = sum(value for value in durations if value is not None)
+            missing = sum(1 for value in durations if value is None)
+            if missing:
+                unknown[name] = missing
+        else:
+            counters = [_known_number(item.usage.get(name, UNKNOWN)) for item in candidates]
+            used = sum(value for value in counters if value is not None)
+            missing = sum(1 for value in counters if value is None)
+            if missing:
+                unknown[name] = missing
+        state, reason = _measure(state, name, used, cap, near_ratio)
         if reason is not None:
             reasons.append(reason)
     return BudgetState(state, tuple(reasons), unknown)
 
 
-def launch_refusal(runs: Sequence[RunFacts], budget: Budget) -> str | None:
-    """Refuse a new attempt when no implementer attempt or time budget remains.
-
-    Only implementer runs spend the launch budget: a review is the outcome of an
-    attempt, and dispatching again after one is the loop's intended next step.
-    The budget *state* and the too-long report still count both worker roles.
-    """
-    spent = [run for run in runs if run.role == IMPLEMENTER_ROLE]
-    used_attempts = sum(run.attempts for run in spent)
-    if budget.attempts is not None and used_attempts >= budget.attempts:
-        return f"no attempts remain: {_fmt(used_attempts)} of {_fmt(budget.attempts)} used"
-    used_seconds = sum(run.seconds for run in spent)
-    if budget.seconds is not None and used_seconds >= budget.seconds:
-        return f"no time remains: {_fmt(used_seconds)} of {_fmt(budget.seconds)} seconds used"
-    return None
-
-
 def too_long(
-    items: Sequence[ItemFacts], runs: Sequence[RunFacts], budgets: dict[str, Any]
+    items: Sequence[ItemFacts],
+    candidates: Sequence[CandidateFacts],
+    budgets: Mapping[str, Any],
 ) -> tuple[str, ...]:
-    """Open and blocked items whose worker attempts or runtime exceed the item cap."""
+    """Open and blocked items whose candidates or recorded time exceed the item cap."""
     caps = _item_caps(budgets)
     attempt_cap = caps.get("attempts")
     second_cap = caps.get("seconds")
@@ -177,11 +140,11 @@ def too_long(
         return ()
     attempts: dict[str, int] = {}
     seconds: dict[str, float] = {}
-    for run in runs:
-        if run.role not in WORKER_ROLES or run.item is None:
-            continue
-        attempts[run.item] = attempts.get(run.item, 0) + run.attempts
-        seconds[run.item] = seconds.get(run.item, 0.0) + run.seconds
+    for candidate in candidates:
+        attempts[candidate.item] = attempts.get(candidate.item, 0) + 1
+        spent = _known_number(candidate.duration_s)
+        if spent is not None:
+            seconds[candidate.item] = seconds.get(candidate.item, 0.0) + spent
     long_items = [
         item.slug
         for item in items
@@ -192,39 +155,6 @@ def too_long(
         )
     ]
     return tuple(sorted(long_items))
-
-
-def _token_usage(runs: Sequence[RunFacts]) -> tuple[int | float, int]:
-    known: int | float = 0
-    unknown = 0
-    for run in runs:
-        for attempt in run.usage:
-            total = 0
-            missing = False
-            for counter in ATTEMPT_TOKEN_COUNTERS:
-                number = _known_number(getattr(attempt, counter))
-                if number is None:
-                    missing = True
-                else:
-                    total += number
-            if missing:
-                unknown += 1
-            else:
-                known += total
-    return known, unknown
-
-
-def _credit_usage(runs: Sequence[RunFacts]) -> tuple[int | float, int]:
-    known: int | float = 0
-    unknown = 0
-    for run in runs:
-        for attempt in run.usage:
-            number = _known_number(attempt.factory_credits)
-            if number is None:
-                unknown += 1
-            else:
-                known += number
-    return known, unknown
 
 
 def _measure(
@@ -247,13 +177,13 @@ def _known_number(value: Any) -> int | float | None:
     return value
 
 
-def _item_caps(budgets: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(budgets, dict):
+def _item_caps(budgets: Mapping[str, Any]) -> Mapping[str, Any]:
+    if not isinstance(budgets, Mapping):
         return {}
     caps = budgets.get("item")
-    if isinstance(caps, dict):
+    if isinstance(caps, Mapping):
         return caps
-    return {key: budgets[key] for key in ("attempts", "seconds") if key in budgets}
+    return {key: budgets[key] for key in _LOCAL_CAPS if key in budgets}
 
 
 def _fmt(value: int | float) -> str:

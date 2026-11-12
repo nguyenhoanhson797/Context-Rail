@@ -38,6 +38,7 @@ __all__ = [
     "USAGE_KEY",
     "USAGE_MAX_KEYS",
     "Candidate",
+    "parse_budget_caps",
     "parse_candidate",
     "parse_usage_map",
 ]
@@ -49,6 +50,7 @@ TEXT_CAP = 200
 USAGE_MAX_KEYS = 32
 UNKNOWN_USAGE = "unknown"
 USAGE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_LEGACY_CAPS = ("attempts", "seconds", "tokens", "credits")
 _FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 CANDIDATE_KEYS = (
@@ -161,6 +163,32 @@ def parse_usage_map(raw: Any, what: str) -> dict[str, int | float | str]:
         else:
             refuse(f'{what}.{key} must be a non-negative number or "{UNKNOWN_USAGE}"')
     return parsed
+
+
+def parse_budget_caps(raw: Any, what: str) -> dict[str, int | float | None]:
+    """Validate one budget scope: caps on attempts, seconds or any usage counter.
+
+    The four long-standing names are always present, None when unset. Any other
+    key must be a usage counter name, so a cap can only ever measure something a
+    candidate can report; a number is never guessed from a misspelt key.
+    """
+    entry = mapping(raw, what)
+    if len(entry) > USAGE_MAX_KEYS + 2:
+        refuse(f"{what} holds at most {USAGE_MAX_KEYS + 2} caps")
+    caps: dict[str, int | float | None] = dict.fromkeys(_LEGACY_CAPS)
+    for key, value in entry.items():
+        if key not in ("attempts", "seconds") and not USAGE_KEY.fullmatch(key):
+            refuse(f"{what} cap {key!r} must be attempts, seconds or match {USAGE_KEY.pattern}")
+        where = f"{what}.{key}"
+        if value is None:
+            caps[key] = None
+        elif key == "attempts":
+            caps[key] = integer(value, where, positive=True)
+        elif key == "seconds":
+            caps[key] = finite_number(value, where, positive=True)
+        else:
+            caps[key] = finite_number(value, where, minimum=0)
+    return caps
 
 
 def _sha(raw: Any, what: str) -> str:

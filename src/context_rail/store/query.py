@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from context_rail.core.util import canonical_iso
+from context_rail.kernel.budgets import CandidateFacts
 from context_rail.kernel.seats import LiveSeat, fold
 from context_rail.kernel.triage import AttemptFacts
 from context_rail.model.cto import USAGE_KEYS
@@ -29,6 +30,7 @@ __all__ = [
     "brief_rows",
     "candidate_by_record",
     "candidate_count",
+    "candidate_facts",
     "candidate_for_commit",
     "candidates_for",
     "check_state",
@@ -63,7 +65,6 @@ __all__ = [
     "totals_for_runs",
     "attempt_facts",
     "untriaged_reports",
-    "worker_totals",
 ]
 
 DEFAULT_LIMIT = 50
@@ -663,6 +664,31 @@ def candidate_by_record(ix: Index, record_id: str) -> dict[str, Any] | None:
         f"{_CANDIDATE_SELECT} WHERE record_id = ?", (record_id,)
     ).fetchone()
     return None if row is None else _candidate_row(row)
+
+
+def candidate_facts(ix: Index, item: str | None = None) -> list[CandidateFacts]:
+    """What each recorded candidate says it cost, for one item or every item."""
+    if item is None:
+        rows = ix.conn.execute(
+            "SELECT item, data_json FROM candidates ORDER BY at, record_id"
+        ).fetchall()
+    else:
+        rows = ix.conn.execute(
+            "SELECT item, data_json FROM candidates WHERE item = ? ORDER BY at, record_id",
+            (_text(item, "item"),),
+        ).fetchall()
+    facts: list[CandidateFacts] = []
+    for owner, data_json in rows:
+        data = json.loads(data_json)
+        usage = data.get("usage")
+        facts.append(
+            CandidateFacts(
+                owner,
+                data.get("duration_s"),
+                usage if isinstance(usage, dict) else {},
+            )
+        )
+    return facts
 
 
 def candidate_count(ix: Index, item: str) -> int:
@@ -1286,22 +1312,6 @@ def execution_count(ix: Index, action: str, target: str) -> int:
         (action, target),
     ).fetchone()
     return int(row[0]) if row is not None else 0
-
-
-def worker_totals(ix: Index) -> dict[str, dict[str, Any]]:
-    """Attempts and measured seconds per Item, summed from worker run rows only.
-
-    A CTO tick's own run carries no Item and is excluded, so its overhead never
-    counts against the Item's budget.
-    """
-    rows = ix.conn.execute(
-        'SELECT item, SUM(attempt_count), SUM(duration_s) FROM runs '
-        "WHERE role IN ('implementer', 'reviewer') AND item <> '' GROUP BY item"
-    ).fetchall()
-    return {
-        item: {"attempts": int(attempts or 0), "seconds": float(seconds or 0.0)}
-        for item, attempts, seconds in rows
-    }
 
 
 def brief_rows(ix: Index, limit: int = 20) -> dict[str, Any]:

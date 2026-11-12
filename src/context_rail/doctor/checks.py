@@ -73,6 +73,7 @@ SEVERITIES: dict[str, str] = {
     "check_unknown": "warning",
     "review_invalid": "error",
     "report_untriaged": "warning",
+    "budget_exceeded": "warning",
     "report_missing": "error",
     "profile_invalid": "error",
     "adapter_modified": "warning",
@@ -200,6 +201,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
         issues.extend(_quality_legacy_issues(rows, pack, policy))
     issues.extend(_check_issues(context, ix))
     issues.extend(_review_issues(ix, policy))
+    issues.extend(_budget_issues(ix, policy))
     issues.extend(_report_issues(ix))
     issues.extend(
         _operating_issues(store, manifest, pack, rows, relations, children, ix)
@@ -1062,6 +1064,27 @@ def _profile_issues(context: Any, rows: list[_Row]) -> list[dict[str, Any]]:
                     f"{path!r} is not a valid profile: {error.message}",
                 )
             )
+    return issues
+
+
+def _budget_issues(ix: Index, policy: Any) -> list[dict[str, Any]]:
+    """One warning per unfinished item whose candidates exceed a charter cap."""
+    from context_rail.context.budget import items_over_budget
+
+    issues: list[dict[str, Any]] = []
+    for slug, state in items_over_budget(ix, policy).items():
+        row = ix.conn.execute(
+            "SELECT path FROM docs WHERE slug = ? AND primitive = 'item' LIMIT 1", (slug,)
+        ).fetchone()
+        issues.append(
+            _issue(
+                "budget_exceeded",
+                row[0] if row is not None else slug,
+                f"item {slug} is over its budget: " + "; ".join(state.reasons),
+                "raise the charter budget with the human, or split or drop the item",
+                {"item": slug, "reasons": list(state.reasons), "unknown": state.unknown},
+            )
+        )
     return issues
 
 

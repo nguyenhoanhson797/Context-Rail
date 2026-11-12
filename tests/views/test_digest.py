@@ -287,7 +287,8 @@ def test_human_waits_report_a_truthful_omission_count(
     value = _digest(store, limit=2)
     shown = [row["report"] for row in value["needs_human"]]
     assert len(shown) <= 2
-    assert value["omitted"]["needs_human"] == 2
+    # four reports and the over-budget long task are five waits; two are shown
+    assert value["omitted"]["needs_human"] == 3
 
 
 def test_reversible_decisions_and_rejections_report_a_real_omission(

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from context_rail.context import budget as budget_module
 from context_rail.kernel import budgets, structure
 from context_rail.model.cto import USAGE_KEYS
 from context_rail.store import query
@@ -31,7 +32,6 @@ BRIEF_LIMIT = 20
 BRIEF_LIMIT_BOUNDS = (1, 100)
 DIGEST_LIMIT_BOUNDS = (1, 100)
 STUCK_HOURS_DEFAULT = 24.0
-NEAR_RATIO_DEFAULT = 0.8
 CHARTER_TARGET = "charter"
 EXCERPT_CHARS = 160
 SECTION_KEYS = (
@@ -187,13 +187,13 @@ def too_long_rows(
     items: Sequence[structure.ItemRow],
     titles: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """Every open Item whose worker attempts or runtime exceed the item budget."""
+    """Every open Item whose recorded candidates or time exceed the item budget."""
     policy = context.policy
     caps: dict[str, Any] = {} if policy is None else policy.budgets
-    totals = query.worker_totals(context.index)
-    if not totals:
-        # No worker run means no attempts and no seconds, and a cap is only
-        # exceeded above it, so nothing can be too long.
+    facts_by_item: dict[str, list[budgets.CandidateFacts]] = {}
+    for fact in query.candidate_facts(context.index):
+        facts_by_item.setdefault(fact.item, []).append(fact)
+    if not facts_by_item:
         return []
     facts = [
         budgets.ItemFacts(
@@ -204,42 +204,25 @@ def too_long_rows(
         )
         for item in items
     ]
-    runs = [
-        budgets.RunFacts(
-            item=slug,
-            role="implementer",
-            attempts=measured["attempts"],
-            seconds=measured["seconds"],
-            usage=(),
-        )
-        for slug, measured in sorted(totals.items())
-    ]
-    near_ratio = NEAR_RATIO_DEFAULT
-    if policy is not None:
-        near_ratio = float(policy.thresholds.get("near_budget_ratio", NEAR_RATIO_DEFAULT))
-    item_caps = caps.get("item", {}) if isinstance(caps, dict) else {}
-    cap = budgets.Budget(
-        attempts=item_caps.get("attempts"),
-        seconds=item_caps.get("seconds"),
-        tokens=item_caps.get("tokens"),
-        credits=item_caps.get("credits"),
-    )
+    candidates = [fact for owned in facts_by_item.values() for fact in owned]
+    cap = budget_module.item_caps(policy)
+    ratio = budget_module.near_ratio(policy)
     rows: list[dict[str, Any]] = []
-    for slug in budgets.too_long(facts, runs, caps):
-        measured = totals.get(slug, {"attempts": 0, "seconds": 0.0})
-        own = [run for run in runs if run.item == slug]
-        state = budgets.budget_state(own, cap, near_ratio)
+    for slug in budgets.too_long(facts, candidates, caps):
+        own = facts_by_item.get(slug, [])
+        state = budgets.budget_state(own, cap, ratio)
         rows.append(
             {
                 "slug": slug,
                 "title": titles.get(slug, slug),
-                "attempts": measured["attempts"],
-                "seconds": measured["seconds"],
+                "attempts": len(own),
+                "seconds": sum(
+                    value for value in (fact.duration_s for fact in own) if value is not None
+                ),
                 "reasons": list(state.reasons),
             }
         )
     return rows
-
 
 def freshness(context: Context, row: dict[str, Any] | None) -> str:
     """How much a stored verdict still says about the checkout, from files only."""
@@ -264,7 +247,7 @@ def check_rows(context: Context, limit: int) -> tuple[list[dict[str, Any]], int]
 
 
 def human_waits(context: Context, limit: int) -> tuple[list[dict[str, Any]], int]:
-    """Items and proposals waiting on a human, bounded, with the omitted count.
+    """Items, proposals and over-budget items waiting on a human, bounded.
 
     Waits are queried on their own bound rather than filtered out of a page of
     newest reports, so a wait older than that page still reaches a human.
@@ -292,8 +275,19 @@ def human_waits(context: Context, limit: int) -> tuple[list[dict[str, Any]], int
         }
         for proposal in proposals
     )
+    over = budget_module.items_over_budget(context.index, context.policy)
+    rows.extend(
+        {
+            "kind": "budget",
+            "item": slug,
+            "report": None,
+            "reason": "over budget: " + "; ".join(state.reasons),
+            "at": None,
+        }
+        for slug, state in over.items()
+    )
     shown = rows[:limit]
-    return shown, max(reports_total + proposals_total - len(shown), 0)
+    return shown, max(reports_total + proposals_total + len(over) - len(shown), 0)
 
 
 # ── the brief ─────────────────────────────────────────────────────────────

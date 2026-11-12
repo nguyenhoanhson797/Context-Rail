@@ -336,13 +336,28 @@ def test_budgets_default_to_the_pinned_values() -> None:
         pytest.param({"item": {"seconds": -1}}, id="seconds-negative"),
         pytest.param({"item": {"tokens": -5}}, id="tokens-negative"),
         pytest.param({"item": {"credits": float("inf")}}, id="credits-inf"),
-        pytest.param({"item": {"hours": 1}}, id="unknown-budget-key"),
+        pytest.param({"item": {"Hours": 1}}, id="unknown-budget-key"),
+        pytest.param({"item": {"input-tokens": 1}}, id="hyphenated-budget-key"),
+        pytest.param({"item": {"input_tokens": -1}}, id="counter-negative"),
+        pytest.param({"item": {"input_tokens": "many"}}, id="counter-not-a-number"),
         pytest.param({"team": {"attempts": 1}}, id="unknown-budget-scope"),
     ],
 )
 def test_budget_values_are_validated(budgets: dict[str, Any]) -> None:
     with pytest.raises(ModelError):
         parse_charter(charter_fields(budgets=budgets))
+
+
+def test_charter_budget_accepts_usage_counter_names() -> None:
+    parsed = parse_charter(
+        charter_fields(budgets={"item": {"attempts": 3, "input_tokens": 5000, "cost_usd": 2.5, "output_tokens": None}})
+    )
+    item = parsed.budgets["item"]
+    assert item["attempts"] == 3
+    assert item["input_tokens"] == 5000
+    assert item["cost_usd"] == 2.5
+    assert item["output_tokens"] is None
+    assert item["tokens"] is None and item["credits"] is None
 
 
 def test_null_budget_means_no_numeric_limit() -> None:

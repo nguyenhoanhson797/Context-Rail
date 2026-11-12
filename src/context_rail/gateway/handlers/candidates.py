@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from context_rail.context.budget import item_budget
 from context_rail.core.util import now_iso
 from context_rail.gateway.handlers import checks as checks_handler
 from context_rail.gateway.handlers.common import checkout, profile_document, skill_pins
@@ -59,7 +60,7 @@ def record_candidate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str
             found = query.candidate_by_record(ctx.index, saved.get("record") or "")
             if found is None:
                 return {"record": saved.get("record"), "replayed": True}
-            return _value(found, replayed=True)
+            return _value(ctx, found, replayed=True)
         return _record(ctx, args, actor, key)
 
 
@@ -84,7 +85,7 @@ def _record(
     profile = profile_document(ctx, profile_name)[2] if profile_name is not None else None
     existing = query.candidate_for_commit(ctx.index, slug, commit)
     if existing is not None:
-        return _value(existing, replayed=True)
+        return _value(ctx, existing, replayed=True)
     base = explicit_base or _default_base(root, commit, policy.default_branch)
     names = git.diff_names(root, base, commit)
 
@@ -155,11 +156,23 @@ def _record(
             "the candidate was written but is not in the index yet",
             {"record": result["record"]},
         )
-    return _value(stored, replayed=False)
+    return _value(
+        ctx,
+        stored,
+        replayed=False,
+        extra={} if profile is None else profile.budgets,
+    )
 
 
-def _value(row: dict[str, Any], *, replayed: bool) -> dict[str, Any]:
+def _value(
+    ctx: Context,
+    row: dict[str, Any],
+    *,
+    replayed: bool,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     data = row["data"]
+    state = item_budget(ctx.index, ctx.policy, row["item"], extra)
     return {
         "record": row["record_id"],
         "item": row["item"],
@@ -169,6 +182,11 @@ def _value(row: dict[str, Any], *, replayed: bool) -> dict[str, Any]:
         "files_changed": list(data.get("files_changed", [])),
         "files_truncated": bool(data.get("files_truncated", False)),
         "replayed": replayed,
+        "budget": {
+            "state": state.state,
+            "reasons": list(state.reasons),
+            "unknown": state.unknown,
+        },
     }
 
 

@@ -1400,7 +1400,7 @@ def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNames
         at=_hours_ago(3),
         about=(stuck,),
     )
-    # The run and the wait sit inside the rolling window a digest queries with
+    # The candidates and the wait sit inside the rolling window a digest queries with
     # ``since = now - 24h``, so the fixture keeps working as real time moves on.
     write_run(
         store,
@@ -1410,6 +1410,14 @@ def digest_store(tmp_path: Path, picture_answers: dict[str, Any]) -> SimpleNames
         duration=120.0,
         at=_hours_ago(1),
     )
+    for number in range(5):
+        write_candidate(
+            store,
+            f"01JLONGCAND0000000000000000{number}",
+            too_long,
+            str(number) * 40,
+            at=_hours_ago(1),
+        )
     _write_report(
         store,
         "01JHUMANWAIT000000000000001",

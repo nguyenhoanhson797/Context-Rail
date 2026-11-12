@@ -617,7 +617,12 @@ def test_profile_budget_and_run_budgets_are_strict() -> None:
     with pytest.raises(ModelError):
         parse_profile(profile_fields(budgets={"attempts": 0, "seconds": 3600}))
     with pytest.raises(ModelError):
-        parse_profile(profile_fields(budgets={"attempts": 2, "seconds": 3600, "minutes": 1}))
+        parse_profile(profile_fields(budgets={"attempts": 2, "seconds": 3600, "Minutes": 1}))
+    parsed = parse_profile(
+        profile_fields(budgets={"attempts": 2, "seconds": 3600, "input_tokens": 900})
+    )
+    assert parsed.budgets["input_tokens"] == 900
+    assert parsed.budgets["tokens"] is None
 
 
 @pytest.mark.parametrize(

@@ -12,6 +12,7 @@ from importlib import resources
 from typing import Any, Sequence
 
 from context_rail.core.util import load_yaml
+from context_rail.model.candidate import parse_budget_caps
 from context_rail.model.errors import ModelError
 from context_rail.model.fields import (
     boolean,
@@ -169,7 +170,6 @@ PROFILE_KEYS = (
     "runner_options",
 )
 PROFILE_BUDGET_KEYS = ("max_chars", "max_docs")
-PROFILE_RUN_BUDGET_KEYS = ("attempts", "seconds", "tokens", "credits")
 
 WORKER_TOOL_IDS = (
     "read-cli",
@@ -692,18 +692,7 @@ def _context_budget(raw: Any) -> dict[str, int]:
 
 
 def _run_budgets(raw: Any) -> dict[str, Any]:
-    data = mapping(raw, "profile.budgets")
-    no_unknown(data, PROFILE_RUN_BUDGET_KEYS, "profile.budgets")
-    budgets: dict[str, Any] = {}
-    for key in PROFILE_RUN_BUDGET_KEYS:
-        value = data.get(key)
-        if value is None:
-            budgets[key] = None
-        elif key == "attempts":
-            budgets[key] = integer(value, f"profile.budgets.{key}", positive=True)
-        else:
-            budgets[key] = finite_number(value, f"profile.budgets.{key}", positive=True)
-    return budgets
+    return parse_budget_caps(raw, "profile.budgets")
 
 
 def _profile_skills(raw: Any) -> tuple[str, ...]:

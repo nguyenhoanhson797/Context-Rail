@@ -338,7 +338,8 @@ def _budget_increase(
         # A partial `budgets` map is a real request: `parse_profile` fills the
         # omitted caps with None, so every old cap must be compared to it.
         new_group = new_raw if isinstance(new_raw, dict) else {}
-        for cap in caps:
+        every_cap = caps if group == "budget" else (*caps, *sorted({*old_group, *new_group} - set(caps)))
+        for cap in every_cap:
             if group == "budget" and cap not in new_group:
                 continue
             after = new_group.get(cap) if cap in new_group else None
