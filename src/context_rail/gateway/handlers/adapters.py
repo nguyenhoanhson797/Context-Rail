@@ -34,8 +34,16 @@ AGENTS = "AGENTS.md"
 
 _COMMANDS = """\
 - `rail overview` shows what is executable and what needs a human.
-- `rail loop candidate <item> --commit <sha>` records the commit your own tool made for an Item.
-- `rail check declare` declares proof and `rail check run` runs it. Unproven work is not done.
+- `rail loop brief <item> --role implementer` prints the work order. Hand it to your own
+  sub-agent, in your own tool, in your own checkout.
+- Commit, then record the commit with `rail loop candidate <item> --commit <sha>`.
+- `rail check declare` declares proof and `rail check run <item>` runs it. Unproven work is
+  not done.
+- A different actor reviews: `rail loop brief <item> --role reviewer`, then
+  `rail loop review <item> --commit <sha> --verdict approve|reject`.
+- `rail change move <item> <status>` moves the Item once its gate allows it.
+- `rail loop report --item <item> --report-file <json>` files what happened, even when
+  nothing did.
 - Human-only actions need the exact phrase the command prints.
 """
 
@@ -305,11 +313,10 @@ def _plan(
         for profile in profiles:
             if profile.name not in adapters.CLAUDE_ROLES:
                 continue
-            model = profile.doc.fields.get("model")
             front = {
                 "name": f"context-rail-{profile.name}",
                 "description": f"Context Rail {profile.name} role",
-                "model": model if isinstance(model, str) and model else "inherit",
+                "model": "inherit",
             }
             frontmatter = "---\n" + dump_frontmatter(front) + "---\n"
             body = f"# Context Rail {profile.name}\n\n{profile.doc.body.strip(chr(10))}\n"
@@ -445,7 +452,7 @@ def _agents_payload(skills: list[_Skill], profiles: list[_Profile]) -> str:
         "",
         "## Human-only",
         "",
-        "`approve`, `ops migrate` and `ops pack use` are human-only tools. They need",
+        "`approve`, `ops migrate`, `ops upgrade` and `ops pack use` are human-only tools. They need",
         "an explicitly named human (`--actor human` or `RAIL_ACTOR=human`) and the",
         "typed phrase the command prints. Do not approve, lower a gate or switch a",
         "pack on the human's behalf.",
@@ -460,6 +467,9 @@ def _agents_payload(skills: list[_Skill], profiles: list[_Profile]) -> str:
         "files, run `rail ops reindex`.",
         "",
         "## The loop",
+        "",
+        "The rail does not run agents. Your tool does, with its own sub-agents, models",
+        "and sandboxes. The rail keeps the work order, the proof and the record:",
         "",
         _COMMANDS.rstrip("\n"),
         "",
