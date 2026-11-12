@@ -86,7 +86,35 @@ def upgrade_pack_document(document: dict[str, Any]) -> tuple[dict[str, Any], lis
                 _upgrade_execution(
                     workflow.get("execution"), f"workflows.{name}.execution", reasons
                 )
+    operating = result.get("operating")
+    if isinstance(operating, dict) and isinstance(operating.get("roles"), dict):
+        for name, role in operating["roles"].items():
+            if isinstance(role, dict):
+                _upgrade_role(role, name, reasons)
     return result, reasons
+
+
+_REMOVED_CAN_KEYS = ("dispatch", "merge", "tick")
+
+
+def _upgrade_role(role: dict[str, Any], name: str, reasons: list[str]) -> None:
+    """Drop the launcher abilities from ``can`` and rename the ``runs`` part."""
+    can = role.get("can")
+    if isinstance(can, dict):
+        for key in _REMOVED_CAN_KEYS:
+            if key in can:
+                del can[key]
+                reasons.append(f"removed can.{key} from role {name!r}")
+    sees = role.get("sees")
+    parts = sees.get("parts") if isinstance(sees, dict) else None
+    if isinstance(parts, list) and "runs" in parts:
+        renamed: list[Any] = []
+        for part in parts:
+            part = "candidates" if part == "runs" else part
+            if part not in renamed:
+                renamed.append(part)
+        sees["parts"] = renamed
+        reasons.append(f"renamed sees part 'runs' to 'candidates' in role {name!r}")
 
 
 def upgrade_charter_fields(fields: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:

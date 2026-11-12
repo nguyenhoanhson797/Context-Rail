@@ -807,7 +807,7 @@ def record_data(index: Index, record_id: Any) -> dict[str, Any]:
 def profile_document(context: Context, name: str) -> tuple[str, str, Profile]:
     """The store's own copy of one Actor profile, its etag and its parse.
 
-    Profiles are store documents, so a launch reads the copy the project
+    Profiles are store documents, so a brief reads the copy the project
     materialised at onboarding: the shipped profile is never a silent stand-in
     for a store that lacks one.
     """

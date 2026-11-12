@@ -97,6 +97,38 @@ def test_upgrade_renames_dispatch_flag_and_drops_merge_and_retries() -> None:
     assert len(reasons) == 5
 
 
+def test_upgrade_rewrites_role_launcher_keys_and_the_runs_part() -> None:
+    document = {
+        "name": "x",
+        "operating": {
+            "version": 2,
+            "roles": {
+                "lead": {
+                    "can": {
+                        "add": ["story"],
+                        "dispatch": ["task"],
+                        "merge": ["task"],
+                        "tick": True,
+                        "review": ["task"],
+                    },
+                    "sees": {"parts": ["title", "runs", "records", "candidates"]},
+                },
+                "worker": {"sees": {"parts": ["runs"]}},
+            },
+        },
+    }
+
+    upgraded, reasons = upgrade_pack_document(document)
+
+    roles = upgraded["operating"]["roles"]
+    assert roles["lead"]["can"] == {"add": ["story"], "review": ["task"]}
+    assert roles["lead"]["sees"]["parts"] == ["title", "candidates", "records"]
+    assert roles["worker"]["sees"]["parts"] == ["candidates"]
+    assert "dispatch" in document["operating"]["roles"]["lead"]["can"]
+    assert upgrade_pack_document(upgraded) == (upgraded, [])
+    assert any("role 'lead'" in reason and "dispatch" in reason for reason in reasons)
+
+
 def test_charter_pins_reviewer_setting_only_when_absent() -> None:
     assert upgrade_charter_fields({"schema": 1})[0]["reviewer_different_model"] is True
     explicit = {"schema": 1, "reviewer_different_model": False}

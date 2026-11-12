@@ -20,7 +20,7 @@ FINISHED_CATEGORIES = ("done", "dropped")
 WORKABLE_CATEGORIES = ("not_started", "active")
 #: The fixed Actor roles.
 ROLES = ("cto", "implementer", "reviewer")
-#: Names Windows treats as devices, so no path or dispatch id may use one.
+#: Names Windows treats as devices, so no path or id may use one.
 WINDOWS_RESERVED_NAMES = frozenset(
     ["CON", "PRN", "AUX", "NUL"]
     + [f"COM{i}" for i in range(1, 10)]

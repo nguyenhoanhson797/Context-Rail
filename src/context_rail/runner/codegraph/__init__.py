@@ -168,7 +168,7 @@ def _external(
         reason = f"{configured} extraction timed out after {timeout:g} s"
     except ExtractionError as exc:
         reason = exc.message
-    except Exception as exc:  # noqa: BLE001 - the graph is advisory; a bug in it must not stop a dispatch
+    except Exception as exc:  # noqa: BLE001 - the graph is advisory; a bug in it must not stop a brief
         reason = f"{configured} extraction failed: {exc}"
 
     snapshot, problem = _builtin(worktree, commit, BUILTIN_TIMEOUT)
@@ -185,7 +185,7 @@ def _builtin(
         )
     except TimeoutError:
         return None, ("timeout", f"code graph extraction timed out after {timeout:g} s")
-    except Exception as exc:  # noqa: BLE001 - the graph is advisory; a bug in it must not stop a dispatch
+    except Exception as exc:  # noqa: BLE001 - the graph is advisory; a bug in it must not stop a brief
         return None, ("unavailable", f"code graph extraction failed: {exc}")
 
 

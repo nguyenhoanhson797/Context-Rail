@@ -1,7 +1,7 @@
 """Auto-triage: reports become a patch proposal, never an auto-applied edit.
 
 The proposal is a normal Item written through ``commit()``; a human must
-``approve`` it, then it dispatches. Measurement compares the next runs on
+``approve`` it, then it is queued like any item. Measurement compares the next runs on
 ``measurement_min_runs`` and the doctor reports a regression so the fix can
 be rolled back via ``ops rollback``.
 """

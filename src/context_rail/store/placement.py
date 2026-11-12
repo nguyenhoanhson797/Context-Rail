@@ -274,7 +274,7 @@ class PlacementGraph:
             if not self.context.item:
                 raise PlacementError(
                     "placement_unresolved",
-                    "{item} needs a dispatch or run item",
+                    "{item} needs the item a record is about",
                     {"slug": node.slug},
                 )
             target = self.graph_item(self.context.item)

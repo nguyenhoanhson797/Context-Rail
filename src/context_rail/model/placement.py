@@ -127,7 +127,7 @@ def is_structural(token: Token) -> bool:
 
 
 def is_context(token: Token) -> bool:
-    """Whether a token needs the work graph or a dispatch/run item."""
+    """Whether a token needs the work graph or the item a record is about."""
     return token.kind in {"part_of", "about", "verifies", "item", "nearest", "root"}
 
 

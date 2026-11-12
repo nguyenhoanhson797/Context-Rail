@@ -777,7 +777,6 @@ def nested_pack_document(
 
 def copy_pack_templates(store: Path, name: str) -> None:
     """Copy the built-in Markdown templates into a store-local pack."""
-    from importlib import resources
 
     templates = Path(store) / "packs" / name / "templates"
     templates.mkdir(parents=True, exist_ok=True)

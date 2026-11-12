@@ -29,8 +29,7 @@ def ci(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Refuse the store when the doctor finds an error or a done Item's gate is shut.
 
     The report is read only: it evaluates gates from indexed checks and reviews
-    and never runs a Check, launches a droid or writes a Record, so a failing
-    pipeline costs no credits. ``--warnings-as-errors`` turns every warning into
+    and never runs a Check or writes a Record, so a failing pipeline costs nothing. ``--warnings-as-errors`` turns every warning into
     a failure; without it warnings are counted and reported.
     """
     report = run_doctor(ctx.store, ctx.manifest, ctx.pack, ctx.index)
