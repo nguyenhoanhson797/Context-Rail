@@ -347,7 +347,7 @@ def spawn_daemon(store: Path) -> bool:
     options["env"] = {
         key: value
         for key, value in os.environ.items()
-        if key not in ("RAIL_ACTOR", "RAIL_SESSION", "RAIL_RUN")
+        if key not in ("RAIL_ACTOR", "RAIL_SESSION")
     }
     if os.name == "nt":
         options["creationflags"] = _DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP

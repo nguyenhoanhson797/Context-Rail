@@ -264,55 +264,6 @@ def test_a_seat_whose_role_left_the_pack_is_refused(role_store: SimpleNamespace)
     assert refusal(result) == ("PERMISSION_DENIED", "seat_role_unknown")
 
 
-def test_a_run_session_is_the_run_seat(role_store: SimpleNamespace) -> None:
-    context = context_for(role_store.store)
-    token = open_test_session(
-        role_store.store,
-        "implementer@run-1",
-        run="run-1",
-        role="implementer",
-        anchor=role_store.o1,
-        profile=None,
-        granted_by=role_store.orders_seat,
-    )
-
-    identity = resolve_identity(context, actor=None, session=token)
-
-    assert identity.kind == "seat"
-    assert identity.name == "implementer@run-1"
-    assert identity.role is not None and identity.role.name == "implementer"
-    assert identity.seat is not None
-    assert identity.seat.anchor == role_store.o1
-    assert identity.seat.granted_by == role_store.orders_seat
-
-
-def test_a_run_session_ends_with_the_seat_that_dispatched_it(
-    role_store: SimpleNamespace,
-) -> None:
-    token = open_test_session(
-        role_store.store,
-        "implementer@run-1",
-        run="run-1",
-        role="implementer",
-        anchor=role_store.o1,
-        profile=None,
-        granted_by=role_store.orders_seat,
-    )
-    write_record(
-        role_store.store,
-        "rev-orders",
-        SEAT_REVOKED,
-        {"schema": 1, "seat": role_store.orders_seat, "revoked_by": "human"},
-        at="2026-11-10T11:00:00Z",
-        actor="human",
-    )
-
-    with pytest.raises(IdentityRefused) as raised:
-        resolve_identity(context_for(role_store.store), actor=None, session=token)
-
-    assert raised.value.details["reason"] == "session_invalid"
-
-
 def test_a_session_call_is_recorded_under_the_seat(role_store: SimpleNamespace) -> None:
     token = open_test_session(role_store.store, role_store.orders_seat)
 

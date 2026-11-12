@@ -269,8 +269,8 @@ def _check_revoker(
 def seat_open(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Open a session for a live seat the caller may act through.
 
-    The token is present only with ``print_env``; the CLI command form asks for
-    it internally and never prints it.
+    The token is present only with ``print_env``; a tool puts it in
+    ``RAIL_SESSION`` for the process that should act as the seat.
     """
     if not ctx.role_mode:
         raise WriteRefused(

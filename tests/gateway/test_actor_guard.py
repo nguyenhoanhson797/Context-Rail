@@ -62,18 +62,6 @@ def test_rail_actor_human_may_approve(
     assert is_ok(result), result
 
 
-def test_ordinary_writes_keep_the_implicit_default(
-    unapproved_store: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv("RAIL_ACTOR", raising=False)
-
-    result = invoke(
-        "add", {"preset": "task", "title": "Implicit actor"}, store=unapproved_store
-    )
-
-    assert is_ok(result), result
-
-
 def test_cli_human_tool_needs_an_explicit_actor(
     unapproved_store: Path, tmp_path: Path
 ) -> None:

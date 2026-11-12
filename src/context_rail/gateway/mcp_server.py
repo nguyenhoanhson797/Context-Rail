@@ -26,7 +26,7 @@ from context_rail.gateway.mcp_schema import input_schema, read_only_hint, tool_m
 from context_rail.gateway.role_guard import tools_for
 from context_rail.gateway.tools import TOOLS
 
-_SESSION_COMMAND = "rail seat open <seat> -- <command>"
+_SESSION_COMMAND = "rail seat open <seat> --print-env"
 
 
 def build_server(

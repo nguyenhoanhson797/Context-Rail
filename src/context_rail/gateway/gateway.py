@@ -39,7 +39,7 @@ from context_rail.gateway.execution import (
     caller_session,
     resolve_actor_name,
 )
-from context_rail.gateway.identity import ANONYMOUS, Identity, resolve_identity
+from context_rail.gateway.identity import ACTOR_HINT, ANONYMOUS, Identity, resolve_identity
 from context_rail.gateway.role_guard import authorize_role
 from context_rail.core.tool_names import (
     REMOVED_COMMANDS,
@@ -120,6 +120,8 @@ def try_daemon_invoke(
     )
 
 
+#: Writes that touch only Git's scratch files, run by Git itself with no caller to name.
+_SCRATCH_WRITES = frozenset({"sync driver"})
 #: Tools that execute something; none of them may run before the human approves.
 EXECUTION_TOOLS = ("verify", "candidate", "review")
 #: The categories a move may not reach before approval.
@@ -232,7 +234,7 @@ class Context:
         """
         seat = self.identity.seat
         if seat is None:
-            if self.identity.kind == "anonymous":
+            if self.identity.kind == "anonymous" and self.role_mode:
                 return ReachSet(seat=None, unrestricted=False)
             return None
         reach = self._seat_reach(seat)
@@ -439,11 +441,6 @@ def _authorize(
     actor_named: bool = True,
 ) -> dict[str, Any] | None:
     """The refusal a call earns before its handler runs, if it earns one."""
-    refusal = rights.allowed(tool.permission, actor)
-    if refusal is not None:
-        return fail(
-            "PERMISSION_DENIED", refusal, {"tool": tool.name, "actor": actor}
-        )
     if tool.permission == "human" and not actor_named:
         return fail(
             "PERMISSION_DENIED",
@@ -451,8 +448,24 @@ def _authorize(
             "pass --actor human or set RAIL_ACTOR=human",
             {"tool": tool.name, "actor": actor, "reason": "actor_not_named"},
         )
+    refusal = rights.allowed(tool.permission, actor)
+    if refusal is not None:
+        return fail(
+            "PERMISSION_DENIED", refusal, {"tool": tool.name, "actor": actor}
+        )
     if tool.permission == "human" or context is None:
         return None
+    if (
+        not context.role_mode
+        and tool.permission != "read"
+        and tool.name not in _SCRATCH_WRITES
+        and context.identity.kind == "anonymous"
+    ):
+        return fail(
+            "PERMISSION_DENIED",
+            f"writes need a named actor: {ACTOR_HINT}",
+            {"tool": tool.name, "reason": "actor_required", "hint": ACTOR_HINT},
+        )
     if context.role_mode:
         refusal = authorize_role(tool, params, context)
         if refusal is not None:
@@ -626,13 +639,19 @@ def _tool(name: Any) -> Tool:
 
 
 def _resolve_actor(actor: str | None) -> tuple[str, bool]:
-    """The actor and whether the caller named it, defaulting to ``human``.
+    """The actor and whether the caller named it.
 
-    The default keeps ordinary CLI commands convenient. Human-only tools use
-    the second value to refuse an unnamed default, so a bare command cannot
+    An unnamed caller is the human only on a person's channel (a terminal or
+    the UI); anywhere else it is anonymous and may only read. Human-only tools
+    use the second value to refuse an unnamed caller, so a bare command cannot
     record a human decision by accident.
     """
-    return resolve_actor_name(actor)
+    name, named = resolve_actor_name(actor)
+    if name is not None:
+        return name, named
+    if HUMAN_CHANNEL.get() or HAS_TTY.get():
+        return "human", False
+    return ANONYMOUS, False
 
 
 def _parameters(tool: Tool, args: dict[str, Any] | None) -> dict[str, Any]:

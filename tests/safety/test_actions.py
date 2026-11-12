@@ -40,6 +40,7 @@ def _store(tmp_path: Path) -> Path:
     return store
 
 
+@pytest.mark.usefixtures("named_human")
 def test_an_action_cannot_bypass_the_etag(tmp_path: Path) -> None:
     store = _store(tmp_path)
     before = (store / "items/task/a-task.md").read_bytes()
@@ -61,6 +62,7 @@ def test_an_action_cannot_bypass_the_etag(tmp_path: Path) -> None:
     assert (store / "items/task/a-task.md").read_bytes() == before
 
 
+@pytest.mark.usefixtures("named_human")
 def test_an_action_cannot_elevate_the_actor(tmp_path: Path) -> None:
     store = _store(tmp_path)
 

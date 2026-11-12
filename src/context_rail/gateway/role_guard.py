@@ -47,7 +47,7 @@ OPS_HUMAN_ONLY = frozenset(
     }
 )
 
-SESSION_COMMAND = "rail seat open <seat> -- <command>"
+SESSION_COMMAND = "rail seat open <seat> --print-env"
 _SEAT_COMMANDS = frozenset(
     {"seat list", "seat open", "seat close", "seat grant", "seat revoke"}
 )

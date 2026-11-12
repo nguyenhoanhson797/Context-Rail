@@ -8,9 +8,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+from helpers import latest_record
+
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import latest_record
 
 
 def spec_file(tmp_path: Path, name: str, payload: dict[str, Any]) -> Path:
@@ -173,6 +175,7 @@ def test_a_syntactically_invalid_input_glob_is_refused(
     assert not (store / "checks" / "bad-glob.md").exists()
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_generic_write_cannot_store_an_invalid_input_glob(
     git_approved_store: Any, tmp_path: Path
 ) -> None:

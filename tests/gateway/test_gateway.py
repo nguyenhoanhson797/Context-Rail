@@ -16,6 +16,8 @@ from context_rail.gateway.gateway import invoke
 from context_rail.store.doc import record_digest
 from helpers import init_pack_store, touch_doc, workflow_pack_document
 
+pytestmark = pytest.mark.usefixtures("named_human")
+
 STAMP = "2026-10-28T00:00:00Z"
 RECORD_KEYS = {"id", "primitive", "preset", "kind", "at", "actor", "about", "data", "digest"}
 

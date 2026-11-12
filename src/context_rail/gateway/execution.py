@@ -91,14 +91,18 @@ def human_channel() -> Iterator[None]:
         HUMAN_CHANNEL.reset(token)
 
 
-def resolve_actor_name(actor: str | None) -> tuple[str, bool]:
-    """The legacy actor and whether the caller named it, defaulting to ``human``."""
+def resolve_actor_name(actor: str | None) -> tuple[str | None, bool]:
+    """The name the caller gave (flag, then ``RAIL_ACTOR``), or ``None`` when unnamed.
+
+    An unnamed caller is not assumed to be anyone: the identity layer decides
+    from the channel whether it is the human or anonymous.
+    """
     if isinstance(actor, str) and actor.strip():
         return actor, True
     from_env = caller_actor_env()
     if from_env is not None:
         return from_env, True
-    return "human", False
+    return None, False
 
 
 @contextlib.contextmanager

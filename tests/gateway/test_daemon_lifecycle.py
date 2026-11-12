@@ -103,7 +103,7 @@ class _Daemons:
 
     def start(self, store: Path) -> int:
         self.stores.append(store)
-        proc = run_cli(store.parent, "next", store=store, env={"RAIL_NO_DAEMON": None})
+        proc = run_cli(store.parent, "status", store=store, env={"RAIL_NO_DAEMON": None})
         assert proc.returncode == 0, proc.stderr
         return self.wait_live(store)
 
@@ -148,7 +148,7 @@ def test_the_first_call_starts_a_daemon_and_a_later_call_is_served_by_it(
     store: Path, daemons: _Daemons
 ) -> None:
     daemons.start(store)
-    proc, loaded = run_cli_probe(store.parent, "next", store=store)
+    proc, loaded = run_cli_probe(store.parent, "status", store=store)
     assert proc.returncode == 0, proc.stderr
     assert loaded["GW"] is False
 
@@ -189,7 +189,7 @@ def test_concurrent_first_calls_from_separate_processes_start_one_daemon(
     done: list[subprocess.CompletedProcess[str]] = []
 
     def call() -> None:
-        done.append(run_cli(store.parent, "next", store=store, env={"RAIL_NO_DAEMON": None}))
+        done.append(run_cli(store.parent, "status", store=store, env={"RAIL_NO_DAEMON": None}))
 
     threads = [threading.Thread(target=call) for _ in range(4)]
     for thread in threads:
@@ -361,7 +361,7 @@ def test_a_hard_killed_daemon_is_replaced_on_the_next_call(
     os.kill(first, signal.SIGTERM)
     _wait_for(lambda: not process_alive(first), 5, "the daemon to die")
     assert daemon_descriptor(store) is not None
-    proc = run_cli(store.parent, "next", store=store, env={"RAIL_NO_DAEMON": None})
+    proc = run_cli(store.parent, "status", store=store, env={"RAIL_NO_DAEMON": None})
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["ok"] is True
     second = daemons.wait_live(store, other_than=first)
@@ -371,7 +371,7 @@ def test_a_hard_killed_daemon_is_replaced_on_the_next_call(
 def test_a_miss_starts_one_daemon_and_does_not_wait(
     store: Path, popen_calls: list[Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert cli.main(["--store", str(store), "next"]) == 0
+    assert cli.main(["--store", str(store), "status"]) == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
     (command, _), = popen_calls
     assert command[-2:] == ["serve", "daemon"]
@@ -381,7 +381,7 @@ def test_a_served_call_starts_no_second_daemon(
     store: Path, popen_calls: list[Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
     with serving_daemon(store):
-        assert cli.main(["--store", str(store), "next"]) == 0
+        assert cli.main(["--store", str(store), "status"]) == 0
     assert popen_calls == []
 
 
@@ -398,7 +398,7 @@ def test_the_suite_switch_prevents_spawning(
 ) -> None:
     store = make_store(tmp_path, 5)
     assert os.environ.get("RAIL_NO_DAEMON")
-    assert cli.main(["--store", str(store), "next"]) == 0
+    assert cli.main(["--store", str(store), "status"]) == 0
     assert popen_calls == []
     assert not daemon_endpoint(store).exists()
 
@@ -425,7 +425,7 @@ def test_a_reused_process_id_does_not_keep_a_new_daemon_from_starting(
 ) -> None:
     write_daemon_descriptor(store, port=_closed_port(), pid=os.getpid())
     assert daemon_alive(store) is False
-    assert cli.main(["--store", str(store), "next"]) == 0
+    assert cli.main(["--store", str(store), "status"]) == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
     (command, _), = popen_calls
     assert command[-2:] == ["serve", "daemon"]
@@ -485,9 +485,9 @@ def test_a_busy_daemon_with_a_burst_of_waiting_callers_stays_the_daemon(
 def test_a_broken_git_marker_is_not_a_crash_on_the_fast_path(    store: Path, popen_calls: list[Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
     (store.parent / ".git").write_text("gitdir: ../missing\n", encoding="utf-8")
-    code = cli.main(["--store", str(store), "next"])
+    code = cli.main(["--store", str(store), "status"])
     fast = capsys.readouterr().out
-    direct_code = cli.main(["--no-daemon", "--store", str(store), "next"])
+    direct_code = cli.main(["--no-daemon", "--store", str(store), "status"])
     direct = capsys.readouterr().out
     assert (code, fast) == (direct_code, direct)
     assert popen_calls == []

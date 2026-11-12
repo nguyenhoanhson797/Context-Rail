@@ -83,9 +83,15 @@ def no_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def no_ambient_identity(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A developer's own session or run never decides who a test acts as."""
-    for name in ("RAIL_SESSION", "RAIL_RUN"):
+    """A developer's own session never decides who a test acts as."""
+    for name in ("RAIL_SESSION",):
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture
+def named_human(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Calls with no ``actor`` act as the named human, for tests that are not about identity."""
+    monkeypatch.setenv("RAIL_ACTOR", "human")
 
 
 @pytest.fixture(autouse=True)

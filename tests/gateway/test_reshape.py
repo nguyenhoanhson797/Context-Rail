@@ -449,7 +449,14 @@ def test_relocate_is_idempotent_with_a_key(store_factory) -> None:
 def test_cli_rename_and_relocate_dry_run(store_with_links: Path) -> None:
     store = store_with_links
 
-    renamed = run_cli(store.parent, "rename", "auth", "authentication", store=store)
+    renamed = run_cli(
+        store.parent,
+        "rename",
+        "auth",
+        "authentication",
+        store=store,
+        env={"RAIL_ACTOR": "human"},
+    )
 
     assert renamed.returncode == 0, renamed.stderr
     payload = json.loads(renamed.stdout)
@@ -457,7 +464,9 @@ def test_cli_rename_and_relocate_dry_run(store_with_links: Path) -> None:
     assert payload["value"]["rewritten"] == 3
 
     _set_placement(store, item="work/{preset}/{slug}.md")
-    dry = run_cli(store.parent, "relocate", "--dry-run", store=store)
+    dry = run_cli(
+        store.parent, "relocate", "--dry-run", store=store, env={"RAIL_ACTOR": "human"}
+    )
 
     assert dry.returncode == 0, dry.stderr
     assert json.loads(dry.stdout)["value"]["moves"]

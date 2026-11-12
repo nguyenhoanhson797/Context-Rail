@@ -127,6 +127,7 @@ def test_index_schema_bump_rebuilds_without_touching_truth(tmp_path):
     assert truth_files(store) == before
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_document_row_carries_its_preset_workflow(tmp_path: Path) -> None:
     store = init_pack_store(tmp_path, workflow_pack_document())
     assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
@@ -145,6 +146,7 @@ def test_a_document_row_carries_its_preset_workflow(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_pack_change_reprojects_the_workflow(tmp_path: Path) -> None:
     document = workflow_pack_document()
     store = init_pack_store(tmp_path, document)
@@ -168,6 +170,7 @@ def test_a_pack_change_reprojects_the_workflow(tmp_path: Path) -> None:
     assert workflow == "bugfix"
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_moved_item_records_its_workflow(tmp_path: Path) -> None:
     store = init_pack_store(tmp_path, workflow_pack_document())
     assert invoke("add", {"preset": "bug", "title": "A bug"}, store=store)["ok"]

@@ -203,21 +203,24 @@ def test_cli_help_shows_the_grouped_surface(tmp_path: Path) -> None:
         assert f"\n    {hidden} " not in text, hidden
 
 
+HUMAN = {"RAIL_ACTOR": "human"}
+
+
 def test_cli_grouped_aliases_run_and_old_names_still_work(tmp_path: Path) -> None:
     run_git(tmp_path, "init", "-b", "main")
     initialized = run_cli(tmp_path, "init", "--dir", str(tmp_path))
     assert initialized.returncode == 0, initialized.stdout
 
-    assert run_cli(tmp_path, "read", "status").returncode == 0
-    assert run_cli(tmp_path, "overview").returncode == 0
-    assert run_cli(tmp_path, "read", "find", "--limit", "1").returncode == 0
-    assert run_cli(tmp_path, "change", "add", "task", "Alias task").returncode == 0
-    assert run_cli(tmp_path, "ops", "adapters", "render", "--dry-run").returncode == 0
-    assert run_cli(tmp_path, "change", "repath", "--dry-run").returncode == 0
-    assert run_cli(tmp_path, "ops", "sync", "install").returncode == 0
-    assert run_cli(tmp_path, "serve", "ui", "--help").returncode == 0
+    assert run_cli(tmp_path, "read", "status", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "overview", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "read", "find", "--limit", "1", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "change", "add", "task", "Alias task", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "ops", "adapters", "render", "--dry-run", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "change", "repath", "--dry-run", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "ops", "sync", "install", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "serve", "ui", "--help", env=HUMAN).returncode == 0
 
-    assert run_cli(tmp_path, "status").returncode == 0
-    assert run_cli(tmp_path, "relocate", "--dry-run").returncode == 0
-    assert run_cli(tmp_path, "ci").returncode in (0, 1)
-    assert run_cli(tmp_path, "verify", "--help").returncode == 0
+    assert run_cli(tmp_path, "status", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "relocate", "--dry-run", env=HUMAN).returncode == 0
+    assert run_cli(tmp_path, "ci", env=HUMAN).returncode in (0, 1)
+    assert run_cli(tmp_path, "verify", "--help", env=HUMAN).returncode == 0

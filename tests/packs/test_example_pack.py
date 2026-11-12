@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
+from helpers import copy_pack_templates, write_pack
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import copy_pack_templates, write_pack
 
 REPO = Path(__file__).resolve().parents[2]
 EXAMPLE = REPO / "skills" / "context-rail-v3-workflows" / "references" / "ba-po-pack.yaml"
@@ -57,6 +58,7 @@ def test_the_example_is_valid_under_the_v4_contract(tmp_path: Path) -> None:
     assert validated["value"] == {"valid": True, "problems": []}
 
 
+@pytest.mark.usefixtures("named_human")
 def test_each_preset_lands_in_its_own_workflow(tmp_path: Path) -> None:
     store = _store(tmp_path)
 
@@ -76,6 +78,7 @@ def test_each_preset_lands_in_its_own_workflow(tmp_path: Path) -> None:
     assert cards["checkout-crash"]["next"] == ["closed", "fixing"]
 
 
+@pytest.mark.usefixtures("named_human")
 def test_the_example_verbs_run_through_the_gateway(tmp_path: Path) -> None:
     store = _store(tmp_path)
     assert invoke("add", {"preset": "story", "title": "Checkout story"}, store=store)["ok"]

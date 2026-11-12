@@ -760,7 +760,7 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="seat open",
-        summary="Open a session for a live seat; with `-- <command>` run that command inside it.",
+        summary="Open a session for a live seat; --print-env prints its one-time token for RAIL_SESSION.",
         permission="write",
         params=(
             Param(

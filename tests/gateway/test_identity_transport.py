@@ -101,13 +101,12 @@ def test_the_daemon_environment_has_no_session_variables(
 ) -> None:
     monkeypatch.setenv("RAIL_ACTOR", "implementer")
     monkeypatch.setenv("RAIL_SESSION", "x" * 43)
-    monkeypatch.setenv("RAIL_RUN", "run-1")
     monkeypatch.setenv("RAIL_KEEP_ME", "yes")
 
     assert spawn_daemon(role_store.store) is True
 
     (_, options), = popen_calls
-    for name in ("RAIL_ACTOR", "RAIL_SESSION", "RAIL_RUN"):
+    for name in ("RAIL_ACTOR", "RAIL_SESSION"):
         assert name not in options["env"]
     assert options["env"]["RAIL_KEEP_ME"] == "yes"
 

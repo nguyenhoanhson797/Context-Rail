@@ -59,7 +59,7 @@ def test_tty_with_a_session_is_never_human(role_store: SimpleNamespace) -> None:
     assert identity.lead is False
 
 
-def test_tty_with_rail_run_set_is_not_human(
+def test_rail_run_env_is_ignored(
     role_store: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("RAIL_RUN", "run-1")
@@ -68,7 +68,7 @@ def test_tty_with_rail_run_set_is_not_human(
         context_for(role_store.store), actor=None, session=None, tty=True
     )
 
-    assert identity.kind == "anonymous"
+    assert identity.kind == "human"
 
 
 def test_no_tty_no_session_is_anonymous(role_store: SimpleNamespace) -> None:

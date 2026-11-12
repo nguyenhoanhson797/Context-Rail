@@ -224,7 +224,7 @@ def test_cli_exit_code_two_for_internal_faults(tmp_path, monkeypatch, capsys):
     [
         (["status"], "ok"),
         (["show", "missing"], "NOT_FOUND"),
-        (["add", "nosuch", "X"], "VALIDATION_FAILED"),
+        (["--actor", "human", "add", "nosuch", "X"], "VALIDATION_FAILED"),
     ],
 )
 def test_cli_main_maps_results_to_exit_codes(tmp_path, capsys, args, code):

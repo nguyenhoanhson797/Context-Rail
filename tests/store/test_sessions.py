@@ -48,7 +48,6 @@ def test_resolve_round_trips(tmp_path: Path) -> None:
     token, session = open_session(
         store,
         "orders-lead",
-        run="01RUN",
         role="lead",
         anchor="orders",
         profile="narrow",
@@ -61,7 +60,6 @@ def test_resolve_round_trips(tmp_path: Path) -> None:
     assert session == Session(
         id=session.id,
         seat="orders-lead",
-        run="01RUN",
         role="lead",
         anchor="orders",
         profile="narrow",
@@ -102,38 +100,34 @@ def test_an_expired_session_is_refused_and_removed_by_cleanup(tmp_path: Path) ->
     assert session_files(store) == []
 
 
-def test_a_run_session_has_no_expiry(tmp_path: Path) -> None:
+def test_a_session_may_have_no_expiry(tmp_path: Path) -> None:
     store = plain_store(tmp_path)
-    token, session = open_session(store, "worker@run1", run="run1", ttl_s=None, now=1.0)
+    token, session = open_session(store, "worker", ttl_s=None, now=1.0)
 
     assert session.expires is None
     assert resolve_session(store, token, now=10.0**12) == session
 
 
-def test_close_by_seat_run_and_id(tmp_path: Path) -> None:
+def test_close_by_seat_and_id(tmp_path: Path) -> None:
     store = plain_store(tmp_path)
     a, _ = open_session(store, "lead")
     b, _ = open_session(store, "lead")
-    c, run_session = open_session(store, "worker@r1", run="r1", ttl_s=None)
     d, other = open_session(store, "other")
 
     assert close_sessions(store, seat="lead") == 2
     assert resolve_session(store, a) is None and resolve_session(store, b) is None
-    assert close_sessions(store, run="r1") == 1
-    assert resolve_session(store, c) is None
     assert close_sessions(store, session_id=other.id) == 1
     assert resolve_session(store, d) is None
     assert close_sessions(store, seat="lead") == 0
-    assert run_session.run == "r1"
 
 
 def test_close_with_several_filters_needs_all_to_match(tmp_path: Path) -> None:
     store = plain_store(tmp_path)
-    token, _ = open_session(store, "lead", run="r1")
+    token, session = open_session(store, "lead")
 
-    assert close_sessions(store, seat="lead", run="r2") == 0
+    assert close_sessions(store, seat="other", session_id=session.id) == 0
     assert resolve_session(store, token) is not None
-    assert close_sessions(store, seat="lead", run="r1") == 1
+    assert close_sessions(store, seat="lead", session_id=session.id) == 1
 
 
 def test_close_refuses_to_close_everything(tmp_path: Path) -> None:
@@ -158,7 +152,7 @@ def test_prune_removes_only_expired(tmp_path: Path) -> None:
     store = plain_store(tmp_path)
     old, _ = open_session(store, "a", ttl_s=10, now=1000.0)
     fresh, _ = open_session(store, "b", ttl_s=1000, now=1000.0)
-    forever, _ = open_session(store, "c@r", run="r", ttl_s=None, now=1000.0)
+    forever, _ = open_session(store, "c", ttl_s=None, now=1000.0)
 
     assert drop_expired_sessions(store, now=1500.0) == 1
 

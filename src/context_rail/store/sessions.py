@@ -47,7 +47,6 @@ class Session:
 
     id: str
     seat: str
-    run: str | None
     role: str | None
     anchor: str | None
     profile: str | None
@@ -60,7 +59,6 @@ def open_session(
     store: Path,
     seat: str,
     *,
-    run: str | None = None,
     role: str | None = None,
     anchor: str | None = None,
     profile: str | None = None,
@@ -77,7 +75,6 @@ def open_session(
     session = Session(
         id=_token_id(token),
         seat=seat,
-        run=run,
         role=role,
         anchor=anchor,
         profile=profile,
@@ -119,20 +116,17 @@ def close_sessions(
     store: Path,
     *,
     seat: str | None = None,
-    run: str | None = None,
     session_id: str | None = None,
 ) -> int:
     """Remove every session matching all given filters; return how many.
 
     Closing needs at least one filter, so no call can close every session.
     """
-    if seat is None and run is None and session_id is None:
-        raise ValueError("close_sessions needs a seat, a run or a session id")
+    if seat is None and session_id is None:
+        raise ValueError("close_sessions needs a seat or a session id")
     closed = 0
     for path, session in _entries(store):
         if seat is not None and session.seat != seat:
-            continue
-        if run is not None and session.run != run:
             continue
         if session_id is not None and session.id != session_id:
             continue
@@ -149,7 +143,7 @@ def drop_expired_sessions(store: Path, *, now: float | None = None) -> int:
 
 
 def close_all_sessions(store: Path) -> int:
-    """Remove every session, manual or run; only the human ``seat close --all`` uses it."""
+    """Remove every session; only the human ``seat close --all`` uses it."""
     return sum(_remove(path) for path, _session in _entries(store))
 
 
@@ -205,7 +199,7 @@ def _session(raw: dict[str, Any]) -> Session:
     if set(raw) != set(Session.__dataclass_fields__):
         raise TypeError("unexpected session keys")
     text = ("id", "seat")
-    optional_text = ("run", "role", "anchor", "profile", "granted_by")
+    optional_text = ("role", "anchor", "profile", "granted_by")
     for key in text:
         if not isinstance(raw[key], str) or not raw[key]:
             raise TypeError(key)

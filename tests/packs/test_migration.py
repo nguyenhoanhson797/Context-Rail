@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from context_rail.gateway.gateway import invoke
-from context_rail.store.doc import etag
+import pytest
 from helpers import (
     init_pack_store,
     workflow_pack_document,
     write_pack,
 )
+
+from context_rail.gateway.gateway import invoke
+from context_rail.store.doc import etag
 
 
 def _switch(store: Path, name: str, mapping: list[str], key: str | None = None) -> dict:
@@ -25,6 +27,7 @@ def _switch(store: Path, name: str, mapping: list[str], key: str | None = None) 
     return invoke("pack use", args, store=store, actor="human")
 
 
+@pytest.mark.usefixtures("named_human")
 def test_an_ambiguous_status_names_the_item_and_its_workflow(tmp_path: Path) -> None:
     store = init_pack_store(tmp_path, workflow_pack_document())
     assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
@@ -41,6 +44,7 @@ def test_an_ambiguous_status_names_the_item_and_its_workflow(tmp_path: Path) -> 
     }
 
 
+@pytest.mark.usefixtures("named_human")
 def test_an_explicit_map_carries_both_status_and_workflow(tmp_path: Path) -> None:
     store = init_pack_store(tmp_path, workflow_pack_document())
     assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
@@ -88,6 +92,7 @@ def test_an_explicit_map_carries_both_status_and_workflow(tmp_path: Path) -> Non
     assert replayed["value"]["record"] == switched["value"]["record"]
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_vanished_preset_refuses_the_switch(tmp_path: Path) -> None:
     store = init_pack_store(tmp_path, workflow_pack_document())
     assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
@@ -115,6 +120,7 @@ def test_a_vanished_preset_refuses_the_switch(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_workflow_qualified_map_splits_one_source_status(tmp_path: Path) -> None:
     store = init_pack_store(tmp_path, workflow_pack_document())
     assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]
@@ -145,6 +151,7 @@ def test_a_workflow_qualified_map_splits_one_source_status(tmp_path: Path) -> No
     assert invoke("show", {"slug": "a-bug"}, store=store)["value"]["doc"]["status"] == "fixing"
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_status_outside_the_target_workflow_refuses(tmp_path: Path) -> None:
     store = init_pack_store(tmp_path, workflow_pack_document())
     assert invoke("add", {"preset": "task", "title": "A task"}, store=store)["ok"]

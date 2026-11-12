@@ -320,8 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     """Run one command and return the process exit code."""
     raw = list(sys.argv[1:] if argv is None else argv)
     raw, lens = _split_seat_lens(raw)
-    head, command = _split_seat_open(raw)
-    args = _expand_legacy(head)
+    args = _expand_legacy(raw)
     removed = _removed_command(args)
     if removed is not None:
         from context_rail.core.result import fail
@@ -362,8 +361,6 @@ def main(argv: list[str] | None = None) -> int:
         for name, value in vars(namespace).items()
         if name not in reserved and name in names
     }
-    if command is not None and tool == "seat open":
-        return _seat_open_command(namespace, params, command, lens)
     served = _fast_path(namespace, tool, params, declared, lens)
     if served is not None:
         return _finish(tool, served)
@@ -381,57 +378,6 @@ def _split_seat_lens(argv: list[str]) -> tuple[list[str], str | None]:
     if index + 1 == len(argv):
         return [*argv[:index], "seat", "show", token], None
     return [*argv[:index], *argv[index + 1 :]], token
-
-
-def _split_seat_open(argv: list[str]) -> tuple[list[str], list[str] | None]:
-    """Split ``seat open <seat> ... -- <command ...>`` before argparse sees it."""
-    index = _command_index(argv)
-    if index is None or argv[index : index + 2] != ["seat", "open"]:
-        return argv, None
-    try:
-        cut = argv.index("--", index + 2)
-    except ValueError:
-        return argv, None
-    command = argv[cut + 1 :]
-    return argv[:cut], command or None
-
-
-def _seat_open_command(
-    namespace: argparse.Namespace,
-    params: dict[str, Any],
-    command: list[str],
-    lens: str | None,
-) -> int:
-    """Open the seat's session and launch ``command`` with it in the environment."""
-    import subprocess
-
-    from context_rail.core.result import fail
-
-    result = _direct_invoke(
-        namespace, "seat open", {**params, "print_env": True}, lens
-    )
-    if result.get("ok") is not True:
-        return _finish("seat open", result)
-    token = (result.get("value") or {}).get("token")
-    if not isinstance(token, str) or not token:
-        return _finish(
-            "seat open",
-            fail("INTERNAL", "the opened session carried no token", {"reason": "no_token"}),
-        )
-    env = dict(os.environ)
-    env["RAIL_SESSION"] = token
-    try:
-        completed = subprocess.run(command, env=env)
-    except OSError as exc:
-        return _finish(
-            "seat open",
-            fail(
-                "PROCESS_ERROR",
-                f"the command could not start: {exc}",
-                {"reason": "command_failed"},
-            ),
-        )
-    return completed.returncode
 
 
 def _direct_invoke(

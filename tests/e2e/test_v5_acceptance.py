@@ -251,7 +251,7 @@ def test_the_cli_exposes_the_new_next_flags_and_model(
         ("next", "--into", operating_video_store.scene),
         ("model",),
     ):
-        completed = run_cli(cwd, *args, store=store)
+        completed = run_cli(cwd, *args, store=store, env={"RAIL_ACTOR": "human"})
         assert completed.returncode == 0, completed.stderr
         assert json.loads(completed.stdout)["ok"] is True
 

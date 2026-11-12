@@ -28,7 +28,7 @@ def _titles(store: Path) -> list[str]:
 
 def test_a_served_call_never_imports_the_gateway(store: Path) -> None:
     with serving_daemon(store):
-        proc, loaded = run_cli_probe(store.parent, "next", store=store)
+        proc, loaded = run_cli_probe(store.parent, "status", store=store)
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["ok"] is True
     assert loaded == {"GW": False, "YAML": False, "SQLITE": False}
@@ -38,14 +38,14 @@ def test_discovery_without_store_from_a_deep_directory(store: Path) -> None:
     deep = store / "notes" / "deeper"
     deep.mkdir(parents=True)
     with serving_daemon(store):
-        proc, loaded = run_cli_probe(deep, "next")
+        proc, loaded = run_cli_probe(deep, "status")
     assert proc.returncode == 0, proc.stderr
     assert loaded == {"GW": False, "YAML": False, "SQLITE": False}
 
 
 def test_a_relative_store_is_resolved_against_the_callers_directory(store: Path) -> None:
     with serving_daemon(store):
-        proc, loaded = run_cli_probe(store.parent, "next", store=Path(store.name))
+        proc, loaded = run_cli_probe(store.parent, "status", store=Path(store.name))
     assert proc.returncode == 0, proc.stderr
     assert loaded == {"GW": False, "YAML": False, "SQLITE": False}
 
@@ -78,7 +78,7 @@ def test_a_path_argument_runs_direct_and_reads_the_callers_file(
 
 @pytest.mark.parametrize("opt_out", ["flag", "environment"])
 def test_opt_outs_run_direct(store: Path, opt_out: str) -> None:
-    args = ["--no-daemon", "next"] if opt_out == "flag" else ["next"]
+    args = ["--no-daemon", "status"] if opt_out == "flag" else ["status"]
     env = {"RAIL_NO_DAEMON": "1"} if opt_out == "environment" else None
     with serving_daemon(store):
         proc, loaded = run_cli_probe(store.parent, *args, store=store, env=env)

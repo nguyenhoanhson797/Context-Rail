@@ -33,13 +33,13 @@ DEFAULT_FAKE_BEHAVIORS = ("success",)
 def child_env(env: Mapping[str, str | None] | None = None) -> dict[str, str]:
     """The environment for a CLI child: this one, plus ``src`` on the path.
 
-    ``RAIL_ACTOR``, ``RAIL_SESSION`` and ``RAIL_RUN`` are dropped so a developer's
+    ``RAIL_ACTOR`` and ``RAIL_SESSION`` are dropped so a developer's
     shell never changes which identity a test's records name. ``env`` overrides:
     a string sets, ``None`` removes.
     """
     child = dict(os.environ)
     child["PYTHONPATH"] = str(_REPO_SRC)
-    for name in ("RAIL_ACTOR", "RAIL_SESSION", "RAIL_RUN"):
+    for name in ("RAIL_ACTOR", "RAIL_SESSION"):
         child.pop(name, None)
     for name, value in (env or {}).items():
         if value is None:
@@ -1132,7 +1132,7 @@ def stdio_session(
 
         env = dict(os.environ)
         env["PYTHONPATH"] = str(_REPO_SRC)
-        for name in ("RAIL_ACTOR", "RAIL_SESSION", "RAIL_RUN"):
+        for name in ("RAIL_ACTOR", "RAIL_SESSION"):
             env.pop(name, None)
         if session is not None:
             env["RAIL_SESSION"] = session

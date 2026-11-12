@@ -135,11 +135,10 @@ def test_revoke_closes_the_seat_session_and_a_regrant_does_not_revive_it(
     assert refusal(regranted) == ("PERMISSION_DENIED", "session_invalid")
 
 
-def test_seat_close_all_also_closes_run_sessions(role_store: SimpleNamespace) -> None:
+def test_seat_close_all_closes_every_session(role_store: SimpleNamespace) -> None:
     token, _session = open_session(
         role_store.store,
-        "worker@run-1",
-        run="run-1",
+        "worker",
         role="implementer",
         anchor=role_store.o1,
         profile=None,

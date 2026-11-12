@@ -8,7 +8,6 @@ the gateway reads the resulting :class:`Identity`.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +30,7 @@ if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
 __all__ = [
+    "ACTOR_HINT",
     "ANONYMOUS",
     "Identity",
     "IdentityRefused",
@@ -41,7 +41,8 @@ __all__ = [
 ]
 
 ANONYMOUS = "anonymous"
-_OPEN_COMMAND = "rail seat open <seat> -- <command>"
+_OPEN_COMMAND = "rail seat open <seat> --print-env"
+ACTOR_HINT = "pass --actor <name> or set RAIL_ACTOR"
 _CTO = "cto"
 _LEAD_NAMES = (_CTO, HUMAN)
 
@@ -137,7 +138,7 @@ def resolve_identity(
                 "this pack declares no roles; a seat lens needs a store with roles",
                 {"reason": "no_roles", "command": "rail pack use <pack>"},
             )
-        return _legacy(context, actor)
+        return _legacy(context, actor, terminal=tty, human_channel=human_channel)
     if isinstance(actor, str) and actor.strip():
         raise IdentityRefused(
             "PERMISSION_DENIED",
@@ -147,18 +148,13 @@ def resolve_identity(
         )
     if session is not None:
         identity = _seat(context, session)
-    elif human_channel or (tty and not _in_run()):
+    elif human_channel or tty:
         identity = Identity(kind="human", name=HUMAN, human=True, lead=True)
     else:
         identity = Identity(kind="anonymous", name=ANONYMOUS)
     if lens is None:
         return identity
     return _with_lens(context, identity, lens)
-
-
-def _in_run() -> bool:
-    """Whether this process is a dispatched run, which is never the terminal human."""
-    return bool(os.environ.get("RAIL_RUN"))
 
 
 def _with_lens(context: Context, identity: Identity, name: str) -> Identity:
@@ -202,8 +198,15 @@ def _can_read_anchor(context: Context, identity: Identity, anchor: str) -> bool:
     return reach.can_read(anchor, path=row[0], preset=row[1])
 
 
-def _legacy(context: Context, actor: str | None) -> Identity:
+def _legacy(
+    context: Context, actor: str | None, *, terminal: bool, human_channel: bool
+) -> Identity:
+    """A name in a store without roles; an unnamed caller is the human only on a person's channel."""
     name, _ = resolve_actor_name(actor)
+    if name is None:
+        if not (terminal or human_channel):
+            return Identity(kind="anonymous", name=ANONYMOUS)
+        name = HUMAN
     return Identity(
         kind="legacy",
         name=name,
@@ -217,14 +220,11 @@ def _seat(context: Context, token: str) -> Identity:
     if found is None:
         raise _invalid("the session is unknown, expired or closed")
     live = query.live_seats(context.index)
-    if found.run is None:
-        seat = live.get(found.seat)
-        if seat is None:
-            raise _invalid(f"seat {found.seat!r} is not live")
-        if _changed(found, seat) or _opened_before_grant(found, seat.granted_at):
-            raise _invalid(f"seat {found.seat!r} was granted again after this session opened")
-    else:
-        seat = _run_seat(found, live)
+    seat = live.get(found.seat)
+    if seat is None:
+        raise _invalid(f"seat {found.seat!r} is not live")
+    if _changed(found, seat) or _opened_before_grant(found, seat.granted_at):
+        raise _invalid(f"seat {found.seat!r} was granted again after this session opened")
     role = context.pack.operating.roles.get(seat.role)
     if role is None:
         raise IdentityRefused(
@@ -239,28 +239,6 @@ def _seat(context: Context, token: str) -> Identity:
         role=role,
         lead=role.anchor.kind == "project",
         session=found.id,
-    )
-
-
-def _run_seat(found: Session, live: dict[str, LiveSeat]) -> LiveSeat:
-    if found.role is None or found.anchor is None or found.granted_by is None:
-        raise _invalid("the run session carries no seat")
-    if found.granted_by != HUMAN:
-        granter = live.get(found.granted_by)
-        if granter is None:
-            raise _invalid(f"seat {found.granted_by!r}, which started this run, is not live")
-        if _opened_before_grant(found, granter.granted_at):
-            raise _invalid(
-                f"seat {found.granted_by!r} was granted again after this run seat opened"
-            )
-    created = datetime.fromtimestamp(found.created, timezone.utc)
-    return LiveSeat(
-        seat=found.seat,
-        role=found.role,
-        anchor=found.anchor,
-        profile=found.profile,
-        granted_by=found.granted_by,
-        granted_at=created.strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
 
 

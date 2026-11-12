@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from context_rail.gateway.gateway import invoke
+import pytest
 from helpers import init_pack_store, workflow_pack_document
+
+from context_rail.gateway.gateway import invoke
 
 FINISH = {
     "on": "task",
@@ -51,6 +53,7 @@ def _action_records(store: Path) -> list[dict]:
     return rows
 
 
+@pytest.mark.usefixtures("named_human")
 def test_do_runs_the_tool_and_records_the_verb(tmp_path: Path) -> None:
     store = _store(tmp_path)
 
@@ -76,6 +79,7 @@ def test_do_runs_the_tool_and_records_the_verb(tmp_path: Path) -> None:
     assert records[0]["data"]["version"] == 2
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_failed_precondition_changes_nothing(tmp_path: Path) -> None:
     store = _store(
         tmp_path,
@@ -106,6 +110,7 @@ def test_a_failed_precondition_changes_nothing(tmp_path: Path) -> None:
     assert _action_records(store) == []
 
 
+@pytest.mark.usefixtures("named_human")
 def test_a_replay_returns_the_same_record(tmp_path: Path) -> None:
     store = _store(tmp_path)
     args = {
@@ -124,6 +129,7 @@ def test_a_replay_returns_the_same_record(tmp_path: Path) -> None:
     assert len(_action_records(store)) == 1
 
 
+@pytest.mark.usefixtures("named_human")
 def test_do_cannot_set_a_path_or_an_actor(tmp_path: Path) -> None:
     store = _store(tmp_path)
 

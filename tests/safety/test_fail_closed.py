@@ -15,6 +15,7 @@ from context_rail.gateway.gateway import invoke
 from context_rail.gateway.tools import TOOLS
 from helpers import run_cli
 
+HUMAN = {"RAIL_ACTOR": "human"}
 _REFUSED_TOOLS = (
     "approve",
     "add",
@@ -261,6 +262,7 @@ def test_set_path_escape_is_refused(store_factory: Any) -> None:
         "--set",
         "path=../../escape",
         store=store,
+        env=HUMAN,
     )
     assert proc.returncode == 1, proc.stderr
     assert json.loads(proc.stdout)["error"]["code"] == "VALIDATION_FAILED"
@@ -272,7 +274,7 @@ def test_set_path_escape_is_refused(store_factory: Any) -> None:
 def test_rename_escape_is_refused(store_factory: Any) -> None:
     store = store_factory(docs=20)
     before = _files(store)
-    proc = run_cli(store.parent, "rename", "t0", "../escape", store=store)
+    proc = run_cli(store.parent, "rename", "t0", "../escape", store=store, env=HUMAN)
     assert proc.returncode == 1, proc.stderr
     assert json.loads(proc.stdout)["error"]["code"] in {
         "VALIDATION_FAILED",
@@ -308,6 +310,7 @@ def test_body_file_outside_the_store_is_read_only(
         "--body-file",
         str(outside),
         store=store,
+        env=HUMAN,
     )
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["ok"] is True
