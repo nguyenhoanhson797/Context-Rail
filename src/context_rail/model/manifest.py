@@ -146,6 +146,17 @@ def load_manifest(store: Path) -> Manifest:
     return manifest
 
 
+def load_manifest_unchecked(store: Path) -> Manifest:
+    """Read ``rail.yaml`` without loading the selected pack.
+
+    ``upgrade`` repairs packs that no longer load, so it cannot ask them first.
+    """
+    path = Path(store) / "rail.yaml"
+    if not path.is_file():
+        _refuse("rail.yaml is missing")
+    return _parse_manifest(path)
+
+
 def manifest_from_mapping(data: Any, store: Path | None = None) -> Manifest:
     """Validate an in-memory manifest mapping.
 

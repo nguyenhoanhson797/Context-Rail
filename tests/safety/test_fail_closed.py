@@ -207,11 +207,13 @@ def test_schema_four_refuses_every_tool_except_init(store_factory: Any) -> None:
     _write_manifest(store, manifest)
     before = _files(store)
 
-    assert set(_REFUSED_TOOLS) == {tool.name for tool in TOOLS} - {"init", "migrate"}
+    assert set(_REFUSED_TOOLS) == {tool.name for tool in TOOLS} - {"init", "migrate", "upgrade"}
     for name in _REFUSED_TOOLS:
         result = invoke(name, _ARGS[name], store=store, actor="cto")
         assert result["ok"] is False, (name, result)
         assert result["error"]["code"] == "SCHEMA_UNSUPPORTED", (name, result)
+    result = invoke("upgrade", {"confirm": "UPGRADE store"}, store=store, actor="human")
+    assert result["error"]["code"] == "SCHEMA_UNSUPPORTED", result
 
     assert _files(store) == before
     refused = run_cli(store.parent, "show", "t0", store=store)

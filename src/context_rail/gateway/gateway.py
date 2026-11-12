@@ -54,7 +54,12 @@ from context_rail.kernel import rights
 from context_rail.kernel.lifecycle import category_of
 from context_rail.model.cto import Profile, parse_profile
 from context_rail.model.errors import ModelError
-from context_rail.model.manifest import Manifest, load_manifest, render_path
+from context_rail.model.manifest import (
+    Manifest,
+    load_manifest,
+    load_manifest_unchecked,
+    render_path,
+)
 from context_rail.model.pack import Pack, load_pack
 from context_rail.model.policy import Charter, parse_charter
 from context_rail.store.doc import Doc, parse_doc
@@ -337,7 +342,10 @@ def invoke(
             params = _parameters(tool, {**defaults, **(args or {})})
         else:
             params = _parameters(tool, args)
-        if tool.name not in {"init", "migrate"}:
+        if tool.name == "upgrade":
+            if context is None:
+                context = _open_manifest_only(store, resolved_actor, actor_named)
+        elif tool.name not in {"init", "migrate"}:
             if context is None:
                 context = _open_context(store, resolved_actor, actor_named)
             context.identity = resolve_identity(
@@ -721,6 +729,22 @@ def _open_context(store: Path | str | None, actor: str, actor_named: bool = True
         store=found,
         manifest=manifest,
         pack=pack,
+        actor=actor,
+        actor_named=actor_named,
+    )
+
+
+def _open_manifest_only(
+    store: Path | str | None, actor: str, actor_named: bool
+) -> Context:
+    """A context with a manifest and no pack, for a call that repairs the pack."""
+    found = Path(store) if store is not None else find_store(Path.cwd())
+    if found is None or not (found / "rail.yaml").is_file():
+        raise WriteRefused("NOT_FOUND", "no store found")
+    return Context(
+        store=found,
+        manifest=load_manifest_unchecked(found),
+        pack=None,  # type: ignore[arg-type]
         actor=actor,
         actor_named=actor_named,
     )

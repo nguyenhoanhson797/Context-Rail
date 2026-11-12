@@ -34,6 +34,7 @@ OPS_HUMAN_ONLY = frozenset(
     {
         "init",
         "migrate",
+        "upgrade",
         "rollback",
         "adapters sync",
         "sync",

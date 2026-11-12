@@ -18,6 +18,7 @@ ACTIONS = {
     "fail": "FAIL {target}",
     "pack_use": "USE PACK {target}",
     "adapters_force": "FORCE ADAPTERS {target}",
+    "upgrade": "UPGRADE {target}",
 }
 
 

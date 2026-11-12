@@ -128,6 +128,18 @@ TOOLS: tuple[Tool, ...] = (
         decision="human-only",
     ),
     Tool(
+        name="upgrade",
+        summary="Rewrite an older store in place for the runtime-neutral engine.",
+        permission="human",
+        params=(
+            Param("dry_run", "bool", default=False, help="list the rewrites without writing"),
+            Param("confirm", "str", help="the typed phrase UPGRADE store"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.upgrade:upgrade",
+        decision="human-only",
+    ),
+    Tool(
         name="approve",
         summary="Record the human's approval of the protected picture's meaning.",
         permission="human",

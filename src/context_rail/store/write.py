@@ -537,6 +537,8 @@ def _build_records(
     A record may never take a document's path or another record's, and every
     refusal happens here, before the intent is published or any bytes move.
     """
+    if not requests:
+        return ()
     op_paths = {_identity(target.path) for target in targets}
     op_rels = {target.rel for target in targets}
     pending = _pending_documents(targets)
