@@ -70,7 +70,6 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 const MOD = isMac ? '⌘' : 'Ctrl';
 const CONFIRM_TEXT: Record<string, [string, string]> = {
   done: ['Finish this task?', "Finishing runs the task's checks first: shell commands from the scope items, on this machine, for up to a few minutes. The task stays open if one fails."],
-  dispatch: ['Dispatch to a worker?', 'This runs the worker command you gave, then the checks, on this machine.'],
   verify: ['Run the checks?', 'Verifying runs the scope checks that carry a cmd: line, on this machine.'],
   scope_check_tick: ['Tick this check?', 'Ticking a cmd: check runs its command on this machine.'],
 };

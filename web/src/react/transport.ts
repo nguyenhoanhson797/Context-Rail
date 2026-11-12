@@ -154,7 +154,7 @@ export function toolNeedsConfirm(tool: Data, args: Record<string, unknown>, conf
   if (name === 'correction_apply') return action === 'adopt';
   if (name === 'sync') return args.dry_run !== true;
   if (name === 'done') return args.skip_verify !== true;
-  return capability.confirm === true; // dispatch, verify, and a cmd: scope tick
+  return capability.confirm === true; // verify, candidate, and a cmd: scope tick
 }
 /** Hint-only: whether any call of this tool may need confirmation. */
 export function mayNeedConfirm(tool: Data, confirmTools: string[]): boolean {

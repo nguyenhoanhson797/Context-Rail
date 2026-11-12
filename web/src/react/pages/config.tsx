@@ -90,7 +90,7 @@ export function ConfigSettings({ snapshot, mutate, read, busy, refresh }: PagePr
         </section>
       ) : null}
       {tab === 'profiles' ? <Profiles actors={rows(snapshot.actors)} options={options} busy={busy} run={run} /> : null}
-      {tab === 'skills' ? <Skills skills={rows(snapshot.skills)} options={options} busy={busy} run={run} /> : null}
+      {tab === 'skills' ? <Skills skills={rows(snapshot.skills)} busy={busy} run={run} /> : null}
       {tab === 'charter' ? <Charter charter={object(snapshot.charter)} busy={busy} run={run} /> : null}
       {tab === 'packs' ? <Packs snapshot={snapshot} busy={busy} run={run} read={read} /> : null}
       {tab === 'measure' ? <Measure snapshot={snapshot} busy={busy} run={run} /> : null}
@@ -161,21 +161,10 @@ function ProfileForm({ doc, options, busy, run }: {
   doc: Data; options: Data; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
-  const runners = strings(options.runners);
-  const autos = strings(options.autos);
-  const tools = strings(options.tools);
   const methods = strings(options.methods);
   const f = object(doc.fields);
   const b = budgetOf(doc);
 
-  const [baseModel, setBaseModel] = useState(text(f.model));
-  const [runnerModels, setRunnerModels] = useState<Record<string, string>>(
-    Object.fromEntries(Object.entries(object(f.runner_models)).map(([k, v]) => [k, text(v)]).filter(([, v]) => v)),
-  );
-  const [auto, setAuto] = useState(text(f.auto));
-  const [runner, setRunner] = useState(text(f.runner, runners[0] ?? 'droid'));
-  const effectiveModel = runnerModels[runner] ?? baseModel;
-  const [selectedTools, setSelectedTools] = useState<string[]>(strings(f.tools));
   const [selectedMethods, setSelectedMethods] = useState<string[]>(strings(f.allowed_methods));
   const [attempts, setAttempts] = useState(num(b.attempts));
   const [seconds, setSeconds] = useState(num(b.seconds));
@@ -190,11 +179,6 @@ function ProfileForm({ doc, options, busy, run }: {
       return;
     }
     const set: string[] = [];
-    if (baseModel) set.push(`model=${baseModel}`);
-    if (Object.keys(runnerModels).length) set.push(`runner_models=${JSON.stringify(runnerModels)}`);
-    set.push(`auto=${auto || 'null'}`);
-    if (runner) set.push(`runner=${runner}`);
-    set.push(`tools=${JSON.stringify(selectedTools)}`);
     set.push(`allowed_methods=${JSON.stringify(selectedMethods)}`);
     // Keep every cap this form does not edit (tokens, credits, and any future one).
     set.push(`budgets=${JSON.stringify({ ...b, attempts: attemptCap, seconds: secondCap })}`);
@@ -206,42 +190,15 @@ function ProfileForm({ doc, options, busy, run }: {
 
   return (
     <>
-      <Row title="Autonomy" description="Only the CTO recipe may run at high.">
-        <Segmented label="Autonomy" options={autos} value={auto} onChange={setAuto} allowEmpty />
-      </Row>
-      <details className="sblock" style={{ padding: 12 }}>
-        <summary className="t rail-settings-label">Advanced: launch defaults (model and runner)</summary>
-        <div className="d rail-list-sub" style={{ margin: '6px 0 10px' }}>
-          The profile declares a default; the harness decides at launch. <span className="mono">RAIL_RUNNER</span> overrides the runner for every worker launch in this environment
-          {text(options.runner_override) ? <> (currently <span className="mono">{text(options.runner_override)}</span>)</> : ' (none set)'}, and the runner, model and argv digest that actually ran are kept in the run record.
-        </div>
-        <Row title="Runner" description="Declared default adapter; a launch-time override wins.">
-          <Segmented label="Runner" options={runners} value={runner} onChange={setRunner} />
-        </Row>
-        <Row title={`Model for ${runner}`} description="Model ids belong to the runner; this keeps one id per adapter.">
-          <input
-            className="input"
-            aria-label="Model"
-            value={effectiveModel}
-            onChange={e => setRunnerModels(current => ({ ...current, [runner]: e.target.value }))}
-          />
-        </Row>
-        <Row title="Fallback model" description="Used when the runner has no mapped model.">
-          <input className="input" aria-label="Fallback model" value={baseModel} onChange={e => setBaseModel(e.target.value)} />
-        </Row>
-      </details>
-      <Row title="Tools" description="The tool ids this worker may use; the reviewer may hold only read tools.">
-        <Chips label="Tools" options={tools} selected={selectedTools} onToggle={item => setSelectedTools(current => toggleItem(current, item))} />
-      </Row>
       <details className="sblock" style={{ padding: 12 }}>
         <summary className="t rail-settings-label">Advanced: allowed methods ({selectedMethods.length} selected)</summary>
         <div className="d rail-list-sub" style={{ margin: '6px 0 8px' }}>Narrowing only: a profile can shrink its actor&apos;s methods, never widen them.</div>
         <Chips label="Allowed methods" options={methods} selected={selectedMethods} onToggle={item => setSelectedMethods(current => toggleItem(current, item))} />
       </details>
-      <Row title="Attempts" description="Worker attempts this profile allows; raising a budget needs a human.">
+      <Row title="Attempts" description="Attempts this profile allows; raising a budget needs a human.">
         <input className="input" aria-label="Attempts" value={attempts} onChange={e => setAttempts(e.target.value)} />
       </Row>
-      <Row title="Seconds" description="Worker runtime this profile allows; raising a budget needs a human.">
+      <Row title="Seconds" description="Seconds this profile allows; raising a budget needs a human.">
         <input className="input" aria-label="Seconds" value={seconds} onChange={e => setSeconds(e.target.value)} />
       </Row>
       <Row title="Confirmation" description={`A budget increase needs the typed phrase APPROVE ${text(doc.id)}.`}>
@@ -255,11 +212,10 @@ function ProfileForm({ doc, options, busy, run }: {
   );
 }
 
-function Skills({ skills, options, busy, run }: {
-  skills: Data[]; options: Data; busy: boolean;
+function Skills({ skills, busy, run }: {
+  skills: Data[]; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
-  const toolIds = strings(options.tools);
   const canonical = canonicalSkills(skills);
   const [sel, setSel] = useState('');
   const doc = canonical.find(d => text(d.id) === sel) ?? canonical[0];
@@ -272,7 +228,7 @@ function Skills({ skills, options, busy, run }: {
             {canonical.map(s => <option key={text(s.id)} value={text(s.id)}>{text(s.title, text(s.id))}</option>)}
           </select>
         </Row>
-        <SkillForm key={text(doc.id)} doc={doc} toolIds={toolIds} busy={busy} run={run} />
+        <SkillForm key={text(doc.id)} doc={doc} busy={busy} run={run} />
       </> : <p className="faint" style={{ fontSize: 12 }}>
         No canonical skill documents yet. The skills under <span className="mono">workspace/…/skills</span> are generated copies rendered by <span className="mono">ops adapters sync</span>, and editing them would be overwritten.
       </p>}
@@ -280,18 +236,18 @@ function Skills({ skills, options, busy, run }: {
   );
 }
 
-function SkillForm({ doc, toolIds, busy, run }: {
-  doc: Data; toolIds: string[]; busy: boolean;
+function SkillForm({ doc, busy, run }: {
+  doc: Data; busy: boolean;
   run: (t: string, a: Record<string, unknown>, c?: boolean) => void;
 }) {
   const f = object(doc.fields);
   const [desc, setDesc] = useState(text(f.description));
-  const [tools, setTools] = useState<string[]>(strings(f.allowed_tools));
+  const [tools, setTools] = useState(strings(f.allowed_tools).join(', '));
 
   const save = () => {
     run('update', {
       slug: text(doc.id),
-      set: [`description=${desc}`, `allowed_tools=${JSON.stringify(tools)}`],
+      set: [`description=${desc}`, `allowed_tools=${JSON.stringify(tools.split(',').map(item => item.trim()).filter(Boolean))}`],
       expect: text(doc.etag),
     });
   };
@@ -305,8 +261,8 @@ function SkillForm({ doc, toolIds, busy, run }: {
             <textarea className="textarea" aria-label="Description" rows={3} style={{ marginTop: 8 }} value={desc} onChange={e => setDesc(e.target.value)} />
           </div>
         </div>
-        <Row title="Allowed tools" description="Known tool ids only; the schema refuses anything else.">
-          <Chips label="Allowed tools" options={toolIds} selected={tools} onToggle={item => setTools(current => toggleItem(current, item))} />
+        <Row title="Allowed tools" description="Tool names your coding tool understands, separated by commas. The rail passes them on and does not check them.">
+          <input className="input" aria-label="Allowed tools" value={tools} onChange={e => setTools(e.target.value)} />
         </Row>
         <Row title="Save skill" description="The name stays pinned to the file stem; version bumps once.">
           <Button disabled={busy} onClick={save}>Save skill</Button>
@@ -361,10 +317,10 @@ function CharterForm({ charter, busy, run }: {
   };
   return (
     <>
-      <Row title="Item attempts" description="The cap every worker run is measured against.">
+      <Row title="Item attempts" description="The cap every candidate is measured against; going over only warns.">
         <input className="input" aria-label="Item attempts" value={attempts} onChange={e => setAttempts(e.target.value)} />
       </Row>
-      <Row title="Item seconds" description="The runtime cap every worker run is measured against.">
+      <Row title="Item seconds" description="The time cap every candidate is measured against; going over only warns.">
         <input className="input" aria-label="Item seconds" value={seconds} onChange={e => setSeconds(e.target.value)} />
       </Row>
       {notice ? <p className="faint" style={{ fontSize: 12 }}>{notice}</p> : null}
