@@ -24,17 +24,23 @@ __all__ = [
     "capture_changes",
     "changed_line_ranges",
     "current_branch",
+    "diff_names",
+    "diff_text",
     "fast_forward",
+    "first_parent",
     "git",
     "is_ancestor",
     "ls_files",
     "ls_files_staged",
+    "merge_base",
     "push",
     "rebase",
     "rebase_in_progress",
+    "resolve_commit",
     "rev_parse_head",
     "status_porcelain",
     "unmerged_paths",
+    "worktree_paths",
 ]
 
 DEFAULT_TIMEOUT = 120.0
@@ -44,6 +50,7 @@ CAPTURE_LIMIT = 200
 CAPTURE_MAX_OUTPUT = 4 * 1024 * 1024
 #: The runner's own omission marker; a path carrying it was cut mid-entry.
 _OMISSION_MARKER = "[omitted]"
+_FULL_SHA = re.compile(r"[0-9a-f]{40}")
 
 
 def git(
@@ -135,6 +142,115 @@ def rev_parse_head(cwd: Path, confine_to: Path) -> str:
     """The exact ``HEAD`` commit ``cwd`` points at."""
     result = _checked(["rev-parse", "--verify", "HEAD"], cwd=cwd, confine_to=confine_to)
     return result["stdout"].strip()
+
+
+def resolve_commit(root: Path, rev: str) -> str | None:
+    """The full sha of the commit ``rev`` names, or ``None`` when it names none.
+
+    A revision that starts with ``-`` is never handed to git, where it would
+    read as an option.
+    """
+    if (
+        not isinstance(rev, str)
+        or not rev
+        or rev.startswith("-")
+        or "\x00" in rev
+        or any(character.isspace() for character in rev)
+    ):
+        return None
+    result = git(
+        ["rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"],
+        cwd=root,
+        confine_to=root,
+    )
+    if result["timed_out"]:
+        raise WriteRefused("PROCESS_ERROR", "git rev-parse timed out")
+    sha = result["stdout"].strip()
+    if result["exit"] != 0 or not _FULL_SHA.fullmatch(sha):
+        return None
+    return sha
+
+
+def merge_base(root: Path, a: str, b: str) -> str | None:
+    """The best common ancestor of ``a`` and ``b``; ``None`` when they share none."""
+    result = git(
+        ["merge-base", _revision(a, "a"), _revision(b, "b")],
+        cwd=root,
+        confine_to=root,
+    )
+    if result["timed_out"]:
+        raise WriteRefused("PROCESS_ERROR", "git merge-base timed out")
+    if result["exit"] == 1:
+        return None
+    if result["exit"] != 0:
+        detail = (result["stderr"] or result["stdout"]).strip()
+        raise WriteRefused(
+            "PROCESS_ERROR", f"git merge-base exited {result['exit']}: {detail}"
+        )
+    return result["stdout"].strip() or None
+
+
+def first_parent(root: Path, commit: str) -> str | None:
+    """The first parent of ``commit``; ``None`` for a root commit."""
+    return resolve_commit(root, f"{_revision(commit, 'commit')}^1")
+
+
+def diff_names(root: Path, base: str, commit: str) -> list[str]:
+    """Paths ``commit`` changes relative to ``base``, sorted, a rename as its new path."""
+    result = _checked(
+        [
+            "diff",
+            "--name-only",
+            "-z",
+            "-M",
+            _revision(base, "base"),
+            _revision(commit, "commit"),
+            "--",
+        ],
+        cwd=root,
+        confine_to=root,
+    )
+    return sorted({path for path in result["stdout"].split("\0") if path})
+
+
+def diff_text(root: Path, base: str, commit: str, max_chars: int) -> tuple[str, bool]:
+    """The patch from ``base`` to ``commit`` cut at ``max_chars``, and whether it was cut.
+
+    External diff drivers and text conversion are off: both come from
+    repository configuration and would run commands the caller never chose.
+    """
+    if max_chars < 0:
+        raise WriteRefused("VALIDATION_FAILED", "max_chars must not be negative")
+    # The runner keeps the head and the tail of an oversized output; reading
+    # eight bytes per wanted character leaves a head of at least that many.
+    result = _checked(
+        [
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "-M",
+            _revision(base, "base"),
+            _revision(commit, "commit"),
+            "--",
+        ],
+        cwd=root,
+        confine_to=root,
+        max_output=max_chars * 8 + 4096,
+        allow_truncated=True,
+    )
+    text = result["stdout"]
+    return text[:max_chars], bool(result["omitted_bytes"]) or len(text) > max_chars
+
+
+def worktree_paths(root: Path) -> list[Path]:
+    """The resolved path of every worktree of the repository at ``root``."""
+    result = _checked(["worktree", "list", "--porcelain"], cwd=root, confine_to=root)
+    return [
+        Path(line[len("worktree ") :]).resolve()
+        for line in result["stdout"].splitlines()
+        if line.startswith("worktree ")
+    ]
 
 
 def current_branch(cwd: Path, confine_to: Path) -> str:
