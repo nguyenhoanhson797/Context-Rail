@@ -90,7 +90,7 @@ def test_cli_exit_codes(tmp_path):
 
 
 def test_cli_init_dry_run_writes_nothing(tmp_path):
-    proc = run_cli(tmp_path, "init", "--dir", str(tmp_path), "--dry-run")
+    proc = run_cli(tmp_path, "--actor", "human", "init", "--dir", str(tmp_path), "--dry-run")
 
     assert proc.returncode == 0, proc.stdout
     assert _json(proc)["value"]["dry_run"] is True
@@ -98,21 +98,21 @@ def test_cli_init_dry_run_writes_nothing(tmp_path):
 
 
 def test_cli_init_scaffold_keeps_the_old_shape(tmp_path):
-    first = run_cli(tmp_path, "init", "--dir", str(tmp_path), "--scaffold")
+    first = run_cli(tmp_path, "--actor", "human", "init", "--dir", str(tmp_path), "--scaffold")
     assert first.returncode == 0, first.stdout
     assert set(_json(first)["value"]) == {"store", "pack"}
     assert not (
         tmp_path / "context-rail" / "workspace" / "cto" / "profile.md"
     ).exists()
 
-    again = run_cli(tmp_path, "init", "--dir", str(tmp_path), "--scaffold")
+    again = run_cli(tmp_path, "--actor", "human", "init", "--dir", str(tmp_path), "--scaffold")
     assert again.returncode == 1
     assert _json(again)["error"]["code"] == "CONFLICT"
 
 
 def test_cli_init_scaffold_rejects_a_picture_mode(tmp_path):
     proc = run_cli(
-        tmp_path, "init", "--dir", str(tmp_path), "--scaffold", "--interview"
+        tmp_path, "--actor", "human", "init", "--dir", str(tmp_path), "--scaffold", "--interview"
     )
 
     assert proc.returncode == 1
@@ -149,7 +149,7 @@ def test_cli_help_does_not_import_yaml_or_sqlite():
 
 
 def test_cli_init_add_show_move_roundtrip(tmp_path):
-    init = run_cli(tmp_path, "init", "--dir", str(tmp_path))
+    init = run_cli(tmp_path, "--actor", "human", "init", "--dir", str(tmp_path))
     assert init.returncode == 0, init.stdout
     assert _json(init)["value"]["store"] == str((tmp_path / "context-rail").resolve())
 
@@ -182,7 +182,7 @@ def test_cli_init_add_show_move_roundtrip(tmp_path):
 def test_cli_finds_stores_and_honours_store_override(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
-    assert run_cli(project, "init", "--dir", str(project)).returncode == 0
+    assert run_cli(project, "--actor", "human", "init", "--dir", str(project)).returncode == 0
     store = project / "context-rail"
 
     nested = store / "items"

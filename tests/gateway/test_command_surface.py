@@ -208,7 +208,7 @@ HUMAN = {"RAIL_ACTOR": "human"}
 
 def test_cli_grouped_aliases_run_and_old_names_still_work(tmp_path: Path) -> None:
     run_git(tmp_path, "init", "-b", "main")
-    initialized = run_cli(tmp_path, "init", "--dir", str(tmp_path))
+    initialized = run_cli(tmp_path, "--actor", "human", "init", "--dir", str(tmp_path))
     assert initialized.returncode == 0, initialized.stdout
 
     assert run_cli(tmp_path, "read", "status", env=HUMAN).returncode == 0

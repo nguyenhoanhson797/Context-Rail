@@ -112,6 +112,8 @@ def test_bare_init_carries_the_provider(tmp_path: Path) -> None:
 def test_the_cli_flag_reaches_the_manifest(tmp_path: Path) -> None:
     result = run_cli(
         tmp_path,
+        "--actor",
+        "human",
         "init",
         "--dir",
         str(tmp_path),
