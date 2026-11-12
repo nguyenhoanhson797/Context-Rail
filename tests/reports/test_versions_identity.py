@@ -8,7 +8,7 @@ from typing import Any
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from context_rail.store.doc import etag
+from context_rail.store.doc import etag, parse_doc
 from helpers import records_of
 
 CHANGE_KEYS = {
@@ -52,8 +52,6 @@ def _add_profile(store: Path, name: str) -> None:
                 "schema=1", "version=1", "recipe=reviewer",
                 "allowed_methods=[find, show, cto brief, ledger, report]",
                 "budget={max_chars: 12000, max_docs: 20}",
-                "model=gpt-5.3-codex",
-                "tools=[read-cli, ls-cli, grep_tool_cli, glob-search-cli]",
                 "skills=[]",
                 "budgets={attempts: 2, seconds: 3600, tokens: null, credits: null}",
             ],
@@ -209,22 +207,22 @@ def test_adding_a_skill_without_a_description_is_refused(store_factory: Any) -> 
     assert not (store / "workspace" / "skills" / "unlabelled.md").exists()
 
 
-def test_adding_a_skill_with_an_unknown_tool_is_refused(store_factory: Any) -> None:
+def test_a_skill_may_name_any_tool_the_harness_knows(store_factory: Any) -> None:
     store = store_factory(docs=1)
-    refused = invoke(
+    added = invoke(
         "add",
         {
             "preset": "skill",
             "title": "toolful",
-            "set": ["description=Uses a tool", "allowed_tools=[read-cli, no-such-tool]"],
+            "set": ["description=Uses a tool", "allowed_tools=['Bash(git:*)', Read]"],
         },
         store=store,
         actor="cto",
     )
-    assert refused["ok"] is False, refused
-    assert refused["error"]["code"] == "VALIDATION_FAILED"
-    assert "no-such-tool" in refused["error"]["message"]
-    assert not (store / "workspace" / "skills" / "toolful.md").exists()
+    assert is_ok(added), added
+    data = (store / "workspace/skills/toolful.md").read_bytes()
+    fields = parse_doc("workspace/skills/toolful.md", data).fields
+    assert fields["allowed_tools"] == ["Bash(git:*)", "Read"]
 
 
 def test_a_valid_skill_with_tools_is_accepted(store_factory: Any) -> None:

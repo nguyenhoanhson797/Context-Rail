@@ -134,8 +134,6 @@ def test_profile_change_is_versioned(skill_store: Path, tmp_path: Path) -> None:
                 "schema=1", "version=1", "recipe=reviewer",
                 "allowed_methods=[find, show, cto brief, ledger, report]",
                 "budget={max_chars: 12000, max_docs: 20}",
-                "model=gpt-5.3-codex",
-                "tools=[read-cli, ls-cli, grep_tool_cli, glob-search-cli]",
                 "skills=[]",
                 "budgets={attempts: 2, seconds: 3600, tokens: null, credits: null}",
             ],

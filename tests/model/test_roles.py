@@ -512,10 +512,6 @@ def _role_profile(**fields: Any) -> Any:
         "schema": 1,
         "version": 1,
         "budget": {"max_chars": 1000, "max_docs": 10},
-        "model": "test-model",
-        "effort": None,
-        "auto": None,
-        "tools": ["read-cli"],
         "skills": [],
         "budgets": {"attempts": 1, "seconds": 60, "tokens": None, "credits": None},
     }
@@ -527,7 +523,6 @@ def test_a_role_mode_profile_that_narrows_its_role_is_accepted(pack: Pack) -> No
     lead = parse_roles(_roles(), pack)["lead"]
     profile = _role_profile(
         allowed_methods=["add", "update", "report"],
-        tools=["read-cli", "ls-cli"],
     )
 
     assert check_profile_narrows(lead, profile) is None
@@ -549,11 +544,3 @@ def test_a_removed_launcher_key_is_refused_in_a_role(pack: Pack) -> None:
         with pytest.raises(ModelError, match="unknown key"):
             parse_roles(raw, pack)
 
-
-def test_a_read_only_workspace_refuses_writing_tools(pack: Pack) -> None:
-    validator = parse_roles(_roles(), pack)["validator"]
-    profile = _role_profile(tools=["read-cli", "create-cli"])
-
-    reason = check_profile_narrows(validator, profile)
-
-    assert reason is not None and "write workspace" in reason

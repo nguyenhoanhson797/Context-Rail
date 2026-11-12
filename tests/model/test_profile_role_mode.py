@@ -20,8 +20,6 @@ def fields(**extra: Any) -> dict[str, Any]:
         "schema": 1,
         "version": 1,
         "budget": {"max_chars": 8000, "max_docs": 20},
-        "model": "model-x",
-        "tools": ["read-cli"],
         "skills": [],
         "budgets": {"attempts": 2, "seconds": 600, "tokens": None, "credits": None},
     }
@@ -38,7 +36,6 @@ def test_role_mode_profile_without_recipe_or_methods_parses() -> None:
 
     assert profile.recipe is None
     assert profile.allowed_methods == ()
-    assert profile.tools == ("read-cli",)
 
 
 def test_role_mode_profile_with_recipe_and_methods_keeps_them() -> None:
@@ -67,24 +64,12 @@ def test_legacy_profile_still_requires_recipe_and_methods() -> None:
         parse_profile(fields(), role_mode=False)
 
 
-def test_legacy_auto_high_still_needs_the_cto_recipe() -> None:
-    with pytest.raises(ModelError, match="auto high"):
-        parse_profile(legacy(auto="high"))
-    cto = fields(recipe="cto", allowed_methods=["find"], auto="high")
-
-    assert parse_profile(cto).auto == "high"
-
-
-def test_role_mode_auto_high_parses() -> None:
-    assert parse_profile(fields(auto="high"), role_mode=True).auto == "high"
-    assert parse_profile(legacy(auto="high"), role_mode=True).auto == "high"
-
-
-def test_a_reviewer_recipe_is_still_read_only_in_role_mode() -> None:
-    raw = fields(recipe="reviewer", tools=["edit-cli"])
-
-    with pytest.raises(ModelError, match="read-only"):
-        parse_profile(raw, role_mode=True)
+def test_runtime_keys_are_refused_in_both_modes() -> None:
+    for key in ("model", "effort", "auto", "tools", "runner"):
+        with pytest.raises(ModelError, match="rail ops upgrade"):
+            parse_profile(fields(**{key: "x"}), role_mode=True)
+        with pytest.raises(ModelError, match="rail ops upgrade"):
+            parse_profile(legacy(**{key: "x"}))
 
 
 def _context(store: Path, pack: str) -> Context:

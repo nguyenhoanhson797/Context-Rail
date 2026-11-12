@@ -8,7 +8,6 @@ an empty success.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from context_rail.store import query
@@ -180,25 +179,11 @@ def _doctor(context: Any) -> dict[str, Any]:
 
 
 def _config_options(context: Any) -> dict[str, Any]:
-    """The engine's profile vocabularies, so a form offers choices.
+    """The engine's profile vocabulary, so a form offers choices.
 
-    These are engine facts, not pack facts: the same adapters and tool ids
-    exist for every project, and every harness is one of the runners.
+    These are engine facts, not pack facts: the methods a profile may allow are
+    the same for every project.
     """
-    from context_rail.model.cto import (
-        PROFILE_AUTO,
-        PROFILE_EFFORTS,
-        PROFILE_METHODS,
-        PROFILE_RUNNERS,
-        TOOL_IDS,
-    )
+    from context_rail.model.cto import PROFILE_METHODS
 
-    return {
-        "status": "ok",
-        "runners": list(PROFILE_RUNNERS),
-        "efforts": [value for value in PROFILE_EFFORTS if value is not None],
-        "autos": [value for value in PROFILE_AUTO if value is not None],
-        "tools": list(TOOL_IDS),
-        "methods": list(PROFILE_METHODS),
-        "runner_override": os.environ.get("RAIL_RUNNER") or None,
-    }
+    return {"status": "ok", "methods": list(PROFILE_METHODS)}

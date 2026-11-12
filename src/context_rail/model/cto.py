@@ -5,7 +5,7 @@ A payload the engine cannot read exactly is refused.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from importlib import resources
 from typing import Any
 
@@ -37,14 +37,11 @@ __all__ = [
     "CTO_METHODS",
     "LEGACY_KEYS",
     "MODE_ONLY_KEYS",
-    "PROFILE_AUTO",
-    "PROFILE_EFFORTS",
     "PROFILE_KEYS",
     "PROFILE_METHODS",
+    "REMOVED_PROFILE_KEYS",
     "PROFILE_RECIPES",
-    "PROFILE_RUNNERS",
     "PROFILE_SCHEMA",
-    "READ_ONLY_TOOL_IDS",
     "REPORT_IMPACTS",
     "REPORT_KEYS",
     "REPORT_MAX_CHARS",
@@ -52,12 +49,10 @@ __all__ = [
     "REPORT_SCHEMA",
     "REPORT_TARGET_CLASSES",
     "SKILL_SCHEMA",
-    "TOOL_IDS",
     "UNKNOWN",
     "VERDICT_KEYS",
     "VERDICT_SCHEMA",
     "WORKER_METHODS",
-    "WORKER_TOOL_IDS",
     "Check",
     "Profile",
     "Report",
@@ -128,38 +123,26 @@ VERDICT_KEYS = (
 )
 
 PROFILE_RECIPES = ("cto", "implementer", "reviewer")
-PROFILE_RUNNERS = ("droid", "claude", "codex", "local", "gemini", "opencode", "grok")
-PROFILE_AUTO = (None, "low", "medium", "high")
-PROFILE_EFFORTS = (None, "low", "medium", "high")
 PROFILE_KEYS = (
     "schema",
     "version",
     "allowed_methods",
     "recipe",
     "budget",
+    "skills",
+    "budgets",
+)
+#: Runtime fields a profile used to carry; the tool that runs the agent owns them now.
+REMOVED_PROFILE_KEYS = (
     "model",
     "effort",
     "auto",
     "tools",
-    "skills",
-    "budgets",
     "runner",
     "runner_models",
     "runner_options",
 )
 PROFILE_BUDGET_KEYS = ("max_chars", "max_docs")
-
-WORKER_TOOL_IDS = (
-    "read-cli",
-    "ls-cli",
-    "grep_tool_cli",
-    "glob-search-cli",
-    "create-cli",
-    "edit-cli",
-    "execute-cli",
-)
-READ_ONLY_TOOL_IDS = ("read-cli", "ls-cli", "grep_tool_cli", "glob-search-cli")
-TOOL_IDS = WORKER_TOOL_IDS
 
 WORKER_METHODS = ("find", "show", "cto brief", "brief", "ledger", "report")
 #: Every method a CTO profile may use; nested ticketing is not one of them.
@@ -274,16 +257,9 @@ class Profile:
     allowed_methods: tuple[str, ...]
     recipe: str | None
     budget: dict[str, int]
-    model: str
-    effort: str | None
-    auto: str | None
-    tools: tuple[str, ...]
     skills: tuple[str, ...]
     budgets: dict[str, Any]
     body: str = ""
-    runner: str = "droid"
-    runner_models: dict[str, str] = field(default_factory=dict)
-    runner_options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -436,16 +412,20 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
 def parse_profile(
     fields: dict[str, Any], *, body: str | None = None, role_mode: bool = False
 ) -> Profile:
-    """Validate an Actor profile; ``auto: high`` belongs to the CTO recipe only.
+    """Validate an Actor profile: its methods, context budget, skills and run caps.
 
+    A profile says nothing about which tool, model or autonomy runs the agent.
     A store whose pack declares roles passes ``role_mode``: the role, not a
     recipe, then decides what a seat may do, so ``recipe`` and
-    ``allowed_methods`` become optional and ``auto: high`` is accepted.
+    ``allowed_methods`` become optional.
     """
     data = mapping(fields, "profile")
     schema = schema_version(data, PROFILE_SCHEMA, "profile")
+    for key in REMOVED_PROFILE_KEYS:
+        if key in data:
+            refuse(f"profile key {key!r} was removed; run rail ops upgrade")
     no_unknown(data, PROFILE_KEYS, "profile")
-    required = ("version", "budget", "model", "tools", "skills", "budgets")
+    required = ("version", "budget", "skills", "budgets")
     if not role_mode:
         required = ("version", "allowed_methods", "recipe", *required[1:])
     require(data, required, "profile")
@@ -456,21 +436,6 @@ def parse_profile(
         if recipe not in PROFILE_RECIPES:
             refuse("profile.recipe must be one of " + ", ".join(PROFILE_RECIPES))
 
-    auto = data.get("auto")
-    if auto is not None:
-        auto = string(auto, "profile.auto")
-        if auto not in PROFILE_AUTO:
-            refuse("profile.auto must be null, low, medium or high")
-        if auto == "high" and recipe != "cto" and not role_mode:
-            refuse("only the cto profile may run at auto high")
-
-    effort = data.get("effort")
-    if effort is not None:
-        effort = string(effort, "profile.effort")
-        if effort not in PROFILE_EFFORTS:
-            refuse("profile.effort must be null, low, medium or high")
-
-    tools = _profile_tools(data["tools"], recipe)
     allowed_methods = (
         _profile_methods(data["allowed_methods"]) if "allowed_methods" in data else ()
     )
@@ -486,64 +451,16 @@ def parse_profile(
             refuse("profile body must be a non-empty role prompt")
         prompt = body
 
-    runner_raw = data.get("runner", "droid")
-    runner = string(runner_raw, "profile.runner")
-    if runner not in PROFILE_RUNNERS:
-        refuse("profile.runner must be one of " + ", ".join(PROFILE_RUNNERS))
-    runner_options: dict[str, Any] = {}
-    if "runner_options" in data:
-        opts = mapping(data["runner_options"], "profile.runner_options")
-        for key, value in opts.items():
-            if not isinstance(value, (str, int, float, bool)) or not str(value):
-                refuse(f"profile.runner_options.{key} must be a non-empty scalar")
-        runner_options = dict(opts)
-    runner_models: dict[str, str] = {}
-    if "runner_models" in data:
-        models = mapping(data["runner_models"], "profile.runner_models")
-        for name, value in models.items():
-            if name not in PROFILE_RUNNERS:
-                refuse(
-                    "profile.runner_models names unknown runner "
-                    + repr(name)
-                    + "; one of "
-                    + ", ".join(PROFILE_RUNNERS)
-                )
-            runner_models[name] = string(value, f"profile.runner_models.{name}")
-
     return Profile(
         schema=schema,
         version=integer(data["version"], "profile.version", positive=True),
         allowed_methods=allowed_methods,
         recipe=recipe,
         budget=budget,
-        model=string(data["model"], "profile.model"),
-        effort=effort,
-        auto=auto,
-        tools=tools,
         skills=skills,
         budgets=budgets,
         body=prompt,
-        runner=runner,
-        runner_models=runner_models,
-        runner_options=runner_options,
     )
-
-
-def _profile_tools(raw: Any, recipe: str | None) -> tuple[str, ...]:
-    tools = string_list(raw, "profile.tools")
-    unknown = sorted(set(tools) - set(TOOL_IDS))
-    if unknown:
-        refuse("profile.tools names unknown tool id(s): " + ", ".join(unknown))
-    if len(set(tools)) != len(tools):
-        refuse("profile.tools must not repeat a tool id")
-    if recipe == "reviewer":
-        widening = sorted(set(tools) - set(READ_ONLY_TOOL_IDS))
-        if widening:
-            refuse(
-                "the reviewer profile may hold only read-only tools; it names "
-                + ", ".join(widening)
-            )
-    return tools
 
 
 def _profile_methods(raw: Any) -> tuple[str, ...]:
@@ -709,10 +626,7 @@ def _check_skill(slug: str, fields: dict[str, Any], body: str) -> None:
     if not body.strip():
         refuse(f"{what} needs a non-empty body")
     if "allowed_tools" in fields:
-        tools = string_list(fields["allowed_tools"], f"{what}.allowed_tools")
-        unknown = sorted(set(tools) - set(TOOL_IDS))
-        if unknown:
-            refuse(f"{what}.allowed_tools names unknown tool id(s): " + ", ".join(unknown))
+        string_list(fields["allowed_tools"], f"{what}.allowed_tools")
 
 
 def _resource(*parts: str) -> tuple[dict[str, Any], str]:

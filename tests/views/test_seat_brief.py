@@ -75,7 +75,10 @@ def test_budget_is_the_minimum_of_role_and_profile(
             {
                 "slug": "reviewer",
                 "expect": _etag(role_store.store, "reviewer"),
-                "set": ["budget={max_chars: 120, max_docs: 1}"],
+                "set": [
+                    "budget={max_chars: 120, max_docs: 1}",
+                    "allowed_methods=[find, show, cto brief, ledger, report]",
+                ],
                 "confirm": "APPROVE reviewer",
             },
             store=role_store.store,

@@ -351,7 +351,7 @@ def _budget_increase(
 def _rights_widening(
     context: Context, rel: str, requested: dict[str, Any]
 ) -> bool:
-    """True when an Actor update adds a method or tool the document did not hold."""
+    """True when an Actor update adds a method the document did not hold."""
     row = context.index.conn.execute(
         "SELECT preset FROM docs WHERE path = ?", (rel,)
     ).fetchone()
@@ -366,7 +366,7 @@ def _rights_widening(
             stored[key] = json.loads(value)
         except (TypeError, ValueError):
             stored[key] = None
-    for key in ("allowed_methods", "tools"):
+    for key in ("allowed_methods",):
         if key not in requested:
             continue
         before = stored.get(key)

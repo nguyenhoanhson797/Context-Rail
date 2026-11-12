@@ -36,7 +36,7 @@ from context_rail.gateway.handlers.common import (
 )
 from context_rail.kernel import gates, rights
 from context_rail.kernel.lifecycle import category_of, check_transition
-from context_rail.model.cto import SKILL_SCHEMA, TOOL_IDS
+from context_rail.model.cto import SKILL_SCHEMA
 from context_rail.model.manifest import render_path
 from context_rail.model.pack import Preset
 from context_rail.model.primitives import RELATIONS
@@ -487,13 +487,6 @@ def _check_skill_payload(front: dict[str, Any], slug: str) -> None:
             "VALIDATION_FAILED",
             f"skill {slug!r} allowed_tools must be a list of tool ids",
             {"slug": slug, "key": "allowed_tools"},
-        )
-    unknown = sorted(set(tools) - set(TOOL_IDS))
-    if unknown:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            f"skill {slug!r} names unknown tool id(s): " + ", ".join(unknown),
-            {"slug": slug, "allowed_tools": unknown},
         )
 
 

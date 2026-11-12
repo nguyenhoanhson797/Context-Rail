@@ -71,7 +71,7 @@ def test_every_pack_implementer_never_writes_the_store(name: str) -> None:
     fields = parse_doc("profiles/implementer.md", data).fields
     assert not {"add", "update", "link"} & set(fields["allowed_methods"])
     text = data.decode("utf-8")
-    assert "Never write to\n  the store" in text.replace("\r\n", "\n")
+    assert "Never write to the store" in " ".join(text.split())
     assert "code area" in text
 
 
@@ -110,13 +110,13 @@ def test_governance_presets_keep_their_primitive_across_packs(tmp_path) -> None:
             assert pack.presets[preset].primitive == basic.presets[preset].primitive
 
 
-def test_profile_parameters_match_stage_1b(tmp_path) -> None:
+def test_profile_parameters_match_across_packs(tmp_path) -> None:
     from context_rail.store.doc import parse_doc
 
     def params(root, role: str) -> dict:
         data = (root / "profiles" / f"{role}.md").read_bytes()
         profile = parse_doc(f"profiles/{role}.md", data).fields
-        return {k: profile.get(k) for k in ("model", "effort", "auto", "tools", "budgets")}
+        return {k: profile.get(k) for k in ("allowed_methods", "budget", "budgets")}
 
     base = _pack_dir("basic")
     for name in PACKS:

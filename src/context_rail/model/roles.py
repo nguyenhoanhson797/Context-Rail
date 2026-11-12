@@ -212,11 +212,9 @@ def role_tools(role: Role) -> frozenset[str]:
 def check_profile_narrows(role: Role, profile: Profile) -> str | None:
     """Why a role-mode profile is wider than its role, or None when it narrows.
 
-    A profile may drop methods the role holds, never add one, or hold writing
-    tool ids in a read-only workspace.
+    A profile may drop methods the role holds, never add one.
     """
     from context_rail.core.tool_names import canonical_methods
-    from context_rail.model.cto import READ_ONLY_TOOL_IDS
 
     write_methods = canonical_methods(profile.allowed_methods) & frozenset(
         CAN_TOOLS.values()
@@ -224,10 +222,6 @@ def check_profile_narrows(role: Role, profile: Profile) -> str | None:
     outside = sorted(write_methods - role_tools(role))
     if outside:
         return "the profile allows methods outside the role: " + ", ".join(outside)
-    if role.workspace in ("none", "read"):
-        widening = sorted(set(profile.tools) - set(READ_ONLY_TOOL_IDS))
-        if widening:
-            return "the profile's tools need a write workspace: " + ", ".join(widening)
     return None
 
 

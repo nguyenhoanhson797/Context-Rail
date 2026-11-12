@@ -9,9 +9,7 @@ import pytest
 from context_rail.model.cto import (
     CHECK_MODES,
     PROFILE_RECIPES,
-    READ_ONLY_TOOL_IDS,
     REPORT_TARGET_CLASSES,
-    WORKER_TOOL_IDS,
     load_builtin_profile,
     load_builtin_skills,
     parse_check,
@@ -42,10 +40,6 @@ def profile_fields(**over: Any) -> dict[str, Any]:
         "allowed_methods": ["find", "show", "cto brief", "ledger", "report"],
         "recipe": "implementer",
         "budget": {"max_chars": 12000, "max_docs": 20},
-        "model": "custom:Deepseek-V4-flash-0",
-        "effort": None,
-        "auto": "medium",
-        "tools": list(WORKER_TOOL_IDS),
         "skills": ["workspace/skills/test-first.md"],
         "budgets": {"attempts": 2, "seconds": 3600, "tokens": None, "credits": None},
     }
@@ -363,29 +357,25 @@ def test_verdict_schema_and_keys_are_strict() -> None:
 # ── Profiles ──────────────────────────────────────────────────────────────
 
 
-def test_builtin_profiles_load_with_pinned_models() -> None:
+def test_builtin_profiles_load_without_runtime_fields() -> None:
     cto = load_builtin_profile("cto")
     implementer = load_builtin_profile("implementer")
     reviewer = load_builtin_profile("reviewer")
 
     assert cto.recipe == "cto"
-    assert cto.model == "claude-sonnet-4-5-20250929"
-    assert cto.effort is None
-    assert cto.auto == "high"
-    assert cto.tools == WORKER_TOOL_IDS
     assert "cto tick" not in cto.allowed_methods
+    assert "brief" in cto.allowed_methods
 
     assert implementer.recipe == "implementer"
-    assert implementer.model == "gpt-5.3-codex"
-    assert implementer.effort is None
-    assert implementer.auto == "medium"
-    assert implementer.tools == WORKER_TOOL_IDS
     assert implementer.allowed_methods == (
         "do",
         "find",
         "show",
         "cto brief",
+        "brief",
         "ledger",
+        "verify",
+        "candidate",
         "report",
     )
     assert implementer.budgets == {
@@ -396,15 +386,14 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
     }
 
     assert reviewer.recipe == "reviewer"
-    assert reviewer.model == "claude-opus-4-5-20251101"
-    assert reviewer.effort is None
-    assert reviewer.auto is None
-    assert reviewer.tools == READ_ONLY_TOOL_IDS
     assert reviewer.allowed_methods == (
         "find",
         "show",
         "cto brief",
+        "brief",
         "ledger",
+        "verify",
+        "review",
         "report",
     )
     assert reviewer.budgets == implementer.budgets
@@ -417,7 +406,6 @@ def test_builtin_profiles_load_with_pinned_models() -> None:
 
 def test_cto_profile_names_the_candidate_tool_and_no_launcher() -> None:
     cto = load_builtin_profile("cto")
-    assert cto.auto == "high"
     assert cto.budgets["attempts"] == 1
     assert cto.budgets["seconds"] == 7200
     assert "candidate" in cto.allowed_methods
@@ -440,42 +428,11 @@ def test_builtin_profiles_validate_through_parse_profile() -> None:
                 "allowed_methods": list(profile.allowed_methods),
                 "recipe": profile.recipe,
                 "budget": dict(profile.budget),
-                "model": profile.model,
-                "effort": profile.effort,
-                "auto": profile.auto,
-                "tools": list(profile.tools),
                 "skills": list(profile.skills),
                 "budgets": dict(profile.budgets),
             },
             body=profile.body,
         ).recipe == name
-
-
-@pytest.mark.parametrize("recipe", ["implementer", "reviewer"])
-def test_auto_high_is_refused_outside_the_cto(recipe: str) -> None:
-    tools = list(WORKER_TOOL_IDS) if recipe == "implementer" else list(READ_ONLY_TOOL_IDS)
-    with pytest.raises(ModelError) as excinfo:
-        parse_profile(profile_fields(recipe=recipe, auto="high", tools=tools))
-    assert excinfo.value.code == "VALIDATION_FAILED"
-
-
-@pytest.mark.parametrize("auto", [pytest.param("max", id="unknown"), pytest.param("HIGH", id="case")])
-def test_auto_enum_is_strict(auto: Any) -> None:
-    with pytest.raises(ModelError):
-        parse_profile(profile_fields(auto=auto))
-
-
-def test_auto_may_be_null() -> None:
-    assert parse_profile(profile_fields(auto=None)).auto is None
-
-
-def test_effort_defaults_to_null_and_accepts_supported_levels() -> None:
-    fields = profile_fields()
-    del fields["effort"]
-    assert parse_profile(fields).effort is None
-    assert parse_profile(profile_fields(effort="low")).effort == "low"
-    with pytest.raises(ModelError):
-        parse_profile(profile_fields(effort="maximum"))
 
 
 def test_allowed_methods_use_exact_tool_names() -> None:
@@ -490,30 +447,6 @@ def test_allowed_methods_accept_the_grouped_surface_names() -> None:
     profile = parse_profile(profile_fields(allowed_methods=methods))
     assert profile.allowed_methods == tuple(methods)
     assert parse_profile(profile_fields(allowed_methods=["find"])).allowed_methods == ("find",)
-
-
-def test_profile_tools_use_installed_ids_only() -> None:
-    with pytest.raises(ModelError):
-        parse_profile(profile_fields(tools=["read-cli", "apply-patch"]))
-    with pytest.raises(ModelError):
-        parse_profile(profile_fields(tools=["read-cli", "execute-cli"], recipe="reviewer", auto=None))
-
-
-@pytest.mark.parametrize("tool", ["execute-cli", "edit-cli", "create-cli", "web_search"])
-def test_a_reviewer_profile_holds_only_read_only_tools(tool: str) -> None:
-    with pytest.raises(ModelError):
-        parse_profile(
-            profile_fields(recipe="reviewer", auto=None, tools=["read-cli", tool])
-        )
-
-
-def test_a_reviewer_profile_accepts_the_read_only_tool_set() -> None:
-    profile = parse_profile(
-        profile_fields(recipe="reviewer", auto=None, tools=list(READ_ONLY_TOOL_IDS))
-    )
-    assert profile.tools == READ_ONLY_TOOL_IDS
-    with pytest.raises(ModelError):
-        parse_profile(profile_fields(tools="read-cli"))
 
 
 def test_profile_schema_version_and_recipe_are_strict() -> None:

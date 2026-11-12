@@ -249,58 +249,24 @@ def test_picture_bodies_are_the_supplied_text_and_no_acceptance_is_invented(
     assert len(items) == 4
 
 
-def test_shipped_profiles_are_materialized_with_the_pinned_fields(
+def test_shipped_profiles_are_materialized_without_runtime_fields(
     tmp_path: Path, answers: Path
 ) -> None:
     result = _answers(tmp_path, answers)
     assert is_ok(result), result
     store = tmp_path / STORE
 
-    seven = [
-        "read-cli",
-        "ls-cli",
-        "grep_tool_cli",
-        "glob-search-cli",
-        "create-cli",
-        "edit-cli",
-        "execute-cli",
-    ]
     cto = _frontmatter(store / "workspace/cto/profile.md")
     assert cto["recipe"] == "cto"
-    assert cto["model"] == "claude-sonnet-4-5-20250929"
-    assert cto["effort"] is None
-    assert cto["auto"] == "high"
-    assert cto["tools"] == seven
     assert not {"dispatch", "merge", "cto tick"} & set(cto["allowed_methods"])
-
     implementer = _frontmatter(store / "workspace/profiles/implementer/profile.md")
     assert implementer["recipe"] == "implementer"
-    assert implementer["model"] == "gpt-5.3-codex"
-    assert implementer["effort"] is None
-    assert implementer["auto"] == "medium"
-    assert implementer["tools"] == seven
-    assert implementer["allowed_methods"] == [
-        "do",
-        "find",
-        "show",
-        "cto brief",
-        "ledger",
-        "report",
-    ]
-
+    assert "candidate" in implementer["allowed_methods"]
     reviewer = _frontmatter(store / "workspace/profiles/reviewer/profile.md")
     assert reviewer["recipe"] == "reviewer"
-    assert reviewer["model"] == "claude-opus-4-5-20251101"
-    assert reviewer["effort"] is None
-    assert "auto" in reviewer and reviewer["auto"] is None
-    assert reviewer["tools"] == seven[:4]
-    assert reviewer["allowed_methods"] == [
-        "find",
-        "show",
-        "cto brief",
-        "ledger",
-        "report",
-    ]
+    assert "review" in reviewer["allowed_methods"]
+    for fields in (cto, implementer, reviewer):
+        assert not {"model", "effort", "auto", "tools", "runner"} & set(fields)
 
     profiles = invoke("find", {"preset": "profile"}, store=store)
     assert profiles["value"]["total"] == 2

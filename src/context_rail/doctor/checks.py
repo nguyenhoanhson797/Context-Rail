@@ -604,7 +604,8 @@ def _invalid_payload(row: _Row) -> dict[str, Any]:
         return _issue(
             "profile_invalid",
             row.path,
-            f"{row.path!r} carries a profile that does not validate",
+            f"{row.path!r} carries a profile that does not validate; "
+            "an older profile may need rail ops upgrade",
         )
     return _issue(
         "policy_invalid" if row.primitive == "policy" else "record_tampered",

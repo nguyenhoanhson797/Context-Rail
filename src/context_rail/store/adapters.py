@@ -18,7 +18,6 @@ import re
 from pathlib import Path
 
 from context_rail.core.util import dump_frontmatter, sha256_hex
-from context_rail.model.cto import TOOL_IDS
 from context_rail.model.errors import ModelError
 from context_rail.model.primitives import ROLES, WINDOWS_RESERVED_NAMES
 from context_rail.store.doc import parse_doc
@@ -229,12 +228,6 @@ def render_skill(name: str, text: str) -> tuple[str, str]:
         ):
             raise ModelError(
                 "VALIDATION_FAILED", f"skill {name!r} allowed_tools must be a list of tool ids"
-            )
-        unknown = sorted(set(allowed) - set(TOOL_IDS))
-        if unknown:
-            raise ModelError(
-                "VALIDATION_FAILED",
-                f"skill {name!r} names unknown tool id(s): " + ", ".join(unknown),
             )
         if allowed:
             front["allowed-tools"] = list(allowed)
