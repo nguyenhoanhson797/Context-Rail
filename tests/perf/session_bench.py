@@ -54,7 +54,7 @@ _ETAG = re.compile(r"\{etag:([^}]+)\}")
 def _cli(store: Path, args: list[str], env: dict[str, str]) -> tuple[float, bytes]:
     started = time.perf_counter()
     proc = subprocess.run(
-        [sys.executable, "-m", "context_rail", "--store", str(store), *args],
+        [sys.executable, "-m", "context_rail", "--store", str(store), "--actor", "cto", *args],
         capture_output=True,
         env=env,
         input=b"",

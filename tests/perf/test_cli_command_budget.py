@@ -42,7 +42,7 @@ def _bare() -> None:
 
 def _rail(store: Path, *args: str) -> None:
     proc = subprocess.run(
-        [sys.executable, "-m", "context_rail", "--store", str(store), *args],
+        [sys.executable, "-m", "context_rail", "--store", str(store), "--actor", "cto", *args],
         capture_output=True,
         env=child_env({"RAIL_NO_DAEMON": None}),
         input=b"",
@@ -74,7 +74,9 @@ def test_a_daemon_served_read_costs_under_150_ms_over_bare_python(served_store: 
     overhead = _overhead_ms(lambda: _rail(served_store, "next"))
     assert overhead < _READ_BUDGET_MS, f"rail next cost bare Python + {overhead:.0f} ms"
     assert daemon_alive(served_store)
-    proc, loaded = run_cli_probe(served_store.parent, "next", store=served_store)
+    proc, loaded = run_cli_probe(
+        served_store.parent, "--actor", "cto", "next", store=served_store
+    )
     assert proc.returncode == 0, proc.stderr
     assert loaded["GW"] is False, "the call was not served by the daemon"
 
@@ -88,7 +90,14 @@ def test_a_daemon_served_write_budget(served_store: Path) -> None:
     assert overhead < _WRITE_BUDGET_MS, f"rail change add cost bare Python + {overhead:.0f} ms"
     assert daemon_alive(served_store)
     proc, loaded = run_cli_probe(
-        served_store.parent, "change", "add", "task", "Served write probe", store=served_store
+        served_store.parent,
+        "--actor",
+        "cto",
+        "change",
+        "add",
+        "task",
+        "Served write probe",
+        store=served_store,
     )
     assert proc.returncode == 0, proc.stderr
     assert loaded["GW"] is False, "the write was not served by the daemon"

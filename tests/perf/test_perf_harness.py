@@ -61,7 +61,9 @@ def run_baseline(store: Path, *, n: int = 1000) -> dict[str, Any]:
     titles = iter(f"Budget task {i}" for i in range(10))
 
     def add() -> None:
-        result = invoke("add", {"preset": "task", "title": next(titles)}, store=generated)
+        result = invoke(
+            "add", {"preset": "task", "title": next(titles)}, store=generated, actor="cto"
+        )
         assert result["ok"], result
 
     write_ms = median_ms(add, 10)

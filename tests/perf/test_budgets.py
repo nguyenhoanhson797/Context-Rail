@@ -71,7 +71,7 @@ def test_single_write_budget(tmp_path):
     titles = iter(f"Budget task {index}" for index in range(10))
 
     def add() -> None:
-        r = invoke("add", {"preset": "task", "title": next(titles)}, store=store)
+        r = invoke("add", {"preset": "task", "title": next(titles)}, store=store, actor="cto")
         assert r["ok"], r
 
     assert median_ms(add, 10) < 200
@@ -88,6 +88,7 @@ def _structural_add(store: Path, title: str) -> None:
         "add",
         {"preset": "task", "title": title, "rel": ["part_of=g0"]},
         store=store,
+        actor="cto",
     )
     assert result["ok"], result
 
