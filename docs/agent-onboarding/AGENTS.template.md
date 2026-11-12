@@ -76,17 +76,16 @@ refusal and `2` on an infrastructure failure:
 | Read | `overview`, `read status\|digest\|find\|show\|ledger`, `types`, `next`, `model`, `explain`, `why` | Understand without changing anything |
 | Change | `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` | Do the work |
 | Gate | `approve`, `gate`, `ops pack use` | Human decisions and governance |
-| Loop | `loop dispatch\|review\|merge\|tick` | Run and supervise agents |
+| Loop | `loop brief\|candidate\|review\|report` | Hand out work and record what any tool produced |
 | Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui\|daemon` | Maintain and connect |
 
 `rail --help` is authoritative. Flat names from older versions still work
-(`status`, `dispatch`, `review`, `merge`, `check`, `verify`, `relocate`, `ci`,
-`pack`, `sync`, `adapters sync`, `cto brief`, `cto tick`, `mcp serve`,
-`ui serve`).
+(`status`, `brief`, `candidate`, `review`, `check`, `verify`, `relocate`, `ci`,
+`pack`, `sync`, `adapters sync`, `cto brief`, `mcp serve`, `ui serve`).
 
 ## Human-only actions
 
-`approve`, `ops migrate` and `ops pack use` are human-only. They need an
+`approve`, `ops migrate`, `ops upgrade` and `ops pack use` are human-only. They need an
 explicitly named human (`--actor human` or `RAIL_ACTOR=human`) and the typed
 phrase the command prints:
 
@@ -100,22 +99,25 @@ authentication.
 
 ## The agent loop
 
-Work that launches an agent is gated by the charter. Once it is approved:
+The rail does not run agents. Your tool does, with its own sub-agents. Once the
+charter is approved:
 
 ```bash
-rail loop dispatch <item> --expect <etag> --key <key>
-rail loop review   <item> --run <run-id> --key <key>
-rail loop merge    <item> --run <run-id> --expect <etag> --key <key>
+rail loop brief <item> --role implementer          # the work order for your sub-agent
+rail loop candidate <item> --commit <sha> --key <key>
+rail check run <item>
+rail loop review <item> --commit <sha> --verdict approve --key <key>   # a different actor
+rail change move <item> done --expect <etag>
+rail loop report <item> --report-file report.json
 ```
 
-- `dispatch` creates a fresh git worktree and branch, runs one implementer and
-  verifies its candidate.
-- `review` is a different actor in its own worktree; the implementer cannot
-  approve its own work.
-- `merge` rebases onto the default branch and fast-forwards only an approved
-  candidate.
-- `loop tick --key <key>` is one bounded CTO session behind a single-instance
-  lock. It must be the outer session: it refuses when `RAIL_ACTOR` is set.
+- `brief` is bounded and role-scoped. It names no tool.
+- `candidate` records the commit your tool made, with its changed files and,
+  when you pass them, model, harness, usage and duration.
+- `review` is a different actor's verdict on one candidate commit; the author
+  cannot approve its own work.
+- You merge in git yourself. The rail records and gates; it never runs git
+  writes for agent work.
 
 Each step has its own key and its own gate. Do not collapse them.
 
@@ -160,7 +162,7 @@ rail serve daemon --stop        # the CLI starts its warm daemon itself; this en
 ```
 
 MCP keeps the canonical tool names (`status`, `next`, `show`, `add`, `move`,
-`dispatch`, `review`, `merge`, …), not the grouped CLI aliases. The serving actor
+`candidate`, `review`, `brief`, …), not the grouped CLI aliases. The serving actor
 is `--actor`, then `RAIL_ACTOR`, then `cto`; launch with `--actor human` when a
 session must perform a human-only tool.
 
@@ -174,7 +176,7 @@ one is installed:
 - `context-rail-v3-workflows` — custom types, statuses, transitions, BA/PO
 - `context-rail-v3-pack-authoring` — create or change a pack
 - `context-rail-v3-surface` — work from the compiled surface only
-- `context-rail-v3-loop` — dispatch, review, merge, supervise
+- `context-rail-v3-loop` — brief, candidate, review, report
 - `context-rail-v3-ops` — doctor, reindex, recover, ship
 
 If no skill is installed, `rail --help`, `rail types`, `rail model`, `rail

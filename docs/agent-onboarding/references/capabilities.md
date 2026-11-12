@@ -85,7 +85,7 @@ workflows:
   sprint:
     initial: todo
     transitions: {todo: [doing], doing: [review, done], review: [done], done: []}
-    execution: {review: {dispatch: false}}
+    execution: {review: {queue: false}}
     quality:
       done: {gate: item_done}
   bugfix:
@@ -102,8 +102,9 @@ workflows:
 - A quality rule names a charter gate and optionally the checks it selects.
   Moving into that status evaluates the gate; missing or stale proof refuses and
   names the command that produces it.
-- `execution: {dispatch: false}` removes a status from executable work;
-  `merge: false` makes merge refuse.
+- `execution: {queue: false}` removes a status from executable work and from
+  `rail next`. The old `dispatch`, `merge` and `policy.retries` keys are
+  refused with a hint to run `rail ops upgrade`.
 
 ## The operating model (pack version 2)
 
@@ -227,28 +228,30 @@ the proof.
 ## The agent loop
 
 ```text
-Brief → Plan → Dispatch → Verify → Review → Merge → Report → Digest → next tick
+Brief → Work in your own tool → Candidate → Verify → Review → Move → Report → Digest
 ```
 
 | Step | Guarantee |
 |---|---|
-| `loop dispatch` | fresh worktree and branch, bounded implementer run, run record, verification |
-| `loop review` | different actor in its own worktree; the implementer cannot approve its own work |
-| `loop merge` | rebase onto the default branch, then fast-forward; `--push` only when allowed |
-| `loop report` | one structured report per completed run: target, expectation, observation, impact, evidence |
+| `loop brief` | a bounded, role-scoped work order for one item; names no tool and starts nothing |
+| `loop candidate` | records the commit your tool made: changed files, optional model, harness, usage and duration |
+| `check run --worktree` | runs the item's checks in any git worktree and binds the result to the commit |
+| `loop review` | a different actor's verdict on one candidate commit; the author cannot approve its own work |
+| `move ... done` | the charter's gates read the candidate, check and review records; a stale commit refuses |
+| `loop report` | one structured report per candidate: target, expectation, observation, impact, evidence |
 | `loop execution` | record one attempt (`running`, then `succeeded`, `failed` or `cancelled`) of a pack-declared execution action, such as a video render; the engine records it and never runs it |
-| `loop tick` | one bounded CTO session behind a single-instance lock; must be the outer session |
 | `read digest` | counts, waits, reversible decisions, quality, usage |
 
-Every write uses an idempotency key. A retry returns the same record. A failed
-run gets one retry by default (the pack's `policy.retries`); a merge conflict
-gets one rebase retry, then escalation.
+Every write uses an idempotency key. A retry returns the same record. The rail
+never launches an agent and never runs git writes for agent work: your tool
+runs its own sub-agents and merges in git, and the rail records and gates.
 
 ## Profiles, skills and actions
 
 - A profile is a store document at `workspace/profiles/<name>/profile.md`.
-- `recipe` is `cto`, `implementer` or `reviewer`. Dispatch accepts only an
-  implementer; review only a reviewer; `auto: high` only the CTO.
+- `recipe` is `cto`, `implementer` or `reviewer`. A candidate records only an
+  implementer; a review only a reviewer. A profile names no model, effort,
+  autonomy, runner or tools.
 - A BA role is a profile with `recipe: implementer` and a BA prompt.
 - Skills are versioned Markdown notes. `rollback` restores a retained version.
 - Actions are declarative verbs: one allowlisted gateway tool, run as the

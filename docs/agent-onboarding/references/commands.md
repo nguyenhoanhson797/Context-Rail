@@ -90,23 +90,22 @@ threshold, writes a `report.triaged` record and clears the doctor warning.
 rail seat list [--all]
 rail seat grant <seat> --role ROLE --anchor SLUG|project [--profile NAME] [--key KEY]
 rail seat revoke <seat> [--key KEY]
-rail seat open <seat> [--ttl-hours N] [--print-env] [-- <command>...]
+rail seat open <seat> [--ttl-hours N] [--print-env]
 rail seat close [<seat> | --all]
 rail seat show [<seat>]
 rail <seat> [command ...]
 ```
 
 - A **role** comes from the pack's `operating.roles` (version 2). A **seat** is
-  one role on one anchor: `project` or one container slug. A run seat is
-  implicit: `loop dispatch`/`loop review` open it and close it with the run.
+  one role on one anchor: `project` or one container slug. The rail opens no
+  session for you: your tool opens one per agent.
 - `rail seat grant` is human-only for a `human: true` role and for the first
   grant when no granting seat exists. After that a seat may grant only a role its
   own `can.grant` lists and only inside its write reach. Revoking a seat closes
   its sessions and every seat it granted.
-- `rail seat open` writes a session and launches the command with
-  `RAIL_SESSION` set. The token is never printed in the command form;
-  `--print-env` includes it once in the JSON result for an MCP client. Manual
-  sessions expire after `--ttl-hours` (default 12).
+- `rail seat open` writes a session. `--print-env` includes its one-time token
+  in the JSON result; export it as `RAIL_SESSION` for the agent. Sessions
+  expire after `--ttl-hours` (default 12).
 - `rail <seat> ...` is a lens. With that seat's own session it reads and writes
   as the seat; with another seat's session it is read-only and allowed only when
   the target anchor is in the caller's read reach; with no session on a terminal
@@ -159,19 +158,22 @@ rail check declare <slug> --spec-file FILE --expect ETAG|absent [--target ITEM]
                     [--confirm "APPROVE <slug>"] [--key KEY]
 rail check run <target> [--worktree PATH] [--verdict pass|fail]
                  [--evidence RECORD]... [--confirm PHRASE] [--key KEY]
-rail loop report [item] --run RUN_ID --report-file FILE [--key KEY]
+rail loop brief <item> [--role implementer|reviewer] [--commit SHA] [--max-chars N]
+rail loop candidate <item> --commit SHA [--base SHA] [--profile NAME] [--model TEXT]
+                    [--harness TEXT] [--usage NAME=NUMBER|unknown]... [--duration SECONDS]
+                    [--key KEY]
+rail loop review <item> --commit SHA --verdict approve|reject [--notes-file FILE]
+                 [--model TEXT] [--harness TEXT] [--key KEY]
+rail loop report [item] [--candidate SHA] --report-file FILE [--key KEY]
 rail loop triage [--limit N] [--report ID] [--acknowledge] [--key KEY]
 rail loop execution <target> --action NAME --state running|succeeded|failed|cancelled
-                    [--output FILE]... [--error WHY] [--runner-digest DIGEST] [--key KEY]
-rail loop dispatch <item> --expect ETAG --key KEY [--profile NAME] [--all]
-rail loop review   <item> --run RUN_ID --key KEY [--profile NAME]
-rail loop merge    <item> --run RUN_ID --expect ETAG --key KEY [--push]
-rail loop tick --key KEY [--timeout SECONDS]
+                    [--output FILE]... [--error WHY] [--key KEY]
 ```
 
 `check run` on an item runs every executable check it declares. A `human` check
-needs `--verdict` and the typed phrase. `loop tick` must be the outer session and
-refuses when `RAIL_ACTOR` is set.
+needs `--verdict` and the typed phrase. The rail never launches an agent: your
+tool does the work with its own sub-agents, then records the commit with
+`loop candidate`. You merge in git yourself.
 
 ## Operations
 
@@ -235,7 +237,7 @@ MCP clients see the canonical table, generated from the same source as the CLI:
 | Read | `cto brief`, `status`, `digest`, `find`, `show`, `ledger`, `types`, `next`, `model`, `explain`, `why` |
 | Change | `add`, `update`, `move`, `link`, `rename`, `relocate`, `do` |
 | Proof | `check`, `verify` |
-| Loop | `dispatch`, `review`, `merge`, `report`, `triage`, `cto tick` |
+| Loop | `brief`, `candidate`, `review`, `report`, `triage` |
 | Ops | `doctor`, `ci`, `reindex`, `rollback`, `pack list`, `pack show`, `pack validate`, `pack create`, `pack use`, `measure versions`, `measure fix`, `codegraph setup`, `codegraph refresh`, `codegraph status`, `codegraph adopt`, `sync`, `sync driver`, `adapters sync` |
 | Seats | `seat list`, `seat grant`, `seat revoke`, `seat open`, `seat close`, `seat show` |
 | Transports | `mcp serve`, `ui serve`, `serve daemon` |
@@ -250,9 +252,10 @@ a legacy store and the human see every tool.
 
 Every former flat name works: `status`, `digest`, `find`, `show`, `ledger`,
 `add`, `update`, `move`, `link`, `rename`, `relocate`, `check`, `verify`,
-`dispatch`, `review`, `merge`, `report`, `triage`, `ci`, `doctor`, `reindex`,
+`brief`, `candidate`, `review`, `report`, `triage`, `ci`, `doctor`, `reindex`,
 `migrate`, `rollback`, `pack ...`, `measure ...`, `sync`, `adapters sync`,
-`cto brief`, `cto tick`, `mcp serve`, `ui serve`.
+`cto brief`, `mcp serve`, `ui serve`. The old launcher commands are removed and
+name their replacement when called.
 
 Hidden compatibility spellings: `inbox`, `read brief`, `repath`,
 `sync install`, `adapters render`, `ops gate`, `ops sync driver`,

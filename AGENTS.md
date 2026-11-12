@@ -1,8 +1,11 @@
 # Context Rail v3
 
-Context Rail v3 is an agentic project workspace. A CTO agent runs a project
-through the rail, sub-agents get narrow role-specific context, and a human
-approves the boundary, the quality bar and irreversible actions. This
+Context Rail v3 is an agentic project workspace and the context for agents: a
+file-backed store, a workflow with gates, and role-scoped views. It never
+launches an agent. Any coding tool (Claude Code, Codex, opencode, Droid, Cursor,
+Gemini CLI) does the work in its own way with its own sub-agents and records the
+result in the store. A human approves the boundary, the quality bar and
+irreversible actions. This
 repository is a clean rebuild. The legacy v1/v2 code lives in the private
 sibling `context-rail-link` repository and is frozen; nothing here needs it.
 
@@ -11,6 +14,8 @@ sibling `context-rail-link` repository and is frozen; nothing here needs it.
 These records are working material: they stay on disk, untracked, and are never
 published.
 
+- Runtime-neutral engine design: `docs/superpowers/specs/2026-11-12-runtime-neutral-engine-design.md`
+- Runtime-neutral engine plan: `docs/superpowers/plans/2026-11-12-runtime-neutral-engine.md`
 - Design: `docs/superpowers/specs/2026-10-28-context-rail-v3-design.md`
 - Operating-model design (v5): `docs/superpowers/specs/2026-11-04-v5-operating-model.md`
 - Operating-model plan (v5): `docs/superpowers/plans/2026-11-04-v5-operating-model.md`
@@ -52,6 +57,9 @@ repository.
 
 ## Engine rules (from the design; do not break them)
 
+- The engine never launches an agent and never runs git writes for agent work.
+  Agents reach it through `rail loop brief|candidate|review|report`; no
+  engine code names a coding tool, a model or a runner.
 - Files are the truth. The SQLite index is a rebuildable cache under the
   worktree's git dir (or `<store>/.rail-local/` outside git), never in the repo
   tree.

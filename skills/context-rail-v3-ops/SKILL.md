@@ -19,13 +19,13 @@ my-project/
     └── context-rail/        index cache: DISPOSABLE, never commit
 
 outside git:
-context-rail/.rail-local/    index, locks, dispatch/tick/merge progress
+context-rail/.rail-local/    index, locks, sync progress
 ```
 
 - The store is portable Markdown + YAML; back it up with git.
 - The index is rebuilt from files; deleting it costs one rebuild, never data.
-- Control files prove a dispatch, tick or merge happened; they are written
-  atomically and are machine-local.
+- Control files record local sync progress; they are written atomically and are
+  machine-local.
 
 ## Actor identity
 
@@ -67,7 +67,7 @@ Readiness is cached under the local directory. `status`, the overview, an
 approval summary and doctor read the cache and never start a process; only
 `setup` probes. GitNexus indexes an isolated mirror under the cache with
 `GITNEXUS_HOME` set there, so the real checkout and `~/.gitnexus` stay clean.
-A missing or broken provider falls back to `builtin`; dispatch never blocks on
+A missing or broken provider falls back to `builtin`; the brief never blocks on
 it.
 
 ## Packs, digests and reapproval
@@ -136,7 +136,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | A check reports `stale` | Declared inputs changed since the verdict | `rail check run` again |
 | `doctor` flags approval drift | A protected file changed after approval | Re-approve the target |
 | The index is corrupt or missing | Cache only | `rail ops reindex --full` |
-| Two CTOs at once | Single-instance lock | Let the running tick finish |
+| An old store refuses a command with `rail ops upgrade` in the message | It predates the runtime-neutral engine | A human runs `rail --actor human ops upgrade --dry-run`, then `--confirm "UPGRADE store"`; re-approve if told to; `rail ops adapters render` |
 | A command seems to act on old data | None expected: every daemon call reads the files afresh | Run it as `rail --no-daemon <command>`; if the answer differs, report it |
 | A write says `outcome unknown` | The daemon did not answer after the request may have reached it | Re-read the item to see whether it applied; repeat only a command that carries a `--key` |
 | Every command waits about 2 s | A warm daemon is stuck inside a call and `serve daemon --stop` gets no answer | End that `serve daemon` process by hand; commands run direct meanwhile and the next one starts a fresh daemon |
@@ -159,18 +159,20 @@ Every save goes through the gateway with the current etag — the same call
 the UI Settings **Configuration** tab makes:
 
 ```powershell
-rail change update implementer --set model=<model> --expect <etag> --key <k>
+rail change update implementer --set skills=<list> --expect <etag> --key <k>
 rail change update test-first --set description=<text> --expect <etag> --key <k>
 rail ops measure versions --target-class profile --target implementer --before 1 --after 2
 rail ops rollback --target-class profile --target implementer --version 1
 ```
 
-- `model` / `effort` / `auto` / `runner` / `tools` / `skills` / narrowed
-  `allowed_methods` are `cto-alone`; `allowed_methods` may only shrink.
+- `skills` and narrowed `allowed_methods` are `cto-alone`; `allowed_methods` may
+  only shrink. A profile names no model, effort, autonomy, runner or tools: the
+  tool running the agent owns those, and `rail ops upgrade` strips them from an
+  older store.
 - Any budget increase is `human-only` (typed phrase) — the gateway refuses
   a CTO `update` that raises `budgets.attempts/seconds/tokens/credits`.
-- Skills: `name == file stem`, `description` non-empty, `allowed_tools`
-  must be known tool ids; version auto-increments.
+- Skills: `name == file stem`, `description` non-empty, `allowed_tools` is a
+  free-form list your tool understands; version auto-increments.
 - `measure versions` is observational only, never an auto-rollout; if the
   comparison regresses, `rollback` restores the earlier version as a new one.
 

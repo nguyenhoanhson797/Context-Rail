@@ -117,7 +117,7 @@ the engine.
 A pack's `operating` block, version 2, may declare **roles**. A **seat** binds
 an agent to one role on one anchor: the project or one container. The lead role
 usually sits on the project; a level lead sits on a sprint, scene or phase;
-workers sit on one item.
+implementers sit on one item.
 Roles are compiled into the approved pack, so changing one needs re-approval.
 
 ```bash
@@ -128,7 +128,7 @@ rail seat grant lead-1 --role lead --anchor project     # the human's first seat
 rail seat grant sprint-1 --role sprint-lead --anchor sprint-3 --profile manager
 rail seat list
 rail seat show sprint-1
-rail seat open sprint-1 -- rail next                   # child gets RAIL_SESSION
+rail seat open sprint-1 --print-env                    # one-time token for RAIL_SESSION
 rail sprint-1 next                                     # read as that seat
 rail seat close sprint-1                               # or --all (human)
 ```
@@ -140,9 +140,9 @@ after that, a lead may grant inside its `can.grant` and write reach.
 In role mode:
 
 - **The session is the identity.** `RAIL_SESSION` carries the token;
-  `--actor` is refused. Open a session with `rail seat open` and keep its token
-  in the child environment. `--print-env` includes the token once in the JSON
-  result for an MCP client; the command form never prints it.
+  `--actor` is refused. Open a session with `rail seat open <seat> --print-env`; the
+  token appears once in the JSON result. Export it as `RAIL_SESSION` for the
+  agent your tool starts.
 - **Reach is enforced on reads and writes.** A seat sees its anchor's subtree,
   the ancestors and shared notes its role names, and nothing outside it. `find`,
   `status`, `digest`, `ledger`, `show` and `cto brief` report
@@ -173,8 +173,8 @@ The rail is not a task list with extra steps. The same compiled model drives:
   gates, declared by a pack.
 - **The operating model** — unit, hierarchy, focus, queue and progress, also
   declared by the pack and compiled into one immutable model.
-- **Execution** — checks, isolated worktrees, dispatch, review, merge, reports,
-  triage, budgets and a ledger.
+- **Execution** — briefs, checks, candidates, reviews, reports, triage,
+  budgets and a ledger, all recorded from whatever tool did the work.
 - **The projection** — `rail types|next|model|show|explain|why`, the MCP tool
   table, the loopback UI, the generated `AGENTS.md` and workspace skills.
 
@@ -222,10 +222,10 @@ This kit is the front door. The detailed operator skills live under `skills/`:
 | `context-rail-v3-workflows` | You need custom types, statuses, transitions or BA/PO |
 | `context-rail-v3-pack-authoring` | You are creating or changing a pack |
 | `context-rail-v3-surface` | You work from `types`, `next`, `show`, `explain`, `why` |
-| `context-rail-v3-loop` | You dispatch, review, merge or supervise agents |
+| `context-rail-v3-loop` | You hand out, record, verify or review agent work |
 | `context-rail-v3-ops` | You doctor, reindex, recover or ship |
 | `context-rail-v3-onboarding` | You are adopting the rail in a new project |
 
 Do not confuse these with the pack skills copied into a store's workspace
-(`test-first`, `review-checklist`). Those teach a worker how to do
-its job. These teach an operator how to drive the product.
+(`test-first`, `review-checklist`). Those teach the agent doing the
+work how to do its job. These teach an operator how to drive the product.

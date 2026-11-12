@@ -71,10 +71,10 @@ and it is not approved.
   two shapes.
 - Statuses alone do not gate execution: `ready` maps to `not_started` and
   `review` maps to `active`. A pack can still close a status with
-  `execution: {review: {dispatch: false}}`, which `flow`, `scrum` and `video` do.
+  `execution: {review: {queue: false}}`, which `flow`, `scrum` and `video` do.
   The top-level `execution` block covers only the default workflow: a named
   workflow that uses the status must declare the same flag itself, or items on
-  it stay dispatchable in review. Other hard gating comes from `depends_on`, the
+  it stay in the queue in review. Other hard gating comes from `depends_on`, the
   `blocked` category and the charter's done gate.
 
 ## Pack anatomy (`packs/<name>/pack.yaml`)
@@ -97,12 +97,12 @@ transitions:
   done: [doing]
   dropped: [intake]
 execution:
-  review: {dispatch: false}
+  review: {queue: false}
 presets:
   story: {primitive: item, tags: [story], fields: {priority: [must, should, could]}}
   note:  {primitive: note, tags: []}
   check: {primitive: check, tags: []}
-policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
+policy: {stuck_hours: 24, measurement_min_runs: 10}
 ```
 
 - Every pack must declare these presets, because the engine reads them by
@@ -113,14 +113,12 @@ policy: {stuck_hours: 24, retries: 1, measurement_min_runs: 10}
 - A preset's `fields` are closed value lists, enforced on `add` and `update`.
   Undeclared keys stay free text: `acceptance` and `inputs` belong to no
   preset, and teams add their own.
-- `execution` lets a status steer work, not just moves. `dispatch: false`
-  removes an Item from `status.executable` and makes dispatch refuse;
-  `merge: false` makes merge refuse. Omitted flags fall back to the category
-  (workable → dispatchable, unfinished → mergeable). `flow` and `scrum` mark
-  `review` as `dispatch: false`.
-- `policy.retries` caps implementation attempts at one initial try plus that
-  many retries, on top of the charter and profile bounds. `stuck_hours` and
-  `measurement_min_runs` are the other live policy keys. Gates, budgets and
+- `execution` lets a status steer work, not just moves. `queue: false`
+  removes an Item from `status.executable` and from `rail next`. An omitted flag
+  falls back to the category (workable → queued). `flow` and `scrum` mark
+  `review` as `queue: false`. The old `dispatch`, `merge` and `policy.retries`
+  keys are refused with a hint to run `rail ops upgrade`.
+- `stuck_hours` and `measurement_min_runs` are the live policy keys. Gates, budgets and
   decision rights live in the charter, not the pack.
 - Tags are free text and never drive engine behaviour.
 - New presets need no manifest entry: they render under the primitive's
@@ -220,10 +218,12 @@ and retargets links; descendants follow through `repath`.
 ## Profiles and skills
 
 - A profile is a store document at `workspace/profiles/<name>/profile.md`.
-- `recipe` must be one of `cto`, `implementer`, `reviewer`. `dispatch` accepts
-  only an `implementer`; `review` only a `reviewer`; `auto: high` only the CTO.
-- A BA role is a profile with `recipe: implementer` and a BA prompt; dispatch
-  chooses it with `--profile ba` on BA items.
+- `recipe` must be one of `cto`, `implementer`, `reviewer`. A profile holds
+  `allowed_methods`, a context `budget`, `skills` and `budgets`. It names no
+  model, effort, autonomy, runner or tools: the coding tool that runs the agent
+  owns those.
+- A BA role is a profile with `recipe: implementer` and a BA prompt; record a
+  candidate against it with `rail loop candidate --profile ba` on BA items.
 - Skills are Markdown notes with versions; `rollback` restores a retained one.
 
 ## Charter gates and rights
@@ -240,7 +240,7 @@ Three decision classes, enforced at the gateway: `cto-alone`,
 
 **1. Dependency (hardest, no code).** A sign-off is an item; the story points at
 it with `depends_on`. The engine excludes the story from executable work and
-dispatch refuses it.
+the brief refuses it.
 
 ```powershell
 rail change add ba_pack "Checkout BA"

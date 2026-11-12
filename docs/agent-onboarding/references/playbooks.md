@@ -19,7 +19,7 @@ rail overview
 Done when `rail read status` lists an executable task and `rail next` returns
 it.
 
-Next: `context-rail-v3-loop` for dispatch → review → merge.
+Next: `context-rail-v3-loop` for brief → candidate → review → report.
 
 ## 2. Existing codebase, no store
 
@@ -79,23 +79,25 @@ a full tested three-workflow pack with a dedicated `ba_pack` preset, see
 
 ## 5. Parallel agents with review separation
 
-One store, one dispatcher, separate reviewer actors.
+One store, several sub-agents of your own tool, separate reviewer actors. Each
+sub-agent works in its own git worktree.
 
 ```bash
-rail --actor cto loop dispatch task-a --expect <etag-a> --key run-a
-rail --actor cto loop dispatch task-b --expect <etag-b> --key run-b
-rail --actor reviewer loop review task-a --run <run-a> --key review-a
-rail --actor cto loop merge task-a --run <run-a> --expect <etag-a> --key merge-a
+rail loop brief task-a --role implementer        # give this to sub-agent A
+rail loop brief task-b --role implementer        # and this to sub-agent B
+rail --actor dev loop candidate task-a --commit <sha-a> --key cand-a
+rail --actor qa  loop review task-a --commit <sha-a> --verdict approve --key review-a
+rail --actor cto change move task-a done --expect <etag-a>
 ```
 
 Rules:
 
 - The implementer cannot review its own work; use a distinct reviewer profile
   and actor.
-- A failed run gets one retry by default; then it escalates with evidence.
-- A merge conflict gets one rebase retry; then it escalates.
-- Only `loop tick` is serialized behind the single-instance lock; dispatch,
-  review and merge are individually gated but can overlap across items.
+- The rail does not retry or merge. A failed candidate is a new commit and a
+  new `loop candidate`; you merge in git.
+- Candidate, review and move are individually gated and can overlap across
+  items.
 
 ## 6. Agency or client workspace
 

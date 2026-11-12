@@ -16,9 +16,9 @@ store is plain files in your git repo: Markdown documents, JSON records and
 
 ## Requirements
 
-Python 3.11+ · git (launch/integration only) · Node.js 22+ (only to rebuild the
-UI from source) · the Factory `droid` CLI (only for the agent loop; set
-`RAIL_DROID_BIN` to override).
+Python 3.11+ · git · Node.js 22+ (only to rebuild the UI from source). Any coding tool
+(Claude Code, Codex, opencode, Droid, Cursor, Gemini CLI) can do the work; the
+rail does not run one.
 
 ## How it works in one picture
 
@@ -59,14 +59,14 @@ reads what it produced, so the CLI, MCP, UI and every agent see one answer.
 | **Quality belongs to the workflow** | A status can name a charter gate and the checks it selects. A missing or stale check refuses the move and names the command that produces it. |
 | **Approval is data** | `approve` is human-only. Change the semantics (transition, placement, operating block) and the store reports `approval_mismatch` until a human reapproves. |
 | **Agents get a narrow surface** | They never parse `pack.yaml`; they ask `rail types`, `rail next`, `rail read show`, `rail why`, `rail explain`, and run declared verbs with `rail do`. |
-| **Work runs isolated** | Dispatch gets its own git worktree; merge is a fast-forward of an *approved* candidate; `gate` never runs Checks. |
+| **Your tool does the work** | The rail hands out a brief and records the candidate commit, the check and the review. Your tool runs its own sub-agents in its own git worktrees and you merge in git; `gate` never runs Checks. |
 | **Collisions are impossible to miss** | Every write carries the etag it read; a stale write is refused. Every retry carries a `--key` and gets the same record back. |
 
 ## The loop in one line
 
 ```text
-rail overview → human approves → rail loop dispatch → checks run → rail loop review → rail loop merge
-     (brief)        (gate)          (own worktree)                 (other actor)     (fast-forward only)
+rail overview → human approves → rail loop brief → your tool works → rail loop candidate → checks run → rail loop review → move to done
+     (state)        (gate)         (work order)     (own sub-agents)       (commit recorded)                  (other actor)     (gates read records)
 ```
 
 `rail gate` is a read-only governance check. Nothing executes until a human
@@ -198,10 +198,10 @@ and exits `0` / `1` / `2`. Global flags: `rail --store <path> --actor <who> <com
 | Inspect one item | `rail read show <slug>` |
 | Find broken references | `rail ops doctor` |
 | Check gates | `rail gate` |
-| Dispatch an agent | `rail loop dispatch <item> --expect <etag> --key <key>` |
+| Hand out work | `rail loop brief <item> --role implementer` |
 | Approve a pack | `rail --actor human approve pack:<name> ...` |
 
-Former flat names (`status`, `dispatch`, `review`, `merge`, `ci`, …) still work;
+Former flat names (`status`, `brief`, `review`, `ci`, …) still work;
 `rail <group> --help` is the grouped surface.
 
 ## Surfaces
@@ -259,13 +259,13 @@ license, which `rail ops doctor` reports once when it is configured. Graphify
 is Apache-2.0 and is run with only `--code-only`, with hooks and auto-refresh
 disabled.
 
-When a configured external tool is missing, out of date or broken, dispatch
+When a configured external tool is missing, out of date or broken, the brief
 **falls back to `builtin`** and says why in the work order. A provider failure
-never blocks dispatch, review or merge. Override a binary with
+never blocks a brief, a candidate or a review. Override a binary with
 `RAIL_GRAPHIFY_BIN` or `RAIL_GITNEXUS_BIN`.
 
-- **Dispatch** writes a `code area` section into the work order and the run
-  records `symbols_changed` with the files it changed.
+- **`loop brief`** writes a `code area` section into the work order and the
+  candidate records `symbols_changed` with the files it changed.
 - **Review** gets the changed symbols, their impact, anything outside the
   predicted area and tests that reach the change without being declared checks.
 - **`rail why` / `rail read show`** accept `path` and `path:Symbol`.
@@ -275,7 +275,7 @@ never blocks dispatch, review or merge. Override a binary with
 ### Upgrading a store that has a code map
 
 Stores made with the earlier packs keep working: while the implementer profile
-still pins the `code-map` skill, dispatch keeps allowing `code` notes in a
+still pins the `code-map` skill, a candidate keeps allowing `code` notes in a
 candidate. `rail ops doctor` reports `code_map_not_adopted` (info). Run
 `rail --actor human ops codegraph adopt` (`--dry-run` first if you like) to
 rewrite the cto, implementer and reviewer profiles and the `review-checklist`

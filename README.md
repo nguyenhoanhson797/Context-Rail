@@ -28,8 +28,9 @@ calls wait for a human yes.
   asks again.
 - **"Done" means proven.** Work only reaches done when its checks pass. When
   proof is missing, Context Rail tells you which command produces it.
-- **Every agent works in its own sandbox.** Each job runs in a separate git
-  worktree and lands only after review, as a clean fast-forward merge.
+- **Any coding tool, its own way.** Claude Code, Codex, opencode, Droid, Cursor
+  or Gemini CLI does the work with its own sub-agents. Context Rail never
+  launches an agent; it hands out the brief and records the result.
 - **Your project stays yours.** Everything is plain Markdown and JSON in your
   repo. No server, no account, no lock-in.
 - **One tool for any kind of project.** Kanban, sprints, phase gates or video
@@ -56,8 +57,9 @@ approve the brief yourself:
 rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Your Name"
 ```
 
-To let agents pick up the work, install the Factory `droid` CLI (or point
-`RAIL_DROID_BIN` at it).
+To let agents pick up the work, use any coding tool you like. Context Rail does
+not start it: you or your tool run `rail loop brief` for the work order and
+record the result with `rail loop candidate`.
 
 ## How a day looks
 
@@ -65,11 +67,13 @@ To let agents pick up the work, install the Factory `droid` CLI (or point
    and what is blocked.
 2. **Approve the plan.** Nothing runs until a human approves the brief.
    Working alone? Solo mode skips the ceremony; the quality checks still apply.
-3. **Hand out work.** `rail loop dispatch` gives an agent one task, a focused
-   brief and its own sandbox.
-4. **Prove it.** The checks you chose run against the agent's work.
-5. **Review and merge.** A different actor reviews, and `rail loop merge`
-   lands only approved work.
+3. **Hand out work.** `rail loop brief` gives your tool one task and a focused
+   brief. Its sub-agent works in its own git worktree and commits.
+4. **Record and prove it.** `rail loop candidate` records the commit, and the
+   checks you chose run against it.
+5. **Review and finish.** A different actor reviews with `rail loop review`.
+   Work reaches done only with fresh checks and an approved review, and you
+   merge in git.
 
 ## Works for any kind of project
 
@@ -147,7 +151,7 @@ that decides focus and progress. **Notes** give agents their context, and
 
 ```mermaid
 flowchart LR
-    S1["1 Approve<br/>policy"] --> S2["2 Plan<br/>item"] --> S3["3 Dispatch<br/>actor"] --> S4["4 Work<br/>record"] --> S5["5 Check<br/>check"] --> S6["6 Review<br/>record"] --> S7{"7 Gate"} --> S8["8 Finish<br/>item"]
+    S1["1 Approve<br/>policy"] --> S2["2 Plan<br/>item"] --> S3["3 Brief<br/>actor"] --> S4["4 Work<br/>record"] --> S5["5 Check<br/>check"] --> S6["6 Review<br/>record"] --> S7{"7 Gate"} --> S8["8 Finish<br/>item"]
 
     classDef cPolicy fill:#fde68a,stroke:#b45309,color:#111
     classDef cItem fill:#bfdbfe,stroke:#1d4ed8,color:#111
@@ -166,12 +170,12 @@ flowchart LR
 
 1. A human approves the charter; nothing runs before that.
 2. The CTO agent plans work under the container in focus.
-3. An implementer agent gets one item, a brief built from notes, and its own git worktree.
-4. The run is written down as a record.
-5. The item's checks run in that worktree. A failed run gets one retry, then escalates to you.
+3. An implementer agent, started by your own tool, gets one item and a brief built from notes.
+4. Its commit is written down as a candidate record.
+5. The item's checks run on that commit. A failed check means a new commit and a new candidate.
 6. A different actor reviews the work.
 7. The gate opens only with fresh, passing checks and an approved review.
-8. The item finishes, the work merges as a fast-forward, and progress updates in your daily digest.
+8. The item finishes, you merge in git, and progress updates in your daily digest.
 
 ### Example: a video production
 
@@ -222,7 +226,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    V1["1 Approve<br/>charter"] --> V2["2 Start scene<br/>scene"] --> V3["3 Storyboard<br/>shot"] --> V4["4 Generate<br/>run record"] --> V5["5 Check<br/>quality check"] --> V6["6 Review<br/>review record"] --> V7{"7 Approve"} --> V8["8 Render<br/>render run"] --> V9["9 Publish<br/>shot"]
+    V1["1 Approve<br/>charter"] --> V2["2 Start scene<br/>scene"] --> V3["3 Storyboard<br/>shot"] --> V4["4 Generate<br/>execution record"] --> V5["5 Check<br/>quality check"] --> V6["6 Review<br/>review record"] --> V7{"7 Approve"} --> V8["8 Render<br/>render run"] --> V9["9 Publish<br/>shot"]
 
     classDef cPolicy fill:#fde68a,stroke:#b45309,color:#111
     classDef cItem fill:#bfdbfe,stroke:#1d4ed8,color:#111
@@ -292,7 +296,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Q1["1 Approve<br/>charter"] --> Q2["2 Start sprint<br/>sprint"] --> Q3["3 Plan<br/>story"] --> Q4["4 Build<br/>run record"] --> Q5["5 Test<br/>tests"] --> Q6["6 Review<br/>review record"] --> Q7{"7 Gate"} --> Q8["8 Merge<br/>story done"] --> Q9["9 Close sprint<br/>sprint"]
+    Q1["1 Approve<br/>charter"] --> Q2["2 Start sprint<br/>sprint"] --> Q3["3 Plan<br/>story"] --> Q4["4 Build<br/>candidate record"] --> Q5["5 Test<br/>tests"] --> Q6["6 Review<br/>review record"] --> Q7{"7 Gate"} --> Q8["8 Finish<br/>story done"] --> Q9["9 Close sprint<br/>sprint"]
 
     classDef cPolicy fill:#fde68a,stroke:#b45309,color:#111
     classDef cItem fill:#bfdbfe,stroke:#1d4ed8,color:#111
@@ -318,7 +322,7 @@ sprint.
 
 For code projects, Context Rail reads your git checkout and builds a graph of
 files, functions and who calls whom. It lives in a local cache, not in the
-store, and rebuilds from git. When you dispatch an agent, the work order
+store, and rebuilds from git. When you ask for a brief, the work order
 carries a short `code area`: the files and symbols the item mentions, plus their
 callers. At review, the reviewer sees which functions the diff changed, what
 reaches them, and which tests cover them. `rail why src/app.py:total` answers
@@ -350,7 +354,7 @@ with hand-written `code` notes, moves over once with
 skills you have not edited.
 
 The rail never installs an external tool. If the configured tool is missing or
-broken, dispatch falls back to `builtin` and says why in the work order.
+broken, the brief falls back to `builtin` and says why in the work order.
 `rail ops codegraph setup` caches its readiness check; `status`, the overview,
 approval and `rail ops doctor` read that cache without starting a process.
 GitNexus is indexed in an isolated mirror under the local cache, so it never
@@ -386,9 +390,9 @@ rail seat close impl-1
 
 In role mode the session token is the identity: `--actor` is refused. A
 tokenless caller that is not on a terminal has no seat and an empty reach, so
-open a session before reading or writing. `rail seat open` launches a command
-with `RAIL_SESSION` set and never prints the token; `--print-env` includes it
-once in the JSON result for an MCP client. A seat sees only its anchor's
+open a session before reading or writing. `rail seat open <seat> --print-env`
+prints the one-time token in its JSON result; export it as `RAIL_SESSION` for
+the agent your tool starts. A seat sees only its anchor's
 subtree, the ancestors and shared notes its role declares, and every write is
 checked against the same reach. `rail <seat> ...` is a read-only lens when the
 session belongs to another seat.

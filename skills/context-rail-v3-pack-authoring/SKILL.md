@@ -88,7 +88,7 @@ workflows:
   sprint:
     initial: todo
     transitions: {todo: [doing], doing: [review, done], review: [done], done: []}
-    execution: {review: {dispatch: false}}
+    execution: {review: {queue: false}}
     quality:
       done: {gate: item_done}
   bugfix:
@@ -135,8 +135,8 @@ actions:
 
 One action is one allowlisted gateway tool: `add`, `update`, `link`, `move`,
 `rename`, `check`, `triage`, `report` (write) or `next`/`status` (read). It may
-not set `path`, `actor`, `key`, `profile` or `store`, call `do`, `cto tick`,
-`pack use`, `relocate`, `merge` or `adapters sync`, and it runs with the caller's
+not set `path`, `actor`, `key`, `profile` or `store`, call `do`,
+`pack use`, `relocate` or `adapters sync`, and it runs with the caller's
 permissions. `do` records one `action.executed`; read-only actions write nothing.
 
 ## The operating model (pack version 2)
@@ -204,16 +204,16 @@ operating:
     lead:
       anchor: project
       reach: {read: [project], write: [project], code: {read: ["**"], write: []}}
-      can: {add: [story, task], update: [story, task], dispatch: [task], review: [task],
-            merge: [task], grant: [sprint-lead, implementer, reviewer]}
+      can: {add: [story, task], update: [story, task], move: [task], review: [task],
+            grant: [sprint-lead, implementer, reviewer]}
       sees: {up: 0, down: 1, parts: [title, status, next, blockers], budget: {chars: 12000, docs: 60}}
       workspace: none
     sprint-lead:
       anchor: {level: sprint}
       reach: {read: [anchor, {up: 1}, {preset: [convention]}], write: [anchor],
               code: {read: ["**"], write: []}}
-      can: {add: [story], update: [story], dispatch: [story], review: [story],
-            merge: [story], grant: [implementer, reviewer]}
+      can: {add: [story], update: [story], move: [story], review: [story],
+            grant: [implementer, reviewer]}
       sees: {up: 1, down: all, parts: [title, status, next, body, acceptance, blockers], budget: {chars: 8000, docs: 40}}
       workspace: none
 ```
@@ -225,7 +225,7 @@ operating:
   `{preset: [...]}` and `{path: "<template>/**"}`; `up` and `related` are
   read-only. Reach tokens are `{anchor.slug}`, `{anchor.<field>}`,
   `{up.<preset>.slug}`, `{up.<preset>.title}` and `{up.<preset>.<field>}`;
-  an empty token refuses the grant or dispatch, never widens.
+  an empty token refuses the grant or the call, never widens.
 - `can` values name presets, statuses, relations, actions or roles, all
   validated against the pack. A method absent from `can` is refused; reads are
   governed by `reach`.
@@ -319,7 +319,7 @@ on `init`, onboarding and `migrate`.
 | `{verifies.slug}` / `{verifies.title}` | the target's slug or title slug | one segment |
 | `{nearest:preset}` | the nearest ancestor of that preset | path prefix |
 | `{root:preset}` | the outermost ancestor of that preset | path prefix |
-| `{item}` | the dispatch or run item | kind placement only |
+| `{item}` | the item a record is about | kind placement only |
 | `{item.slug}` / `{item.title}` | the item's slug or title slug | kind placement only |
 
 - A primitive placement must start with a literal segment; the primitive's
@@ -438,8 +438,8 @@ anchor is visible rather than silently ignored.
   `placement_historical`: a warning, not an error, and never rewritten. A record
   that is missing required metadata is `record_metadata_missing`, also a
   warning. New records are still refused.
-- **Shared record kinds.** `report.filed`, `run.completed`, `merge.completed`
-  and friends are written with no single item. Keep their placement
+- **Shared record kinds.** `report.filed`, `candidate.recorded`,
+  `review.verdict` and friends are written with no single item. Keep their placement
   context-free; a `{part_of}` or `{item}` template would refuse those writes.
 - **Adding a required field is a breaking change.** Existing documents fail
   `doctor` and the next `update`. Give it a default, or file fix items so the

@@ -61,8 +61,8 @@ rail init --pack basic --solo --interview  # one human owns the project
 Useful flags: `--dir DIR`, `--root NAME`, `--no-approve`, `--no-git-drivers`,
 `--harness agents|claude|cursor|gemini`, `--key KEY`. `--solo` with a picture
 source writes a charter whose `mode: solo` binds one human as the project owner:
-the approval gates are skipped, but the workflow quality gates (checks, review,
-merge) still apply.
+the approval gates are skipped, but the workflow quality gates (checks and
+review) still apply.
 
 Re-running the same command continues from the first missing stage. A stage
 reports `written`, `unchanged`, `skipped` or `refused`; a refusal writes nothing
@@ -119,7 +119,7 @@ Read the compiled surface, never `pack.yaml`:
 
 ```powershell
 rail types                  # what kinds of work exist, their workflows and use lines
-rail next                   # the operating queue, or one worker's card
+rail next                   # the operating queue, or one seat's card
 rail read show <slug>       # the item, its workflow and its proof
 rail why <slug>             # the missing proof and the command that produces it
 rail explain <name>         # one preset, workflow or action in full
@@ -175,7 +175,7 @@ The store is ready when:
 | Custom types, statuses, transitions, BA/PO | `context-rail-v3-workflows` |
 | Create or change a pack | `context-rail-v3-pack-authoring` |
 | Work from `types`, `next`, `show`, `explain`, `why` | `context-rail-v3-surface` |
-| Dispatch, review, merge, supervise | `context-rail-v3-loop` |
+| Brief, record candidates, verify, review, report | `context-rail-v3-loop` |
 | Doctor, reindex, recovery, budgets | `context-rail-v3-ops` |
 
 ## Onboarding an existing project (no picture rewrite)
@@ -219,7 +219,7 @@ shots. If none fits, copy a pack and edit it — never fork the engine.
 | A check is `stale` | `rail check run <target>` again |
 | `agents` stage is `skipped (picture_deferred)` | Supply the picture, then re-run `rail init`; agent files need the picture to exist |
 | `doctor` reports an interrupted write | `rail ops doctor --repair`, then `rail ops reindex` |
-| Two CTOs at once | Let the running `loop tick` finish; it holds the single-instance lock |
+| Two agents write at once | Both are safe: every write is an etag-checked commit; the loser re-reads and retries |
 
 ## What not to do
 

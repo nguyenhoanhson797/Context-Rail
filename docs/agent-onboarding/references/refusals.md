@@ -32,7 +32,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | `NOT_FOUND` | no store, unknown slug, unknown pack | `rail init`, fix `--store` placement, or `rail read find` for the slug |
 | `VALIDATION_FAILED` | bad flags, illegal transition, wrong phrase, bad pack field | Read the message; `--help` for flags; `rail explain <workflow>` for legal moves |
 | `CONFLICT` | etag changed, adapter block edited, duplicate identity | Re-read and retry with the new etag; repair an adapter by hand or force as a human |
-| `INVALID_STATE` | non-executable item, immutable record, wrong profile recipe | `rail read show <slug>`; finish the dependency; use an implementer for dispatch, reviewer for review |
+| `INVALID_STATE` | non-executable item, immutable record, wrong profile recipe | `rail read show <slug>`; finish the dependency; use an implementer profile for a candidate, a reviewer profile for review |
 | `BUSINESS_RULE_VIOLATED` | a charter gate is unsatisfied | `rail why <slug>`; run the named check or obtain the named review/acceptance |
 | `NO_FOCUS` | the pack needs a parent container and none matches | Start the container, or pass `--rel part_of=<container>` |
 | `AMBIGUOUS_FOCUS` | several containers match the focus | Pass `--into <id>` from `details.candidates`; never guess |
@@ -56,11 +56,12 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | `adapter_modified` | a managed block was edited outside rail | Repair by hand, or a human runs `--force --confirm "FORCE ADAPTERS adapters"` |
 | `doctor` reports an interrupted write | a multi-file commit stopped mid-way | `rail ops doctor --repair`, then `rail ops reindex` |
 | The index is corrupt or missing | cache only | `rail ops reindex --full` |
-| `'cto tick' cannot be nested` | a child session already set `RAIL_ACTOR` | Run `rail loop tick` from the outer session with `RAIL_ACTOR` unset |
-| Two CTOs at once | single-instance lock | Let the running tick finish |
-| A dispatch refuses | dependency, gate, claim or profile recipe | `rail why <item>` and `rail read show <item>`; finish the dependency or use the right profile |
-| A review refuses | the reviewer is the implementer, or the run is not verified | Use a distinct reviewer actor; review after verification |
-| A merge refuses | the candidate is not approved or conflicts | Review first; one rebase retry, then escalate |
+| `actor_required` | a name-mode write with no named actor and no terminal | Pass `--actor <name>` or set `RAIL_ACTOR` |
+| A profile key is refused (`model`, `runner`, `tools`, ...) | the store predates the runtime-neutral engine | A human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |
+| A brief refuses | dependency, gate, claim or profile recipe | `rail why <item>` and `rail read show <item>`; finish the dependency or use the right profile |
+| A candidate refuses | the commit is not on a git worktree of this project | Commit first; pass the full commit SHA |
+| A review refuses | the reviewer authored the candidate, or the commit is stale | Use a distinct reviewer actor; review the current commit |
+| `move ... done` refuses | the candidate is not approved or is stale | Review the current candidate commit, then move |
 | `ops pack validate` fails | missing preset, template, field or operating reference | Fix the named key; `pack validate` is read-only |
 | `pack use` refuses | unmapped status, missing preset or an unsatisfiable required field | Add `--map OLD=NEW` or fix the target pack; never force |
 | `migrate` refuses a structural target | a legacy store has no work graph | Migrate into a flat layout first, then add structure |

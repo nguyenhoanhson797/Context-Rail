@@ -26,7 +26,7 @@ CLI / MCP / UI
       ↓                            ↓
   Write pipeline            Query layer (SQL only)
       ↓                            ↓
-  files (truth)             SQLite index (cache)      Runner (droid, cmd checks)
+  files (truth)             SQLite index (cache)      Checks (cmd checks, git reads)
 ```
 
 Fixed vocabulary: **6 primitives** (`item`, `note`, `record`, `check`,
@@ -62,14 +62,14 @@ changing one needs re-approval.
 ```powershell
 rail seat list
 rail seat grant sprint-1 --role sprint-lead --anchor sprint-3
-rail seat open sprint-1 -- rail next    # the child gets RAIL_SESSION
+rail seat open sprint-1 --print-env    # prints RAIL_SESSION for that seat's agent
 rail sprint-1 next                      # read the store as that seat
 rail seat close sprint-1
 ```
 
 - In role mode the session token is the identity and `--actor` is refused.
-  `rail seat open` launches a command with `RAIL_SESSION`; the command form never
-  prints the token.
+  `rail seat open <seat> --print-env` prints the one-time token; export it as
+  `RAIL_SESSION` in the agent's environment.
 - A seat sees its anchor's subtree, the ancestors and shared notes its role
   declares. Reads and writes outside that reach are refused; lists and digests
   report `omitted_outside_reach`.
@@ -122,7 +122,7 @@ rail seat close sprint-1
 | Read | `overview`, `read status\|digest\|find\|show\|ledger` |
 | Change | `change add\|update\|link\|move\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` |
 | Gate | `approve`, `ops pack use`, `gate` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
-| Loop | `loop dispatch\|review\|merge\|tick` |
+| Loop | `loop brief\|candidate\|review\|report\|triage\|execution` |
 | Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui` |
 
 Exact flags: `references/commands.md` in this skill.
@@ -135,7 +135,7 @@ Exact flags: `references/commands.md` in this skill.
 | Custom document types, statuses, transitions, BA/PO steps, pack switching | `context-rail-v3-workflows` |
 | Create a pack, add document types, require metadata, change placement | `context-rail-v3-pack-authoring` |
 | Work from the compiled surface: types, next, show, explain, why | `context-rail-v3-surface` |
-| Run or supervise the agent loop: dispatch → verify → review → merge | `context-rail-v3-loop` |
+| Hand out and record agent work: brief → candidate → verify → review → report | `context-rail-v3-loop` |
 | Doctor, reindex, recovery, git sync, budgets, test lanes | `context-rail-v3-ops` |
 | Every flag for every command | `references/commands.md` |
 
@@ -146,11 +146,12 @@ Exact flags: `references/commands.md` in this skill.
 | `NOT_FOUND: no store found` | `rail init`, or put `--store` before the command |
 | `VALIDATION_FAILED: unrecognized arguments` | Global options belong before the command; `add` is positional |
 | “the charter is not approved; nothing executes yet” | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` |
-| `'cto tick' cannot be nested inside a running session` | Start `rail loop tick` from the outer session, with `RAIL_ACTOR` unset |
+| `actor_required` on a write | Name yourself: `--actor <name>` or `RAIL_ACTOR`; an unnamed caller can only read |
+| `profile key 'model' was removed; run rail ops upgrade` | The store predates the runtime-neutral engine; a human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |
 | `AMBIGUOUS_FOCUS` | Two containers match the focus; pass `--into <id>` or finish one |
 | `NO_FOCUS` on `add` | The pack needs a parent; start the container or pass `--rel part_of=<container>` |
 | `approval_mismatch` after a pack upgrade | The semantic digest changed; reapprove `pack:<name>` then the charter |
-| `SESSION_REQUIRED` in a role-mode store | Open a session: `rail seat open <seat> -- <command>` |
+| `SESSION_REQUIRED` in a role-mode store | Open a session: `rail seat open <seat> --print-env`, then export `RAIL_SESSION` |
 | `--actor` is refused in a role-mode store | The seat is the identity; use `RAIL_SESSION` or a terminal |
 | A check is `stale` | Re-run `rail check run`; a stale pass is not a pass |
 

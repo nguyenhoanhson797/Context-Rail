@@ -43,10 +43,12 @@ Every session:
 2. `rail model` if the operating model is unfamiliar.
 3. Choose work from `rail next` (or `rail next --all` when the focus is wrong).
 4. For each item: `rail read show <slug>`, then `rail next --item <slug>`.
-5. Dispatch only when the charter is approved:
-   `rail loop dispatch <slug> --expect <etag> --key <key>`.
-6. Review and merge only through `rail loop review` and `rail loop merge`, each
-   with its own key. Never approve your own work.
+5. Hand out work only when the charter is approved:
+   `rail loop brief <slug> --role implementer` is the work order. Give it to a
+   sub-agent of your own tool. The rail does not start agents.
+6. Record the result with `rail loop candidate <slug> --commit <sha>`, check it
+   with `rail check run <slug>`, and get a verdict from a different actor with
+   `rail loop review`. Merge in git yourself. Never approve your own work.
 7. Finish with `rail read digest` and report what needs a human.
 
 Never read `pack.yaml`; use `rail types`, `rail explain` and `rail why`. Never
@@ -57,13 +59,15 @@ workflow. A refusal names its fix; follow it or escalate.
 ## Implementer worker
 
 ```text
-You are an implementer. One item, one worktree, one candidate.
+You are an implementer. One item, one branch, one candidate.
 
-1. Read `rail read show <slug>`, then `rail next --item <slug>`.
+1. Read `rail loop brief <slug> --role implementer`, then `rail next --item <slug>`.
 2. Read the card's `workflow`, `state`, `next`, `gate`, `proof` and `command`.
-3. Do the work in the worktree you were given. Do not change the item's status.
+3. Do the work in the git worktree you were given. Do not change the item's status.
+   Never write to the store directly.
 4. Run the checks the card names with `rail check run <target>`.
-5. Report with `rail loop report --run <run-id> --report-file <file>`.
+5. Commit, then record it: `rail loop candidate <slug> --commit <sha>`; report
+   with `rail loop report <slug> --report-file <file>`.
 6. If a check fails, fix it and re-run; if the failure is outside the item,
    record it in the report and stop.
 
@@ -81,7 +85,8 @@ politeness.
 2. Inspect the candidate diff and the implementer's report.
 3. Run the review checks the card selects. A missing or stale check is a
    refusal, not a warning.
-4. Record the verdict with `rail loop review <slug> --run <run-id> --key <key>`.
+4. Record the verdict with
+   `rail loop review <slug> --commit <sha> --verdict approve|reject --key <key>`.
 5. If the work is wrong, refuse with the specific missing proof. Do not fix the
    candidate yourself; the implementer owns it.
 
@@ -142,7 +147,7 @@ If a command refuses, read `error.details` and follow the named fix.
 ```text
 You have the Context Rail MCP server. Use the canonical tools: `status`,
 `next`, `show`, `why`, `model`, `types`, `explain`, `add`, `update`, `move`,
-`link`, `check`, `verify`, `dispatch`, `review`, `merge`.
+`link`, `check`, `verify`, `brief`, `candidate`, `review`.
 Start with `status` and `next`. Use `show` before any write. Every write needs
 the current etag and an idempotency key. Never call `approve`, `migrate` or
 `pack use` unless the session is explicitly human.

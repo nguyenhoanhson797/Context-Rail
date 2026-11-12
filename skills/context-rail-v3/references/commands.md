@@ -59,23 +59,22 @@ record the charter approval in the same call; otherwise approve separately.
 rail seat list [--all]
 rail seat grant <seat> --role ROLE --anchor SLUG|project [--profile NAME] [--key KEY]
 rail seat revoke <seat> [--key KEY]
-rail seat open <seat> [--ttl-hours N] [--print-env] [-- <command>...]
+rail seat open <seat> [--ttl-hours N] [--print-env]
 rail seat close [<seat> | --all]
 rail seat show [<seat>]
 rail <seat> [command ...]
 ```
 
 A role is declared in a pack's version-2 `operating.roles`; a seat binds one
-role to one anchor (`project` or a container). A run seat is implicit and lasts
-as long as its run.
+role to one anchor (`project` or a container).
 
 - `seat grant` is human-only for a `human: true` role and for the first grant
   when no granting seat exists. A live seat may grant only inside its
   `can.grant` and write reach. `seat revoke` closes the target's sessions and
   every seat it granted.
-- `seat open` writes a session and launches the command with `RAIL_SESSION` set.
-  The command form never prints the token; `--print-env` includes it once in the
-  JSON result. Manual sessions expire after `--ttl-hours` (default 12).
+- `seat open` writes a session. `--print-env` includes its one-time token in the
+  JSON result; export it as `RAIL_SESSION` for the agent. Sessions expire after
+  `--ttl-hours` (default 12).
 - `rail <seat> ...` is a lens. The seat's own session may read and write; another
   seat's session gives a read-only view only when the target anchor is inside
   the caller's read reach; a terminal with no session gets a read-only view.
@@ -101,13 +100,16 @@ rail check declare <slug> --spec-file FILE --expect ETAG|absent [--target ITEM]
                     [--confirm "APPROVE <slug>"]
 rail check run <target> [--worktree PATH] [--verdict pass|fail]
                  [--evidence RECORD] [--confirm PHRASE]
-rail loop report [item] --run RUN_ID --report-file FILE
+rail loop brief <item> [--role implementer|reviewer] [--commit SHA] [--max-chars N]
+rail loop candidate <item> --commit SHA [--base SHA] [--profile NAME] [--model TEXT]
+                    [--harness TEXT] [--usage NAME=NUMBER|unknown]... [--duration SECONDS]
+                    [--key KEY]
+rail loop review <item> --commit SHA --verdict approve|reject [--notes-file FILE]
+                 [--model TEXT] [--harness TEXT] [--key KEY]
+rail loop report [item] [--candidate SHA] --report-file FILE
 rail loop triage [--limit N] [--report ID] [--acknowledge]
 rail loop execution <target> --action NAME --state running|succeeded|failed|cancelled
-                    [--output FILE]... [--error WHY]rail loop dispatch <item> --expect ETAG --key KEY [--profile NAME]
-rail loop review   <item> --run RUN_ID --key KEY [--profile NAME]
-rail loop merge    <item> --run RUN_ID --expect ETAG --key KEY [--push]
-rail loop tick --key KEY [--timeout SECONDS]
+                    [--output FILE]... [--error WHY]
 rail gate [--warnings-as-errors]
 ```
 
@@ -159,8 +161,8 @@ rail serve ui [--port N]
 
 Every former flat command name is still accepted: `status`, `digest`,
 `cto brief`, `find`, `show`, `ledger`, `add`, `update`, `move`, `link`,
-`rename`, `relocate`, `check`, `verify`, `dispatch`, `review`, `merge`,
-`report`, `triage`, `cto tick`, `ci`, `doctor`, `reindex`, `migrate`,
+`rename`, `relocate`, `check`, `verify`, `brief`, `candidate`, `review`,
+`report`, `triage`, `ci`, `doctor`, `reindex`, `migrate`, `upgrade`,
 `rollback`, `pack`, `measure`, `sync`, `adapters sync`, `mcp serve` and
 `ui serve`. The grouped names above are the documented surface. The `seat`
 commands and the `rail <seat>` lens exist only in a store whose pack declares
@@ -174,7 +176,7 @@ roles; a legacy store keeps the name-based behaviour and refuses them with the
 | `NOT_FOUND` | No store, unknown slug, unknown pack |
 | `VALIDATION_FAILED` | Bad flags, illegal transition, unapproved confirmation phrase |
 | `CONFLICT` | Etag changed since read; re-read and retry |
-| `INVALID_STATE` | Dispatch of a non-executable item, immutable record, wrong profile recipe |
+| `INVALID_STATE` | A candidate or brief for a non-leaf item, immutable record, unapproved charter |
 | `BUSINESS_RULE_VIOLATED` | A charter gate is not satisfied |
 | `PERMISSION_DENIED` | The role, reach or identity does not allow the call |
 | `SESSION_REQUIRED` | A tokenless role-mode caller tried to write |

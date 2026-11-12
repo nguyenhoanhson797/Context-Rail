@@ -67,7 +67,7 @@ interpreter form:
 ```
 
 The MCP server exposes the **canonical** tool names (`status`, `next`, `show`,
-`add`, `move`, `dispatch`, `review`, `merge`, …), each with a closed JSON schema
+`add`, `move`, `brief`, `candidate`, `review`, …), each with a closed JSON schema
 and a `permission`/`decision` metadata pair. The response is the same JSON
 envelope as the CLI: `{"ok": true, "value": ...}` or `{"ok": false, "error":
 {...}}`.
@@ -97,6 +97,13 @@ as you; use OS-level isolation for a real boundary.
   store's profiles: `rail ops adapters render --harness claude`.
 - Use a distinct `--actor` for review so the implementer cannot approve its own
   work.
+
+### Droid
+
+- Reads `AGENTS.md` and skills from `.factory/skills/` or `.agents/skills/`.
+- MCP: `droid mcp add` with the same `rail ... serve mcp` command and args.
+- Use Droid's own sub-agents (custom droids) for the implementer and the
+  reviewer; the rail only supplies their briefs and records their results.
 
 ### Cursor
 
@@ -153,6 +160,34 @@ rail change move <slug> <status> --expect <etag> --key <key>
 
 A shell loop is a valid agent. The loop is `overview → next → show → change →
 check run → digest`.
+
+## Native sub-agents
+
+The rail never starts an agent. Each harness has its own way to run one, and
+that way is the one to use:
+
+| Harness | Native sub-agent |
+|---|---|
+| Claude Code | a subagent from `.claude/agents/<role>.md` |
+| Codex | a separate `codex exec` session or its own agent roles |
+| opencode | an agent defined in `opencode.json` or `.opencode/agent/` |
+| Droid | a custom droid or a Task call |
+| Cursor, Gemini CLI | a second chat or background agent |
+
+The pattern is the same everywhere:
+
+```bash
+rail loop brief <item> --role implementer      # the work order, bounded and tool-neutral
+# the sub-agent works in its own git worktree and commits
+rail loop candidate <item> --commit <sha> --model <name> --harness <tool>
+rail check run <item> --worktree <path>
+rail loop brief <item> --role reviewer         # hand this to a different sub-agent
+rail loop review <item> --commit <sha> --verdict approve
+```
+
+`--model` and `--harness` are optional labels you pass so the ledger can
+compare tools. The profile holds no model, effort or tool settings: your
+harness owns them.
 
 ## Skills vs instructions
 
