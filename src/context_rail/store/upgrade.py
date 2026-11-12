@@ -145,6 +145,28 @@ def upgrade_charter_text(text: str) -> tuple[str, list[str]]:
     return newline.join(lines), reasons
 
 
+def declares_roles(store: Path, manifest: Manifest) -> bool:
+    """Whether the store's pack declares operating roles, even when it no longer loads."""
+    from context_rail.model.errors import ModelError
+    from context_rail.model.pack import load_pack
+
+    try:
+        pack = load_pack(manifest.pack, Path(store))
+    except (ModelError, OSError):
+        pass
+    else:
+        return pack.operating is not None and bool(pack.operating.roles)
+    for rel in _pack_paths(Path(store)):
+        try:
+            document = load_yaml((Path(store) / rel).read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        operating = document.get("operating") if isinstance(document, dict) else None
+        if isinstance(operating, dict) and operating.get("roles"):
+            return True
+    return False
+
+
 def plan_upgrade(store: Path, manifest: Manifest) -> list[UpgradeChange]:
     """Every file under ``store`` the upgrade would rewrite, in path order."""
     store = Path(store)

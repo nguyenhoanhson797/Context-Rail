@@ -102,6 +102,37 @@ def test_move_done_opens_after_an_approving_review(leaf_item: SimpleNamespace) -
     assert records_of(leaf_item.store, "review.verdict")
 
 
+def test_move_done_refused_when_a_newer_candidate_supersedes_the_approval(
+    leaf_item: SimpleNamespace,
+) -> None:
+    approved = candidate(leaf_item, model="model-a")
+    run_checks(leaf_item)
+    reviewed = invoke(
+        "review",
+        {"item": leaf_item.slug, "commit": "HEAD", "verdict": "approve", "model": "model-b"},
+        store=leaf_item.store,
+        actor="qa",
+    )
+    assert is_ok(reviewed), reviewed
+    (leaf_item.root / "src" / "app.py").write_text("VALUE = 3\n", encoding="utf-8", newline="\n")
+    run_git(leaf_item.root, "add", "src/app.py")
+    run_git(leaf_item.root, "commit", "-m", "later change")
+    newer = invoke(
+        "candidate",
+        {"item": leaf_item.slug, "commit": "HEAD", "model": "model-a"},
+        store=leaf_item.store,
+        actor="dev",
+    )
+    assert is_ok(newer), newer
+    run_checks(leaf_item)
+
+    refused = move_done(leaf_item)
+
+    assert refusal(refused)[0] == "BUSINESS_RULE_VIOLATED"
+    reasons = refused["error"]["details"]["reasons"]
+    assert any(approved in reason and "not" in reason for reason in reasons), reasons
+
+
 def test_move_done_refused_after_a_rejecting_review(leaf_item: SimpleNamespace) -> None:
     candidate(leaf_item, model="model-a")
     run_checks(leaf_item)

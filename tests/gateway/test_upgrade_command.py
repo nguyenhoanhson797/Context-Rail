@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 import yaml
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import latest_record, tree_bytes, write_legacy_runtime_files
+from helpers import (
+    as_human,
+    latest_record,
+    refusal,
+    tree_bytes,
+    write_legacy_runtime_files,
+)
 
 PHRASE = "UPGRADE store"
 PROFILE = "workspace/profiles/implementer/profile.md"
@@ -128,3 +136,28 @@ def test_upgrade_reports_reapproval_next_step(approved_store: Path) -> None:
     assert "rail ops adapters render" in steps
     record = latest_record(approved_store, "upgrade.completed")
     assert PROFILE in record["data"]["changed"]
+
+
+def test_role_mode_upgrade_refuses_an_actor_flag(role_store: SimpleNamespace) -> None:
+    result = invoke("upgrade", {"dry_run": True}, store=role_store.store, actor="human")
+
+    assert refusal(result) == ("PERMISSION_DENIED", "actor_flag_refused")
+
+
+def test_role_mode_upgrade_refuses_a_tokenless_caller_without_a_terminal(
+    role_store: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RAIL_ACTOR", "human")
+
+    result = invoke("upgrade", {"dry_run": True}, store=role_store.store)
+
+    assert refusal(result)[0] == "PERMISSION_DENIED"
+
+
+def test_role_mode_upgrade_runs_for_the_human_on_a_terminal(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        result = invoke("upgrade", {"dry_run": True}, store=role_store.store, actor=None)
+
+    assert is_ok(result), result

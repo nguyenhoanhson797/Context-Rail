@@ -181,13 +181,13 @@ def first_parent(root: Path, commit: str) -> str | None:
 
 
 def diff_names(root: Path, base: str, commit: str) -> list[str]:
-    """Paths ``commit`` changes relative to ``base``, sorted, a rename as its new path."""
+    """Paths ``commit`` changes relative to ``base``, sorted; a rename lists both its paths."""
     result = _checked(
         [
             "diff",
             "--name-only",
             "-z",
-            "-M",
+            "--no-renames",
             _revision(base, "base"),
             _revision(commit, "commit"),
             "--",

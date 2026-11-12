@@ -345,6 +345,10 @@ def invoke(
         if tool.name == "upgrade":
             if context is None:
                 context = _open_manifest_only(store, resolved_actor, actor_named)
+            if _require_terminal_human_in_role_store(context, actor):
+                resolved_actor, actor_named = "human", True
+                context.actor, context.actor_named = resolved_actor, actor_named
+                ACTOR_NAMED.set(actor_named)
         elif tool.name not in {"init", "migrate"}:
             if context is None:
                 context = _open_context(store, resolved_actor, actor_named)
@@ -460,6 +464,17 @@ def _authorize(
     if refusal is not None:
         return fail(
             "PERMISSION_DENIED", refusal, {"tool": tool.name, "actor": actor}
+        )
+    if (
+        context is None
+        and tool.permission == "write"
+        and actor == ANONYMOUS
+        and tool.name not in _SCRATCH_WRITES
+    ):
+        return fail(
+            "PERMISSION_DENIED",
+            f"writes need a named actor: {ACTOR_HINT}",
+            {"tool": tool.name, "reason": "actor_required", "hint": ACTOR_HINT},
         )
     if tool.permission == "human" or context is None:
         return None
@@ -732,6 +747,31 @@ def _open_context(store: Path | str | None, actor: str, actor_named: bool = True
         actor=actor,
         actor_named=actor_named,
     )
+
+
+def _require_terminal_human_in_role_store(context: Context, actor: str | None) -> bool:
+    """In a store with roles only the human on a terminal or the UI channel upgrades it.
+
+    Returns whether the store has roles, in which case that channel is the human.
+    """
+    from context_rail.store.upgrade import declares_roles
+
+    if not declares_roles(context.store, context.manifest):
+        return False
+    if isinstance(actor, str) and actor.strip():
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            "this store acts by seat: --actor is not accepted; "
+            "run the upgrade yourself in a terminal",
+            {"tool": "upgrade", "reason": "actor_flag_refused"},
+        )
+    if not (HAS_TTY.get() or HUMAN_CHANNEL.get()):
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            "upgrading a store with roles needs the human on a terminal",
+            {"tool": "upgrade", "reason": "human_channel_required"},
+        )
+    return True
 
 
 def _open_manifest_only(

@@ -2,7 +2,7 @@
 
 An execution record is what an external action (a render, a generate, a batch)
 reports. It is not a workflow status: the engine never maps one onto the other.
-Worker ``run.completed`` records stay their own schema.
+Candidate and review records have their own schemas.
 """
 
 from __future__ import annotations

@@ -289,7 +289,9 @@ def test_rename_escape_is_refused(store_factory: Any) -> None:
 def test_init_root_escape_is_forbidden(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
-    proc = run_cli(project, "init", "--dir", str(project), "--root", "../escape")
+    proc = run_cli(
+        project, "--actor", "human", "init", "--dir", str(project), "--root", "../escape"
+    )
     assert proc.returncode == 1, proc.stderr
     payload = json.loads(proc.stdout)
     assert payload["ok"] is False and payload["error"]["code"] == "FORBIDDEN"

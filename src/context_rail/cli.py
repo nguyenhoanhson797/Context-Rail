@@ -77,8 +77,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--actor",
         help=(
-            "acting actor (default: RAIL_ACTOR, then human; "
-            "human-only tools need an explicit human)"
+            "acting actor (default: RAIL_ACTOR; a terminal is the human, "
+            "anything else only reads; human-only tools need an explicit human)"
         ),
     )
     parser.add_argument(

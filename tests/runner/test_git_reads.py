@@ -73,13 +73,13 @@ def test_diff_names_lists_changed_paths_with_forward_slashes(tmp_path: Path) -> 
     assert diff_names(root, base, tip) == ["docs/x.md", "src/a/b.py"]
 
 
-def test_diff_names_lists_a_rename_as_its_new_path(tmp_path: Path) -> None:
+def test_diff_names_lists_a_rename_as_both_paths(tmp_path: Path) -> None:
     root, base = _repo(tmp_path)
     run_git(root, "mv", "app.py", "core.py")
     run_git(root, "commit", "-m", "rename")
     tip = run_git(root, "rev-parse", "HEAD").stdout.strip()
 
-    assert diff_names(root, base, tip) == ["core.py"]
+    assert diff_names(root, base, tip) == ["app.py", "core.py"]
 
 
 def test_diff_text_truncates_at_max_chars(tmp_path: Path) -> None:

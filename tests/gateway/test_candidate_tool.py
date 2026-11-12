@@ -367,6 +367,36 @@ def test_candidate_refuses_code_outside_seat_reach(seated: SimpleNamespace) -> N
     assert records_of(seated.store, "candidate.recorded") == []
 
 
+def test_candidate_refuses_a_rename_out_of_seat_reach(seated: SimpleNamespace) -> None:
+    restrict_code_write(seated.store, ["src/**"])
+    start_repo(seated)
+    run_git(seated.root, "mv", "src/app.py", "docs/app.py")
+    run_git(seated.root, "commit", "-m", "move out of reach")
+
+    result = as_seat(
+        seated.store, seated.seat, "candidate", {"item": seated.task, "commit": "HEAD"}
+    )
+
+    assert refusal(result) == ("BUSINESS_RULE_VIOLATED", "code_reach")
+    assert "docs/app.py" in result["error"]["details"]["paths"]
+
+
+def test_candidate_refuses_a_rename_into_reach_that_leaves_an_outside_path(
+    seated: SimpleNamespace,
+) -> None:
+    restrict_code_write(seated.store, ["src/**"])
+    start_repo(seated)
+    run_git(seated.root, "mv", "docs/x.md", "src/x.md")
+    run_git(seated.root, "commit", "-m", "pull a file into reach")
+
+    result = as_seat(
+        seated.store, seated.seat, "candidate", {"item": seated.task, "commit": "HEAD"}
+    )
+
+    assert refusal(result) == ("BUSINESS_RULE_VIOLATED", "code_reach")
+    assert result["error"]["details"]["paths"] == ["docs/x.md"]
+
+
 def test_candidate_inside_seat_reach_is_accepted(seated: SimpleNamespace) -> None:
     restrict_code_write(seated.store, ["src/**"])
     start_repo(seated)

@@ -762,15 +762,16 @@ def gate_candidate(
 ) -> str | None:
     """The commit a gate binds its proofs to for one Item.
 
-    The newest review's commit wins, then the newest recorded candidate, then
-    the commit a Check was proven against, so a transition never implies an
-    approval and a gate with no review still names the work it judged.
+    The newest recorded candidate wins, so a review of an older commit cannot
+    stand in for later work; a review is then judged against that commit. With
+    no candidate the review's commit, then the commit a Check was proven
+    against, names the work the gate judged.
     """
-    if review is not None and review.candidate:
-        return review.candidate
     latest = query.latest_candidate(index, slug)
     if latest is not None:
         return str(latest["commit"])
+    if review is not None and review.candidate:
+        return review.candidate
     return next((state.candidate for state in states if state.candidate), None)
 
 

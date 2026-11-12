@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -29,6 +30,13 @@ def test_unnamed_non_terminal_write_refused_actor_required(
 
     assert refusal(result) == ("PERMISSION_DENIED", "actor_required")
     assert "--actor" in result["error"]["details"]["hint"]
+
+
+def test_unnamed_non_terminal_init_refused_actor_required(tmp_path: Path) -> None:
+    result = invoke("init", {"dir": str(tmp_path / "fresh")})
+
+    assert refusal(result) == ("PERMISSION_DENIED", "actor_required")
+    assert not (tmp_path / "fresh").exists()
 
 
 def test_unnamed_non_terminal_read_allowed(leaf_item: SimpleNamespace) -> None:
