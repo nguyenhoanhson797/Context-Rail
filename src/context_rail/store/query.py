@@ -26,6 +26,9 @@ __all__ = [
     "QueryError",
     "approval_for",
     "brief_rows",
+    "candidate_count",
+    "candidate_for_commit",
+    "candidates_for",
     "check_state",
     "check_states",
     "code_touches",
@@ -37,6 +40,7 @@ __all__ = [
     "human_wait_reports",
     "items_for_migration",
     "last_activity_ms",
+    "latest_candidate",
     "ledger",
     "live_seats",
     "pack_change_for",
@@ -613,6 +617,63 @@ def code_touches(
         {"item": item, "record": record, "at": at, "symbol": symbol}
         for item, record, at in rows
     ]
+
+
+_CANDIDATE_SELECT = (
+    "SELECT record_id, item, commit_sha, base, attempt, actor, seat, at, data_json "
+    "FROM candidates"
+)
+_CANDIDATE_ORDER = "ORDER BY at DESC, attempt DESC, record_id DESC"
+
+
+def candidates_for(ix: Index, item: str, limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
+    """Candidate commits recorded for ``item``, newest first."""
+    item = _text(item, "item")
+    limit = _bounded(limit, LIMIT_BOUNDS, "limit")
+    rows = ix.conn.execute(
+        f"{_CANDIDATE_SELECT} WHERE item = ? {_CANDIDATE_ORDER} LIMIT ?", (item, limit)
+    ).fetchall()
+    return [_candidate_row(row) for row in rows]
+
+
+def candidate_for_commit(ix: Index, item: str, commit: str) -> dict[str, Any] | None:
+    """The newest candidate record of ``item`` for exactly ``commit``, or None."""
+    item = _text(item, "item")
+    commit = _text(commit, "commit")
+    row = ix.conn.execute(
+        f"{_CANDIDATE_SELECT} WHERE item = ? AND commit_sha = ? {_CANDIDATE_ORDER} LIMIT 1",
+        (item, commit),
+    ).fetchone()
+    return None if row is None else _candidate_row(row)
+
+
+def latest_candidate(ix: Index, item: str) -> dict[str, Any] | None:
+    """The newest candidate recorded for ``item``, or None."""
+    rows = candidates_for(ix, item, limit=1)
+    return rows[0] if rows else None
+
+
+def candidate_count(ix: Index, item: str) -> int:
+    """How many candidates were recorded for ``item``."""
+    item = _text(item, "item")
+    return ix.conn.execute(
+        "SELECT count(*) FROM candidates WHERE item = ?", (item,)
+    ).fetchone()[0]
+
+
+def _candidate_row(row: tuple[Any, ...]) -> dict[str, Any]:
+    record_id, item, commit, base, attempt, actor, seat, at, data_json = row
+    return {
+        "record_id": record_id,
+        "item": item,
+        "commit": commit,
+        "base": base,
+        "attempt": attempt,
+        "actor": actor,
+        "seat": seat,
+        "at": at,
+        "data": json.loads(data_json),
+    }
 
 
 def run_record(ix: Index, run_id: str) -> dict[str, Any] | None:

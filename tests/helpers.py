@@ -374,6 +374,40 @@ def write_record(
     return path
 
 
+def write_candidate(
+    store: Path,
+    record_id: str,
+    item: str,
+    commit: str,
+    *,
+    base: str = "0" * 40,
+    actor: str = "dev",
+    at: str = "2026-11-12T10:00:00Z",
+    **data: Any,
+) -> Path:
+    """Write one ``candidate.recorded`` Record; ``data`` overrides any payload key."""
+    payload: dict[str, Any] = {
+        "schema": 1,
+        "item": item,
+        "commit": commit,
+        "base": base,
+        "files_changed": [],
+        "attempt": 1,
+        "actor": actor,
+        "at": at,
+    }
+    payload.update(data)
+    return write_record(
+        store,
+        record_id,
+        "candidate.recorded",
+        payload,
+        at=at,
+        actor=actor,
+        about=(item,),
+    )
+
+
 def write_run(
     store: Path,
     run_id: str,

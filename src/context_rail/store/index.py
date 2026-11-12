@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from context_rail.core.util import canonical_iso, sha256_hex
+from context_rail.model.candidate import CANDIDATE_KIND, parse_candidate
 from context_rail.model.cto import parse_check, parse_report, parse_run, parse_verdict
 from context_rail.model.errors import ModelError
 from context_rail.model.execution import EXECUTION_KIND, parse_execution
@@ -57,7 +58,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 7
+INDEX_SCHEMA = 8
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -312,6 +313,21 @@ _SCHEMA = (
     """,
     "CREATE INDEX executions_target_action ON executions(target, action, attempt DESC)",
     "CREATE INDEX executions_action ON executions(action, state)",
+    """
+    CREATE TABLE candidates(
+        path TEXT PRIMARY KEY,
+        record_id TEXT NOT NULL,
+        item TEXT NOT NULL,
+        commit_sha TEXT NOT NULL,
+        base TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        actor TEXT NOT NULL,
+        seat TEXT,
+        at TEXT NOT NULL,
+        data_json TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX candidates_item_at ON candidates(item, at DESC)",
 )
 
 #: Projection tables keyed by the store path of their evidence.
@@ -325,6 +341,7 @@ _PATH_TABLES = (
     "reviews",
     "executions",
     "seats",
+    "candidates",
 )
 _PROJECTION_COLUMNS = {
     "checks": (
@@ -443,6 +460,18 @@ _PROJECTION_COLUMNS = {
         "profile",
         "actor_by",
     ),
+    "candidates": (
+        "path",
+        "record_id",
+        "item",
+        "commit_sha",
+        "base",
+        "attempt",
+        "actor",
+        "seat",
+        "at",
+        "data_json",
+    ),
 }
 
 _RUN_KIND = "run.completed"
@@ -459,6 +488,7 @@ _PROJECTED_KINDS = frozenset(
         _REPORT_KIND,
         _APPROVAL_KIND,
         _REVIEW_KIND,
+        CANDIDATE_KIND,
         EXECUTION_KIND,
         TRIAGE_KIND,
         SEAT_GRANTED,
@@ -840,6 +870,11 @@ class Index:
             conn.execute("DELETE FROM run_skills WHERE run_id = ?", (run[0],))
             conn.execute("DELETE FROM run_attempts WHERE run_id = ?", (run[0],))
             conn.execute("DELETE FROM code_touch WHERE record = ?", (run[0],))
+        candidate = conn.execute(
+            "SELECT record_id FROM candidates WHERE path = ?", (path,)
+        ).fetchone()
+        if candidate is not None:
+            conn.execute("DELETE FROM code_touch WHERE record = ?", (candidate[0],))
         evaluation = conn.execute(
             "SELECT run_id FROM run_evaluations WHERE path = ?", (path,)
         ).fetchone()
@@ -908,6 +943,8 @@ def _projection(doc: Doc) -> tuple[list[tuple[str, tuple[Any, ...]]], set[str]]:
         return _approval_rows(doc, record_id, data), set()
     if kind == EXECUTION_KIND:
         return _execution_rows(doc, record_id, data), set()
+    if kind == CANDIDATE_KIND:
+        return _candidate_rows(doc, record_id, data), set()
     if kind in SEAT_KINDS:
         return _seat_rows(doc, record_id, kind, data), set()
     return _review_rows(doc, record_id, data), set()
@@ -1156,6 +1193,34 @@ def _execution_rows(
         _json(data),
     )
     return [("executions", row)]
+
+
+def _candidate_rows(
+    doc: Doc, record_id: str, data: dict[str, Any]
+) -> list[tuple[str, tuple[Any, ...]]]:
+    candidate = parse_candidate(data)
+    rows: list[tuple[str, tuple[Any, ...]]] = [
+        (
+            "candidates",
+            (
+                doc.path,
+                record_id,
+                candidate.item,
+                candidate.commit,
+                candidate.base,
+                candidate.attempt,
+                candidate.actor,
+                candidate.seat,
+                candidate.at,
+                _json(data),
+            ),
+        )
+    ]
+    rows.extend(
+        ("code_touch", (path, None, candidate.item, record_id, candidate.at))
+        for path in candidate.files_changed
+    )
+    return rows
 
 
 def _strict(
