@@ -738,7 +738,6 @@ def _markdown_record(
 ) -> _Record:
     """Serialize a markdown record: frontmatter plus the requested body."""
     body = request.body or ""
-    digest = record_digest({**payload, "body": body})
     front: dict[str, Any] = {"primitive": "record", "preset": payload["preset"]}
     if request.title is not None:
         front["title"] = request.title
@@ -752,6 +751,9 @@ def _markdown_record(
     for name, targets in request.relations.items():
         front[name] = [f"[[{target}]]" for target in targets]
     front.update(fields)
+    # The digest covers every field the engine wrote, not the prose: a record's
+    # body is the human's to edit, its frontmatter is the engine's evidence.
+    digest = record_digest(front)
     front["digest"] = digest
     text = "---\n" + dump_frontmatter(front) + "---\n" + body
     return _Record(

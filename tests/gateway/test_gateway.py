@@ -1172,7 +1172,10 @@ def test_add_decision_writes_one_markdown_record(tmp_path):
         key: front[key]
         for key in ("id", "primitive", "preset", "kind", "at", "actor", "about", "data")
     }
-    assert front["digest"] == record_digest({**metadata, "body": body})
+    assert front["digest"] == record_digest(
+        {key: value for key, value in front.items() if key != "digest"}
+    )
+    assert front["digest"] != record_digest({**metadata, "body": body})
     assert result["value"]["slug"] == "use-sqlite"
     assert result["value"]["record"] == front["id"]
 

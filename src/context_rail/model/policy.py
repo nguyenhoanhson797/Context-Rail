@@ -155,7 +155,7 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
     data = mapping(fields, "charter")
     schema = schema_version(data, CHARTER_SCHEMA, "charter")
     no_unknown(data, CHARTER_KEYS, "charter")
-    require(data, ("project", "default_branch"), "charter")
+    require(data, ("project", "default_branch", "protected_files"), "charter")
 
     project = parse_project(data["project"])
     protected_files = tuple(

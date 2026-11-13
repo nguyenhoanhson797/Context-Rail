@@ -84,6 +84,7 @@ def minimal_charter() -> dict[str, Any]:
     return {
         "schema": 1,
         "project": {"goal": "ride", "vision": "v", "scope": ["must-1"], "wont": []},
+        "protected_files": ["rail.yaml", "charter.md"],
         "default_branch": "main",
     }
 

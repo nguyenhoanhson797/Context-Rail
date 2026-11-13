@@ -583,3 +583,41 @@ def test_a_pack_change_flips_the_charter_approval(approved_store: Path) -> None:
     )
 
     assert approval_state(context, "charter")["state"] == "mismatch"
+
+
+def test_a_scoped_approval_approves_the_charter(approved_store: Path) -> None:
+    """The record witnesses the whole picture, so its scope does not shrink it."""
+    approved = invoke(
+        "approve",
+        {
+            "target": "charter",
+            "confirm": "APPROVE charter",
+            "confirmer": "validator",
+            "scope": "pack",
+        },
+        store=approved_store,
+        actor="human",
+    )
+    assert is_ok(approved), approved
+
+    shown = invoke("show", {"slug": "charter"}, store=approved_store)["value"]
+
+    assert shown["approval"]["state"] == "approved"
+
+
+def test_a_signature_is_not_valid_merely_for_existing() -> None:
+    from context_rail.store.approval import verify_signature
+
+    record = {
+        "data": {
+            "signature": "anything",
+            "target": "charter",
+            "snapshot_digest": "abc",
+        }
+    }
+
+    assert verify_signature(record) == {
+        "valid": False,
+        "signer": None,
+        "reason": "signature_unverified",
+    }

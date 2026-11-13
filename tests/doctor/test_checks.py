@@ -507,6 +507,18 @@ def test_markdown_record_body_edit_is_not_tampered(store_factory) -> None:
     assert _codes(store) == []
 
 
+def test_a_tampered_markdown_record_frontmatter_is_reported(store_factory) -> None:
+    """The prose is hand-editable; the fields the engine wrote are not."""
+    store = store_factory()
+    created = invoke(
+        "add", {"preset": "decision", "title": "Keep records"}, store=store, actor="cto"
+    )
+    assert is_ok(created), created
+    touch_doc(store, created["value"]["path"], title="Rewritten by hand")
+
+    assert "record_tampered" in _codes(store)
+
+
 def test_store_noise_reports_only_bad_encoding(store_factory) -> None:
     store = store_factory(docs=20)
     crlf = (

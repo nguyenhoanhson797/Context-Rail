@@ -42,6 +42,7 @@ from context_rail.store.doc import (
     UNKNOWN_RELATION,
     parse_doc,
     record_digest,
+    record_frontmatter,
 )
 from context_rail.store.index import INVALID_PAYLOAD, Index
 from context_rail.store.location import local_dir
@@ -679,16 +680,34 @@ def _field_hints(
 
 
 def _tampered(store: Path, path: str) -> bool:
-    """True when a JSON record's declared digest does not cover its payload."""
-    if not path.lower().endswith(".json"):
-        return False
+    """True when a record's declared digest does not cover what it declares.
+
+    A markdown record's body is prose the human may edit, so only its
+    frontmatter is covered; a JSON record is covered whole.
+    """
+    lowered = path.lower()
     try:
-        payload = json.loads((store / path).read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
+        data = (store / path).read_bytes()
+    except OSError:
         return False
-    if not isinstance(payload, dict):
+    if lowered.endswith(".json"):
+        try:
+            payload = json.loads(data.decode("utf-8-sig"))
+        except (ValueError, UnicodeDecodeError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        return payload.get("digest") != record_digest(payload)
+    if not lowered.endswith(".md"):
         return False
-    return payload.get("digest") != record_digest(payload)
+    parsed = record_frontmatter(data)
+    if not parsed:
+        return False
+    front = dict(parsed)
+    declared = front.pop("digest", None)
+    if declared is None:
+        return False
+    return declared != record_digest(front)
 
 
 def _relation_type_issues(

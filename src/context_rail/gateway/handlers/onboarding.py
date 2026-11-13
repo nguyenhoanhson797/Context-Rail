@@ -712,7 +712,10 @@ def _materialise(
     manifest, pack, existing, manifest_data = _store_shape(
         store, pack_name, code_graph=code_graph
     )
-    prepared = _prepare(answers, project_root, solo=solo)
+    from context_rail.gateway.gateway import Context
+
+    context = Context(store=store, manifest=manifest, pack=pack, actor=actor)
+    prepared = _prepare(answers, project_root, solo=solo, context=context)
     parsed = parse_answers(prepared)
     if parsed["pack"] != pack.name:
         raise WriteRefused(
@@ -720,9 +723,6 @@ def _materialise(
             f"the answers name pack {parsed['pack']!r}, not {pack.name!r}",
             {"key": "pack"},
         )
-    from context_rail.gateway.gateway import Context
-
-    context = Context(store=store, manifest=manifest, pack=pack, actor=actor)
     ops, info = picture_ops(
         context,
         parsed,
@@ -822,8 +822,14 @@ def _store_shape(
     return manifest, pack, False, data
 
 
-def _prepare(answers: dict[str, Any], project_root: Path, *, solo: bool = False) -> dict[str, Any]:
-    """Fill the two charter fields the engine derives, never guessing an answer."""
+def _prepare(
+    answers: dict[str, Any],
+    project_root: Path,
+    *,
+    solo: bool = False,
+    context: Any = None,
+) -> dict[str, Any]:
+    """Fill the charter fields the engine derives, never guessing an answer."""
     if not isinstance(answers, dict):
         return answers
     prepared = dict(answers)
@@ -844,9 +850,33 @@ def _prepare(answers: dict[str, Any], project_root: Path, *, solo: bool = False)
         charter["mode"] = "solo"
     titles = _titles(prepared)
     if titles is not None:
-        charter.setdefault("project", _project(_picture_slugs(*titles)))
+        slugs = _picture_slugs(*titles)
+        charter.setdefault("project", _project(slugs))
+        if context is not None:
+            charter.setdefault(
+                "protected_files",
+                _picture_protected(context, slugs, prepared["scope"]),
+            )
     prepared["charter"] = charter
     return prepared
+
+
+def _picture_protected(
+    context: Any, slugs: dict[str, Any], scope: Sequence[dict[str, Any]]
+) -> list[str]:
+    """The protected paths the picture's own documents resolve to."""
+    return [
+        "rail.yaml",
+        _picture_path(context, "policy", "charter", CHARTER_TARGET),
+        _picture_path(context, "item", "goal", slugs["goal"]),
+        _picture_path(context, "note", "vision", slugs["vision"]),
+        _picture_path(context, "note", "wont", slugs["wont"]),
+        *(
+            _picture_path(context, "item", "scope", slug)
+            for slug, entry in zip(slugs["scope"], scope, strict=True)
+            if entry["priority"] in ("must", "should")
+        ),
+    ]
 
 
 def _titles(

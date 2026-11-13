@@ -924,7 +924,7 @@ def _frontmatter(path: Path) -> tuple[dict[str, Any], str]:
     return load_yaml(raw), body
 
 
-def test_markdown_record_creates_one_document_with_body_digest(store_factory):
+def test_markdown_record_creates_one_document_with_frontmatter_digest(store_factory):
     store = store_factory()
     manifest = load_manifest(store)
 
@@ -946,7 +946,10 @@ def test_markdown_record_creates_one_document_with_body_digest(store_factory):
         key: front[key]
         for key in ("id", "primitive", "preset", "kind", "at", "actor", "about", "data")
     }
-    assert front["digest"] == record_digest({**metadata, "body": body})
+    assert front["digest"] == record_digest(
+        {key: value for key, value in front.items() if key != "digest"}
+    )
+    assert front["digest"] != record_digest({**metadata, "body": body})
     assert doc_digest(rel, (store / rel).read_bytes()) == front["digest"]
 
 
