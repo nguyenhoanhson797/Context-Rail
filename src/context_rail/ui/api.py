@@ -53,18 +53,18 @@ _ENGINE_KEYS = frozenset(
 )
 
 
-def context_document(store: Path, actor: str = "human") -> dict[str, Any]:
+def context_document(store: Path) -> dict[str, Any]:
     """The pack-aware project snapshot the shell renders."""
-    context = _open(store, actor)
+    context = _open(store)
     try:
         return snapshot.build(context)
     finally:
         context.close()
 
 
-def health_document(store: Path, actor: str = "human") -> dict[str, Any]:
+def health_document(store: Path) -> dict[str, Any]:
     """The diagnostics document; the doctor runs behind this read only."""
-    result = invoke("doctor", {}, store=store, actor=actor)
+    result = invoke("doctor", {}, store=store)
     if not result.get("ok"):
         error = result.get("error") or {}
         return {
@@ -95,9 +95,9 @@ def health_document(store: Path, actor: str = "human") -> dict[str, Any]:
     }
 
 
-def doc_document(store: Path, slug: str, actor: str = "human") -> dict[str, Any]:
+def doc_document(store: Path, slug: str) -> dict[str, Any]:
     """One document plus its body, relations and workflow card."""
-    shown = invoke("show", {"slug": slug}, store=store, actor=actor)
+    shown = invoke("show", {"slug": slug}, store=store)
     if not shown.get("ok"):
         error = shown.get("error") or {}
         return {
@@ -135,9 +135,9 @@ def doc_document(store: Path, slug: str, actor: str = "human") -> dict[str, Any]
     }
 
 
-def read_document(store: Path, view: str, actor: str = "human") -> dict[str, Any]:
+def read_document(store: Path, view: str) -> dict[str, Any]:
     """One named read in the legacy ``{status, ...}`` envelope."""
-    context = _open(store, actor)
+    context = _open(store)
     try:
         return readmodels.read(context, view)
     finally:
@@ -192,9 +192,9 @@ def projects_document(store: Path) -> dict[str, Any]:
     }
 
 
-def portfolio_document(store: Path, actor: str = "human") -> dict[str, Any]:
+def portfolio_document(store: Path) -> dict[str, Any]:
     """The portfolio read; one store today, so one row."""
-    health = health_document(store, actor)
+    health = health_document(store)
     doctor = health.get("doctor") or {}
     return {
         "status": "ok",
@@ -247,7 +247,31 @@ def call_tool(
     }
 
 
-def _open(store: Path, actor: str) -> Context:
+def _open(store: Path) -> Context:
+    """Open a read context on the ambient identity, never on a named actor.
+
+    A role store refuses a named actor, so the UI reads as whoever the channel
+    holds: the human terminal, or the seat whose session opened the page.
+    """
+    from context_rail.gateway.execution import (
+        HAS_TTY,
+        HUMAN_CHANNEL,
+        LENS_SEAT,
+        caller_session,
+    )
+    from context_rail.gateway.identity import resolve_identity
+
     manifest = load_manifest(store)
     pack = load_pack(manifest.pack, store)
-    return Context(store=store, manifest=manifest, pack=pack, actor=actor)
+    context = Context(store=store, manifest=manifest, pack=pack, actor="human")
+    context.identity = resolve_identity(
+        context,
+        actor=None,
+        session=caller_session(),
+        tty=HAS_TTY.get(),
+        lens=LENS_SEAT.get(),
+        human_channel=HUMAN_CHANNEL.get(),
+    )
+    context.actor = context.identity.name
+    context.actor_named = context.identity.kind != "anonymous"
+    return context

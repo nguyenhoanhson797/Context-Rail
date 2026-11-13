@@ -192,6 +192,9 @@ def build(context: Any) -> dict[str, Any]:
     fields = _fields(index)
     relations = _relations(index)
     rows = _doc_rows(index)
+    reach = getattr(context, "reach", None)
+    if reach is not None:
+        rows = [row for row in rows if reach.can_read(row[1], path=row[0], preset=row[3])]
     parents = {
         dst
         for by_rel in relations.values()

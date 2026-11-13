@@ -9,7 +9,7 @@ from context_rail.gateway.gateway import Context, invoke
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
 from context_rail.ui import snapshot
-from helpers import init_store
+from helpers import approve_store, init_store
 
 
 def _context(store: Path) -> Context:
@@ -86,6 +86,7 @@ def test_a_priority_item_is_scope_and_not_a_roadmap_container(tmp_path: Path) ->
 
 def test_the_cursor_and_counts_follow_categories(tmp_path: Path) -> None:
     store = init_store(tmp_path, "scrum")
+    approve_store(store)
     _add(store, "sprint", "Sprint 1")
     shown = invoke("show", {"slug": "sprint-1"}, store=store)
     invoke(

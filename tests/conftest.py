@@ -32,6 +32,7 @@ from context_rail.store.location import local_dir
 from helpers import (
     InjectedFault,
     approve_picture,
+    approve_store,
     as_human,
     compiled_model,
     init_store,
@@ -1694,7 +1695,9 @@ def legacy_v1_store(tmp_path: Path) -> Path:
 @pytest.fixture
 def ui_server(tmp_path: Path) -> Iterator[SimpleNamespace]:
     """A loopback UI bound to port 0, stopped at teardown."""
-    with serve_ui(init_store(tmp_path)) as created:
+    store = init_store(tmp_path)
+    approve_store(store)
+    with serve_ui(store) as created:
         yield created
 
 

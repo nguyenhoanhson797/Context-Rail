@@ -96,13 +96,13 @@ def create_server(
                 self._error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "unknown route")
                 return
             if method == "GET" and path == "/api/context":
-                self._safe(api.context_document, store, actor)
+                self._safe(api.context_document, store)
                 return
             if method == "GET" and path == "/api/snapshot":
-                self._safe(api.context_document, store, actor)
+                self._safe(api.context_document, store)
                 return
             if method == "GET" and path == "/api/health":
-                self._safe(api.health_document, store, actor)
+                self._safe(api.health_document, store)
                 return
             if method == "GET" and path == "/api/tools":
                 self._safe(api.tools_document)
@@ -111,17 +111,16 @@ def create_server(
                 self._safe(api.projects_document, store)
                 return
             if method == "GET" and path == "/api/portfolio":
-                self._safe(api.portfolio_document, store, actor)
+                self._safe(api.portfolio_document, store)
                 return
             if method == "GET" and path.startswith("/api/doc/"):
-                self._safe(api.doc_document, store, unquote(path[len("/api/doc/") :]), actor)
+                self._safe(api.doc_document, store, unquote(path[len("/api/doc/") :]))
                 return
             if method == "GET" and path.startswith("/api/read/"):
                 self._safe(
                     api.read_document,
                     store,
                     unquote(path[len("/api/read/") :]),
-                    actor,
                 )
                 return
             if method == "POST" and path.startswith("/api/tool/"):
@@ -131,7 +130,8 @@ def create_server(
 
         def _safe(self, function: Any, *args: Any) -> None:
             try:
-                self._json(HTTPStatus.OK, function(*args))
+                with human_channel():
+                    self._json(HTTPStatus.OK, function(*args))
             except Exception as error:  # a read refusal is an envelope, not a crash
                 self._refusal(error)
 
