@@ -313,3 +313,9 @@ def test_legacy_store_still_uses_allowed_methods(approved_store: Path) -> None:
     assert refused["error"]["code"] == "PERMISSION_DENIED"
     assert refused["error"]["details"]["profile"] == "implementer"
     assert is_ok(allowed), allowed
+
+
+def test_anonymous_cannot_repair_a_role_store(role_store: SimpleNamespace) -> None:
+    repaired = invoke("ops repair", {}, store=role_store.store)
+
+    assert refusal(repaired) == ("SESSION_REQUIRED", "session_required")

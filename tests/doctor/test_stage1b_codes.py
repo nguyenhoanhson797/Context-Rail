@@ -727,7 +727,7 @@ def test_repair_creates_no_approval_review_or_report_and_keeps_adapter_edits(
     kinds = ("approval.recorded", "review.verdict", "report.filed")
     before = {kind: len(records_of(store, kind)) for kind in kinds}
 
-    repaired = invoke("doctor", {"repair": True}, store=store, actor="cto")
+    repaired = invoke("ops repair", {}, store=store, actor="human")
 
     assert is_ok(repaired), repaired
     assert {kind: len(records_of(store, kind)) for kind in kinds} == before

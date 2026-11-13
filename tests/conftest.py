@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable
 
 import pytest
 import yaml
@@ -1707,10 +1707,41 @@ def _move(store: Path, slug: str, status: str) -> None:
     assert is_ok(moved), moved
 
 
+def _onboarded_store(
+    tmp_path: Path, pack: str, edit: Callable[[dict[str, Any]], None] | None = None
+) -> Path:
+    """An approved store of any pack, built through onboarding as a person would.
+
+    A scaffolded store carries no charter, so it is locked out: nothing may
+    move into an active or done category until a human approves a picture.
+    ``edit`` changes the answers before they are written.
+    """
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, Any] = {**picture_answers_payload(), "pack": pack}
+    if edit is not None:
+        edit(payload)
+    answers = _write_answers(tmp_path / "answers.json", payload)
+    result = invoke(
+        "init",
+        {
+            "dir": str(tmp_path),
+            "answers_file": str(answers),
+            "pack": pack,
+            "confirm": "APPROVE charter",
+        },
+        actor="human",
+    )
+    assert is_ok(result), result
+    store = tmp_path / "context-rail"
+    approved = approve_picture(store)
+    assert is_ok(approved), approved
+    return store
+
+
 @pytest.fixture
 def operating_scrum_store(tmp_path: Path) -> SimpleNamespace:
     """A scrum store with an active sprint, stories, a task, a bug and a scope item."""
-    store = init_store(tmp_path / "scrum", "scrum")
+    store = _onboarded_store(tmp_path / "scrum", "scrum")
     sprint = _slug(_created(store, "sprint", "Sprint one"))
     story = _slug(
         _created(
@@ -1740,7 +1771,7 @@ def operating_scrum_store(tmp_path: Path) -> SimpleNamespace:
 @pytest.fixture
 def operating_waterfall_store(tmp_path: Path) -> SimpleNamespace:
     """A waterfall store with ordered phases and deliverables."""
-    store = init_store(tmp_path / "waterfall", "waterfall")
+    store = _onboarded_store(tmp_path / "waterfall", "waterfall")
     first = _slug(
         _created(store, "phase", "Design", set=["sequence=1"])
     )
@@ -1768,7 +1799,18 @@ def operating_waterfall_store(tmp_path: Path) -> SimpleNamespace:
 @pytest.fixture
 def operating_video_store(tmp_path: Path) -> SimpleNamespace:
     """A video store with an active scene, shots and an asset."""
-    store = init_store(tmp_path / "video", "video")
+
+    def no_done_gate(payload: dict[str, Any]) -> None:
+        # These tests drive an item through to a done category to read the
+        # execution findings, so the picture asks for no proof of completion.
+        payload["charter"]["gates"]["item_done"] = {
+            "require_checks": False,
+            "require_acceptance": False,
+            "require_review": False,
+            "require_human": False,
+        }
+
+    store = _onboarded_store(tmp_path / "video", "video", edit=no_done_gate)
     scene = _slug(_created(store, "scene", "Act one", set=["sequence=1"]))
     shot = _slug(
         _created(

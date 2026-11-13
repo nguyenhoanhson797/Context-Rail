@@ -224,3 +224,15 @@ def test_cli_grouped_aliases_run_and_old_names_still_work(tmp_path: Path) -> Non
     assert run_cli(tmp_path, "relocate", "--dry-run", env=HUMAN).returncode == 0
     assert run_cli(tmp_path, "ci", env=HUMAN).returncode in (0, 1)
     assert run_cli(tmp_path, "verify", "--help", env=HUMAN).returncode == 0
+
+
+def test_doctor_has_no_writing_parameters() -> None:
+    tool = next(t for t in TOOLS if t.name == "doctor")
+    names = {param.name for param in tool.params}
+    assert "repair" not in names and "fix" not in names
+
+
+def test_doctor_repair_is_a_write_tool() -> None:
+    tool = next(t for t in TOOLS if t.name == "doctor repair")
+    assert tool.permission == "write"
+    assert canonical_tool("ops repair") == "doctor repair"

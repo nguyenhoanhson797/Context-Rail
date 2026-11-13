@@ -1,8 +1,8 @@
-"""The doctor tool: integrity checks, repair, and safe `--fix`.
+"""The doctor tools: integrity checks, repair, and safe fixes.
 
-``--repair`` rolls interrupted writes forward via ``store.write.repair``.
-``--fix`` runs only the safe subset (clear stale daemon descriptor, rebuild
-the index) and always refuses the unsafe ones (approval, records, execution
+``doctor repair`` rolls interrupted writes forward via ``store.write.repair``
+and then applies only the safe subset (clear stale daemon descriptor, rebuild
+the index). It always refuses the unsafe ones (approval, records, execution
 failures) with the command that remains their fix.
 """
 
@@ -17,23 +17,20 @@ from context_rail.store.write import WriteRefused, repair
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["doctor", "doctor_fix"]
+__all__ = ["doctor", "doctor_fix", "doctor_repair"]
 
 
 def doctor(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Report every store issue; ``--repair`` rolls writes forward, ``--fix`` applies safe fixes."""
-    if args.get("repair"):
-        # Rolling a write forward changes the store, so it needs the write
-        # permission even though the checks themselves only read.
-        refusal = rights.allowed("write", actor)
-        if refusal is not None:
-            raise WriteRefused(
-                "PERMISSION_DENIED", refusal, {"tool": "doctor", "param": "repair"}
-            )
-        repair(ctx.store)
-    if args.get("fix"):
-        return doctor_fix(ctx, {}, actor)
+    """Report every store issue without changing the store."""
     return run_doctor(ctx.store, ctx.manifest, ctx.pack, ctx.index)
+
+
+def doctor_repair(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Roll interrupted writes forward, then apply the safe fixes."""
+    if args.get("dry_run"):
+        return run_doctor(ctx.store, ctx.manifest, ctx.pack, ctx.index)
+    repair(ctx.store)
+    return doctor_fix(ctx, {}, actor)
 
 
 def doctor_fix(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -46,7 +43,7 @@ def doctor_fix(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]
     refusal = rights.allowed("write", actor)
     if refusal is not None:
         raise WriteRefused(
-            "PERMISSION_DENIED", refusal, {"tool": "doctor", "param": "fix"}
+            "PERMISSION_DENIED", refusal, {"tool": "doctor repair", "param": "fix"}
         )
     try:
         from context_rail.gateway.daemon import clear_daemon_descriptor

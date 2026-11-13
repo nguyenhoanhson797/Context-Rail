@@ -594,7 +594,7 @@ def test_doctor_repair_completes_a_pending_intent(store_factory) -> None:
     assert report["counts"]["error"] >= 1
     assert [issue["code"] for issue in report["issues"]] == ["intent_pending"]
 
-    repaired = run_cli(store, "doctor", "--repair", store=store)
+    repaired = run_cli(store, "ops", "repair", store=store, env={"RAIL_ACTOR": "human"})
 
     assert repaired.returncode == 0, repaired.stderr
     assert not intent_path.exists()

@@ -21,6 +21,7 @@ from context_rail.gateway.tools import (
     GROUP_SUMMARIES,
     LEGACY_TO_SURFACE,
     REMOVED_COMMANDS,
+    REMOVED_FLAGS,
     SURFACE_TOOLS,
     TOOLS,
     VISIBLE_PATHS,
@@ -313,7 +314,26 @@ def _expand_legacy(argv: list[str]) -> list[str]:
 def _removed_command(argv: list[str]) -> str | None:
     """The removed command the argv starts with, if any."""
     index = _command_index(argv)
-    return None if index is None else _match_path(argv, index, REMOVED_COMMANDS)
+    if index is None:
+        return None
+    flag = _match_path(argv, index, REMOVED_FLAGS)
+    if flag is not None:
+        return flag
+    return _match_path(argv, index, REMOVED_COMMANDS)
+
+
+def _removed_message(name: str) -> str:
+    """The tombstone text for a removed command or a removed flag of one."""
+    if name in REMOVED_FLAGS:
+        return f"`rail {name}` was removed: {REMOVED_FLAGS[name]}"
+    return removed_message(name)
+
+
+def _removed_replacement(name: str) -> str:
+    """What a caller of a removed command should run instead."""
+    if name in REMOVED_FLAGS:
+        return REMOVED_FLAGS[name]
+    return REMOVED_COMMANDS[name]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -329,8 +349,8 @@ def main(argv: list[str] | None = None) -> int:
             removed,
             fail(
                 "VALIDATION_FAILED",
-                removed_message(removed),
-                {"reason": "command_removed", "replacement": REMOVED_COMMANDS[removed]},
+                _removed_message(removed),
+                {"reason": "command_removed", "replacement": _removed_replacement(removed)},
             ),
         )
     try:

@@ -43,6 +43,7 @@ from context_rail.gateway.identity import ACTOR_HINT, ANONYMOUS, Identity, resol
 from context_rail.gateway.role_guard import authorize_role
 from context_rail.core.tool_names import (
     REMOVED_COMMANDS,
+    REMOVED_FLAGS,
     alias_defaults,
     canonical_methods,
     canonical_tool,
@@ -658,6 +659,12 @@ def _tool(name: Any) -> Tool:
             "VALIDATION_FAILED",
             removed_message(name),
             {"reason": "command_removed", "replacement": REMOVED_COMMANDS[name]},
+        )
+    if name in REMOVED_FLAGS:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"`rail {name}` was removed: {REMOVED_FLAGS[name]}",
+            {"reason": "command_removed", "replacement": REMOVED_FLAGS[name]},
         )
     canonical = canonical_tool(name)
     if canonical not in _BY_NAME:

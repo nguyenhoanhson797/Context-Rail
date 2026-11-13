@@ -17,6 +17,7 @@ __all__ = [
     "GROUP_SUMMARIES",
     "LEGACY_TO_SURFACE",
     "REMOVED_COMMANDS",
+    "REMOVED_FLAGS",
     "VISIBLE_ALIASES",
     "VISIBLE_PATHS",
     "alias_defaults",
@@ -49,6 +50,7 @@ VISIBLE_ALIASES: dict[str, str] = {
     "loop execution": "execution record",
     "gate": "ci",
     "ops doctor": "doctor",
+    "ops repair": "doctor repair",
     "ops reindex": "reindex",
     "ops codegraph setup": "codegraph setup",
     "ops codegraph refresh": "codegraph refresh",
@@ -176,6 +178,14 @@ REMOVED_COMMANDS: dict[str, str] = {
         "cto tick",
         "loop tick",
     )
+}
+#: The old write flags on the read-only doctor; repair is its own tool now.
+_REPAIR_MOVED = "repairing the store is a write, so it has its own tool: run `rail ops repair`"
+REMOVED_FLAGS: dict[str, str] = {
+    "doctor --repair": _REPAIR_MOVED,
+    "doctor --fix": _REPAIR_MOVED,
+    "ops doctor --repair": _REPAIR_MOVED,
+    "ops doctor --fix": _REPAIR_MOVED,
 }
 
 for _alias, _target in LEGACY_TO_SURFACE.items():
