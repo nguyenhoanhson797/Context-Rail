@@ -12,6 +12,7 @@ from context_rail.kernel.measurement import (
     measure_recurrence,
     summarize_attempts,
 )
+from context_rail.gateway.handlers.common import read_refusal
 from context_rail.model.errors import ModelError
 from context_rail.model.pack import effective_measurement_min_runs, load_pack
 from context_rail.store import query
@@ -44,6 +45,9 @@ def measure_versions(ctx: Context, args: dict[str, Any], actor: str) -> dict[str
     before_version = args["before"]
     after_version = args["after"]
     since, until = args["since"], args["until"]
+    refused = read_refusal(ctx, target)
+    if refused is not None:
+        raise refused
     before, before_ex = candidates_for_versions(
         ctx.index,
         kind=kind,
@@ -90,6 +94,9 @@ def measure_fix(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any
     """Report whether a resolved fix's reports recurred after its boundary."""
     item = args["item"]
     until = args["until"]
+    refused = read_refusal(ctx, item)
+    if refused is not None:
+        raise refused
     try:
         shown = query.show(ctx.index, item)
     except FileNotFoundError:

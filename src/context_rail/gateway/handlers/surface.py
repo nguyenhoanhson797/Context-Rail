@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from context_rail.context import operating, surface
-from context_rail.gateway.handlers.common import read_refusal
+from context_rail.gateway.handlers.common import read_filter, read_refusal
 from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:
@@ -61,6 +61,9 @@ def next(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "a worker needs --item to read its next card",
                 {"actor": ctx.actor},
             )
+        refused = read_refusal(ctx, args["item"])
+        if refused is not None:
+            raise refused
         return surface.card(ctx, args["item"])
     try:
         view = operating.resolve_queue(
@@ -104,6 +107,10 @@ def _seat_next(
     seat = identity.view_as or identity.seat
     role = ctx.pack.operating.roles.get(seat.role) or identity.role
     anchor = seat.anchor
+    if args.get("item"):
+        refused = read_refusal(ctx, args["item"])
+        if refused is not None:
+            raise refused
     if role.anchor.kind == "item":
         slug = args.get("item") or anchor
         refused = read_refusal(ctx, slug)
@@ -181,8 +188,15 @@ def _hierarchy_page(ctx: Context, model: Any) -> list[dict[str, Any]]:
     page: list[dict[str, Any]] = []
     for group in operating.resolve_hierarchy(ctx, model):
         value = group.as_dict()
-        value["omitted"] = max(len(group.items) - _HIERARCHY_CAP, 0)
+        kept, outside = read_filter(ctx, [item["slug"] for item in value["items"]])
+        if outside:
+            visible = set(kept)
+            value["items"] = [
+                item for item in value["items"] if item["slug"] in visible
+            ]
+        value["omitted"] = max(len(value["items"]) - _HIERARCHY_CAP, 0)
         value["items"] = value["items"][:_HIERARCHY_CAP]
+        value["omitted_outside_reach"] = outside
         page.append(value)
     return page
 

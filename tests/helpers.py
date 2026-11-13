@@ -823,8 +823,14 @@ def init_pack_store(
     document: dict[str, Any],
     *,
     layout: dict[str, str] | None = None,
+    approve: bool = True,
 ) -> Path:
-    """Initialize a store on a local pack document and return its directory."""
+    """Initialize a store on a local pack document and return its directory.
+
+    The store is approved by default: a scaffolded store carries no charter, so
+    it is locked out and nothing may move into an active or done category. Pass
+    ``approve=False`` to keep the lockout and test what it refuses.
+    """
     from context_rail.gateway.gateway import invoke
 
     name = document["name"]
@@ -837,13 +843,79 @@ def init_pack_store(
             encoding="utf-8",
             newline="\n",
         )
+    if approve:
+        _write_charter(store)
     result = invoke(
         "init",
         {"dir": str(tmp_path), "pack": name, "scaffold": True},
         actor="human",
     )
     assert result["ok"] is True, result
-    return Path(result["value"]["store"])
+    store = Path(result["value"]["store"])
+    if approve:
+        approved = approve_picture(store)
+        assert approved["ok"] is True, approved
+    return store
+
+
+def _charter_path(store: Path) -> str:
+    """The charter path this store pins, or the default before ``init`` writes it."""
+    manifest = Path(store) / "rail.yaml"
+    if not manifest.is_file():
+        return "charter.md"
+    data = load_yaml(manifest.read_text(encoding="utf-8"))
+    return data.get("presets", {}).get("charter", "charter.md")
+
+
+def _write_charter(store: Path) -> None:
+    """Write the smallest charter this store's manifest accepts.
+
+    Every gate is off: a store on a hand-written test pack is approved so that
+    reads and writes are reachable, and a test that wants a gate sets its own.
+    Writing before ``init`` saves a reindex, because ``init`` builds the index.
+    """
+    target = Path(store) / _charter_path(store)
+    gates = {
+        name: {
+            "require_checks": False,
+            "require_acceptance": False,
+            "require_review": False,
+            "require_human": False,
+        }
+        for name in ("item_done", "scope_done", "merge", "release")
+    }
+    fields = {
+        "primitive": "policy",
+        "preset": "charter",
+        "title": "Charter",
+        "tags": [],
+        "schema": 1,
+        "project": {"goal": "goal", "vision": "vision", "scope": [], "wont": []},
+        "protected_files": ["rail.yaml", target.name],
+        "default_branch": "main",
+        "gates": gates,
+    }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "---\n" + dump_frontmatter(fields) + "---\n# Charter\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def approve_store(store: Path) -> None:
+    """Write the smallest charter this store's manifest accepts, then approve it.
+
+    Use this for a store that already exists; a new store gets its charter
+    before ``init`` through :func:`init_pack_store`.
+    """
+    from context_rail.gateway.gateway import invoke
+
+    _write_charter(store)
+    reindexed = invoke("reindex", {}, store=store, actor="human")
+    assert reindexed["ok"] is True, reindexed
+    approved = approve_picture(store)
+    assert approved["ok"] is True, approved
 
 
 def init_nested_store(

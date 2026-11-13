@@ -107,3 +107,11 @@ def test_a_missing_skill_note_is_a_problem(role_store: SimpleNamespace) -> None:
 
     assert is_ok(card), card
     assert any("no-such-skill" in problem for problem in card["value"]["problems"])
+
+
+def test_an_anonymous_caller_reaches_no_seat_card(role_store: SimpleNamespace) -> None:
+    card = invoke(
+        "seat show", {"seat": role_store.orders_seat}, store=role_store.store
+    )
+
+    assert refusal(card) == ("PERMISSION_DENIED", "out_of_reach")

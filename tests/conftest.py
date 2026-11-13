@@ -1098,6 +1098,27 @@ def build_leaf_item(
     )
 
 
+#: The real ``os.fsync``, kept so a durability test can restore it.
+REAL_FSYNC = os.fsync
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _fast_store_writes() -> Iterator[None]:
+    """Skip ``fsync`` for the whole session.
+
+    Every store write syncs its file and its directory, which costs more than
+    the write itself and dominates the suite's runtime. What that sync buys is
+    durability across a crash; no test asserts it, and none of them survives the
+    process that would have to lose power. A test that does check sync behaviour
+    sets ``os.fsync`` back to ``REAL_FSYNC`` through ``monkeypatch``.
+    """
+    os.fsync = lambda fd: None  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        os.fsync = REAL_FSYNC
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _test_git_identity(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     """Every git process gets an author identity, including on a bare runner.
@@ -1738,10 +1759,20 @@ def _onboarded_store(
     return store
 
 
+def _no_done_gate(payload: dict[str, Any]) -> None:
+    """Ask for no proof of completion, so a test may drive an item to done."""
+    payload["charter"]["gates"]["item_done"] = {
+        "require_checks": False,
+        "require_acceptance": False,
+        "require_review": False,
+        "require_human": False,
+    }
+
+
 @pytest.fixture
 def operating_scrum_store(tmp_path: Path) -> SimpleNamespace:
     """A scrum store with an active sprint, stories, a task, a bug and a scope item."""
-    store = _onboarded_store(tmp_path / "scrum", "scrum")
+    store = _onboarded_store(tmp_path / "scrum", "scrum", edit=_no_done_gate)
     sprint = _slug(_created(store, "sprint", "Sprint one"))
     story = _slug(
         _created(
@@ -1799,18 +1830,7 @@ def operating_waterfall_store(tmp_path: Path) -> SimpleNamespace:
 @pytest.fixture
 def operating_video_store(tmp_path: Path) -> SimpleNamespace:
     """A video store with an active scene, shots and an asset."""
-
-    def no_done_gate(payload: dict[str, Any]) -> None:
-        # These tests drive an item through to a done category to read the
-        # execution findings, so the picture asks for no proof of completion.
-        payload["charter"]["gates"]["item_done"] = {
-            "require_checks": False,
-            "require_acceptance": False,
-            "require_review": False,
-            "require_human": False,
-        }
-
-    store = _onboarded_store(tmp_path / "video", "video", edit=no_done_gate)
+    store = _onboarded_store(tmp_path / "video", "video", edit=_no_done_gate)
     scene = _slug(_created(store, "scene", "Act one", set=["sequence=1"]))
     shot = _slug(
         _created(

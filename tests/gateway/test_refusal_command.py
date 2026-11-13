@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from context_rail.gateway.gateway import invoke
-from helpers import init_store
+from helpers import approve_store, init_store
 
 
 def _store(tmp_path: Path) -> Path:
@@ -24,6 +24,7 @@ def _command(result: dict[str, Any]) -> str:
 
 def test_a_refused_move_points_at_show(tmp_path: Path) -> None:
     store = _store(tmp_path)
+    approve_store(store)
 
     refused = invoke(
         "move",

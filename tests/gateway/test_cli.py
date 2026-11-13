@@ -15,7 +15,7 @@ import pytest
 from context_rail import cli
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import run_cli
+from helpers import approve_store, run_cli
 
 SRC_DIR = Path(cli.__file__).resolve().parent.parent
 
@@ -29,10 +29,13 @@ def test_cli_version_prints_the_package_version(tmp_path: Path) -> None:
     assert proc.stdout.strip() == f"context-rail {context_rail.__version__}"
 
 
-def _init(tmp_path: Path) -> Path:
+def _init(tmp_path: Path, *, approve: bool = True) -> Path:
     result = invoke("init", {"dir": str(tmp_path), "scaffold": True}, actor="human")
     assert is_ok(result), result
-    return tmp_path / "context-rail"
+    store = tmp_path / "context-rail"
+    if approve:
+        approve_store(store)
+    return store
 
 
 def _json(proc: subprocess.CompletedProcess[str]) -> dict[str, Any]:
@@ -152,6 +155,7 @@ def test_cli_init_add_show_move_roundtrip(tmp_path):
     init = run_cli(tmp_path, "--actor", "human", "init", "--dir", str(tmp_path))
     assert init.returncode == 0, init.stdout
     assert _json(init)["value"]["store"] == str((tmp_path / "context-rail").resolve())
+    approve_store(tmp_path / "context-rail")
 
     added = run_cli(tmp_path, "--actor", "cto", "add", "task", "Login page")
     assert added.returncode == 0, added.stdout
@@ -545,7 +549,7 @@ def test_cli_init_piped_interview_is_refused(tmp_path):
 
 
 def test_cli_check_and_verify_flags_reach_the_gateway(tmp_path):
-    store = _init(tmp_path)
+    store = _init(tmp_path, approve=False)
 
     checked = run_cli(
         tmp_path,

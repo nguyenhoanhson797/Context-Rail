@@ -14,7 +14,7 @@ from context_rail.core.result import is_ok
 from context_rail.core.util import dump_frontmatter, load_yaml
 from context_rail.gateway.gateway import invoke
 from context_rail.store.doc import record_digest
-from helpers import init_pack_store, touch_doc, workflow_pack_document
+from helpers import approve_store, init_pack_store, touch_doc, workflow_pack_document
 
 pytestmark = pytest.mark.usefixtures("named_human")
 
@@ -25,12 +25,15 @@ RECORD_KEYS = {"id", "primitive", "preset", "kind", "at", "actor", "about", "dat
 # ── helpers ───────────────────────────────────────────────────────────────
 
 
-def _init(tmp_path: Path, **args: Any) -> Path:
+def _init(tmp_path: Path, *, approve: bool = True, **args: Any) -> Path:
     result = invoke(
         "init", {"dir": str(tmp_path), "scaffold": True, **args}, actor="human"
     )
     assert is_ok(result), result
-    return Path(result["value"]["store"])
+    store = Path(result["value"]["store"])
+    if approve:
+        approve_store(store)
+    return store
 
 
 def _files(store: Path, folder: str = ".") -> set[str]:
@@ -215,6 +218,7 @@ def test_add_move_show_roundtrip(tmp_path):
     assert is_ok(
         invoke("init", {"dir": str(tmp_path), "scaffold": True}, actor="human")
     )
+    approve_store(tmp_path / "context-rail")
     r = invoke(
         "add", {"preset": "task", "title": "Login page"}, store=tmp_path / "context-rail", actor="cto"
     )
@@ -688,7 +692,9 @@ def test_link_adds_and_removes_relations(tmp_path):
     assert is_ok(invoke("add", {"preset": "task", "title": "Login page"}, store=store))
     assert is_ok(invoke("add", {"preset": "task", "title": "Sign in"}, store=store))
 
-    before = _files(store, "records")
+    # A depends_on link also writes the dependency Decision note, so this counts
+    # only the event records.
+    before = {rel for rel in _files(store, "records") if rel.endswith(".json")}
     added = invoke(
         "link",
         {
@@ -703,7 +709,11 @@ def test_link_adds_and_removes_relations(tmp_path):
     assert is_ok(added), added
     shown = invoke("show", {"slug": "sign-in"}, store=store)["value"]
     assert shown["out"]["depends_on"] == ["login-page"]
-    payload = _new_record(store, before)
+    created = sorted(
+        rel for rel in _files(store, "records") - before if rel.endswith(".json")
+    )
+    assert len(created) == 1, created
+    payload = _record_payload(store, created[0])
     assert payload["kind"] == "relation.changed"
     assert payload["about"] == ["sign-in"]
 

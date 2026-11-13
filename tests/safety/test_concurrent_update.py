@@ -7,10 +7,12 @@ from pathlib import Path
 
 from context_rail.gateway.gateway import invoke
 from helpers import parallel_moves
+from perf.gen import approve_generated
 
 
 def test_only_one_stale_writer_wins(store_factory):
     store = store_factory(docs=20)
+    approve_generated(store)
     slug = "t0"
     shown = invoke("show", {"slug": slug}, store=store)
     assert shown["ok"] and shown["value"]["doc"]["status"] == "todo"

@@ -302,7 +302,9 @@ def brief(
     approval = approval_state(context)
     rows = query.brief_rows(index, limit)
     activity = query.digest_rows(index, None, limit)
-    items = item_rows(index, context.pack)
+    reach = context.reach
+    items = item_rows(index, context.pack, reach=reach)
+    total_items = len(item_rows(index, context.pack)) if reach is not None else len(items)
     titles = item_titles(index)
     now_ms = int(time.time() * 1000)
     stuck = stuck_rows(items, now_ms, stuck_window_ms(context), titles)
@@ -310,13 +312,27 @@ def brief(
     waits, waits_omitted = human_waits(context, limit)
     decisions, decisions_total = query.reversible_decisions(index, limit=limit)
     checks, checks_omitted = check_rows(context, limit)
+    reports = rows["reports"]
+    if reach is not None:
+        kept_waits = [row for row in waits if _reachable(context, row.get("item"))]
+        waits_omitted += len(waits) - len(kept_waits)
+        waits = kept_waits
+        kept_decisions = [
+            row for row in decisions if _reachable(context, row.get("item"))
+        ]
+        decisions_total -= len(decisions) - len(kept_decisions)
+        decisions = kept_decisions
+        kept_reports = [row for row in reports if _reachable(context, row.get("item"))]
+        reports = kept_reports
     operating_state = _operating_state(context)
+    if reach is not None:
+        operating_state = _scoped_operating_state(context, operating_state)
     headline = _headline(operating_state)
     sections, omitted = _brief_sections(
         context,
         approval=approval,
         counts=rows["counts"],
-        reports=rows["reports"],
+        reports=reports,
         activity=activity,
         items=items,
         titles=titles,
@@ -335,7 +351,7 @@ def brief(
     for key, count in trimmed.items():
         omitted[key] += count
     text = headline + "\n\n" + text
-    return {
+    result = {
         "text": text[:chars],
         "estimated_tokens": estimate_tokens(text[:chars]),
         "omitted": omitted,
@@ -350,6 +366,9 @@ def brief(
             "headline": headline,
         },
     }
+    if reach is not None:
+        result["omitted_outside_reach"] = total_items - len(items)
+    return result
 
 
 def _operating_state(context: Context) -> dict[str, Any]:

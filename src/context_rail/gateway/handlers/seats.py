@@ -9,7 +9,11 @@ from typing import Any
 from context_rail.context import recipes
 from context_rail.context.reach import ReachError, resolve_reach
 from context_rail.gateway.gateway import Context
-from context_rail.gateway.handlers.common import profile_document, skill_pins_for
+from context_rail.gateway.handlers.common import (
+    profile_document,
+    read_refusal,
+    skill_pins_for,
+)
 from context_rail.gateway.tools import reserved_seat_names
 from context_rail.kernel.seats import fold
 from context_rail.model.roles import check_profile_narrows, is_name, Role
@@ -603,38 +607,38 @@ def seat_show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "budget": {"chars": role.sees.chars, "docs": role.sees.docs},
         "workspace": role.workspace,
         "session": session,
-        "queue_head": head,
+        **({"queue_head": head} if _card_anchor_readable(ctx, target) else {}),
         "problems": problems,
     }
 
 
+def _card_anchor_readable(ctx: Context, target: Any) -> bool:
+    """Whether the caller holds read reach on the seat card's anchor."""
+    if target.anchor == _PROJECT:
+        return ctx.reach is None or ctx.reach.read_all
+    if ctx.reach is None:
+        return True
+    row = ctx.index.conn.execute(
+        "SELECT path FROM docs WHERE slug = ? LIMIT 1", (target.anchor,)
+    ).fetchone()
+    if row is None:
+        return False
+    return read_refusal(ctx, target.anchor, path=row[0]) is None
+
+
 def _check_card_view(ctx: Context, identity: Any, target: Any) -> None:
-    if identity.kind in ("human", "anonymous"):
+    """Refuse a card whose anchor the caller may not read, except for its own seat."""
+    if identity.kind == "human":
         return
     if identity.name == target.seat:
         return
-    reach = ctx.reach
-    row = (
-        None
-        if target.anchor == _PROJECT
-        else ctx.index.conn.execute(
-            "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1", (target.anchor,)
-        ).fetchone()
+    if _card_anchor_readable(ctx, target):
+        return
+    raise WriteRefused(
+        "PERMISSION_DENIED",
+        f"seat {target.seat!r} is outside the caller's read reach",
+        {"reason": "out_of_reach", "seat": target.seat, "anchor": target.anchor},
     )
-    if target.anchor == _PROJECT:
-        allowed = reach is not None and reach.read_all
-    else:
-        allowed = (
-            reach is not None
-            and row is not None
-            and reach.can_read(target.anchor, path=row[0], preset=row[1])
-        )
-    if not allowed:
-        raise WriteRefused(
-            "PERMISSION_DENIED",
-            f"seat {target.seat!r} is outside the caller's read reach",
-            {"reason": "out_of_reach", "seat": target.seat, "anchor": target.anchor},
-        )
 
 
 def _is_container(ctx: Context, preset: str | None) -> bool:

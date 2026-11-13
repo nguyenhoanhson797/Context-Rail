@@ -22,6 +22,9 @@ def make_store(root: Path, n: int, seed: int = 0, *, roles: bool = False) -> Pat
     ``roles=True`` adds a local role-mode pack and two live seats: a project
     lead and one level lead on the first goal. The seats are written as
     records, so opening the index folds them like any other store.
+
+    The store carries no charter, so it is locked out: a test that moves work
+    approves it first with :func:`approve_generated`.
     """
     if n < 0:
         raise ValueError(f"a store holds a non-negative number of docs, not {n}")
@@ -79,6 +82,48 @@ def make_store(root: Path, n: int, seed: int = 0, *, roles: bool = False) -> Pat
     if roles:
         _write_roles(store)
     return store
+
+
+def approve_generated(store: Path) -> None:
+    """Approve a generated store so its documents may move.
+
+    Every gate is off: this unlocks the store, it does not set a quality bar.
+    """
+    from context_rail.gateway.gateway import invoke
+
+    from helpers import approve_picture
+
+    gates = {
+        name: {
+            "require_checks": False,
+            "require_acceptance": False,
+            "require_review": False,
+            "require_human": False,
+        }
+        for name in ("item_done", "scope_done", "merge", "release")
+    }
+    fields = {
+        "primitive": "policy",
+        "preset": "charter",
+        "title": "Charter",
+        "tags": [],
+        "schema": 1,
+        "project": {"goal": "g0", "vision": "vision", "scope": [], "wont": []},
+        "protected_files": ["rail.yaml", "charter.md"],
+        "default_branch": "main",
+        "gates": gates,
+    }
+    (store / "charter.md").write_text(
+        "---\n" + dump_frontmatter(fields) + "---\n# Charter\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    opened = invoke("reindex", {}, store=store, actor="human")
+    if not opened["ok"]:
+        raise AssertionError(opened)
+    approved = approve_picture(store)
+    if not approved["ok"]:
+        raise AssertionError(approved)
 
 
 def _write_roles(store: Path) -> None:

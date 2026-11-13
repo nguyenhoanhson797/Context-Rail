@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 import yaml
 
 from context_rail.core.result import is_ok
@@ -319,3 +320,41 @@ def test_anonymous_cannot_repair_a_role_store(role_store: SimpleNamespace) -> No
     repaired = invoke("ops repair", {}, store=role_store.store)
 
     assert refusal(repaired) == ("SESSION_REQUIRED", "session_required")
+
+
+@pytest.mark.parametrize(
+    "tool,args",
+    [
+        ("why", {"slug": "b1"}),
+        ("next", {"item": "b1"}),
+    ],
+)
+def test_a_manager_cannot_read_a_sibling_sprints_story(
+    role_store: SimpleNamespace, tool: str, args: dict[str, Any]
+) -> None:
+    read = as_seat(role_store.store, role_store.orders_seat, tool, args)
+
+    assert refusal(read) == ("PERMISSION_DENIED", "out_of_reach")
+
+
+def test_the_model_omits_documents_outside_reach(role_store: SimpleNamespace) -> None:
+    model = as_seat(role_store.store, role_store.orders_seat, "model", {})
+
+    assert is_ok(model), model
+    group = model["value"]["hierarchy"][0]
+    shown = {item["slug"] for item in group["items"]}
+    assert group["omitted_outside_reach"] == 1
+    assert role_store.billing not in shown
+    assert role_store.orders in shown
+
+
+def test_the_lead_brief_omits_documents_outside_reach(
+    role_store: SimpleNamespace,
+) -> None:
+    brief = as_seat(role_store.store, role_store.lead, "cto brief", {})
+
+    assert is_ok(brief), brief
+    assert brief["value"]["omitted_outside_reach"] == 0
+    scoped = as_seat(role_store.store, role_store.orders_seat, "cto brief", {})
+    assert is_ok(scoped), scoped
+    assert role_store.b1 not in scoped["value"]["text"]
