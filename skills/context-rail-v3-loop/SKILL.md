@@ -1,6 +1,6 @@
 ---
 name: context-rail-v3-loop
-description: 'Run the Context Rail v3 record loop with any coding tool: brief, work in your own tool, candidate, verify, review, report, digest, plus the exact refusals and escalation rules. Load when handing out or reviewing agent work.'
+description: 'Run the Context Rail v3 record loop with any coding tool: brief, work in your own tool, candidate, verify, review, report, digest, plus the exact refusals and how a failure is reported. Load when handing out or reviewing agent work.'
 ---
 
 # Context Rail v3 — the record loop
@@ -134,8 +134,9 @@ active scene). The queue is focus-first and the brief's headline names it.
 - A failed Check does not fail the loop. Fix the work, commit again, record a
   new candidate and verify again.
 - A rejected review is the same: the next candidate is a new record.
-- Still failing → say so plainly in the report; the item escalates with its
-  evidence and is not retried forever.
+- Still failing → say so plainly in the report. Nothing escalates on a timer:
+  the item stays where it is and shows up as too_long once its attempts or
+  seconds pass the budget, or as stuck when it goes quiet.
 - Cheaper than guessing: `rail read status` names the blocked reason;
   `rail overview` lists what needs a human.
 
@@ -155,7 +156,7 @@ active scene). The queue is focus-first and the brief's headline names it.
 | When | Command | What to look for |
 |---|---|---|
 | Morning | `rail overview` | approval, executable work, `needs_human`, stuck, too long |
-| During the day | the brief's waits | approvals, escalations, budget warnings |
+| During the day | the brief's waits | approvals, stuck and too-long items, budget warnings |
 | Evening | `rail read digest` | reversible decisions, quality, usage |
 | Before pushing | `rail gate` | doctor issues, approval drift, open done gates |
 
