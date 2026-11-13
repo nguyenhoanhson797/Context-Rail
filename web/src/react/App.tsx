@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Menu, RotateCcw, Search, PanelLeft, LayoutDashboard, Target, GitBranch, Route as RouteIcon, House, SquareKanban, Stethoscope, Settings, Sun, FileText, TriangleAlert, Folders } from './icons';
+import { Menu, RotateCcw, Search, PanelLeft, LayoutDashboard, Target, GitBranch, Route as RouteIcon, House, SquareKanban, Stethoscope, Settings, Sun, FileText, TriangleAlert, Folders, History } from './icons';
 import { RailClient, docValid, projectValid, refusal } from './transport';
 import { RefreshGeneration, projectKey, readKey, refreshProject } from './refresh';
 import { ACTIVE_STATUSES, object, rows, text, type Data, type PageProps, type Route } from './contracts';
@@ -10,6 +10,10 @@ import { DashboardPage } from './pages/dashboard';
 import { FlowPage } from './pages/flow';
 import { PlanPage } from './pages/plan';
 import { RecordsPage } from './pages/records';
+import { ActivityPage } from './pages/activity';
+import { MapPage } from './pages/map';
+import { QueuePage } from './pages/queue';
+import { HealthPage } from './pages/health';
 import { ItemSheet } from './pages/item';
 import { HealthSheet, ProgressSheet, RulesSheet } from './pages/sheets';
 import { allItems, attentionOf, flowScreen, focusState, hasFocus, ledgerScreen, planScreen, screenOf, SUMMARY_KINDS } from './capabilities';
@@ -33,22 +37,22 @@ const pages: Partial<Record<Route, import('react').ComponentType<PageProps>>> = 
   decisions: RecordsPage,
   settings: SettingsPage,
   summary: DashboardPage,
-  now: redirectPage('board'),
+  now: QueuePage,
   scope: redirectPage('board'),
   catalog: redirectPage('board', { lens: 'grid' }),
   workflow: redirectPage('board', { overlay: 'rules' }),
   execution: redirectPage('board', { overlay: 'progress' }),
   pack: redirectPage('board', { overlay: 'rules' }),
-  doctor: redirectPage('board', { overlay: 'health' }),
+  doctor: HealthPage,
   rules: redirectPage('board', { overlay: 'rules' }),
   timeline: redirectPage('roadmap'),
-  lens: redirectPage('board', { lens: 'map' }),
-  graph: redirectPage('board', { lens: 'map' }),
+  lens: MapPage,
+  graph: MapPage,
   overview: redirectPage('board'),
   outcomes: redirectPage('board'),
   traceability: redirectPage('board'),
   impact: redirectPage('board'),
-  activity: redirectPage('board'),
+  activity: ActivityPage,
   portfolio: redirectPage('board'),
   atlas: redirectPage('board'),
 };
@@ -62,10 +66,10 @@ import { useRailKeyboard } from './keyboard';
 import { restorePreferences } from './preferences';
 import { CommandPalette, ConfirmDialog, DocDrawer, StatusGlyph, type PaletteGroup, type PaletteItem } from './overlays';
 const address = () => parseAddress(location.hash);
-const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,catalog:Folders,decisions:GitBranch,doctor:Stethoscope,pack:FileText,settings:Settings,workflow:RouteIcon,execution:GitBranch,timeline:RouteIcon};
+const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,catalog:Folders,decisions:GitBranch,activity:History,doctor:Stethoscope,pack:FileText,settings:Settings,workflow:RouteIcon,execution:GitBranch,timeline:RouteIcon};
 /* The legacy palette order and its G-key labels (web/src/core/palette.js). */
 const paletteRoutes: Route[] = ['board','roadmap','decisions','settings'];
-const navKeys: Partial<Record<Route,string>> = {board:'B',roadmap:'R',decisions:'D'};
+const navKeys: Partial<Record<Route,string>> = {board:'B',roadmap:'R',decisions:'D',activity:'C'};
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD = isMac ? '⌘' : 'Ctrl';
 const CONFIRM_TEXT: Record<string, [string, string]> = {
@@ -265,7 +269,7 @@ export default function App() {
     { route: 'decisions', title: ledgerScreenDef?.title ?? labels.decisions },
   ];
   const slotRoutes = slots.map((slot) => slot.route);
-  const navRoutes: Route[] = [...slotRoutes, 'settings'];
+  const navRoutes: Route[] = [...slotRoutes, 'now', 'lens', 'activity', 'doctor', 'settings'];
   const navItem=(r:Route,title?:string)=>{const Icon=routeIcons[r]??FileText;const label=title??screenTitleForRoute(snapshot.data,r,labels[r]);const selectedDoc=locationState.params.get('doc');const params:Record<string,string>=selectedDoc?{doc:selectedDoc}:{};return <button type="button" key={r} className={`sitem rail-nav-link ${route===r?'on':''}`} aria-current={route===r?'page':undefined} onClick={()=>navigate(r,params)}><Icon className="i" strokeWidth={1.8} size={16}/><span className="trunc">{label}</span></button>;};
   /* ---------- command palette items (Navigate, Read a tool, Docs) ---------- */
   /* A group that shows only its first matches says so and offers the rest: a
@@ -385,6 +389,9 @@ export default function App() {
     {mnav&&<button type="button" className="side-scrim" aria-label="Close navigation" onClick={()=>setMnav(false)}/>}
     <aside className="side rail-sidebar" data-open={mnav} data-collapsed={collapsed&&!mnav} inert={narrow&&!mnav?true:undefined}><div className="side-top"><div className="row" style={{gap:2}}><div className="ws grow rail-brand"><span className="ws-logo rail-brand-logo" style={{width:22,height:22}}>{projectName[0]||'C'}</span><span className="ws-name trunc">{projectName}</span></div>{!collapsed&&<button type="button" className="ibtn ibtn-sm hide-m" aria-label="Collapse sidebar" onClick={()=>setCollapsed(true)}><PanelLeft className="i" strokeWidth={1.8} size={15}/></button>}</div></div><nav className="side-scroll" aria-label="Main navigation">{collapsed&&!mnav&&<button type="button" className="sitem" aria-label="Expand sidebar" onClick={()=>setCollapsed(false)}><PanelLeft className="i" strokeWidth={1.8} size={16}/></button>}{rows(registry.data?.projects).some(p=>p.exists&&p.id!==registry.data?.current)&&<div className="side-projects" role="group" aria-label="Projects">{!(collapsed&&!mnav)&&<div className="side-label">Projects</div>}{[{id:text(registry.data?.current),label:projectName,isCurrent:true},...rows(registry.data?.projects).filter(p=>p.exists&&p.id!==registry.data?.current).map(p=>({id:text(p.id),label:text(p.name,text(p.id)),isCurrent:false}))].map(p=>{const on=p.isCurrent?!project||project===p.id:project===p.id;return <button type="button" key={p.isCurrent?'current':p.id} className={`sitem rail-project-link ${on?'on':''}`} aria-current={on?'true':undefined} disabled={busy} title={p.id&&p.id!==p.label?p.id:undefined} onClick={()=>switchProject(p.isCurrent?'':p.id)}><Folders className="i" strokeWidth={1.8} size={16}/><span className="trunc">{p.label}</span></button>;})}</div>}
       <section role="group" aria-label="Track"><div className="side-label">Track</div>{slots.map((slot) => navItem(slot.route, slot.title))}</section>
+      {/* The declared screens come from the pack; these read the store itself,
+          so they are the same four for every project type. */}
+      <section role="group" aria-label="Understand"><div className="side-label">Understand</div>{(['now','lens','activity','doctor'] as Route[]).map((entry) => navItem(entry))}</section>
       </nav><div className="side-bot">
         <button type="button" className="sitem rail-util-link" onClick={()=>openOverlay('health')} title={healthLabel}><span className={`rail-health-dot ${healthTone}`} aria-hidden="true"/><span className="trunc">{healthTone==='ok'?'Healthy':healthTone==='bad'?'Health needs attention':healthTone==='warn'?'Health warnings':'Health unknown'}</span></button>
         <button type="button" className="sitem rail-util-link" onClick={()=>openOverlay('rules')}><FileText className="i" strokeWidth={1.8} size={15}/><span className="trunc">Rules</span></button>

@@ -618,7 +618,7 @@ export function DashboardPage({ snapshot, navigate, openDoc, health, healthError
             <div className="rdb-section-head">
               <h2>Next up · {queue.length ? `${queue.length} eligible` : 'none'}</h2>
               <span className="rdb-hint">{queueHint}</span>
-              <button type="button" className="rdb-link" onClick={() => navigate('roadmap')}>Open Plan →</button>
+              <button type="button" className="rdb-link" onClick={() => navigate('now')}>Open Next up →</button>
             </div>
             <p className="rdb-lede">The engine's queue. The chip says the next legal move; the drawer holds the full set.</p>
             {queueError ? (
@@ -724,7 +724,7 @@ export function DashboardPage({ snapshot, navigate, openDoc, health, healthError
               </b>
               {healthCode ? <span className="rdb-code">{healthCode}</span> : null}
             </div>
-            <button type="button" className="rdb-link" onClick={() => navigate('board', { overlay: 'health' })}>Open Health →</button>
+            <button type="button" className="rdb-link" onClick={() => navigate('doctor')}>Open Health →</button>
           </div>
         </footer>
       </div>

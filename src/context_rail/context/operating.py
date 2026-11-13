@@ -62,6 +62,9 @@ class ItemRow:
     etag: str
     updated: str = ""
     fields: dict[str, Any] = field(default_factory=dict)
+    # Index insertion position: `created` only carries seconds, so a burst of
+    # adds ties on it and the plan order needs the order the store recorded.
+    seq: int = 0
 
     def as_ref(self) -> dict[str, Any]:
         return {
@@ -717,7 +720,7 @@ def _rows(
         params.append(slug)
     rows = index.conn.execute(
         "SELECT d.slug, d.title, d.preset, d.workflow, d.status, d.category, "
-        "d.created, d.updated, d.path, d.etag FROM docs d WHERE "
+        "d.created, d.updated, d.path, d.etag, d.rowid FROM docs d WHERE "
         + " AND ".join(where)
         + " ORDER BY d.slug",
         params,
@@ -752,6 +755,7 @@ def _rows(
             path=row[8],
             etag=row[9],
             fields=fields.get(row[8], {}),
+            seq=row[10],
         )
         for row in rows
     ]
@@ -779,7 +783,7 @@ def _order_key(row: ItemRow, order: str | None) -> tuple[Any, ...]:
         raw = None
     else:
         raw = row.fields.get(order)
-    return (_sortable(raw), row.created or "", row.slug)
+    return (_sortable(raw), row.created or "", row.seq, row.slug)
 
 
 def _sortable(value: Any) -> tuple[int, Any]:

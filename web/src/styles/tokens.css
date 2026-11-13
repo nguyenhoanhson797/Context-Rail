@@ -1,6 +1,9 @@
 /* ============================================================
    QUIRE — DESIGN TOKENS
    Light palette on bare :root; dark redefined (not inverted).
+   Text tones, semantic tones and edges are held to a contrast
+   floor by tests/ui/test_contrast.py: AA for anything printed
+   as text, AA-large for status dots, a visible edge for rules.
    ============================================================ */
 :root {
   /* surfaces */
@@ -12,38 +15,38 @@
   --sunken: #f7f6f3;
   --overlay: rgba(24, 22, 19, 0.28);
   /* lines */
-  --border: #e9e7e2;
-  --border-strong: #dad7d0;
-  --divider: #f0eeea;
+  --border: #e0ddd6;
+  --border-strong: #bdb9af;
+  --divider: #e6e3dd;
   /* text */
   --text: #1d1c1a;
-  --text-2: #57544e;
-  --text-3: #6b6760;
-  --text-4: #8c8880;
+  --text-2: #3d3a35;
+  --text-3: #4f4b44;
+  --text-4: #635f58;
   --text-inv: #ffffff;
   /* accent (swappable) */
   --acc-l: #4b5bd6;
   --acc-d: #8e9af3;
   --accent: var(--acc-l);
   --on-accent: #ffffff;
-  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--surface));
   --accent-line: color-mix(in srgb, var(--accent) 38%, transparent);
   /* semantic */
-  --green: #25754b;
-  --amber: #8f5e0e;
-  --red: #b23c30;
-  --blue: #3570c4;
-  --violet: #7652c2;
-  --teal: #1e8580;
-  --rose: #bc4270;
-  --orange: #c0612b;
-  --gray: #8a867e;
-  --green-soft: color-mix(in srgb, var(--green) 11%, transparent);
-  --amber-soft: color-mix(in srgb, var(--amber) 12%, transparent);
-  --red-soft: color-mix(in srgb, var(--red) 10%, transparent);
+  --green: #1f6b43;
+  --amber: #855608;
+  --red: #a83226;
+  --blue: #2c62b5;
+  --violet: #6a45b8;
+  --teal: #146b66;
+  --rose: #b03562;
+  --orange: #a04e1c;
+  --gray: #6d6960;
+  --green-soft: color-mix(in srgb, var(--green) 11%, var(--surface));
+  --amber-soft: color-mix(in srgb, var(--amber) 12%, var(--surface));
+  --red-soft: color-mix(in srgb, var(--red) 10%, var(--surface));
   /* status */
-  --st-todo: #7c7870;
-  --st-in-progress: #c88a14;
+  --st-todo: #6d6960;
+  --st-in-progress: #b87d0e;
   --st-blocked: #c4473a;
   --st-done: #2e8456;
   /* elevation */
@@ -105,13 +108,13 @@
     --surface-3: #2d2d2b;
     --sunken: #181817;
     --overlay: rgba(0, 0, 0, 0.55);
-    --border: #2c2b29;
-    --border-strong: #3a3936;
-    --divider: #252523;
+    --border: #3a3936;
+    --border-strong: #524f4a;
+    --divider: #302f2c;
     --text: #eceae5;
-    --text-2: #b5b2ab;
-    --text-3: #9a968f;
-    --text-4: #6f6c66;
+    --text-2: #cbc8c0;
+    --text-3: #b0aca4;
+    --text-4: #9a968f;
     --text-inv: #151514;
     --accent: var(--acc-d);
     --on-accent: #12131c;
@@ -123,7 +126,7 @@
     --teal: #58c0b6;
     --rose: #e68aab;
     --orange: #e3925f;
-    --gray: #8f8b84;
+    --gray: #a6a29a;
     --pc-mix: 72%;
     --st-todo: #a6a39c;
     --st-in-progress: #d8a443;
@@ -144,13 +147,13 @@
   --surface-3: #2d2d2b;
   --sunken: #181817;
   --overlay: rgba(0, 0, 0, 0.55);
-  --border: #2c2b29;
-  --border-strong: #3a3936;
-  --divider: #252523;
+  --border: #3a3936;
+  --border-strong: #524f4a;
+  --divider: #302f2c;
   --text: #eceae5;
-  --text-2: #b5b2ab;
-  --text-3: #9a968f;
-  --text-4: #6f6c66;
+  --text-2: #cbc8c0;
+  --text-3: #b0aca4;
+  --text-4: #9a968f;
   --text-inv: #151514;
   --accent: var(--acc-d);
   --on-accent: #12131c;
@@ -162,7 +165,7 @@
   --teal: #58c0b6;
   --rose: #e68aab;
   --orange: #e3925f;
-  --gray: #8f8b84;
+  --gray: #a6a29a;
   --pc-mix: 72%;
   --st-todo: #a6a39c;
   --st-in-progress: #d8a443;

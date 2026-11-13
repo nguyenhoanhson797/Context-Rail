@@ -341,7 +341,7 @@
   stroke-width: 2;
 }
 .g-label {
-  font-size: 10.5px;
+  font-size: var(--fs-2xs);
   fill: var(--text-2);
   paint-order: stroke;
   stroke: var(--sunken);
