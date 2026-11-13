@@ -11,6 +11,7 @@ import yaml
 from context_rail.core.result import is_ok
 from context_rail.core.util import dump_frontmatter, load_yaml
 from context_rail.gateway.gateway import invoke
+from helpers import init_store
 
 PROTECTED = (
     "charter.md",
@@ -604,3 +605,30 @@ def test_doctor_reports_approval_missing_then_mismatch(
     codes = {(issue["code"], issue["severity"]) for issue in mismatched["issues"]}
     assert ("approval_mismatch", "error") in codes
     assert mismatched["counts"]["error"] >= 1
+
+
+def test_add_cannot_create_a_charter(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+
+    refused = invoke(
+        "add",
+        {"preset": "charter", "title": "charter", "set": ["default_branch=main"]},
+        store=store,
+        actor="cto",
+    )
+
+    assert refused["error"]["code"] == "PERMISSION_DENIED", refused
+    assert refused["error"]["details"]["reason"] == "policy_is_human_only"
+
+
+def test_a_solo_charter_cannot_be_smuggled_in_by_add(tmp_path: Path) -> None:
+    store = init_store(tmp_path)
+
+    result = invoke(
+        "add",
+        {"preset": "charter", "title": "charter", "set": ["mode=solo"]},
+        store=store,
+        actor="human",
+    )
+
+    assert not is_ok(result), result

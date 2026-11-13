@@ -261,9 +261,10 @@ def _add_facts(context: Context, params: dict[str, Any]) -> rights.ChangeFacts:
     rights_widening = (
         not context.role_mode and preset is not None and preset.primitive == "actor"
     )
+    primitive = preset.primitive if preset is not None else ""
     return rights.ChangeFacts(
         method="add",
-        protected=False,
+        protected=primitive == "policy",
         acceptance=acceptance,
         decision_id=None,
         budget_increase=budget_increase,

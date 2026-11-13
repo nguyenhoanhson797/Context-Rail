@@ -61,6 +61,16 @@ if TYPE_CHECKING:
 def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Create one document, or one record for a record preset."""
     preset = preset_for(ctx.pack, args["preset"])
+    if preset.primitive == "policy":
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            "a charter is created by onboarding, never by 'add'",
+            {
+                "reason": "policy_is_human_only",
+                "preset": preset.name,
+                "command": "rail init --answers-file <file>",
+            },
+        )
     title = args["title"].strip()
     if not title:
         raise WriteRefused("VALIDATION_FAILED", "a document needs a title")
