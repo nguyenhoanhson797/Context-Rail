@@ -149,6 +149,16 @@ def targets_for(
             preset=_preset(index, item),
             relation=_text(params.get("action")),
         )
+    if tool_name == "triage":
+        row = index.conn.execute(
+            "SELECT target FROM reports WHERE record_id = ?",
+            (_text(params.get("report")),),
+        ).fetchone()
+        slug = _text(row[0]) if row else None
+        return Targets(
+            writes=(slug,) if slug else (),
+            preset=_preset(index, slug),
+        )
     return Targets()
 
 
@@ -238,8 +248,6 @@ def authorize_role(
         return None
     if tool.name == "link":
         return _check_link(context, role, reach, params)
-    if tool.name == "triage":
-        return None
     if tool.name == "add":
         return _check_add(context, role, reach, targets)
     if tool.name in _ITEM_TOOLS:

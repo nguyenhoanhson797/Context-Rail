@@ -173,6 +173,7 @@ def triage(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             if action == "deferred":
                 value["deferred"].extend(decision.reports)
                 continue
+            _check_cluster_reach(ctx, cluster_rows)
             outputs = _act(ctx, decision, cluster_rows, action, actor, key)
             value["triaged"].extend(decision.reports)
             if action == "fix":
@@ -183,6 +184,34 @@ def triage(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 value["engine_issues"].extend(outputs)
         value["triaged"] = sorted(value["triaged"])
     return value
+
+
+def _check_cluster_reach(ctx: Context, rows: Sequence[dict[str, Any]]) -> None:
+    """Refuse a cluster whose targets the caller may not write.
+
+    A triage writes a Record about every report in the cluster and places its
+    fix item or proposal beside them, so every target has to be in reach, not
+    only the one report the caller named.
+    """
+    reach = ctx.reach
+    if reach is None:
+        return
+    for row in rows:
+        target = row.get("target")
+        if not isinstance(target, str) or not target:
+            continue
+        record = ctx.index.conn.execute(
+            "SELECT path, preset FROM docs WHERE slug = ? ORDER BY path LIMIT 1",
+            (target,),
+        ).fetchone()
+        if record is None or not reach.can_write(
+            target, path=record[0], preset=record[1]
+        ):
+            raise WriteRefused(
+                "PERMISSION_DENIED",
+                f"{target!r} is outside the seat's write reach",
+                {"reason": "write_out_of_reach", "target": target},
+            )
 
 
 def _load_report_file(report_file: str) -> dict[str, Any]:

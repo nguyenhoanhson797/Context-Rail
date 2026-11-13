@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from context_rail.gateway.gateway import invoke
-from helpers import init_store, records_of, write_record
+from helpers import approve_store, init_store, records_of, write_record
 
 FINGERPRINT = "item|sign-in|the button submits|the form reloaded"
 BEFORE = "2026-10-28T12:00:00Z"
@@ -99,6 +99,7 @@ def test_the_boundary_is_the_newest_done_status_record(
     tmp_path: Path,
 ) -> None:
     store = init_store(tmp_path)
+    approve_store(store)
     report = _report(store, "01JREPORT0000000000000101")
     fix = _add_fix(store, report)
     boundary = _close(store, fix["slug"])
@@ -113,6 +114,7 @@ def test_the_boundary_is_the_newest_done_status_record(
 
 def test_reports_before_and_at_the_boundary_are_excluded(tmp_path: Path) -> None:
     store = init_store(tmp_path)
+    approve_store(store)
     early = _report(store, "01JREPORT0000000000000102")
     fix = _add_fix(store, early)
     boundary = _close(store, fix["slug"])
@@ -141,6 +143,7 @@ def test_reports_before_and_at_the_boundary_are_excluded(tmp_path: Path) -> None
 
 def test_a_status_unknown_to_the_active_pack_is_inconclusive(tmp_path: Path) -> None:
     store = init_store(tmp_path)
+    approve_store(store)
     report = _report(store, "01JREPORT0000000000000105")
     fix = _add_fix(store, report)
     _close(store, fix["slug"])
@@ -162,6 +165,7 @@ def test_a_status_unknown_to_the_active_pack_is_inconclusive(tmp_path: Path) -> 
 
 def test_a_fix_no_longer_done_is_inconclusive(tmp_path: Path) -> None:
     store = init_store(tmp_path)
+    approve_store(store)
     report = _report(store, "01JREPORT0000000000000107")
     fix = _add_fix(store, report)
     boundary = _close(store, fix["slug"])

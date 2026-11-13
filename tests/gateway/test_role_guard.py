@@ -12,7 +12,7 @@ import yaml
 from context_rail.core.result import is_ok
 from context_rail.gateway.execution import caller_identity
 from context_rail.gateway.gateway import invoke
-from helpers import actors_for, as_human, open_test_session
+from helpers import actors_for, as_human, open_test_session, write_record
 
 
 def edit_roles(store: Path, change: Any) -> None:
@@ -358,3 +358,26 @@ def test_the_lead_brief_omits_documents_outside_reach(
     scoped = as_seat(role_store.store, role_store.orders_seat, "cto brief", {})
     assert is_ok(scoped), scoped
     assert role_store.b1 not in scoped["value"]["text"]
+
+
+def test_a_seat_cannot_triage_a_report_about_a_sibling_sprint(
+    role_store: SimpleNamespace, report_payload: Any
+) -> None:
+    report = "01JREPORT0000000000000201"
+    write_record(
+        role_store.store,
+        report,
+        "report.filed",
+        report_payload(
+            target=role_store.b1,
+            item=role_store.b1,
+            fingerprint=f"item|{role_store.b1}|expected|observed",
+        ),
+        at="2026-11-10T12:00:00Z",
+    )
+
+    refused = as_seat(
+        role_store.store, role_store.orders_seat, "triage", {"report": report}
+    )
+
+    assert refusal(refused) == ("PERMISSION_DENIED", "write_out_of_reach")
