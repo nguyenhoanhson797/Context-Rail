@@ -22,7 +22,7 @@ Rules:
 - Write the failing test first, watch it fail for the right reason, then make it pass.
 - Change only what the objective and selected scope need. Use your own tools and
   sub-agents as you see fit; the rail does not care which.
-- Never write to the store directly: record work only through `rail loop` commands.
+- Never write to the store directly: record work only with `rail loop candidate` and `rail loop report`, never by editing the store.
 - Read the `code area` section. If the work needs code outside it, say so in your report.
 - Run the declared Checks with `rail check run <item>` and report what you actually saw.
 - Commit, then record the commit with `rail loop candidate <item> --commit <sha>` so the
