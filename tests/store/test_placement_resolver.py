@@ -276,3 +276,44 @@ def test_part_of_cycle_is_reported(tmp_path: Path) -> None:
     )
     assert linked["ok"] is False
     assert linked["error"]["code"] == "CYCLE_DETECTED"
+
+
+def test_a_placement_resolves_the_parent_title(tmp_path: Path) -> None:
+    store = _init_nested(tmp_path)
+    _add(store, "phase", "Phase 1")
+    payload = copy.deepcopy(DEFAULT_MANIFEST)
+    payload["presets"]["task"] = "items/{part_of.title}/{slug}.md"
+    manifest = manifest_from_mapping(payload)
+    pack = load_pack("nested", store)
+    index = Index.open(store, pack)
+    index.sync()
+    try:
+        context = PlacementContext(manifest=manifest, pack=pack, index=index)
+        request = PlacementRequest(
+            primitive="item",
+            preset="task",
+            slug="login",
+            relations={"part_of": ("phase-1",)},
+            created="2026-11-13T00:00:00Z",
+        )
+        path = expected_path(context, request)
+    finally:
+        index.close()
+
+    assert path == "items/phase-1/login.md"
+
+
+def test_an_item_token_resolves_the_requested_item() -> None:
+    payload = copy.deepcopy(DEFAULT_MANIFEST)
+    payload["presets"]["note"] = "notes/{item.slug}/{slug}.md"
+    manifest = manifest_from_mapping(payload)
+    context = PlacementContext(manifest=manifest, pack=load_pack("basic", Path(".")))
+    request = PlacementRequest(
+        primitive="note",
+        preset="note",
+        slug="n",
+        item="parent-task",
+        created="2026-11-13T00:00:00Z",
+    )
+
+    assert expected_path(context, request) == "notes/parent-task/n.md"

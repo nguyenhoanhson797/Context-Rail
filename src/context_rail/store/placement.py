@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
@@ -117,6 +117,7 @@ class _Node:
     created: str | None
     fields: dict[str, Any]
     relations: dict[str, tuple[str, ...]]
+    title: str | None = None
     broken: bool = False
     record_at: int | None = None
     expected: str | None = None
@@ -277,6 +278,9 @@ class PlacementGraph:
                     "{item} needs the item a record is about",
                     {"slug": node.slug},
                 )
+            if token.field == "slug" and self.context.item not in self.nodes:
+                # Without an index the caller's item slug is the whole answer.
+                return self.context.item
             target = self.graph_item(self.context.item)
             return self._target_value(target, token, stack)
         if token.kind in {"nearest", "root"}:
@@ -337,7 +341,7 @@ class PlacementGraph:
         if token.field == "slug":
             return target.slug
         if token.field == "title":
-            title = target.fields.get("title")
+            title = target.title or target.fields.get("title")
             if not isinstance(title, str) or not title.strip():
                 raise PlacementError(
                     "placement_unresolved",
@@ -392,11 +396,11 @@ class PlacementGraph:
 
     def _load(self, index: Any) -> None:
         rows = index.conn.execute(
-            "SELECT slug, path, primitive, preset, created, record_at, broken "
+            "SELECT slug, path, primitive, preset, created, record_at, broken, title "
             "FROM docs"
         ).fetchall()
         by_path: dict[str, _Node] = {}
-        for slug, path, primitive, preset, created, record_at, broken in rows:
+        for slug, path, primitive, preset, created, record_at, broken, title in rows:
             node = _Node(
                 slug=slug,
                 primitive=primitive or "",
@@ -405,6 +409,7 @@ class PlacementGraph:
                 created=created,
                 fields={},
                 relations={},
+                title=title,
                 broken=bool(broken),
                 record_at=record_at,
             )
@@ -512,7 +517,9 @@ def expected_path(
         is_context(token) or token.kind in {"kind", "field"} for token in tokens
     ):
         return _render_simple_request(context.manifest, request)
-    graph = PlacementGraph(context)
+    graph = PlacementGraph(
+        replace(context, item=context.item or request.item) if request.item else context
+    )
     if not allow_existing and request.slug in graph.nodes:
         raise PlacementError(
             "placement_ambiguous",

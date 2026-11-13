@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from helpers import (
+    approve_picture,
     init_pack_store,
     workflow_pack_document,
     write_pack,
@@ -76,6 +77,9 @@ def test_an_explicit_map_carries_both_status_and_workflow(tmp_path: Path) -> Non
         {"slug": "a-bug", "from": "bugfix", "to": "default"},
         {"slug": "a-task", "from": "sprint", "to": "default"},
     ]
+    # A pack switch changes the protected set, so the human approves the new picture.
+    approved = approve_picture(store)
+    assert approved["ok"], approved
     report = invoke("doctor", {}, store=store, actor="human")
     assert report["ok"], report
     assert report["value"]["issues"] == []

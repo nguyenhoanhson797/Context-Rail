@@ -7,7 +7,7 @@ from pathlib import Path
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from context_rail.model.pack import load_pack
-from helpers import init_store
+from helpers import approve_store, init_store
 
 
 def _etag(store: Path, slug: str) -> str:
@@ -66,6 +66,7 @@ def test_the_catalog_lists_the_actions(tmp_path: Path) -> None:
 
 def test_a_basic_task_can_start_and_close(tmp_path: Path) -> None:
     store = init_store(tmp_path, "basic")
+    approve_store(store)
     assert is_ok(invoke("add", {"preset": "task", "title": "A task"}, store=store, actor="cto"))
 
     started = invoke(
@@ -100,6 +101,7 @@ def test_next_actions_is_read_only(tmp_path: Path) -> None:
 
 def test_close_sprint_refuses_an_open_child(tmp_path: Path) -> None:
     store = init_store(tmp_path, "scrum")
+    approve_store(store)
     assert is_ok(invoke("add", {"preset": "sprint", "title": "Sprint 3"}, store=store, actor="cto"))
     assert is_ok(
         invoke(

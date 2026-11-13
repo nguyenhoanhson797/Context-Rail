@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -127,6 +128,7 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                     created=stamp,
                     fields=fields,
                     relations=relations,
+                    item=_about_item(relations),
                 ),
             )
         except PlacementError as error:
@@ -174,6 +176,12 @@ def add(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     return _response(store, index, result)
 
 
+def _about_item(relations: Mapping[str, Sequence[str]]) -> str | None:
+    """The one item a record is about, for the ``{item.*}`` placement tokens."""
+    about = relations.get("about") or ()
+    return about[0] if len(about) == 1 else None
+
+
 def _add_record(
     ctx: Context,
     index: Index,
@@ -201,6 +209,7 @@ def _add_record(
                 at=now_iso(),
                 fields=fields,
                 relations=relations,
+                item=_about_item(relations),
             ),
         )
     except PlacementError as error:

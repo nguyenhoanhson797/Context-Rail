@@ -12,7 +12,7 @@ from context_rail.gateway.gateway import invoke
 from context_rail.kernel import structure
 from context_rail.model.errors import ModelError
 from context_rail.model.pack import load_pack
-from helpers import init_store, write_pack
+from helpers import approve_store, init_store, write_pack
 
 
 def _document(name: str) -> dict:
@@ -98,6 +98,7 @@ def test_status_leaves_a_unqueued_item_out(tmp_path: Path) -> None:
     document = _document("basic")
     document["execution"] = {"doing": {"queue": False}}
     write_pack(store, "basic", document)
+    approve_store(store)
 
     created = invoke("add", {"preset": "task", "title": "Task"}, store=store, actor="cto")[
         "value"

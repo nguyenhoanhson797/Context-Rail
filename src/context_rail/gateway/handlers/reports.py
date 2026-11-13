@@ -486,6 +486,15 @@ def _existing_outputs(ctx: Context, action: str, outputs: Sequence[str]) -> list
     return found
 
 
+def _cluster_item(rows: Sequence[dict[str, Any]]) -> str | None:
+    """The one item a cluster is about, for the ``{item.*}`` placement tokens."""
+    targets = {row.get("target") for row in rows}
+    if len(targets) != 1:
+        return None
+    only = next(iter(targets))
+    return only if isinstance(only, str) and only else None
+
+
 def _fix_document(
     ctx: Context, decision: ClusterDecision, rows: Sequence[dict[str, Any]]
 ) -> tuple[str, bytes]:
@@ -527,6 +536,7 @@ def _fix_document(
                     for name in ("because_of", "resolves")
                     if name in front
                 },
+                item=_cluster_item(rows),
             ),
         )
     except PlacementError as error:

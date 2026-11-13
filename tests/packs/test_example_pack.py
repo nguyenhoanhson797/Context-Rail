@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from helpers import copy_pack_templates, write_pack
+from helpers import approve_store, copy_pack_templates, write_pack
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
@@ -30,7 +30,9 @@ def _store(tmp_path: Path) -> Path:
         actor="human",
     )
     assert result["ok"], result
-    return Path(result["value"]["store"])
+    store = Path(result["value"]["store"])
+    approve_store(store)
+    return store
 
 
 def _etag(store: Path, slug: str) -> str:
