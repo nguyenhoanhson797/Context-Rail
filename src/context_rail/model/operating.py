@@ -345,10 +345,13 @@ def _check_states(
     pack: Pack, presets: tuple[str, ...], states: tuple[str, ...], where: str
 ) -> None:
     """Every state must exist in every referenced workflow and be ``done``."""
+    from context_rail.model.roles import workflow_statuses
+
     for preset_name in presets:
         workflow = pack.workflow_for(preset_name)
+        declared = workflow_statuses(workflow)
         for state in states:
-            if state not in workflow.transitions:
+            if state not in declared:
                 refuse(
                     f"{where} state {state!r} is not part of the "
                     f"{workflow.name!r} workflow"

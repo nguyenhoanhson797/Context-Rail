@@ -41,7 +41,7 @@ def cached_model(source: Any, build: Callable[[], Any], *, packaged: bool = Fals
         return value
 
 
-def cached_project(pack: Any, presentation: Any) -> Any:
+def cached_project(pack: Any, presentation: Any, placement: Any = None) -> Any:
     """One compiled ``ProjectModel`` per (semantic, presentation) digest.
 
     Pure: never opens the index, executes a command or hashes a source tree.
@@ -52,11 +52,15 @@ def cached_project(pack: Any, presentation: Any) -> Any:
     from context_rail.model.compiler import compile_project, semantic_digest
     from context_rail.model.presentation import presentation_hash
 
-    key = (pack.name, semantic_digest(pack), presentation_hash(presentation))
+    key = (
+        pack.name,
+        semantic_digest(pack, placement),
+        presentation_hash(presentation),
+    )
     try:
         return _CACHE_PROJECT[key]
     except KeyError:
-        value = compile_project(pack, pack.operating, presentation)
+        value = compile_project(pack, pack.operating, presentation, placement=placement)
         if len(_CACHE_PROJECT) >= _MAX_PROJECT_ENTRIES:
             for stale in list(_CACHE_PROJECT)[: _MAX_PROJECT_ENTRIES // 2]:
                 del _CACHE_PROJECT[stale]

@@ -86,7 +86,12 @@ def pack_show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     # is still running must report the approval of that same target.
     target = requested if requested == ctx.manifest.pack else name
     pack = load_pack(name, ctx.store)
-    model = _compiled(ctx.store, name, pack)
+    model = _compiled(
+        ctx.store,
+        name,
+        pack,
+        ctx.manifest if name == ctx.manifest.pack else None,
+    )
     return {
         "pack": name,
         "resources": pack_resources(ctx.store, name),
@@ -386,10 +391,13 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     return value
 
 
-def _compiled(store: Path, name: str, pack: Any) -> ProjectModel:
+def _compiled(store: Path, name: str, pack: Any, manifest: Any = None) -> ProjectModel:
     """Compile one pack and its presentation, reporting a bad surface."""
+    from context_rail.model.compiler import _placement
+
     presentation = load_presentation(name, store, pack)
-    return compile_project(pack, pack.operating, presentation)
+    placement = None if manifest is None else _placement(manifest)
+    return compile_project(pack, pack.operating, presentation, placement=placement)
 
 
 def _fix_for_path(message: str) -> str:
@@ -421,7 +429,11 @@ def _refuse_pending_intents(store: Path) -> None:
 def _load_target(store: Path, name: str) -> Any:
     if installed_pack_name(store, name) is None:
         raise WriteRefused("NOT_FOUND", f"unknown pack {name!r}", {"pack": name})
-    return load_pack(name, store)
+    pack = load_pack(name, store)
+    # The switch must not select a pack whose presentation cannot compile: the
+    # store would load a surface the compiler refuses on every later read.
+    _compiled(store, name, pack)
+    return pack
 
 
 def _known(store: Path, name: str) -> str:

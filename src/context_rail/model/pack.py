@@ -281,10 +281,7 @@ def _resolve_extends(pack: Pack, store: Path, *, seen: tuple[str, ...]) -> Pack:
             _refuse(f"pack {pack.name!r} remaps status {status!r} from {existing!r} to {category!r}")
         merged_statuses[status] = category
     merged_workflows = dict(base.workflows)
-    for workflow_name, workflow in pack.workflows.items():
-        if workflow_name == "default":
-            continue
-        merged_workflows[workflow_name] = workflow
+    merged_workflows.update(pack.workflows)
     merged_presets = dict(base.presets)
     merged_presets.update(pack.presets)
     merged_actions = dict(base.actions)
@@ -303,6 +300,7 @@ def _resolve_extends(pack: Pack, store: Path, *, seen: tuple[str, ...]) -> Pack:
         presets=merged_presets,
         actions=merged_actions,
         policy=merged_policy,
+        operating=pack.operating or base.operating,
     )
 
 

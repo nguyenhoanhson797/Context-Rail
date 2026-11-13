@@ -200,10 +200,13 @@ class Context:
     def model(self) -> Any:
         """The compiled operating model, built once per invocation."""
         from context_rail.model.cache import cached_project
+        from context_rail.model.compiler import _placement
         from context_rail.model.presentation import load_presentation
 
         presentation = load_presentation(self.pack.name, self.store, self.pack)
-        return cached_project(self.pack, presentation)
+        return cached_project(
+            self.pack, presentation, placement=_placement(self.manifest)
+        )
 
     @cached_property
     def profile(self) -> Profile | None:

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from helpers import init_store, record_inventory
 
@@ -273,3 +274,40 @@ def test_pack_rename_refuses_a_non_utf8_manifest() -> None:
         _rename(b"name: \xff\n", "old", "new")
 
     assert caught.value.code == "VALIDATION_FAILED"
+
+
+def test_pack_use_refuses_an_invalid_surface(tmp_path) -> None:
+    from importlib import resources
+
+    import yaml
+
+    from context_rail.store.doc import etag
+    from helpers import write_pack
+
+    store = init_store(tmp_path)
+    document = yaml.safe_load(
+        resources.files("context_rail")
+        .joinpath("packs", "basic", "pack.yaml")
+        .read_text(encoding="utf-8")
+    )
+    document["name"] = "bad"
+    write_pack(store, "bad", document)
+    (store / "packs" / "bad" / "surface.yaml").write_text(
+        "screens:\n- kind: nope\n", encoding="utf-8", newline="\n"
+    )
+    before = (store / "rail.yaml").read_bytes()
+
+    result = invoke(
+        "pack use",
+        {
+            "name": "bad",
+            "expect": etag(before),
+            "confirm": "USE PACK bad",
+        },
+        store=store,
+        actor="human",
+    )
+
+    assert not is_ok(result), result
+    assert "surface.yaml" in result["error"]["message"], result
+    assert (store / "rail.yaml").read_bytes() == before

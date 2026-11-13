@@ -77,6 +77,8 @@ def _states(pack: Pack, workflow: str | None, status: str | None) -> list[str]:
 
 
 def _workflows(pack: Pack) -> list[dict[str, Any]]:
+    from context_rail.model.roles import workflow_statuses
+
     out: list[dict[str, Any]] = []
     for name in sorted(pack.workflows):
         workflow = pack.workflows[name]
@@ -84,7 +86,7 @@ def _workflows(pack: Pack) -> list[dict[str, Any]]:
             {
                 "name": name,
                 "initial": workflow.initial,
-                "states": list(workflow.transitions),
+                "states": list(workflow_statuses(workflow)),
                 "transitions": {
                     state: list(targets)
                     for state, targets in workflow.transitions.items()

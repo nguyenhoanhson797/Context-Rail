@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from context_rail.kernel.lifecycle import category_of
+from context_rail.model.roles import workflow_statuses
 from context_rail.store import query
 
 __all__ = [
@@ -87,7 +88,7 @@ def catalog(
             "use_when": _use_when(preset),
             "workflow": preset.workflow,
             "container": preset.container,
-            "states": list(pack.workflow(preset.workflow).transitions),
+            "states": list(workflow_statuses(pack.workflow(preset.workflow))),
         }
         size = len(json.dumps(entry, sort_keys=True))
         if used + size > limit and entries:
@@ -120,7 +121,7 @@ def card(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
         "workflow": workflow.name,
         "state": status,
         "next": next_states,
-        "states": sorted(workflow.transitions),
+        "states": sorted(workflow_statuses(workflow)),
         "container": preset.container,
         "gate": gate,
         "proof": proof,
@@ -148,7 +149,7 @@ def explain(
             "fields": {key: list(values) for key, values in preset.fields.items()},
             "required": list(preset.required),
             "defaults": dict(preset.defaults),
-            "states": list(workflow.transitions),
+            "states": list(workflow_statuses(workflow)),
         }
         payload.update(_operating_note(context, preset.name))
         return _bounded(payload, limit)
@@ -190,7 +191,7 @@ def explain_workflow(
         "kind": "workflow",
         "name": workflow.name,
         "initial": workflow.initial,
-        "states": list(workflow.transitions),
+        "states": list(workflow_statuses(workflow)),
         "transitions": {
             source: list(targets)
             for source, targets in workflow.transitions.items()
@@ -241,7 +242,7 @@ def render_workflows(context: Any, *, limit: int = 2000) -> str:
         ) or "(done uses item_done)"
         lines.append(
             f"{name}: {workflow.initial} -> "
-            f"{', '.join(sorted(workflow.transitions))}; gates {gates}"
+            f"{', '.join(sorted(workflow_statuses(workflow)))}; gates {gates}"
         )
     text = "\n".join(lines)
     return text if len(text) <= limit else text[: limit - 12] + "\n[truncated]"

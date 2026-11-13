@@ -491,3 +491,61 @@ def test_a_workflow_change_changes_the_pack_hash(tmp_path: Path) -> None:
     with_bugfix = load_pack("basic", tmp_path)
 
     assert len({pack_hash(base), pack_hash(with_sprint), pack_hash(with_bugfix)}) == 3
+
+
+def test_a_child_pack_inherits_the_base_operating_model(tmp_path: Path) -> None:
+    from helpers import write_pack
+
+    write_pack(
+        tmp_path,
+        "child",
+        {
+            "name": "child",
+            "version": 2,
+            "extends": "scrum",
+            "statuses": {"todo": "not_started"},
+            "initial": "todo",
+            "transitions": {},
+            "presets": {"task": {"primitive": "item", "tags": []}},
+            "policy": {"stuck_hours": 24},
+        },
+    )
+
+    child = load_pack("child", tmp_path)
+
+    assert child.operating is not None
+    assert child.operating.unit == load_pack("scrum", tmp_path).operating.unit
+
+
+def test_a_child_pack_keeps_its_own_default_workflow(tmp_path: Path) -> None:
+    from helpers import write_pack
+
+    write_pack(
+        tmp_path,
+        "child",
+        {
+            "name": "child",
+            "version": 2,
+            "extends": "scrum",
+            "statuses": {"todo": "not_started", "doing": "active"},
+            "initial": "doing",
+            "transitions": {"doing": ["todo"]},
+            "presets": {"task": {"primitive": "item", "tags": []}},
+            "policy": {"stuck_hours": 24},
+        },
+    )
+
+    child = load_pack("child", tmp_path)
+
+    assert child.workflows["default"].initial == "doing"
+    assert child.workflows["default"].transitions == {"doing": ("todo",)}
+
+
+def test_state_lists_include_a_target_only_status() -> None:
+    from context_rail.model.roles import workflow_statuses
+
+    flow = Workflow(
+        name="w", initial="a", transitions={"a": ("b",)}, execution={}, quality={}
+    )
+
+    assert "b" in workflow_statuses(flow)

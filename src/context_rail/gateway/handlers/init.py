@@ -26,7 +26,13 @@ def load_pack_or_not_found(name: str, store: Path) -> Pack:
     """Load a pack, reporting an unknown name as NOT_FOUND rather than invalid."""
     if pack_source(name, store) is None:
         raise WriteRefused("NOT_FOUND", f"unknown pack {name!r}", {"pack": name})
-    return load_pack(name, store)
+    pack = load_pack(name, store)
+    from context_rail.model.compiler import compile_project
+    from context_rail.model.presentation import load_presentation
+
+    # A store must never start on a presentation the compiler refuses.
+    compile_project(pack, pack.operating, load_presentation(pack.name, store, pack))
+    return pack
 
 
 def pinned_folders(manifest: Manifest) -> tuple[str, ...]:

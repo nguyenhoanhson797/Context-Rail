@@ -312,12 +312,28 @@ def compile_project(
 
 
 def load_project(name: str, store: Path) -> ProjectModel:
-    """Load a pack and its ``surface.yaml`` and compile the model once."""
-    from context_rail.model.pack import load_pack, pack_layout
+    """Load a pack and its ``surface.yaml`` and compile the model once.
+
+    A store's manifest carries the placement its paths follow; a bare pack
+    directory has none, and the pack's own semantics are all there is.
+    """
+    from context_rail.model.manifest import load_manifest
+    from context_rail.model.pack import load_pack
 
     pack = load_pack(name, store)
     presentation = load_presentation(name, store, pack)
-    return compile_project(pack, pack.operating, presentation)
+    placement = (
+        _placement(load_manifest(store)) if (Path(store) / "rail.yaml").is_file() else None
+    )
+    return compile_project(pack, pack.operating, presentation, placement=placement)
+
+
+def _placement(manifest: Any) -> dict[str, Any]:
+    """The manifest's placement mapping: placement decides paths, so it is semantic."""
+    return {
+        "placement": dict(manifest.placement),
+        "presets": dict(manifest.preset_placement),
+    }
 
 
 def _spec(raw: Any, pack: Pack) -> OperatingSpec | None:
