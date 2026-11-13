@@ -293,7 +293,7 @@ def _require_workable(ctx: Context, slug: str) -> None:
     if row is None:
         raise WriteRefused("NOT_FOUND", f"{slug!r} is not an item", {"item": slug})
     held = structure.blocked(rows)
-    if slug in structure.executable(rows, held):
+    if slug in structure.workable(rows, held):
         return
     if row.category in structure.FINISHED_CATEGORIES:
         reason = "finished"

@@ -13,6 +13,7 @@ from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from context_rail.model.seats import SEAT_GRANTED
 from helpers import (
+    approve_picture,
     as_seat,
     edit_roles,
     records_of,
@@ -457,3 +458,56 @@ def test_candidate_is_not_in_a_reviewers_role(
 
     assert refusal(result)[0] == "PERMISSION_DENIED"
     assert result["error"]["details"]["reason"] == "method_not_in_role"
+
+
+def test_a_fix_item_can_take_a_candidate_while_verifying(
+    tmp_path: Path, answers: Path
+) -> None:
+    """``verifying`` is off the queue but still open, so work may be recorded."""
+    project = tmp_path / "project"
+    project.mkdir()
+    payload = {**json.loads(answers.read_text(encoding="utf-8")), "pack": "scrum"}
+    scrum_answers = tmp_path / "scrum-answers.json"
+    scrum_answers.write_text(json.dumps(payload), encoding="utf-8", newline="\n")
+    created = invoke(
+        "init",
+        {
+            "dir": str(project),
+            "answers_file": str(scrum_answers),
+            "pack": "scrum",
+            "confirm": "APPROVE charter",
+        },
+        actor="human",
+    )
+    assert is_ok(created), created
+    store = project / "context-rail"
+    assert is_ok(approve_picture(store))
+    added = invoke(
+        "add", {"preset": "fix", "title": "Broken thing"}, store=store, actor="cto"
+    )
+    assert is_ok(added), added
+    run_git(project, "init", "-b", "main")
+    run_git(project, "add", "-A")
+    run_git(project, "commit", "-m", "picture")
+    commit_file(project, "src/fix.py", "FIXED = True\n")
+
+    for status in ("fixing", "verifying"):
+        etag = invoke("show", {"slug": "broken-thing"}, store=store)["value"]["doc"][
+            "etag"
+        ]
+        moved = invoke(
+            "move",
+            {"slug": "broken-thing", "status": status, "expect": etag},
+            store=store,
+            actor="cto",
+        )
+        assert is_ok(moved), moved
+
+    candidate = invoke(
+        "candidate",
+        {"item": "broken-thing", "commit": "HEAD"},
+        store=store,
+        actor="cto",
+    )
+
+    assert is_ok(candidate), candidate

@@ -47,11 +47,11 @@ class Score:
     total: int
 
 
-def executable(items: list[ItemRow], held: dict[str, str] | None = None) -> list[str]:
-    """Leaf items that are open, queued and unblocked, sorted.
+def workable(items: list[ItemRow], held: dict[str, str] | None = None) -> list[str]:
+    """Leaf items that are open and unblocked, sorted, whether queued or not.
 
-    ``held`` lets a caller that already asked :func:`blocked` reuse the answer
-    instead of walking every dependency again.
+    Work may be recorded on an item the queue does not display: a review or
+    verification status is off the queue by design and still open for work.
     """
     if held is None:
         held = blocked(items)
@@ -66,10 +66,21 @@ def executable(items: list[ItemRow], held: dict[str, str] | None = None) -> list
         item.slug
         for item in items
         if item.category in WORKABLE_CATEGORIES
-        and item.queued
         and item.slug not in held
         and not is_container(item)
     )
+
+
+def executable(items: list[ItemRow], held: dict[str, str] | None = None) -> list[str]:
+    """Leaf items that are open, queued and unblocked, sorted.
+
+    ``held`` lets a caller that already asked :func:`blocked` reuse the answer
+    instead of walking every dependency again.
+    """
+    if held is None:
+        held = blocked(items)
+    by_slug = {item.slug: item for item in items}
+    return [slug for slug in workable(items, held) if by_slug[slug].queued]
 
 
 def blocked(items: list[ItemRow]) -> dict[str, str]:

@@ -21,6 +21,7 @@ from context_rail.core.util import now_iso
 from context_rail.gateway.handlers.common import (
     checkout,
     compose_doc,
+    default_parent,
     prepare_document_fields,
     preset_for,
     record_data,
@@ -499,20 +500,34 @@ def _fix_document(
     ctx: Context, decision: ClusterDecision, rows: Sequence[dict[str, Any]]
 ) -> tuple[str, bytes]:
     preset = preset_for(ctx.pack, "fix")
+    workflow = ctx.pack.workflow_for("fix")
     target = decision.fingerprint
     title = f"Fix {rows[0]['target']}"
     slug = unique_slug(ctx.index, title)
     stamp = now_iso()
+    relations: dict[str, Any] = {
+        "because_of": [f"[[{report}]]" for report in decision.reports],
+        "resolves": [f"[[{report}]]" for report in decision.reports],
+    }
+    parent = default_parent(
+        ctx,
+        preset,
+        {
+            "because_of": list(decision.reports),
+            "resolves": list(decision.reports),
+        },
+    )
+    if parent:
+        relations["part_of"] = [f"[[{parent}]]"]
     front: dict[str, Any] = {
         "primitive": "item",
         "preset": "fix",
         "title": title,
-        "status": ctx.pack.initial,
+        "status": workflow.initial,
         "tags": ["fix"],
         "created": stamp,
         "updated": stamp,
-        "because_of": [f"[[{report}]]" for report in decision.reports],
-        "resolves": [f"[[{report}]]" for report in decision.reports],
+        **relations,
     }
     body = (
         f"# {title}\n\n"
@@ -533,7 +548,7 @@ def _fix_document(
                 fields=front,
                 relations={
                     name: tuple(front[name])
-                    for name in ("because_of", "resolves")
+                    for name in ("because_of", "resolves", "part_of")
                     if name in front
                 },
                 item=_cluster_item(rows),
