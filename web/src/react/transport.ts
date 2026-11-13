@@ -1,16 +1,8 @@
 import { z } from 'zod';
-import { INTEL_CONTRACT, object, rows, text, type Data, type Snapshot, type RailDoc, type Health, type IntelEnvelope, type IntelRules, type IntelCorrections, type IntelCorrectionDetail, type IntelCorrectionHistory, type IntelTaskEpisode, type IntelExecutionMetrics, type IntelAdapterDiagnostics, type IntelFilters } from './contracts';
+import { object, rows, text, type Data, type Snapshot, type RailDoc, type Health } from './contracts';
 export const projectValid = (id: string) => id === '' || /^[a-z0-9][a-z0-9-]{0,78}$/.test(id);
 export const docValid = (id: string) => id.length > 0 && id.length < 200 && !/[\p{Cc}"'<>&`\\/]/u.test(id);
 const envelope = z.record(z.string(), z.unknown());
-const intelArgs = (filters: IntelFilters): Record<string, string> => {
-  const args: Record<string, string> = {};
-  for (const [key, value] of Object.entries(filters)) {
-    if (value === undefined || value === null || value === '') continue;
-    args[key] = String(value);
-  }
-  return args;
-};
 export class RailClient {
   constructor(readonly project: string) { if (!projectValid(project)) throw new Error('Invalid project identifier'); }
   /** The one fetch: the HTTP status is kept so a caller can tell an absent
@@ -97,42 +89,6 @@ export class RailClient {
     const token = document.querySelector<HTMLMetaElement>('meta[name="ctx-rail-token"]')?.content || '';
     return this.request(`/api/tool/${encodeURIComponent(tool)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Context-Rail-Token': token }, body: JSON.stringify({ args, confirm }) });
   }
-  /* -- UI-02: source-backed intelligence read contracts -------------------
-     Each view is one versioned, bounded document. Missing data is rendered
-     from the envelope (null + reasons), never as zero/success/failure; an
-     unsupported contract or a missing state is an error, never an empty
-     success. The browser never reads event or receipt files directly. */
-  private async intel<T extends IntelEnvelope>(view: string, args: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
-    const query = new URLSearchParams(args).toString();
-    const result = await this.request('/api/read/' + view + (query ? '?' + query : ''), { signal });
-    if (result.contract !== INTEL_CONTRACT) throw new Error('The ' + view + ' read has an unsupported contract');
-    if (!['ok', 'unknown', 'error', 'refused'].includes(text(result.status))) throw new Error('The ' + view + ' read returned no state');
-    return result as T;
-  }
-  rules(signal?: AbortSignal): Promise<IntelRules> {
-    return this.intel('ui_rules', {}, signal);
-  }
-  corrections(filters: IntelFilters = {}, signal?: AbortSignal): Promise<IntelCorrections> {
-    return this.intel('ui_corrections', intelArgs(filters), signal);
-  }
-  correctionDetail(correction: string, signal?: AbortSignal): Promise<IntelCorrectionDetail> {
-    if (!correction || correction.length > 200 || /[\p{Cc}]/u.test(correction)) return Promise.reject(new Error('Invalid correction identity'));
-    return this.intel('ui_correction_detail', { correction }, signal);
-  }
-  correctionHistory(filters: IntelFilters = {}, signal?: AbortSignal): Promise<IntelCorrectionHistory> {
-    return this.intel('ui_correction_history', intelArgs(filters), signal);
-  }
-  taskEpisode(task = '', signal?: AbortSignal): Promise<IntelTaskEpisode> {
-    if (task.length > 120 || /[\p{Cc}]/u.test(task)) return Promise.reject(new Error('Invalid task identity'));
-    return this.intel('ui_task_episode', task ? { task } : {}, signal);
-  }
-  executionMetrics(perTask = false, limit = 20, signal?: AbortSignal): Promise<IntelExecutionMetrics> {
-    return this.intel('ui_execution_metrics', { per_task: String(perTask), limit: String(limit) }, signal);
-  }
-  adapterDiagnostics(signal?: AbortSignal): Promise<IntelAdapterDiagnostics> {
-    return this.intel('ui_adapter_diagnostics', {}, signal);
-  }
-
 }
 /** The capability the server publishes per tool row; never a client permission. */
 export function capabilityOf(tool: Data): Data | null {

@@ -5,7 +5,7 @@ import { RailClient, docValid, projectValid, refusal } from './transport';
 import { RefreshGeneration, projectKey, readKey, refreshProject } from './refresh';
 import { ACTIVE_STATUSES, object, rows, text, type Data, type PageProps, type Route } from './contracts';
 import { Button, ErrorState, Loading, PageHeading } from './ui';
-import { SettingsPage } from './pages/workspace';
+import { SettingsPage } from './pages/settings-page';
 import { DashboardPage } from './pages/dashboard';
 import { FlowPage } from './pages/flow';
 import { PlanPage } from './pages/plan';
