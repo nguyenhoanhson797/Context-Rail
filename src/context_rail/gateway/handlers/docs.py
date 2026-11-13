@@ -807,6 +807,12 @@ def _require_gate(ctx: Context, doc: Doc, target: str, actor: str) -> None:
     """
     policy = ctx.policy
     if policy is None:
+        if category_of(ctx.pack, target) == "done":
+            raise WriteRefused(
+                "INVALID_STATE",
+                "the charter is not approved; nothing executes yet",
+                {"reason": "approval_missing", "target": target},
+            )
         return
     workflow = ctx.pack.workflow_for(doc.preset or "")
     name = workflow.gate_for(target)

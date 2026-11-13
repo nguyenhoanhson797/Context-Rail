@@ -538,7 +538,7 @@ def _authorize(
         return None
     policy = context.policy
     if policy is None:
-        if tool.name in EXECUTION_TOOLS:
+        if _is_execution(tool, params, context):
             return fail(
                 "INVALID_STATE",
                 "the charter is not approved; nothing executes yet",

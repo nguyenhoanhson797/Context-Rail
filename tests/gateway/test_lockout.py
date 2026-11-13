@@ -229,3 +229,22 @@ def test_every_executor_refuses_without_a_charter(
 
     assert refused["error"]["code"] == "INVALID_STATE", refused
     assert refused["error"]["details"]["reason"] == "approval_missing"
+
+
+def test_a_scaffolded_store_locks_a_move_to_done(tmp_path: Path) -> None:
+    store, item = _scaffold(tmp_path)
+
+    refused = invoke(
+        "move",
+        {"slug": item, "status": "doing", "expect": _etag(store, item)},
+        store=store,
+        actor="cto",
+    )
+
+    assert refused["error"]["code"] == "INVALID_STATE", refused
+    assert refused["error"]["details"]["reason"] == "approval_missing"
+
+
+def test_a_scaffolded_store_still_allows_planning_writes(tmp_path: Path) -> None:
+    store, _item = _scaffold(tmp_path)
+    assert is_ok(invoke("add", {"preset": "task", "title": "Plan it"}, store=store, actor="cto"))
