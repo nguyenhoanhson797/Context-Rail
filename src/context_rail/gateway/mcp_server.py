@@ -14,6 +14,7 @@ from mcp.shared.exceptions import MCPError
 
 from context_rail import __version__
 from context_rail.core.result import fail
+from context_rail.core.tool_names import REMOVED_COMMANDS, REMOVED_FLAGS
 from context_rail.gateway.execution import (
     EXPLICIT_ACTOR,
     caller_identity,
@@ -86,11 +87,24 @@ def build_server(
 
     async def on_call_tool(_context: object, params: object) -> types.CallToolResult:
         name = getattr(params, "name", None)
+        arguments = getattr(params, "arguments", None) or {}
+        if isinstance(name, str) and (name in REMOVED_COMMANDS or name in REMOVED_FLAGS):
+            # A removed command is a tombstone, not an unknown tool: the caller
+            # is told what replaced it, exactly as the CLI and gateway do.
+            replacement = (
+                REMOVED_COMMANDS.get(name) or REMOVED_FLAGS.get(name) or ""
+            )
+            return _result(
+                fail(
+                    "VALIDATION_FAILED",
+                    f"`rail {name}` was removed: {replacement}",
+                    {"reason": "command_removed", "replacement": replacement},
+                )
+            )
         if not isinstance(name, str) or name not in by_name:
             raise MCPError(
                 types.INVALID_PARAMS, f"unknown tool {name!r}"
             )
-        arguments = getattr(params, "arguments", None) or {}
         tool = by_name[name]
 
         async def call() -> dict:
@@ -118,18 +132,24 @@ def build_server(
         else:
             async with write_lock:
                 envelope = await call()
-        text = json.dumps(envelope, ensure_ascii=False)
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text=text)],
-            structuredContent=envelope,
-            isError=not envelope["ok"],
-        )
+        return _result(envelope)
 
     return Server(
         "context-rail",
         version=__version__,
         on_list_tools=on_list_tools,
         on_call_tool=on_call_tool,
+    )
+
+
+def _result(envelope: dict) -> types.CallToolResult:
+    """One Result envelope as the MCP tool answer, text and structure alike."""
+    return types.CallToolResult(
+        content=[
+            types.TextContent(type="text", text=json.dumps(envelope, ensure_ascii=False))
+        ],
+        structuredContent=envelope,
+        isError=not envelope["ok"],
     )
 
 

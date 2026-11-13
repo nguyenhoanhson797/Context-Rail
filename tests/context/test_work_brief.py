@@ -162,6 +162,13 @@ def test_max_chars_out_of_range_is_refused(leaf_item: SimpleNamespace, bad: int)
     assert refusal(brief(leaf_item, max_chars=bad))[0] == "VALIDATION_FAILED"
 
 
+def test_an_explicit_small_budget_is_the_budget(leaf_item: SimpleNamespace) -> None:
+    """A caller asking for 100 characters gets 100, not the 240 floor."""
+    value = brief(leaf_item, max_chars=100)["value"]
+
+    assert len(value["text"]) <= 100
+
+
 @pytest.mark.parametrize("role", ["cto", "lead", "manager"])
 def test_name_mode_refuses_a_role_it_does_not_have(
     leaf_item: SimpleNamespace, role: str

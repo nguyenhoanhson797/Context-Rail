@@ -128,6 +128,7 @@ def test_an_empty_human_in_loop_cannot_remove_the_floor():
     fields = {
         "schema": 1,
         "project": {"goal": "ride", "vision": "v", "scope": ["must-1"], "wont": []},
+        "protected_files": ["charter.md"],
         "default_branch": "main",
         "human_in_loop": [],
     }

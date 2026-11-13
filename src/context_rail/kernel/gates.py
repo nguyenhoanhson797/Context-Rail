@@ -19,7 +19,7 @@ from context_rail.model.policy import Charter
 
 __all__ = ["FRESHNESS", "CheckState", "GateDecision", "ReviewState", "evaluate_gate"]
 
-FRESHNESS = ("fresh", "stale", "unknown", "missing")
+FRESHNESS = ("fresh", "stale", "unknown", "missing", "untracked")
 APPROVED = "approve"
 
 

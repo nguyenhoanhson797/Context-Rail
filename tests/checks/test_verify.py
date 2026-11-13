@@ -710,3 +710,27 @@ def test_item_wide_verify_with_only_review_checks_is_explicit(
     assert is_ok(verified), verified
     assert verified["value"]["verdicts"] == []
     assert verified["value"]["reason"] == "no_executable_checks"
+
+
+def test_an_untracked_input_is_not_fresh(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    """A new file matching the inputs is a change the verdict never saw."""
+    store = git_approved_store.store
+    assert is_ok(
+        declare(
+            store,
+            tmp_path,
+            "smoke",
+            cmd_payload([sys.executable, "-c", "print('ok')"], ["src/**/*.py"]),
+        )
+    )
+    assert invoke("verify", {"target": "smoke"}, store=store, actor="cto")["value"]["passed"] is True
+    assert invoke("show", {"slug": "smoke"}, store=store)["value"]["freshness"] == "fresh"
+
+    (git_approved_store.root / "src" / "extra.py").write_text(
+        "x = 1\n", encoding="utf-8", newline="\n"
+    )
+
+    shown = invoke("show", {"slug": "smoke"}, store=store)["value"]
+    assert shown["freshness"] == "untracked"

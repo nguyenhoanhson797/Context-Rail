@@ -119,3 +119,41 @@ def test_pack_use_needs_the_human_channel(role_store: SimpleNamespace) -> None:
 
     assert refused["error"]["code"] == "PERMISSION_DENIED"
     assert is_ok(allowed), allowed
+
+
+def test_a_terminal_human_satisfies_a_human_gate(approved_store: Path) -> None:
+    """The human channel is the proof; an unnamed terminal human still is human."""
+    from helpers import touch_doc
+
+    store = approved_store
+    added = invoke("add", {"preset": "task", "title": "T"}, store=store, actor="cto")
+    assert is_ok(added), added
+    touch_doc(store, "charter.md", gates=_human_done_gate(store))
+    assert is_ok(approve_picture(store))
+
+    with as_human():
+        for status in ("doing", "done"):
+            shown = invoke("show", {"slug": "t"}, store=store, actor=None)
+            assert is_ok(shown), shown
+            moved = invoke(
+                "move",
+                {"slug": "t", "status": status, "expect": shown["value"]["doc"]["etag"]},
+                store=store,
+                actor=None,
+            )
+            assert is_ok(moved), moved
+
+
+def _human_done_gate(store: Path) -> dict[str, Any]:
+    """The store's gates with ``item_done`` needing a human and nothing else."""
+    document = yaml.safe_load(
+        (store / "charter.md").read_text(encoding="utf-8").split("---")[1]
+    )
+    gates = dict(document["gates"])
+    gates["item_done"] = {
+        "require_checks": False,
+        "require_acceptance": False,
+        "require_review": False,
+        "require_human": True,
+    }
+    return gates

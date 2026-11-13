@@ -86,6 +86,19 @@ def test_the_gateway_answers_the_old_repair_flag(
     assert refusal(result) == ("VALIDATION_FAILED", "command_removed")
 
 
+def test_mcp_answers_a_removed_command_with_its_replacement(
+    leaf_item: SimpleNamespace,
+) -> None:
+    from helpers import mcp_call
+
+    outcome = mcp_call(leaf_item.store, "loop dispatch", {}, actor="human")
+
+    assert outcome["rpc_error"] is None, outcome
+    error = outcome["structured"]["error"]
+    assert error["details"]["reason"] == "command_removed"
+    assert "rail loop brief" in error["details"]["replacement"]
+
+
 def test_two_syncs_cannot_overlap(two_clones: SimpleNamespace) -> None:
     release = take_exclusive(local_dir(two_clones.store_a) / "sync.lock")
     try:

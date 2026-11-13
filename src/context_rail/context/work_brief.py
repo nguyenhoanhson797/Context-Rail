@@ -147,7 +147,7 @@ def build_work_brief(
 
     order = (*WORK_BRIEF_SECTIONS, *(name for name in REVIEW_SECTIONS if name in sections))
     fitted, omitted = _fit({name: sections[name] for name in order}, total)
-    text = "\n\n".join(f"## {name}\n{fitted[name]}" for name in order)
+    text = "\n\n".join(f"## {name}\n{fitted[name]}" for name in order if name in fitted)
     return {
         "item": item,
         "role": role,
@@ -167,7 +167,9 @@ def _budget(ctx: Context, role: Role | None, max_chars: int | None) -> int:
     if profile is not None:
         total = min(total, int(profile.budget.get("max_chars", total)))
     if max_chars is not None:
-        total = min(total, max_chars)
+        # An explicit budget is the budget; the floor only stands in for a
+        # default the caller never chose.
+        return min(total, max_chars)
     return max(total, _FLOOR)
 
 
@@ -175,6 +177,7 @@ def _fit(sections: Mapping[str, str], budget: int) -> tuple[dict[str, str], dict
     """Shorten sections, least important first, until the whole fits ``budget``."""
     fitted = dict(sections)
     omitted: dict[str, int] = {}
+    floor = min(_FLOOR, budget)
 
     def size() -> int:
         return sum(len(name) + len(text) + 5 for name, text in fitted.items()) + 2 * len(fitted)
@@ -184,11 +187,16 @@ def _fit(sections: Mapping[str, str], budget: int) -> tuple[dict[str, str], dict
         if over <= 0:
             break
         text = fitted.get(name)
-        if text is None or len(text) <= _FLOOR:
+        if text is None or len(text) <= floor:
             continue
-        keep = max(_FLOOR, len(text) - over - 1)
+        keep = max(floor, len(text) - over - 1)
         fitted[name] = text[:keep].rstrip() + "…"
         omitted[name] = len(text) - keep
+    order = [name for name in _TRIM_ORDER if name in fitted]
+    while size() > budget and order:
+        name = order.pop(0)
+        del fitted[name]
+        omitted[name] = len(sections[name])
     return fitted, omitted
 
 

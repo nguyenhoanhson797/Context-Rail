@@ -9,6 +9,7 @@ from context_rail.model.policy import Charter, parse_charter
 DEFAULT_CHARTER_FIELDS = {
     "schema": 1,
     "project": {"goal": "ride", "vision": "v", "scope": ["must-1", "must-2"], "wont": []},
+    "protected_files": ["charter.md"],
     "default_branch": "main",
 }
 

@@ -27,6 +27,7 @@ from context_rail.gateway.handlers.common import (
 )
 from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import Check, parse_check, parse_verdict
+from context_rail.model.fields import glob_regex
 from context_rail.model.manifest import render_path
 from context_rail.model.pack import Preset
 from context_rail.runner import git as git_runner
@@ -350,7 +351,43 @@ def freshness_of(
     except GlobError:
         return "unknown"
     stats = selected_stats(worktree, matched)
-    return freshness(verdict, definition, snapshot, stats)
+    state = freshness(verdict, definition, snapshot, stats)
+    if state == "fresh" and _untracked_matches(worktree, globs):
+        # An untracked file is a change the index cannot see, so a verdict
+        # that never covered it is not proof about it.
+        return "untracked"
+    return state
+
+
+def _untracked_matches(worktree: Path, globs: Sequence[str]) -> bool:
+    """Whether an untracked, unignored file matches the declared inputs.
+
+    This is the one freshness read that asks git: the index by design cannot
+    see a file git never recorded. A refused listing never upgrades a verdict,
+    so it reports no untracked match and leaves the index's judgement in place.
+    """
+    patterns = []
+    for text in globs:
+        if not text:
+            continue
+        try:
+            patterns.append(glob_regex(str(text).replace("\\", "/")))
+        except re.error:
+            return False
+    if not patterns:
+        return False
+    try:
+        listing = git_runner.status_porcelain(worktree, confine_to=worktree)
+    except WriteRefused:
+        return False
+    for record in listing:
+        if not record.startswith("?? "):
+            continue
+        # A quoted path is git's own escaping, not a path this reader can match.
+        path = record[3:].strip('"').replace("\\", "/")
+        if any(pattern.match(path) for pattern in patterns):
+            return True
+    return False
 
 
 # ── verification modes ────────────────────────────────────────────────────

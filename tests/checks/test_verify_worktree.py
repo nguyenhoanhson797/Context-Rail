@@ -132,4 +132,5 @@ def test_done_refused_until_candidate_content_is_in_checkout(
 
     run_git(leaf_item.root, "merge", "--ff-only", "work")
 
-    assert is_ok(move("done"))
+    moved = move("done")
+    assert is_ok(moved), moved

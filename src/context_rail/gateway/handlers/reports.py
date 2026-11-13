@@ -50,7 +50,7 @@ from context_rail.store.placement import (
 from context_rail.store.approval import protected_paths
 from context_rail.store.doc import etag
 from context_rail.store.lock import store_lock
-from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
+from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay, resolve_unique
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -95,6 +95,7 @@ def report(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if saved is not None:
             return _report_value(index, saved)
         index.sync()
+        _require_item(index, item)
         if revision is not None:
             bound = _recorded_candidate(ctx, item, revision)
             held = query.report_for_candidate(index, bound["record_id"])
@@ -297,6 +298,25 @@ def _report_value(index: Any, result: dict[str, Any]) -> dict[str, Any]:
         "report": record,
         "nothing_to_report": bool(data.get("nothing_to_report")),
     }
+
+
+def _require_item(index: Any, slug: str) -> None:
+    """Refuse a report about a slug that is not one live Item."""
+    try:
+        path = resolve_unique(index, slug)
+    except LookupError:
+        raise WriteRefused(
+            "NOT_FOUND",
+            f"no item {slug!r} to report about",
+            {"reason": "item_unknown", "item": slug},
+        ) from None
+    row = index.conn.execute("SELECT primitive FROM docs WHERE path = ?", (path,)).fetchone()
+    if row is None or row[0] != "item":
+        raise WriteRefused(
+            "NOT_FOUND",
+            f"{slug!r} is not an item to report about",
+            {"reason": "item_unknown", "item": slug},
+        )
 
 
 def _recorded_candidate(ctx: Context, item: str, revision: str) -> dict[str, Any]:

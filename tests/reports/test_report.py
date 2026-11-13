@@ -224,3 +224,11 @@ def test_a_report_file_with_duplicate_keys_refuses(completed_run, tmp_path) -> N
 
     assert result["ok"] is False, result
     assert result["error"]["code"] == "VALIDATION_FAILED"
+
+
+def test_report_refuses_a_ghost_item(completed_run: SimpleNamespace) -> None:
+    refused = _report(completed_run.store, "no-such-item", completed_run.report_file)
+
+    assert refused["error"]["code"] == "NOT_FOUND", refused
+    assert refused["error"]["details"]["reason"] == "item_unknown"
+    assert records_of(completed_run.store, "report.filed") == []

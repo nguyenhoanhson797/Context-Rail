@@ -383,6 +383,50 @@ def test_a_seat_cannot_triage_a_report_about_a_sibling_sprint(
     assert refusal(refused) == ("PERMISSION_DENIED", "write_out_of_reach")
 
 
+def test_a_profile_without_methods_inherits_the_roles_actions(
+    role_store: SimpleNamespace, tmp_path: Path
+) -> None:
+    """An omitted allowed_methods narrows nothing; the role still decides."""
+    body = tmp_path / "prompt.md"
+    body.write_text("# Worker\n\nDo the work.\n", encoding="utf-8", newline="\n")
+    with as_human():
+        added = invoke(
+            "add",
+            {
+                "preset": "profile",
+                "title": "Worker",
+                "set": [
+                    "schema=1",
+                    "budget={max_chars: 12000, max_docs: 20}",
+                    "skills=[]",
+                    "budgets={attempts: 2, seconds: 3600, tokens: null, credits: null}",
+                ],
+                "body_file": str(body),
+                "confirm": "APPROVE worker",
+            },
+            store=role_store.store,
+            actor=None,
+        )
+        assert is_ok(added), added
+        granted = invoke(
+            "seat grant",
+            {
+                "seat": "worker-1",
+                "role": "sprint-lead",
+                "anchor": role_store.orders,
+                "profile": "worker",
+            },
+            store=role_store.store,
+            actor=None,
+        )
+    assert is_ok(granted), granted
+
+    shown = as_seat(role_store.store, "worker-1", "show", {"slug": role_store.o1})
+
+    assert is_ok(shown), shown
+    assert "file-bug" in shown["value"]["card"]["actions"]
+
+
 def test_a_rename_cannot_rewrite_a_document_outside_the_seats_reach(
     role_store: SimpleNamespace,
 ) -> None:

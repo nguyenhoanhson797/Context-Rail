@@ -463,7 +463,10 @@ def applicable_actions(
 
     specs = {tool.name: tool for tool in TOOLS}
     profile = getattr(ctx, "profile", None)
-    methods = canonical_methods(profile.allowed_methods) if profile is not None else None
+    # An omitted method list inherits rather than suppresses: in a store with
+    # roles the role decides, and a store without roles never parses an empty one.
+    declared = profile.allowed_methods if profile is not None else ()
+    methods = canonical_methods(declared) if declared else None
     names: list[str] = []
     for action in ctx.pack.actions.values():
         if action.on != "*" and action.on != row.preset:
