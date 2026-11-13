@@ -325,8 +325,6 @@ def brief(
         kept_reports = [row for row in reports if _reachable(context, row.get("item"))]
         reports = kept_reports
     operating_state = _operating_state(context)
-    if reach is not None:
-        operating_state = _scoped_operating_state(context, operating_state)
     headline = _headline(operating_state)
     sections, omitted = _brief_sections(
         context,
@@ -657,8 +655,6 @@ def digest(
         row for row in feed if reach is None or _reachable(context, row.get("item"))
     ]
     operating_state = _operating_state(context)
-    if reach is not None:
-        operating_state = _scoped_operating_state(context, operating_state)
     result = {
         "summary": {
             "text": _clip(
@@ -715,36 +711,6 @@ def digest(
             len(feed) - len(recent_reports)
         )
     return result
-
-
-def _scoped_operating_state(
-    context: Context, state: dict[str, Any]
-) -> dict[str, Any]:
-    """Focus, progress children and totals reduced to what the seat can read."""
-    focus = dict(state.get("focus") or {})
-    chosen = focus.get("focus")
-    if chosen is not None and not _reachable(context, chosen.get("slug")):
-        focus = {"state": "none", "focus": None, "candidates": []}
-    else:
-        focus["candidates"] = [
-            row
-            for row in focus.get("candidates") or ()
-            if _reachable(context, row.get("slug"))
-        ]
-    progress = state.get("progress")
-    if progress is not None:
-        progress = dict(progress)
-        children = [
-            child
-            for child in progress.get("children") or ()
-            if _reachable(context, child.get("slug"))
-        ]
-        progress["children"] = children
-        progress["total"] = sum(int(child.get("total") or 0) for child in children)
-        progress["complete"] = sum(
-            int(child.get("complete") or 0) for child in children
-        )
-    return {**state, "focus": focus, "progress": progress}
 
 
 def _reachable(context: Context, slug: Any) -> bool:

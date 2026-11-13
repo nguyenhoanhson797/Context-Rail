@@ -111,6 +111,7 @@ class Group:
     label: str
     order: str | None
     items: tuple[ItemRow, ...]
+    outside_reach: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -350,15 +351,20 @@ def require_focus(
 def resolve_hierarchy(ctx: Context, model: ProjectModel) -> tuple[Group, ...]:
     """Every declared hierarchy level, its containers and their order key."""
     groups: list[Group] = []
+    reach = ctx.reach
     for level in model.operating.hierarchy:
         rows = _rows(ctx, (level.preset,))
         rows.sort(key=lambda row: _order_key(row, level.order))
+        outside = 0
+        if reach is not None and not reach.read_all:
+            outside = _count(ctx, (level.preset,)) - len(rows)
         groups.append(
             Group(
                 preset=level.preset,
                 label=label(model, level.preset, plural=True),
                 order=level.order,
                 items=tuple(rows),
+                outside_reach=outside,
             )
         )
     return tuple(groups)
@@ -450,8 +456,26 @@ def resolve_queue(
         focus=focus,
         scope=scope,
         candidates=focus.candidates,
-        blocked={row.slug: blocked[row.slug] for row in rows if row.slug in blocked},
+        blocked={
+            row.slug: held_reason(ctx, blocked[row.slug])
+            for row in rows
+            if row.slug in blocked
+        },
     )
+
+
+def held_reason(ctx: Context, reason: str) -> str:
+    """A blocker without the name of a dependency the caller may not read."""
+    reach = ctx.reach
+    if reach is None or not reason.startswith("depends_on:"):
+        return reason
+    dependency = reason.partition(":")[2]
+    row = ctx.index.conn.execute(
+        "SELECT path, preset FROM docs WHERE slug = ? LIMIT 1", (dependency,)
+    ).fetchone()
+    if row is not None and reach.can_read(dependency, path=row[0], preset=row[1]):
+        return reason
+    return "depends_on"
 
 
 def applicable_actions(
@@ -658,9 +682,28 @@ def _one(ctx: Context, slug: str) -> ItemRow | None:
     return rows[0] if rows else None
 
 
+def _count(ctx: Context, presets: tuple[str, ...]) -> int:
+    """How many items the presets hold, so a caller can name what reach hid."""
+    if not presets:
+        return 0
+    return int(
+        ctx.index.conn.execute(
+            "SELECT COUNT(*) FROM docs d WHERE d.primitive = 'item' AND d.broken = 0 "
+            f"AND d.preset IN ({', '.join('?' * len(presets))})",
+            presets,
+        ).fetchone()[0]
+    )
+
+
 def _rows(
     ctx: Context, presets: tuple[str, ...] | None, *, slug: str | None = None
 ) -> list[ItemRow]:
+    """The items one caller may read, in the resolver's own shape.
+
+    Reach applies here, at the one selection every operating read shares, so a
+    queue, a progress total and a focus candidate can never name a document the
+    caller may not read.
+    """
     index = ctx.index
     where = ["d.primitive = 'item'", "d.broken = 0"]
     params: list[Any] = []
@@ -679,6 +722,13 @@ def _rows(
         + " ORDER BY d.slug",
         params,
     ).fetchall()
+    reach = ctx.reach
+    if reach is not None:
+        rows = [
+            row
+            for row in rows
+            if reach.can_read(row[0], path=row[8], preset=row[2])
+        ]
     if not rows:
         return []
     paths = [row[8] for row in rows]
@@ -780,6 +830,7 @@ def _requires_met(ctx: Context, action: Any, slug: str) -> bool:
 __all__ += [
     "applicable_actions",
     "focus_membership",
+    "held_reason",
     "item_row",
     "outside_focus",
     "require_focus",

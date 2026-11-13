@@ -874,7 +874,7 @@ def _picture_protected(
         *(
             _picture_path(context, "item", "scope", slug)
             for slug, entry in zip(slugs["scope"], scope, strict=True)
-            if entry["priority"] in ("must", "should")
+            if entry.get("priority") in ("must", "should")
         ),
     ]
 

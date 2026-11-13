@@ -428,14 +428,6 @@ def read_refusal(ctx: Context, slug: str, *, path: str | None = None) -> WriteRe
     )
 
 
-def read_filter(ctx: Context, slugs: list[str]) -> tuple[list[str], int]:
-    """The slugs this caller may read, and how many were dropped."""
-    if ctx.reach is None:
-        return slugs, 0
-    kept = [slug for slug in slugs if read_refusal(ctx, slug) is None]
-    return kept, len(slugs) - len(kept)
-
-
 def _requested_fields(values: Any) -> dict[str, Any]:
     """The frontmatter values a ``--set`` list requests, read without refusing."""
     fields: dict[str, Any] = {}

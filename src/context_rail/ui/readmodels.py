@@ -77,18 +77,15 @@ def _next(context: Any) -> dict[str, Any]:
 
 def _scope_items(context: Any) -> list[dict[str, Any]]:
     rows = context.index.conn.execute(
-        "SELECT d.slug, d.title FROM docs d WHERE d.primitive = 'item' "
+        "SELECT d.slug, d.title, d.path, d.preset FROM docs d WHERE d.primitive = 'item' "
         "AND d.broken = 0 ORDER BY d.slug"
     ).fetchall()
+    reach = getattr(context, "reach", None)
     out: list[dict[str, Any]] = []
-    for slug, title in rows:
-        preset = context.pack.presets.get(
-            context.index.conn.execute(
-                "SELECT preset FROM docs WHERE slug = ? ORDER BY path LIMIT 1",
-                (slug,),
-            ).fetchone()[0]
-            or ""
-        )
+    for slug, title, path, preset_name in rows:
+        if reach is not None and not reach.can_read(slug, path=path, preset=preset_name):
+            continue
+        preset = context.pack.presets.get(preset_name or "")
         if preset is None or "priority" not in preset.fields:
             continue
         checks = query.check_states(context.index, slug)

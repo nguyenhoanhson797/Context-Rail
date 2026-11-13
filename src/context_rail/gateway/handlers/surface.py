@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from context_rail.context import operating, surface
-from context_rail.gateway.handlers.common import read_filter, read_refusal
+from context_rail.gateway.handlers.common import read_refusal
 from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:
@@ -188,15 +188,9 @@ def _hierarchy_page(ctx: Context, model: Any) -> list[dict[str, Any]]:
     page: list[dict[str, Any]] = []
     for group in operating.resolve_hierarchy(ctx, model):
         value = group.as_dict()
-        kept, outside = read_filter(ctx, [item["slug"] for item in value["items"]])
-        if outside:
-            visible = set(kept)
-            value["items"] = [
-                item for item in value["items"] if item["slug"] in visible
-            ]
         value["omitted"] = max(len(value["items"]) - _HIERARCHY_CAP, 0)
         value["items"] = value["items"][:_HIERARCHY_CAP]
-        value["omitted_outside_reach"] = outside
+        value["omitted_outside_reach"] = group.outside_reach
         page.append(value)
     return page
 

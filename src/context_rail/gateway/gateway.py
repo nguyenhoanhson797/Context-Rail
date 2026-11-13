@@ -430,7 +430,7 @@ def effective_decision(
             return "human-only"
     if tool.name == "adapters sync":
         return "human-only" if params.get("force") else "cto-alone"
-    if tool.name == "add":
+    if tool.name == "add" and context is not None:
         preset = context.pack.presets.get(str(params.get("preset") or ""))
         if preset is not None and preset.primitive == "policy":
             return "human-only"

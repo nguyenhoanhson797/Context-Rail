@@ -70,6 +70,19 @@ def test_cto_cannot_adopt_an_answers_file(tmp_path: Path, answers: Path) -> None
         assert not (tmp_path / STORE).exists()
 
 
+def test_a_scope_entry_without_priority_refuses_cleanly(
+    tmp_path: Path, picture_answers: dict[str, Any]
+) -> None:
+    del picture_answers["scope"][0]["priority"]
+    path = tmp_path / "draft.json"
+    path.write_text(json.dumps(picture_answers), encoding="utf-8")
+
+    result = _draft(tmp_path, path, actor="cto")
+
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+    assert not (tmp_path / STORE).exists()
+
+
 @pytest.mark.parametrize(
     "payload",
     [

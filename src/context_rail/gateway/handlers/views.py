@@ -172,7 +172,7 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if item.category in structure.FINISHED_CATEGORIES
     }
     held = {
-        slug: _held_reason(ctx, reason)
+        slug: operating.held_reason(ctx, reason)
         for slug, reason in held_now.items()
         if slug in visible and slug not in finished
     }
@@ -204,28 +204,9 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     model = ctx.model
     unit = operating.resolve_unit(ctx, model)
     focus = _focus(ctx, model)
-    if ctx.reach is not None and focus.get("focus"):
-        chosen = focus["focus"]
-        if not _readable(ctx, chosen.get("slug")):
-            focus = {"state": "none", "focus": None, "candidates": []}
-        else:
-            focus["candidates"] = [
-                row
-                for row in focus.get("candidates") or ()
-                if _readable(ctx, row.get("slug"))
-            ]
     groups, groups_omitted = _groups(ctx, model)
-    progress = operating.resolve_progress(ctx, model)
-    progress_data = progress.as_dict()
+    progress_data = operating.resolve_progress(ctx, model).as_dict()
     progress_children = list(progress_data.get("children") or ())
-    if ctx.reach is not None:
-        progress_children = [
-            child for child in progress_children if _readable(ctx, child.get("slug"))
-        ]
-        progress_data["total"] = sum(int(child.get("total") or 0) for child in progress_children)
-        progress_data["complete"] = sum(
-            int(child.get("complete") or 0) for child in progress_children
-        )
     progress_data["children"] = progress_children[:LIST_CAP]
     progress_data["omitted"] = int(progress_data.get("omitted") or 0) + max(
         len(progress_children) - LIST_CAP, 0
@@ -287,17 +268,9 @@ def _queue(ctx: Context, model: Any) -> dict[str, Any]:
             "error": error.code,
         }
     items = [item.as_dict() for item in view.items]
-    blocked = dict(view.blocked)
-    if ctx.reach is not None:
-        items = [item for item in items if _readable(ctx, item.get("slug"))]
-        blocked = {
-            slug: reason
-            for slug, reason in blocked.items()
-            if _readable(ctx, slug)
-        }
     return {
         "items": items[:LIST_CAP],
-        "blocked": blocked,
+        "blocked": dict(view.blocked),
         "omitted": max(len(items) - LIST_CAP, 0),
         "scope": view.scope,
     }
@@ -309,12 +282,8 @@ def _groups(ctx: Context, model: Any) -> tuple[list[dict[str, Any]], int]:
     omitted = 0
     for group in groups:
         values = group.as_dict()
-        if ctx.reach is not None:
-            values["items"] = [
-                row for row in values["items"] if _readable(ctx, row.get("slug"))
-            ]
-            if not values["items"]:
-                continue
+        if ctx.reach is not None and not values["items"]:
+            continue
         values["items"] = values["items"][:LIST_CAP]
         omitted += max(len(group.items) - LIST_CAP, 0)
         shown.append(values)
@@ -332,13 +301,6 @@ def _readable(ctx: Context, slug: Any) -> bool:
     if row is None:
         return False
     return ctx.reach.can_read(slug, path=row[0], preset=row[1])
-
-
-def _held_reason(ctx: Context, reason: str) -> str:
-    if ctx.reach is None or not reason.startswith("depends_on:"):
-        return reason
-    dependency = reason.partition(":")[2]
-    return reason if _readable(ctx, dependency) else "depends_on"
 
 
 def ledger(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

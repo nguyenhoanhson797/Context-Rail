@@ -407,6 +407,30 @@ def test_status_does_not_name_an_unreadable_dependency(
     assert status["value"]["blocked"].get(task) == "depends_on"
 
 
+def test_next_does_not_name_an_unreadable_dependency(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        added = invoke(
+            "add",
+            {
+                "preset": "story",
+                "title": "Waits on the other area",
+                "rel": [f"part_of={role_store.orders}"],
+            },
+            store=role_store.store,
+            actor=None,
+        )
+        assert is_ok(added), added
+    story = added["value"]["slug"]
+    link(role_store.store, story, "depends_on", role_store.b1)
+
+    queued = as_seat(role_store.store, role_store.orders_seat, "next", {})
+
+    assert is_ok(queued), queued
+    assert queued["value"]["blocked"].get(story) == "depends_on"
+
+
 def test_a_finished_dependency_outside_reach_does_not_keep_the_item_blocked(
     role_store: SimpleNamespace,
 ) -> None:

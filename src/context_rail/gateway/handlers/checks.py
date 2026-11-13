@@ -383,8 +383,8 @@ def _untracked_matches(worktree: Path, globs: Sequence[str]) -> bool:
     for record in listing:
         if not record.startswith("?? "):
             continue
-        # A quoted path is git's own escaping, not a path this reader can match.
-        path = record[3:].strip('"').replace("\\", "/")
+        # ``-z`` prints paths verbatim, so the record is the path itself.
+        path = record[3:].replace("\\", "/")
         if any(pattern.match(path) for pattern in patterns):
             return True
     return False
