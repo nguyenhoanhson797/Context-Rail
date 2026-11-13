@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Context Rail v3 — visual guide</title>
-<meta name="description" content="A visual explanation of Context Rail v3: the store, the index, the gates and the agent loop, from init to daily use.">
+<meta name="description" content="A visual explanation of Context Rail v3: the store, the index, the gates and the record loop, from init to daily use.">
 <style>
   :root {
     --ink: #111827;
@@ -147,7 +147,7 @@
   }
   .layer .box.truth { background: var(--teal-soft); border-color: #99f6e4; }
   .layer .box.cache { background: var(--blue-soft); border-color: #bfdbfe; }
-  .layer .box.runner { background: var(--amber-soft); border-color: #fde68a; }
+  .layer .box.checks { background: var(--amber-soft); border-color: #fde68a; }
   .down {
     text-align: center; font-size: 11px; color: var(--muted);
     padding: 6px 0; display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -300,11 +300,11 @@
 <header class="hero">
   <div class="wrap">
     <span class="eyebrow">Context Rail v3 · visual guide</span>
-    <h1>One store. Five rules. An agent that ships.</h1>
+    <h1>One store. Five rules. Any tool does the work.</h1>
     <p class="lede">
       Context Rail is a project workspace where Markdown files are the truth,
-      an SQLite index is only a cache, and a CTO agent runs the day-to-day work
-      inside gates a human sets.
+      an SQLite index is only a cache, and the work happens in whatever coding
+      tool you already use, inside gates a human sets.
     </p>
     <div class="chips">
       <span>files are truth</span>
@@ -329,7 +329,7 @@
     <a href="#model">Data model</a>
     <a href="#command">One command</a>
     <a href="#gates">Who decides</a>
-    <a href="#loop">Agent loop</a>
+    <a href="#loop">Record loop</a>
     <a href="#start">From zero</a>
     <a href="#daily">A day</a>
     <a href="#state">Where it lives</a>
@@ -388,8 +388,8 @@
         <h3>✂️ Agents get slices</h3>
         <p>
           The CTO gets a bounded brief. An implementer gets a work order and a
-          worktree. A reviewer gets a candidate. Nobody loads the whole project
-          into a context window.
+          narrow scope. A reviewer gets a candidate commit. Nobody loads the
+          whole project into a context window.
         </p>
       </div>
     </div>
@@ -402,7 +402,7 @@
           <li><code>rail.yaml</code> — placement and pack</li>
           <li><code>charter.md</code> — gates, rights, budgets</li>
           <li><code>items/</code>, <code>notes/</code>, <code>checks/</code></li>
-          <li><code>records/</code> — runs, reports, verdicts, approvals</li>
+          <li><code>records/</code> — candidates, reports, verdicts, approvals</li>
           <li><code>workspace/</code> — agent prompts, skills, memory</li>
         </ul>
         <p class="small">Committed to git. Editable by hand. Survives every tool.</p>
@@ -416,7 +416,7 @@
         <ul>
           <li>documents and fields</li>
           <li>relations and tags</li>
-          <li>checks, verdicts, runs</li>
+          <li>checks, verdicts, candidates</li>
           <li>reports, reviews, approvals</li>
           <li>full-text search (FTS5)</li>
         </ul>
@@ -470,7 +470,7 @@
         <div class="layer trio">
           <div class="box truth"><b>Files</b><span>the truth</span></div>
           <div class="box cache"><b>SQLite index</b><span>a rebuildable cache</span></div>
-          <div class="box runner"><b>Runner</b><span>droid exec and cmd checks, bounded</span></div>
+          <div class="box checks"><b>Checks</b><span>the item's own commands, run on demand</span></div>
         </div>
       </div>
     </div>
@@ -479,7 +479,7 @@
       <div class="card"><h4>Gateway</h4><p class="small">The only front door. Refuses unknown tools, bad parameters and forbidden actors before any work starts.</p></div>
       <div class="card"><h4>Kernel</h4><p class="small">The rulebook: what is executable, blocked, stuck, too long, or allowed. Pure, so it can be tested exhaustively.</p></div>
       <div class="card"><h4>Write pipeline</h4><p class="small">Serializes changes with a store lock, checks the expected revision, writes atomically and appends a record.</p></div>
-      <div class="card"><h4>Runner</h4><p class="small">The only process executor. Hard timeouts, capped output, scrubbed environment, secret redaction in records.</p></div>
+      <div class="card"><h4>Checks</h4><p class="small">The rail runs the commands an item declares, and only when asked. Hard timeouts, capped output, scrubbed environment, secret redaction in verdicts.</p></div>
     </div>
   </section>
 
@@ -622,7 +622,7 @@ the work needs; the brief reads only what it must.</code></pre>
       <div class="card"><h4>Executable</h4><p class="small">A leaf item in a workable category with no unfinished dependency.</p></div>
       <div class="card"><h4>Blocked</h4><p class="small">Category <code>blocked</code>, or a dependency that is not finished.</p></div>
       <div class="card"><h4>Stuck</h4><p class="small">An active item with no new record inside the stuck window.</p></div>
-      <div class="card"><h4>Too long</h4><p class="small">Worker runs exceed the item's attempt or time budget.</p></div>
+      <div class="card"><h4>Too long</h4><p class="small">The item's recorded attempts or elapsed time exceed its budget. It shows up as a wait for the human; nothing is refused.</p></div>
     </div>
   </section>
 
@@ -665,7 +665,7 @@ the work needs; the brief reads only what it must.</code></pre>
 
     <div class="grid g3" style="margin-top: 16px;">
       <div class="card"><h4>Exit codes</h4><p class="small"><code>0</code> success · <code>1</code> refusal · <code>2</code> infrastructure failure. Scripts can branch on these.</p></div>
-      <div class="card"><h4>Idempotency keys</h4><p class="small">Every write takes <code>--key</code>. Retrying a dispatch or a hook returns the same record instead of duplicating it.</p></div>
+      <div class="card"><h4>Idempotency keys</h4><p class="small">Every write takes <code>--key</code>. Sending the same candidate or hook again returns the same record instead of duplicating it.</p></div>
       <div class="card"><h4>Expected revision</h4><p class="small">Updates carry the etag they read. A stale write is refused, never silently overwritten.</p></div>
     </div>
   </section>
@@ -684,9 +684,9 @@ the work needs; the brief reads only what it must.</code></pre>
       <div class="rung green">
         <div class="who">🟢 CTO alone</div>
         <p>
-          Break work down, order it, assign it, refactor, write tests, retry a
-          failed run, close an item when its gates pass. This is the daily
-          autonomy.
+          Break work down, order it, hand a brief to a tool, refactor, write
+          tests, run a check, close an item when its gates pass. This is the
+          daily autonomy.
         </p>
       </div>
       <div class="rung amber">
@@ -703,7 +703,7 @@ the work needs; the brief reads only what it must.</code></pre>
           The goal, must/should scope and the Won't list; writing or loosening
           acceptance checks; publishing, deploying, deleting data, force-push,
           tags and releases; licensing, secrets and payments; budget increases;
-          stuck items after their retries; changing the charter.
+          stuck items that no tool could finish; changing the charter.
         </p>
       </div>
     </div>
@@ -723,8 +723,9 @@ the work needs; the brief reads only what it must.</code></pre>
       <div class="card">
         <h3>Until approval, nothing executes</h3>
         <p class="small">
-          The CTO can plan, read and draft. Dispatches, ticks and merges refuse
-          with “the charter is not approved; nothing executes yet”.
+          Anyone can plan, read and draft. A candidate, a check run, a review
+          and a move into an active or done category refuse with “the charter
+          is not approved; nothing executes yet”.
         </p>
         <div class="note" style="margin-top: 12px;">
           <b>Why so strict?</b>
@@ -737,16 +738,17 @@ the work needs; the brief reads only what it must.</code></pre>
 
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="loop">
-    <span class="eyebrow">06 · The agent loop</span>
-    <h2>One tick, eight moves</h2>
+    <span class="eyebrow">06 · The record loop</span>
+    <h2>One item, six moves</h2>
     <p class="lede">
-      The CTO keeps no state between ticks beyond the store and its memory
-      notes. Every tick is: read the state, choose work, launch it, verify it,
-      review it, merge it, report it, summarize it.
+      The rail keeps no state beyond the store, and it never launches an agent.
+      Every item is: read the work order, work in your own tool, record the
+      candidate, prove it, review it, move it, report it. The rail holds the
+      order, the proof and the record; your tool does the work.
     </p>
 
     <div class="diagram">
-      <svg viewBox="0 0 960 380" role="img" aria-label="The CTO loop in two rows: brief, plan, dispatch, verify, then review, merge, report, digest, and back to brief for the next tick.">
+      <svg viewBox="0 0 960 380" role="img" aria-label="The record loop in two rows: brief, work in your own tool, candidate, check, then review, move, then report and digest, and back to brief for the next item.">
         <defs>
           <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="#64748b"></path>
@@ -757,81 +759,80 @@ the work needs; the brief reads only what it must.</code></pre>
         <path class="edge" d="M215,86 L267,86" marker-end="url(#arrow2)"></path>
         <path class="edge" d="M445,86 L497,86" marker-end="url(#arrow2)"></path>
         <path class="edge" d="M675,86 L727,86" marker-end="url(#arrow2)"></path>
-        <!-- verify down to review -->
+        <!-- check down to review -->
         <path class="edge" d="M820,116 L820,230" marker-end="url(#arrow2)"></path>
         <!-- row 2, right to left -->
         <path class="edge" d="M735,266 L681,266" marker-end="url(#arrow2)"></path>
-        <path class="edge" d="M505,266 L451,266" marker-end="url(#arrow2)"></path>
-        <path class="edge" d="M275,266 L221,266" marker-end="url(#arrow2)"></path>
+        <path class="edge" d="M505,266 L283,266" marker-end="url(#arrow2)"></path>
+        <rect class="e-bg" x="350" y="239" width="90" height="18" rx="9"></rect>
+        <text class="e-label" x="395" y="252" text-anchor="middle">report it</text>
         <!-- digest up to brief -->
-        <path class="edge" d="M130,236 L130,120" marker-end="url(#arrow2)"></path>
-        <rect class="e-bg" x="140" y="166" width="62" height="18" rx="9"></rect>
-        <text class="e-label" x="171" y="179" text-anchor="middle">next tick</text>
+        <path class="edge" d="M160,236 L160,120" marker-end="url(#arrow2)"></path>
+        <rect class="e-bg" x="170" y="166" width="76" height="18" rx="9"></rect>
+        <text class="e-label" x="208" y="179" text-anchor="middle">next item</text>
 
         <!-- nodes row 1 -->
         <rect class="node accent" x="45" y="56" width="170" height="60" rx="14"></rect>
         <text class="n-title" x="130" y="82" text-anchor="middle">1 · Brief</text>
-        <text class="n-sub" x="130" y="100" text-anchor="middle">state, waits, quality</text>
+        <text class="n-sub" x="130" y="100" text-anchor="middle">work order, focus, checks</text>
 
         <rect class="node" x="275" y="56" width="170" height="60" rx="14"></rect>
-        <text class="n-title" x="360" y="82" text-anchor="middle">2 · Plan</text>
-        <text class="n-sub" x="360" y="100" text-anchor="middle">triage reports, order work</text>
+        <text class="n-title" x="360" y="82" text-anchor="middle">2 · Your tool</text>
+        <text class="n-sub" x="360" y="100" text-anchor="middle">any agent, own sub-agents</text>
 
         <rect class="node" x="505" y="56" width="170" height="60" rx="14"></rect>
-        <text class="n-title" x="590" y="82" text-anchor="middle">3 · Dispatch</text>
-        <text class="n-sub" x="590" y="100" text-anchor="middle">worktree + droid exec</text>
+        <text class="n-title" x="590" y="82" text-anchor="middle">3 · Candidate</text>
+        <text class="n-sub" x="590" y="100" text-anchor="middle">a commit, recorded</text>
 
         <rect class="node" x="735" y="56" width="170" height="60" rx="14"></rect>
-        <text class="n-title" x="820" y="82" text-anchor="middle">4 · Verify</text>
+        <text class="n-title" x="820" y="82" text-anchor="middle">4 · Check</text>
         <text class="n-sub" x="820" y="100" text-anchor="middle">run the item's checks</text>
 
         <!-- nodes row 2 -->
         <rect class="node" x="735" y="236" width="170" height="60" rx="14"></rect>
         <text class="n-title" x="820" y="262" text-anchor="middle">5 · Review</text>
-        <text class="n-sub" x="820" y="280" text-anchor="middle">separate worktree</text>
+        <text class="n-sub" x="820" y="280" text-anchor="middle">a different actor</text>
 
         <rect class="node" x="505" y="236" width="170" height="60" rx="14"></rect>
-        <text class="n-title" x="590" y="262" text-anchor="middle">6 · Merge</text>
-        <text class="n-sub" x="590" y="280" text-anchor="middle">rebase, fast-forward</text>
+        <text class="n-title" x="590" y="262" text-anchor="middle">6 · Move</text>
+        <text class="n-sub" x="590" y="280" text-anchor="middle">once the gate allows</text>
 
-        <rect class="node" x="275" y="236" width="170" height="60" rx="14"></rect>
-        <text class="n-title" x="360" y="262" text-anchor="middle">7 · Report</text>
-        <text class="n-sub" x="360" y="280" text-anchor="middle">structured record</text>
-
-        <rect class="node accent" x="45" y="236" width="170" height="60" rx="14"></rect>
-        <text class="n-title" x="130" y="262" text-anchor="middle">8 · Digest</text>
-        <text class="n-sub" x="130" y="280" text-anchor="middle">the human view</text>
+        <rect class="node note" x="45" y="236" width="230" height="60" rx="14"></rect>
+        <text class="n-title" x="160" y="262" text-anchor="middle">Report, then digest</text>
+        <text class="n-sub" x="160" y="280" text-anchor="middle">rail loop report · rail read digest</text>
       </svg>
     </div>
     <p class="small" style="margin-top: 10px;">
-      Blue nodes are where the human usually looks. Everything between them can
-      happen unattended inside the charter's green and yellow rings.
+      The blue node starts each pass and the yellow note is the human view.
+      Everything between them happens in the tool you already use, inside the
+      charter's green and yellow rings.
     </p>
 
     <div class="grid g4" style="margin-top: 20px;">
       <div class="card">
-        <h4>Dispatch</h4>
-        <p class="small">A fresh git worktree and branch, a bounded <code>droid exec</code>, a work order, and a run record.</p>
+        <h4>Brief</h4>
+        <p class="small">The work order for one item: objective, selected scope, conventions, constraints, files, checks and the focus breadcrumb. Read-only.</p>
       </div>
       <div class="card">
-        <h4>Verify</h4>
-        <p class="small">The item's declared checks run in that worktree. A check is fresh only while its inputs still match.</p>
+        <h4>Work and record</h4>
+        <p class="small">The agent works in its own checkout with its own sub-agents, commits, then records that commit as an immutable candidate.</p>
       </div>
       <div class="card">
-        <h4>Review</h4>
-        <p class="small">A different actor, in its own worktree, judges the verified candidate. The implementer cannot approve its own work.</p>
+        <h4>Prove</h4>
+        <p class="small">The item's declared checks run on demand. A check is fresh only while its definition and its inputs still match.</p>
       </div>
       <div class="card">
-        <h4>Merge</h4>
-        <p class="small">Rebase onto the default branch, then fast-forward. Conflicts get one retry, then escalate.</p>
+        <h4>Review, then move</h4>
+        <p class="small">A different actor judges one commit, so a review of an older commit is stale. The move is the record that the work is accepted.</p>
       </div>
     </div>
 
     <div class="warn" style="margin-top: 18px;">
-      <b>When a run fails</b>
-      One retry continues the same session with the failure output attached.
-      Still failing → the item escalates to the human with the evidence. The
-      loop never silently retries forever.
+      <b>When an attempt fails</b>
+      Nothing tries again for you. The agent decides in its own tool whether to
+      try again or to report the failure, and the attempt is recorded with its
+      evidence. The rail never starts work on its own and never raises a failed
+      attempt to the human on a timer.
     </div>
   </section>
 
@@ -840,7 +841,7 @@ the work needs; the brief reads only what it must.</code></pre>
     <span class="eyebrow">07 · From zero to daily</span>
     <h2>The first hour, then the routine</h2>
     <p class="lede">
-      You can start with a goal and a task; you do not need the whole agent
+      You can start with a goal and a task; you do not need the whole record
       loop on day one. The store and its views are useful immediately.
     </p>
 
@@ -896,8 +897,8 @@ rail read status</code></pre>
           <h3>Approve the charter</h3>
           <pre><code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
           <p class="small" style="margin-top: 8px;">
-            This is the moment the human hands over autonomy. Until then the CTO
-            plans but nothing executes.
+            This is the moment the human hands over autonomy. Until then anyone
+            can plan and read, but no candidate, check, review or move executes.
           </p>
         </div>
       </li>
@@ -905,11 +906,14 @@ rail read status</code></pre>
         <span class="dot"></span>
         <div class="tcard">
           <span class="phase">Step 4 · first work</span>
-          <h3>Dispatch one item</h3>
-          <pre><code>rail loop dispatch write-the-first-task --expect &lt;etag&gt; --key first-run</code></pre>
+          <h3>Brief, work, record</h3>
+          <pre><code>rail loop brief write-the-first-task --role implementer
+<span class="c"># the agent does the work in its own tool and commits</span>
+rail loop candidate write-the-first-task --commit &lt;sha&gt;</code></pre>
           <p class="small" style="margin-top: 8px;">
-            Then <code>rail loop review &lt;item&gt; --run &lt;run-id&gt; --key …</code> and
-            <code>rail loop merge &lt;item&gt; --run &lt;run-id&gt; --expect &lt;etag&gt; --key …</code>.
+            Then <code>rail check run write-the-first-task --worktree &lt;path&gt;</code>,
+            <code>rail loop review &lt;item&gt; --commit &lt;sha&gt; --verdict approve</code> and
+            <code>rail change move &lt;item&gt; &lt;status&gt; --expect &lt;etag&gt; --key …</code>.
           </p>
         </div>
       </li>
@@ -917,12 +921,12 @@ rail read status</code></pre>
         <span class="dot"></span>
         <div class="tcard">
           <span class="phase">Step 5 · daily</span>
-          <h3>Read, then let the tick run</h3>
+          <h3>Read, then hand out the next brief</h3>
           <pre><code>rail overview
-rail loop tick --key day-2026-11-02</code></pre>
+rail loop brief &lt;item&gt; --role implementer</code></pre>
           <p class="small" style="margin-top: 8px;">
-            The tick takes a single-instance lock, so two CTOS cannot run at
-            once, and it must be the outer session.
+            There is no scheduler. You or your tool ask for the work order, and
+            the rail answers with one item at a time.
           </p>
         </div>
       </li>
@@ -944,7 +948,7 @@ rail ops doctor</code></pre>
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="daily">
     <span class="eyebrow">08 · A day with the rail</span>
-    <h2>What the agent does, what you do</h2>
+    <h2>What your tool does, what you do</h2>
     <p class="lede">
       The rail is built so the human's attention is spent on boundaries and
       taste, not on relaying context between agents.
@@ -952,25 +956,24 @@ rail ops doctor</code></pre>
 
     <div class="grid g2">
       <div class="card">
-        <h3>🤖 The agent</h3>
+        <h3>🤖 Your coding tool</h3>
         <ul style="margin: 8px 0 0; padding-left: 20px;">
-          <li>Reads the brief and the untriaged reports.</li>
-          <li>Orders the executable items and picks a leaf.</li>
-          <li>Dispatches an implementer with a narrow work order.</li>
-          <li>Runs the item's checks in the worktree.</li>
-          <li>Sends the verified candidate to a separate reviewer.</li>
-          <li>Merges once approved; escalates on failure.</li>
-          <li>Writes a structured report and updates the digest.</li>
+          <li>Reads the brief for one item and its selected scope.</li>
+          <li>Works in its own checkout with its own sub-agents and models.</li>
+          <li>Commits in its own checkout, then records the commit as a candidate.</li>
+          <li>Runs the item's checks and records the verdicts.</li>
+          <li>Hands the candidate to a different actor for review.</li>
+          <li>Files a report for what happened, even when nothing did.</li>
         </ul>
       </div>
       <div class="card">
         <h3>🧑 You</h3>
         <ul style="margin: 8px 0 0; padding-left: 20px;">
           <li>Read <code>rail overview</code> — two minutes, not two hours.</li>
-          <li>Answer <code>needs_human</code>: approvals, escalations, waits.</li>
+          <li>Answer <code>needs_human</code>: approvals, reviews, waits.</li>
           <li>Read <code>rail read digest</code> for reversible decisions and quality.</li>
           <li>Approve the irreversible few: scope, secrets, releases, budgets.</li>
-          <li>Spot-check one merged item when something feels off.</li>
+          <li>Spot-check one accepted item when something feels off.</li>
         </ul>
       </div>
     </div>
@@ -982,7 +985,7 @@ rail ops doctor</code></pre>
       </div>
       <div class="card">
         <h4>During the day</h4>
-        <p class="small"><code>rail loop tick --key …</code> → the loop runs. You answer only the waits the brief names.</p>
+        <p class="small"><code>rail loop brief &lt;item&gt;</code> → the next work order. You answer only the waits the digest names.</p>
       </div>
       <div class="card">
         <h4>Evening</h4>
@@ -1012,13 +1015,13 @@ rail ops doctor</code></pre>
 │   ├── rail.yaml                  <span class="c">placement, pack, schema</span>
 │   ├── charter.md                 <span class="c">gates, rights, budgets</span>
 │   ├── project/  items/  notes/  checks/
-│   ├── records/2026-11/           <span class="c">runs, reports, verdicts, approvals</span>
+│   ├── records/2026-11/           <span class="c">candidates, reports, verdicts, approvals</span>
 │   └── workspace/                 <span class="c">cto + profile prompts, skills, memory</span>
 └── .git/
     └── <span class="cache">context-rail/</span>            <span class="c">← index cache: disposable, never commit</span>
 
 <span class="c">Outside a git worktree, the index and control files live in:</span>
-<span class="local">context-rail/.rail-local/</span>      <span class="c">← index, locks, dispatch/tick/merge progress</span></pre>
+<span class="local">context-rail/.rail-local/</span>      <span class="c">← index, locks, write intents, idempotency results</span></pre>
 
     <div class="grid g3" style="margin-top: 18px;">
       <div class="card">
@@ -1031,7 +1034,7 @@ rail ops doctor</code></pre>
       </div>
       <div class="card">
         <h3>🔒 Control files <span class="pill amber">machine-local</span></h3>
-        <p class="small">Proof that a dispatch, tick or merge happened: phase, worktree, binding. Written atomically.</p>
+        <p class="small">Proof that a write landed: the store lock, the pending intent, and the idempotency result for each key. Written atomically.</p>
       </div>
     </div>
 
@@ -1049,13 +1052,13 @@ rail ops doctor</code></pre>
     <h2>The invariants behind the safety story</h2>
     <p class="lede">
       These are not conventions. They are the reasons the system can be trusted
-      with an agent that runs unattended.
+      with work recorded by an agent you did not watch.
     </p>
 
     <div class="grid g3">
       <div class="card">
         <h3>🚪 One write path</h3>
-        <p class="small">Every mutation goes through <code>store.write.commit</code>. No handler, runner or UI writes store files on its own.</p>
+        <p class="small">Every mutation goes through <code>store.write.commit</code>. No handler, no check and no UI writes store files on its own.</p>
       </div>
       <div class="card">
         <h3>👀 Reads are side-effect free</h3>
@@ -1115,7 +1118,7 @@ rail ops doctor</code></pre>
           <tr><td><code>rail overview</code></td><td>The bounded page a CTO session starts from.</td></tr>
           <tr><td><code>rail read find --tag x --text y</code></td><td>Documents matching every filter.</td></tr>
           <tr><td><code>rail read show &lt;slug&gt;</code></td><td>One document with its relations and body.</td></tr>
-          <tr><td><code>rail read ledger --since …</code></td><td>Runs with attempt-counted usage and unknown counters kept apart.</td></tr>
+          <tr><td><code>rail read ledger --since …</code></td><td>Candidates with attempt-counted usage and unknown counters kept apart.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1130,7 +1133,7 @@ rail ops doctor</code></pre>
           <tr><td><code>rail change link &lt;src&gt; &lt;rel&gt; &lt;dst&gt; --expect &lt;etag&gt;</code></td><td>Add or remove one relation.</td></tr>
           <tr><td><code>rail change move &lt;slug&gt; &lt;status&gt; --expect &lt;etag&gt;</code></td><td>Move an item through its lifecycle.</td></tr>
           <tr><td><code>rail check declare</code> / <code>rail check run</code></td><td>Declare what proves an item, then run it and record verdicts.</td></tr>
-          <tr><td><code>rail loop report</code></td><td>File the structured report a completed run owes.</td></tr>
+          <tr><td><code>rail loop report</code></td><td>File the structured report a finished item owes.</td></tr>
           <tr><td><code>rail --actor human approve &lt;target&gt;</code></td><td>The human gate: a typed phrase and a protected-file hash.</td></tr>
         </tbody>
       </table>
@@ -1139,12 +1142,14 @@ rail ops doctor</code></pre>
     <h3 style="margin-top: 22px;">Run the loop</h3>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Command</th><th>What it launches</th></tr></thead>
+        <thead><tr><th>Command</th><th>What it records</th></tr></thead>
         <tbody>
-          <tr><td><code>rail loop dispatch &lt;item&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>An implementer in an isolated worktree, then verification.</td></tr>
-          <tr><td><code>rail loop review &lt;item&gt; --run &lt;run&gt; --key &lt;k&gt;</code></td><td>A reviewer in its own worktree; records the verdict.</td></tr>
-          <tr><td><code>rail loop merge &lt;item&gt; --run &lt;run&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>Rebase and fast-forward onto the default branch.</td></tr>
-          <tr><td><code>rail loop tick --key &lt;k&gt;</code></td><td>One bounded CTO session behind the single-instance lock.</td></tr>
+          <tr><td><code>rail loop brief &lt;item&gt; --role implementer</code></td><td>The work order for one item: scope, constraints, files, checks. Read-only.</td></tr>
+          <tr><td><code>rail loop candidate &lt;item&gt; --commit &lt;sha&gt;</code></td><td>The commit your tool produced, as an immutable candidate with its usage.</td></tr>
+          <tr><td><code>rail check run &lt;item&gt; --worktree &lt;path&gt;</code></td><td>Verdicts for the item's executable checks.</td></tr>
+          <tr><td><code>rail loop review &lt;item&gt; --commit &lt;sha&gt; --verdict approve</code></td><td>A different actor's verdict on exactly that commit.</td></tr>
+          <tr><td><code>rail change move &lt;item&gt; &lt;status&gt;</code></td><td>The move, once the gate reads a fresh check and an approving review.</td></tr>
+          <tr><td><code>rail loop report --item &lt;item&gt; --report-file &lt;json&gt;</code></td><td>What happened, even when nothing did.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1156,10 +1161,11 @@ rail ops doctor</code></pre>
         <tbody>
           <tr><td><code>rail ops doctor</code> / <code>rail ops doctor --repair</code></td><td>Integrity check; finish or roll back interrupted writes.</td></tr>
           <tr><td><code>rail ops reindex</code></td><td>Sync or rebuild the index explicitly.</td></tr>
-          <tr><td><code>rail gate</code></td><td>Before pushing: doctor issues plus approval and done gates.</td></tr>
+          <tr><td><code>rail gate</code></td><td>Before you hand work off: doctor issues plus approval and done gates.</td></tr>
           <tr><td><code>rail ops pack list | show | validate | use | create</code></td><td>Inspect or switch the workflow pack.</td></tr>
           <tr><td><code>rail ops sync install</code></td><td>Install the git drivers for store-only clones.</td></tr>
           <tr><td><code>rail --actor human migrate</code></td><td>Import a v1/v2 store into a fresh v3 store.</td></tr>
+          <tr><td><code>rail --actor human ops upgrade</code></td><td>Rewrite an older v3 store: <code>dispatch</code> becomes <code>queue</code>, and <code>merge</code> and <code>policy.retries</code> are dropped with a hint.</td></tr>
           <tr><td><code>rail serve mcp</code> · <code>rail serve ui</code></td><td>Same tool table over MCP or a loopback web UI.</td></tr>
         </tbody>
       </table>
@@ -1190,9 +1196,9 @@ rail ops doctor</code></pre>
             <td><code>rail --store X add task "Title"</code>, not <code>rail change add --preset …</code>.</td>
           </tr>
           <tr>
-            <td><code>'cto tick' cannot be nested inside a running session</code></td>
-            <td>A child session already set <code>RAIL_ACTOR</code>.</td>
-            <td>Start the tick from the outer session, with the actor variable unset.</td>
+            <td><code>approval_mismatch</code></td>
+            <td>A protected file changed after the human approved it, so the pack and the approval no longer agree.</td>
+            <td>Review the diff, then reapprove as the human: <code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "…"</code>.</td>
           </tr>
           <tr>
             <td>“the charter is not approved; nothing executes yet”</td>

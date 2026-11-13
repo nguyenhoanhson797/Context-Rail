@@ -202,7 +202,7 @@
   .node--handlers rect { fill: #e0e7ff; stroke: #818cf8; }
   .node--kernel rect { fill: #f5f3ff; stroke: #c4b5fd; }
   .node--write rect { fill: #fff7ed; stroke: #fdba74; }
-  .node--runner rect { fill: #fef2f2; stroke: #fca5a5; }
+  .node--yourtool rect { fill: #f4f4ff; stroke: #a5b4fc; }
   .node--files rect { fill: #ecfdf5; stroke: #6ee7b7; }
   .node--index rect { fill: #eff6ff; stroke: #93c5fd; }
   .node--views rect { fill: #f0fdf4; stroke: #86efac; }
@@ -600,8 +600,8 @@
     <p class="eyebrow">Context Rail v3 · engine map</p>
     <h1>The engine,<br><em>end to end.</em></h1>
     <p class="lede">
-      Six fixed primitives, eight named relations, one atomic write path — and the loop that turns
-      a goal into merged, verified work. Hover the graphs, follow the arrows, and see the rules the
+      Six fixed primitives, eight named relations, one atomic write path, and the loop that turns
+      a goal into recorded, verified work. Hover the graphs, follow the arrows, and see the rules the
       code actually enforces.
     </p>
     <div class="stats" aria-label="Engine counts">
@@ -609,7 +609,7 @@
       <div class="stat"><b>8</b><span>named relations</span></div>
       <div class="stat"><b>5</b><span>status categories</span></div>
       <div class="stat"><b>5</b><span>check modes</span></div>
-      <div class="stat"><b>39</b><span>tools · one table</span></div>
+      <div class="stat"><b>58</b><span>tools · one table</span></div>
       <div class="stat"><b>1</b><span>write path</span></div>
     </div>
     <div class="hero-note">
@@ -663,7 +663,7 @@
           <div class="graph-scroll">
             <svg id="engine-graph" class="engine-graph" viewBox="0 0 1120 770" role="img" aria-labelledby="engine-graph-title engine-graph-desc">
               <title id="engine-graph-title">Context Rail engine architecture</title>
-              <desc id="engine-graph-desc">Surfaces feed one gateway, which authorizes calls into read, write and execution paths. The write pipeline is the only mutator of files, files feed the SQLite index, and the index serves reads and computed views.</desc>
+              <desc id="engine-graph-desc">Surfaces feed one gateway, which authorizes calls into read, write and work-order paths. The write pipeline is the only mutator of files, files feed the SQLite index, and the index serves reads and computed views. The agent's own tool reads the work order and records its result through the same gateway.</desc>
               <defs>
                 <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
                   <path d="M0 0 L10 4 L0 8 z" fill="#64748b"/>
@@ -688,14 +688,14 @@
               <path class="edge" data-a="handlers" data-b="write" d="M545 326 V372"/>
               <text class="edge-label" x="557" y="354">mutate</text>
 
-              <path class="edge" data-a="handlers" data-b="runner" d="M870 326 C870 351 930 348 930 372"/>
-              <text class="edge-label" x="895" y="354">execute</text>
+              <path class="edge" data-a="handlers" data-b="yourtool" d="M870 326 C870 351 930 348 930 372"/>
+              <text class="edge-label" x="895" y="354">work order</text>
 
               <path class="edge dashed" data-a="kernel" data-b="write" d="M330 422 H380"/>
               <text class="edge-label" x="348" y="408">rules</text>
 
-              <path class="edge dashed" data-a="runner" data-b="write" d="M770 422 H710"/>
-              <text class="edge-label" x="740" y="404" text-anchor="middle">facts</text>
+              <path class="edge dashed" data-a="yourtool" data-b="write" d="M770 422 H710"/>
+              <text class="edge-label" x="740" y="404" text-anchor="middle">agent records it</text>
 
               <path class="edge" data-a="write" data-b="files" d="M545 472 C545 506 315 503 315 535"/>
               <text class="edge-label" x="430" y="512">only writer</text>
@@ -735,19 +735,19 @@
               <g class="node node--gateway" data-node="gateway" tabindex="0" role="button" aria-label="Gateway">
                 <rect x="130" y="134" width="860" height="78" rx="16"/>
                 <text class="n-title" x="560" y="159" text-anchor="middle">Gateway · invoke()</text>
-                <text class="n-sub" x="560" y="179" text-anchor="middle">validate parameters → resolve actor &amp; store → authorize → dispatch handler</text>
+                <text class="n-sub" x="560" y="179" text-anchor="middle">validate parameters → resolve actor &amp; store → authorize → route the call to its handler</text>
                 <text class="n-small" x="560" y="198" text-anchor="middle">rights · charter approval · one typed JSON envelope · never raises</text>
               </g>
 
               <!-- handlers -->
               <g class="node node--handlers" data-node="handlers" tabindex="0" role="button" aria-label="Tool table and handlers">
                 <rect x="130" y="252" width="860" height="74" rx="16"/>
-                <text class="n-title" x="560" y="279" text-anchor="middle">One tool table · 39 tools</text>
+                <text class="n-title" x="560" y="279" text-anchor="middle">One tool table · 58 tools</text>
                 <text class="n-sub" x="560" y="299" text-anchor="middle">read · change · gate · loop · operate</text>
                 <text class="n-small" x="560" y="317" text-anchor="middle">CLI, MCP and UI are all generated from the same tuple</text>
               </g>
 
-              <!-- kernel / write / runner -->
+              <!-- kernel / write / your own tool -->
               <g class="node node--kernel" data-node="kernel" tabindex="0" role="button" aria-label="Pure kernel">
                 <rect x="30" y="372" width="300" height="100" rx="16"/>
                 <text class="n-title" x="180" y="400" text-anchor="middle">Kernel · pure</text>
@@ -762,12 +762,12 @@
                 <text class="n-small" x="545" y="441" text-anchor="middle">lock → etag → intent → temp + fsync</text>
                 <text class="n-small" x="545" y="457" text-anchor="middle">→ atomic replace → record → index</text>
               </g>
-              <g class="node node--runner" data-node="runner" tabindex="0" role="button" aria-label="Runner">
+              <g class="node node--yourtool" data-node="yourtool" tabindex="0" role="button" aria-label="Your coding tool">
                 <rect x="770" y="372" width="300" height="100" rx="16"/>
-                <text class="n-title" x="920" y="400" text-anchor="middle">Runner · only executor</text>
-                <text class="n-sub" x="920" y="420" text-anchor="middle">droid exec · cmd checks · git</text>
-                <text class="n-small" x="920" y="441" text-anchor="middle">isolated worktree · hard timeout</text>
-                <text class="n-small" x="920" y="457" text-anchor="middle">scrubbed environment · capped output</text>
+                <text class="n-title" x="920" y="400" text-anchor="middle">Your tool · the executor</text>
+                <text class="n-sub" x="920" y="420" text-anchor="middle">any agent, own sub-agents</text>
+                <text class="n-small" x="920" y="441" text-anchor="middle">reads the brief · works · commits</text>
+                <text class="n-small" x="920" y="457" text-anchor="middle">the rail never starts it</text>
               </g>
 
               <!-- files / index -->
@@ -790,7 +790,7 @@
               <g class="node node--views" data-node="views" tabindex="0" role="button" aria-label="Computed views">
                 <rect x="370" y="680" width="380" height="62" rx="15"/>
                 <text class="n-title" x="560" y="706" text-anchor="middle">Computed views</text>
-                <text class="n-sub" x="560" y="725" text-anchor="middle">status · cto brief · digest · ledger · find · show</text>
+                <text class="n-sub" x="560" y="725" text-anchor="middle">read status · overview · read digest · read ledger</text>
               </g>
             </svg>
           </div>
@@ -803,10 +803,10 @@
             <p>Hover to trace a node's connections; click to keep its explanation here.</p>
             <ul>
               <li>Solid arrows are calls and data.</li>
-              <li>Dashed arrows are pure rules, run facts or reads.</li>
+              <li>Dashed arrows are pure rules, recorded facts or reads.</li>
               <li>The write pipeline is the only path that changes files.</li>
             </ul>
-            <p class="meta">39 tools · 1 gateway · 1 write path</p>
+            <p class="meta">58 tools · 1 gateway · 1 write path</p>
           </div>
           <button id="engine-reset" class="detail-reset" type="button">Show all nodes</button>
         </aside>
@@ -864,8 +864,8 @@
         <article class="primitive" style="--accent:#b45309;--accent-soft:#fff3da">
           <span class="num">03 · primitive</span>
           <h3>Record</h3>
-          <p class="what">An immutable, append-only fact: a decision, run, verdict, report, approval or status change. History is appended, never rewritten.</p>
-          <div class="chips"><span>decision</span><span>event</span><span>run</span><span>verdict</span><span>report</span><span>approval</span></div>
+          <p class="what">An immutable, append-only fact: a decision, candidate, verdict, report, approval or status change. History is appended, never rewritten.</p>
+          <div class="chips"><span>decision</span><span>event</span><span>candidate</span><span>verdict</span><span>report</span><span>approval</span></div>
           <p class="effect"><b>Affects the project by:</b> providing the ledger, the audit trail, replay, triage and measurement. Every change leaves one.</p>
         </article>
 
@@ -874,7 +874,7 @@
           <h3>Check</h3>
           <p class="what">A verifiable condition with a verdict and a freshness state. A Check can target one Item; only a linked, fresh pass gates work.</p>
           <div class="chips"><span>cmd</span><span>exists</span><span>evidence</span><span>review</span><span>human</span></div>
-          <p class="effect"><b>Affects the project by:</b> gating <code>item_done</code>, <code>scope_done</code>, merge and release. A stale pass is not a pass.</p>
+          <p class="effect"><b>Affects the project by:</b> gating <code>item_done</code> and <code>scope_done</code>, and the <code>merge</code> and <code>release</code> gates a charter may declare. A stale pass is not a pass.</p>
         </article>
 
         <article class="primitive" style="--accent:#7c3aed;--accent-soft:#f3ecff">
@@ -890,7 +890,7 @@
           <h3>Policy</h3>
           <p class="what">The rules of the project: <code>charter.md</code> with gates, decision rights, budgets, thresholds and the change rule.</p>
           <div class="chips"><span>charter</span><span>gates</span><span>rights</span><span>budgets</span></div>
-          <p class="effect"><b>Affects the project by:</b> bounding every decision. Protected files are approved by hash; nothing executes before approval.</p>
+          <p class="effect"><b>Affects the project by:</b> bounding every decision. Protected files are approved by hash; no proof is recorded before approval.</p>
         </article>
       </div>
 
@@ -1000,7 +1000,7 @@
             <rect x="800" y="460" width="270" height="86" rx="15"/>
             <text class="n-title" x="935" y="494" text-anchor="middle">Record</text>
             <text class="n-sub" x="935" y="514" text-anchor="middle">immutable, append-only fact</text>
-            <text class="n-small" x="935" y="532" text-anchor="middle">run · verdict · decision · report</text>
+            <text class="n-small" x="935" y="532" text-anchor="middle">candidate · verdict · decision · report</text>
           </g>
 
           <text class="rel-label" x="42" y="592" text-anchor="start">solid = fixed relation · dashed = charter / context</text>
@@ -1116,10 +1116,10 @@
       </div>
 
       <div class="derived">
-        <article class="card"><span class="tag">structure</span><h3>Executable</h3><p>A leaf Item in <code>not_started</code> or <code>active</code>, with no open <code>depends_on</code> edge.</p></article>
-        <article class="card"><span class="tag">structure</span><h3>Blocked</h3><p>The category is <code>blocked</code>, or a dependency is unfinished, or a cycle exists.</p></article>
+        <article class="card"><span class="tag">structure</span><h3>Executable</h3><p>A leaf Item in <code>not_started</code> or <code>active</code>, with no open <code>depends_on</code> edge. Only an executable leaf can take a candidate.</p></article>
+        <article class="card"><span class="tag">structure</span><h3>Blocked</h3><p>The category is <code>blocked</code>, or a dependency is unfinished, or a cycle exists. The reason is a status, <code>depends_on:&lt;slug&gt;</code> or <code>cycle</code>.</p></article>
         <article class="card"><span class="tag">structure</span><h3>Stuck</h3><p>An <code>active</code> Item with no new Record inside <code>stuck_hours</code> (default 24).</p></article>
-        <article class="card"><span class="tag">structure</span><h3>Too long</h3><p>The Item's run Records exceed its budget. Attempts and time always count.</p></article>
+        <article class="card"><span class="tag">structure</span><h3>Too long</h3><p>The Item's candidate Records, or the attempts and time they report, exceed its budget. A budget only warns; nothing is refused for being over it.</p></article>
         <article class="card"><span class="tag">structure</span><h3>Score</h3><p>Proven Checks over total Checks, summed over all descendants through <code>part_of</code>.</p></article>
       </div>
 
@@ -1137,18 +1137,18 @@
           <h2>One write. Eight guarantees.</h2>
         </div>
         <p class="section-lede">
-          Every change — CLI, MCP, UI, dispatch, merge, migration — enters <code>store.write.commit</code>.
+          Every change, from the CLI, MCP, the UI or a migration, enters <code>store.write.commit</code>.
           The order is fixed. A crash leaves a witness, not a half-written store.
         </p>
       </div>
 
       <div class="pipeline" aria-label="The write pipeline">
         <article class="wstep"><b>01</b><h3>Validate &amp; authorize</h3><p>Parameters, actor, permission, decision class and charter approval are checked before a handler runs.</p><span class="mono">gateway.invoke()</span></article>
-        <article class="wstep"><b>02</b><h3>Lock</h3><p>One store lock for one writer. Concurrent writers queue; a CTO tick also holds a single-instance lock.</p><span class="mono">store_lock()</span></article>
+        <article class="wstep"><b>02</b><h3>Lock</h3><p>One store lock for one writer. Concurrent writers queue behind it, and every write path takes the same lock.</p><span class="mono">store_lock()</span></article>
         <article class="wstep"><b>03</b><h3>Expect</h3><p>Compare the etag the caller read with the current one. A stale revision is refused, never silently overwritten.</p><span class="mono">expect = etag</span></article>
         <article class="wstep"><b>04</b><h3>Intent</h3><p>A durable marker is published before a multi-file write, so recovery can prove what was in flight.</p><span class="mono">intents/</span></article>
         <article class="wstep"><b>05</b><h3>Stage &amp; fsync</h3><p>Bytes go to temp files, are flushed, then atomically replace their targets in order.</p><span class="mono">temp + fsync + replace</span></article>
-        <article class="wstep"><b>06</b><h3>Record</h3><p>An immutable, digest-stamped Record is appended. The idempotency key makes a retry return the same record.</p><span class="mono">records/&lt;yyyy&gt;-&lt;mm&gt;/&lt;id&gt;.json</span></article>
+        <article class="wstep"><b>06</b><h3>Record</h3><p>An immutable, digest-stamped Record is appended. The idempotency key makes a repeated call return the same record.</p><span class="mono">records/&lt;yyyy&gt;-&lt;mm&gt;/&lt;id&gt;.json</span></article>
         <article class="wstep"><b>07</b><h3>Index</h3><p>The SQLite cache catches up while the write is still inside the lock. Reads never hash the source tree.</p><span class="mono">index.sync()</span></article>
         <article class="wstep"><b>08</b><h3>Return</h3><p>Unlock and return one typed Result envelope. A failure is a code and message, not an exception at the boundary.</p><span class="mono">{ ok, value } | { ok, error }</span></article>
       </div>
@@ -1167,7 +1167,7 @@
 
       <div class="guarantees">
         <div class="guarantee"><b>Optimistic concurrency</b><span>Every update carries the revision it read.</span></div>
-        <div class="guarantee"><b>Idempotency</b><span>Every write has a key; a retry returns the same record.</span></div>
+        <div class="guarantee"><b>Idempotency</b><span>Every write has a key; a repeat returns the same record.</span></div>
         <div class="guarantee"><b>Atomic replace</b><span>Temp file + fsync + replace, never an in-place edit.</span></div>
         <div class="guarantee"><b>Path confinement</b><span>Store paths only; adapter files are the one declared exception.</span></div>
         <div class="guarantee"><b>Repairable</b><span>Intent marker + <code>doctor --repair</code>, with a report when unsure.</span></div>
@@ -1182,19 +1182,20 @@
       <div class="section-head">
         <div>
           <p class="kicker">06 · the agent loop</p>
-          <h2>One tick, eight steps.</h2>
+          <h2>Six steps, one record loop.</h2>
         </div>
         <p class="section-lede">
-          <b>Brief → plan → dispatch → verify → review → merge → report → digest.</b> The CTO keeps
-          no state between ticks beyond the store and its memory Notes. Humans look at the brief and
-          the digest; everything between runs inside the charter's rights, gates and budgets.
+          <b>Brief → work → candidate → check → review → move.</b> The rail never launches an agent.
+          Any coding tool does the work in its own way, with its own sub-agents, and the rail holds
+          the work order, the proof and the record. Everything between runs inside the charter's
+          rights, gates and budgets.
         </p>
       </div>
 
       <div class="card loop-graph">
         <svg viewBox="0 0 1120 560" role="img" aria-labelledby="loop-title loop-desc">
-          <title id="loop-title">The eight-step CTO loop</title>
-          <desc id="loop-desc">Brief, plan, dispatch, verify, review, merge, report and digest form a continuous loop. Brief and digest are read surfaces; dispatch, verify, review and merge are gates; report feeds triage.</desc>
+          <title id="loop-title">The six-step record loop</title>
+          <desc id="loop-desc">Brief, work in your own tool, record the candidate, run the checks, review the candidate and move the item form a continuous loop. Brief is a read surface; check, review and move are gated on fresh proof.</desc>
           <defs>
             <marker id="arrowLoop" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
               <path d="M0 0 L10 4 L0 8 z" fill="#64748b"/>
@@ -1203,90 +1204,76 @@
 
           <circle class="loop-track" cx="560" cy="280" r="200"/>
 
-          <path class="loop-edge" d="M605 95 C650 100 655 105 668 124"/>
-          <path class="loop-edge" d="M738 155 C760 180 755 220 752 248"/>
-          <path class="loop-edge" d="M752 312 C755 340 760 380 738 405"/>
-          <path class="loop-edge" d="M668 436 C655 455 650 460 605 465"/>
-          <path class="loop-edge" d="M515 465 C470 460 465 455 452 436"/>
-          <path class="loop-edge" d="M382 405 C360 380 365 340 368 312"/>
-          <path class="loop-edge" d="M368 248 C365 220 360 180 382 155"/>
-          <path class="loop-edge" d="M452 124 C465 105 470 100 515 95"/>
+          <path class="loop-edge" d="M620 109 C632 128 640 146 653 172"/>
+          <path class="loop-edge" d="M733 209 C755 245 755 315 733 351"/>
+          <path class="loop-edge" d="M700 409 C672 424 664 436 640 466"/>
+          <path class="loop-edge" d="M480 466 C462 452 450 440 427 409"/>
+          <path class="loop-edge" d="M387 351 C365 315 365 245 387 209"/>
+          <path class="loop-edge" d="M467 172 C486 152 490 132 500 109"/>
 
-          <text class="loop-center-title" x="560" y="242" text-anchor="middle">one tick</text>
-          <text class="loop-center-sub" x="560" y="268" text-anchor="middle">read → choose → launch</text>
-          <text class="loop-center-sub" x="560" y="286" text-anchor="middle">prove → merge → learn</text>
-          <text class="loop-center-small" x="560" y="310" text-anchor="middle">no state between ticks</text>
-          <text class="loop-center-small" x="560" y="326" text-anchor="middle">beyond the store + memory notes</text>
+          <text class="loop-center-title" x="560" y="242" text-anchor="middle">one loop</text>
+          <text class="loop-center-sub" x="560" y="268" text-anchor="middle">brief → work → candidate</text>
+          <text class="loop-center-sub" x="560" y="286" text-anchor="middle">check → review → move</text>
+          <text class="loop-center-small" x="560" y="310" text-anchor="middle">the rail keeps the order,</text>
+          <text class="loop-center-small" x="560" y="326" text-anchor="middle">the proof and the record</text>
 
           <g class="node step--read" aria-label="Brief">
             <rect x="480" y="51" width="160" height="58" rx="14"/>
             <text class="step-title" x="560" y="75" text-anchor="middle"><tspan class="step-no">01 </tspan>Brief</text>
-            <text class="step-sub" x="560" y="94" text-anchor="middle">bounded state</text>
+            <text class="step-sub" x="560" y="94" text-anchor="middle">the work order</text>
           </g>
-          <g class="node step--work" aria-label="Plan">
-            <rect x="621" y="110" width="160" height="58" rx="14"/>
-            <text class="step-title" x="701" y="134" text-anchor="middle"><tspan class="step-no">02 </tspan>Plan</text>
-            <text class="step-sub" x="701" y="153" text-anchor="middle">items + relations</text>
+          <g class="node step--work" aria-label="Work in your tool">
+            <rect x="653" y="151" width="160" height="58" rx="14"/>
+            <text class="step-title" x="733" y="175" text-anchor="middle"><tspan class="step-no">02 </tspan>Work</text>
+            <text class="step-sub" x="733" y="194" text-anchor="middle">your tool, own agents</text>
           </g>
-          <g class="node step--gate" aria-label="Dispatch">
-            <rect x="680" y="251" width="160" height="58" rx="14"/>
-            <text class="step-title" x="760" y="275" text-anchor="middle"><tspan class="step-no">03 </tspan>Dispatch</text>
-            <text class="step-sub" x="760" y="294" text-anchor="middle">worktree + run</text>
+          <g class="node step--report" aria-label="Record the candidate">
+            <rect x="653" y="351" width="160" height="58" rx="14"/>
+            <text class="step-title" x="733" y="375" text-anchor="middle"><tspan class="step-no">03 </tspan>Candidate</text>
+            <text class="step-sub" x="733" y="394" text-anchor="middle">one commit, recorded</text>
           </g>
-          <g class="node step--work" aria-label="Verify">
-            <rect x="621" y="392" width="160" height="58" rx="14"/>
-            <text class="step-title" x="701" y="416" text-anchor="middle"><tspan class="step-no">04 </tspan>Verify</text>
-            <text class="step-sub" x="701" y="435" text-anchor="middle">checks + freshness</text>
+          <g class="node step--gate" aria-label="Check">
+            <rect x="480" y="451" width="160" height="58" rx="14"/>
+            <text class="step-title" x="560" y="475" text-anchor="middle"><tspan class="step-no">04 </tspan>Check</text>
+            <text class="step-sub" x="560" y="494" text-anchor="middle">proof + freshness</text>
           </g>
           <g class="node step--gate" aria-label="Review">
-            <rect x="480" y="451" width="160" height="58" rx="14"/>
-            <text class="step-title" x="560" y="475" text-anchor="middle"><tspan class="step-no">05 </tspan>Review</text>
-            <text class="step-sub" x="560" y="494" text-anchor="middle">different actor</text>
+            <rect x="307" y="351" width="160" height="58" rx="14"/>
+            <text class="step-title" x="387" y="375" text-anchor="middle"><tspan class="step-no">05 </tspan>Review</text>
+            <text class="step-sub" x="387" y="394" text-anchor="middle">a different actor</text>
           </g>
-          <g class="node step--gate" aria-label="Merge">
-            <rect x="339" y="392" width="160" height="58" rx="14"/>
-            <text class="step-title" x="419" y="416" text-anchor="middle"><tspan class="step-no">06 </tspan>Merge</text>
-            <text class="step-sub" x="419" y="435" text-anchor="middle">rebase + fast-forward</text>
-          </g>
-          <g class="node step--report" aria-label="Report">
-            <rect x="280" y="251" width="160" height="58" rx="14"/>
-            <text class="step-title" x="360" y="275" text-anchor="middle"><tspan class="step-no">07 </tspan>Report</text>
-            <text class="step-sub" x="360" y="294" text-anchor="middle">one structured fact</text>
-          </g>
-          <g class="node step--read" aria-label="Digest">
-            <rect x="339" y="110" width="160" height="58" rx="14"/>
-            <text class="step-title" x="419" y="134" text-anchor="middle"><tspan class="step-no">08 </tspan>Digest</text>
-            <text class="step-sub" x="419" y="153" text-anchor="middle">human view</text>
+          <g class="node step--gate" aria-label="Move">
+            <rect x="307" y="151" width="160" height="58" rx="14"/>
+            <text class="step-title" x="387" y="175" text-anchor="middle"><tspan class="step-no">06 </tspan>Move</text>
+            <text class="step-sub" x="387" y="194" text-anchor="middle">the transition gate</text>
           </g>
         </svg>
       </div>
       <p class="scroll-hint">↔ drag the graph sideways to see all of it</p>
       <div class="loop-legend">
         <span><i class="lg read"></i> read / human-facing</span>
-        <span><i class="lg work"></i> CTO work</span>
-        <span><i class="lg report"></i> learning</span>
-        <span><i class="lg human"></i> enforced gate: dispatch approval, review separation, merge policy</span>
+        <span><i class="lg work"></i> the agent's own work</span>
+        <span><i class="lg report"></i> a recorded fact</span>
+        <span><i class="lg human"></i> enforced gate: fresh proof, review separation, the workflow's gate</span>
       </div>
 
       <div class="table-wrap">
         <table class="loop-table">
           <thead><tr><th>Step</th><th>Command</th><th>What it gives you</th></tr></thead>
           <tbody>
-            <tr><td class="rel-name">01 Brief</td><td><code>rail overview</code></td><td>Approval state, goal and scope, gate rules, executable work, human waits, quality and reversible decisions, inside a character budget.</td></tr>
-            <tr><td class="rel-name">02 Plan</td><td><code>rail change add</code> · <code>rail change link</code></td><td>Items with <code>part_of</code> and <code>depends_on</code> edges. Writing or loosening acceptance Checks is human-only.</td></tr>
-            <tr><td class="rel-name">03 Dispatch</td><td><code>rail loop dispatch &lt;item&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>A fresh worktree and branch, a bounded <code>droid exec</code>, a run Record, then verification. Refused before charter approval.</td></tr>
-            <tr><td class="rel-name">04 Verify</td><td><code>rail check run &lt;item&gt;</code></td><td>The Item's declared Checks run in the worktree. A <code>cmd</code> pass is fresh only while its input blobs match.</td></tr>
-            <tr><td class="rel-name">05 Review</td><td><code>rail loop review &lt;item&gt; --run &lt;id&gt; --key &lt;k&gt;</code></td><td>A different actor in its own worktree. The implementer cannot approve its own work; the verdict binds to the candidate commit.</td></tr>
-            <tr><td class="rel-name">06 Merge</td><td><code>rail loop merge &lt;item&gt; --run &lt;id&gt; --expect &lt;etag&gt; --key &lt;k&gt;</code></td><td>Rebase, then fast-forward. One conflict retry, then escalate. <code>--push</code> only when the charter allows it.</td></tr>
-            <tr><td class="rel-name">07 Report</td><td><code>rail loop report ... --report-file &lt;json&gt;</code></td><td>One structured report per completed run: target class, expectation, observation, impact, evidence. “Nothing to report” is valid.</td></tr>
-            <tr><td class="rel-name">08 Digest</td><td><code>rail read digest</code> · <code>rail loop triage</code></td><td>Activity, waits, reversible decisions, stuck and too-long Items, quality and usage. Triage clusters reports into fixes, proposals or engine issues.</td></tr>
+            <tr><td class="rel-name">01 Brief</td><td><code>rail loop brief &lt;item&gt; --role implementer</code></td><td>The work order: objective, selected scope, conventions, constraints, selected files, checks, allowed rail methods, code area and the workflow breadcrumb. Read only; <code>--max_chars N</code> takes 100 to 32000.</td></tr>
+            <tr><td class="rel-name">02 Work</td><td><em>any coding tool</em></td><td>The agent works in its own checkout with its own sub-agents. The engine has no process executor, so the rail starts nothing and watches nothing.</td></tr>
+            <tr><td class="rel-name">03 Candidate</td><td><code>rail loop candidate &lt;item&gt; --commit &lt;sha&gt;</code></td><td>An immutable Record of the commit that will be judged, with its base, profile and free-text model, harness, usage and duration.</td></tr>
+            <tr><td class="rel-name">04 Check</td><td><code>rail check declare</code> · <code>rail check run &lt;check-or-item&gt;</code></td><td>The proof. A pass is <code>fresh</code> only while its definition and inputs still match; <code>stale</code> is not a pass, and <code>missing</code> and <code>unknown</code> stay distinct.</td></tr>
+            <tr><td class="rel-name">05 Review</td><td><code>rail loop review &lt;item&gt; --commit &lt;sha&gt; --verdict approve|reject</code></td><td>A different actor judges one commit. The done gate prefers the item's latest candidate, so a review of an older commit is stale.</td></tr>
+            <tr><td class="rel-name">06 Move</td><td><code>rail change move &lt;item&gt; &lt;status&gt;</code></td><td>The gate reads the latest candidate and its review. <code>rail loop report</code> and <code>rail loop triage</code> feed the human view, and <code>rail read digest</code> summarises.</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="branch">
-        <article class="card"><h3>One retry, then escalate</h3><p>A failed implementer run gets one retry that continues the same <code>droid</code> session with the failure output. Still failing means a human sees the evidence, not an infinite loop.</p></article>
-        <article class="card"><h3>One rebase, then escalate</h3><p>A merge conflict gets one rebase retry. If it still conflicts, the candidate and diagnostics are kept for the human; nothing is force-pushed.</p></article>
+        <article class="card"><h3>A review of older work is stale</h3><p>The gate binds its proofs to the item's latest recorded candidate, so an approval cannot outlive the commit it judged. Record a newer candidate and the earlier verdict simply stops counting, with nothing to clean up.</p></article>
+        <article class="card"><h3>A failed attempt is reported, not repeated</h3><p>The rail holds no automatic second try and no escalation ladder. The agent tries again in its own tool, or a human reads the report: the candidate, its usage and its evidence stay in the store either way.</p></article>
       </div>
     </div>
   </section>
@@ -1312,7 +1299,7 @@
           <div class="body card">
             <div class="body-head"><span class="badge badge--any">any actor</span><h3>Install</h3></div>
             <pre class="cmd"><code>py -m pip install context-rail</code></pre>
-            <p>Python 3.11+. Installs <code>rail</code> and <code>ctx-rail</code>; <code>py -m context_rail</code> is equivalent. Reading and editing a store needs no <code>droid</code>.</p>
+            <p>Python 3.11+. Installs <code>rail</code> and <code>ctx-rail</code>; <code>py -m context_rail</code> is equivalent. Reading and editing a store needs no separate runtime.</p>
           </div>
         </article>
 
@@ -1340,7 +1327,7 @@ rail init --answers-file answers.json --confirm "APPROVE charter"</code></pre>
           <div class="body card">
             <div class="body-head"><span class="badge badge--human">human</span><h3>Approve the boundary</h3></div>
             <pre class="cmd"><code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
-            <p>Records the approval with hashes of the protected files. Until this exists, the CTO may plan and read, but nothing executes.</p>
+            <p>Records the approval with hashes of the protected files. Until this exists, planning and reads stay open, but no candidate, check or review is recorded.</p>
           </div>
         </article>
 
@@ -1387,27 +1374,27 @@ rail overview</code></pre>
         <article class="step cto">
           <div class="dot">09</div>
           <div class="body card">
-            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Dispatch one leaf</h3></div>
-            <pre class="cmd"><code>rail loop dispatch write-the-write-path --expect &lt;etag&gt; --key day-1-a</code></pre>
-            <p>A fresh worktree and branch, a bounded <code>droid exec</code>, a run Record, then the Item's Checks verify the candidate. Not executable if it is a parent, blocked or still depends on open work.</p>
+            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Read the work order</h3></div>
+            <pre class="cmd"><code>rail loop brief write-the-write-path --role implementer</code></pre>
+            <p>One leaf's objective, selected scope, conventions, constraints, selected files, checks and allowed rail methods, inside a character budget. Read only: it records and moves nothing, and it takes no lock.</p>
           </div>
         </article>
 
         <article class="step cto">
           <div class="dot">10</div>
           <div class="body card">
-            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Review the candidate</h3></div>
-            <pre class="cmd"><code>rail loop review write-the-write-path --run &lt;run-id&gt; --key day-1-b</code></pre>
-            <p>Must be a different actor and worktree. The implementer cannot approve its own work; the charter may also require a different model.</p>
+            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Record the candidate</h3></div>
+            <pre class="cmd"><code>rail loop candidate write-the-write-path --commit &lt;sha&gt; --key day-1-b</code></pre>
+            <p>An immutable Record of the commit that will be judged, with its base, profile and free-text harness, model, usage and duration. The agent made it in its own tool; the rail only records it.</p>
           </div>
         </article>
 
         <article class="step cto">
           <div class="dot">11</div>
           <div class="body card">
-            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Merge the proof</h3></div>
-            <pre class="cmd"><code>rail loop merge write-the-write-path --run &lt;run-id&gt; --expect &lt;etag&gt; --key day-1-c</code></pre>
-            <p>Rebase, then fast-forward. One conflict retry, then escalate. <code>--push</code> only when the charter allows it.</p>
+            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Review the candidate</h3></div>
+            <pre class="cmd"><code>rail loop review write-the-write-path --commit &lt;sha&gt; --verdict approve --key day-1-c</code></pre>
+            <p>Must be a different actor from the implementer; the charter may also require a different model. The verdict binds to one commit, and the done gate prefers the item's latest candidate.</p>
           </div>
         </article>
 
@@ -1415,23 +1402,24 @@ rail overview</code></pre>
           <div class="dot">12</div>
           <div class="body card">
             <div class="body-head"><span class="badge badge--any">human + CTO</span><h3>Learn, close, repeat</h3></div>
-            <pre class="cmd"><code>rail loop report --run &lt;run-id&gt; --report-file report.json
+            <pre class="cmd"><code>rail change move write-the-write-path done --expect &lt;etag&gt;
+rail loop report write-the-write-path --report-file report.json
 rail loop triage
 rail read digest
 rail gate</code></pre>
-            <p>One report per run. Triage turns clusters into fixes, proposals or engine issues. Digest shows what is stuck or too long. CI gates approval and done gates, never a Check run.</p>
+            <p>The move reads the latest candidate and its review. Triage turns report clusters into fixes, proposals or engine issues. Digest shows what is stuck or too long. CI gates approval and done gates, never a Check run.</p>
           </div>
         </article>
       </div>
 
       <div class="refusals">
         <div class="refusal"><b>NOT_FOUND: no store found</b><span>Run <code>rail init</code>, or put <code>--store path</code> before the command.</span></div>
-        <div class="refusal"><b>charter is not approved</b><span>Run <code>rail --actor human approve charter ...</code>; planning and reads stay open.</span></div>
-        <div class="refusal"><b>stale etag</b><span>Re-read the document, then retry with the new etag. Never reuse an old one.</span></div>
+        <div class="refusal"><b>approval_mismatch</b><span>The protected picture changed since a human approved it. Run <code>rail --actor human approve charter ...</code> again; planning and reads stay open, and no candidate, check or review is recorded.</span></div>
+        <div class="refusal"><b>CONFLICT: 'x' is at etag a, not b</b><span>Re-read the document, then retry with the etag you now hold. Never reuse an old one, and never guess.</span></div>
         <div class="refusal"><b>check is stale</b><span>Re-run <code>rail check run</code>. A stale pass is not a pass.</span></div>
-        <div class="refusal"><b>cannot be dispatched: depends_on:x</b><span>Finish or drop the dependency; only an executable leaf may be dispatched.</span></div>
-        <div class="refusal"><b>cto tick cannot be nested</b><span>Start it from the outer session with <code>RAIL_ACTOR</code> unset.</span></div>
-        <div class="refusal"><b>merge conflict</b><span>One rebase retry is automatic; after that the candidate and diagnostics go to a human.</span></div>
+        <div class="refusal"><b>'x' cannot take a candidate: depends_on:y</b><span>Finish or drop the dependency; only an executable leaf can take a candidate. The reason is also <code>container</code>, <code>finished</code> or <code>not_executable</code>.</span></div>
+        <div class="refusal"><b>actor_required</b><span>Writes need a named actor: pass <code>--actor &lt;name&gt;</code> or set <code>RAIL_ACTOR</code>. A terminal or the UI channel is the human; any other unnamed caller only reads.</span></div>
+        <div class="refusal"><b>the item_done gate is not satisfied</b><span>The reasons list each missing, stale or failed Check and every review that binds another commit. Produce the proof with <code>rail why</code>.</span></div>
         <div class="refusal"><b>interrupted write</b><span>Run <code>rail ops doctor --repair</code>; it rolls forward or reports what it cannot prove.</span></div>
         <div class="refusal"><b>index looks wrong</b><span>Run <code>rail ops reindex --full</code>. The index is a cache; rebuilding it is always safe.</span></div>
       </div>
@@ -1455,12 +1443,12 @@ rail gate</code></pre>
       <div class="rights">
         <article class="card right-card">
           <span class="who">green · CTO alone</span>
-          <h3>Runs the work</h3>
+          <h3>Orders and records the work</h3>
           <ul>
             <li>Break down, order and assign work.</li>
             <li>Technical design inside the conventions.</li>
             <li>Refactors and tests.</li>
-            <li>Retries.</li>
+            <li>Hand out the work order and record the candidate.</li>
             <li>Close Items when their gates pass.</li>
           </ul>
         </article>
@@ -1486,7 +1474,7 @@ rail gate</code></pre>
             <li>History rewrites, force-pushes, tags and releases.</li>
             <li>Licensing, secrets and payments.</li>
             <li>Budget increases.</li>
-            <li>Stuck Items after their retries.</li>
+            <li>Stuck Items nobody can unblock, and any attempt the agent gave up on.</li>
             <li>Charter changes. The change rule can never be delegated.</li>
           </ul>
         </article>
@@ -1508,7 +1496,7 @@ rail gate</code></pre>
         </div>
         <p class="section-lede">
           The store is a normal folder in git. The index and control files live outside the repository
-          tree. Every command in the table below is generated from the same 39-tool tuple.
+          tree. Every command in the table below is generated from the same 58-tool tuple.
         </p>
       </div>
 
@@ -1531,19 +1519,20 @@ rail gate</code></pre>
         </div>
         <div class="side-notes">
           <article class="card side-note"><h3>Where the index lives</h3><p><span class="mono">&lt;git-dir&gt;/context-rail/&lt;key&gt;/index.sqlite3</span> inside a worktree; <span class="mono">&lt;store&gt;/.rail-local/</span> outside git. Never in the repository tree. Delete it and the next command rebuilds it.</p></article>
-          <article class="card side-note"><h3>Where control files live</h3><p>Write intents, idempotency results, locks and dispatch/tick progress sit in the same local dir. They are written atomically, so a crash leaves the old file or the new one, never a partial document.</p></article>
+          <article class="card side-note"><h3>Where control files live</h3><p>Write intents, idempotency results and the one store lock sit in the same local dir. They are written atomically, so a crash leaves the old file or the new one, never a partial document.</p></article>
           <article class="card side-note"><h3>What is generated outside the store</h3><p><span class="mono">AGENTS.md</span>, <span class="mono">.agents/skills/</span>, and optionally <span class="mono">CLAUDE.md</span>, <span class="mono">.cursor/rules/</span> and <span class="mono">GEMINI.md</span>. They embed the store's profiles and skills; they are not a second source of truth.</p></article>
         </div>
       </div>
 
       <div class="command-grid">
-        <div class="family">Change</div><div class="tools"><code>add</code> · <code>update</code> · <code>link</code> · <code>move</code> · <code>rename</code> · <code>relocate</code> · <code>check</code> · <code>verify</code> · <code>report</code></div>
-        <div class="family">Read</div><div class="tools"><code>find</code> · <code>show</code> · <code>status</code> · <code>cto brief</code> · <code>digest</code> · <code>ledger</code> · <code>measure versions</code> · <code>measure fix</code> · <code>pack list</code> · <code>pack show</code> · <code>pack validate</code></div>
-        <div class="family">Gate</div><div class="tools"><code>approve</code> · <code>pack use</code> · <code>migrate</code> <span class="mono">(human only)</span></div>
-        <div class="family">Loop</div><div class="tools"><code>dispatch</code> · <code>review</code> · <code>merge</code> · <code>cto tick</code> · <code>triage</code> · <code>rollback</code></div>
-        <div class="family">Operate</div><div class="tools"><code>init</code> · <code>doctor</code> · <code>reindex</code> · <code>ci</code> · <code>sync</code> · <code>sync driver</code> · <code>adapters sync</code> · <code>pack create</code> · <code>mcp serve</code> · <code>ui serve</code></div>
+        <div class="family">Change</div><div class="tools"><code>add</code> · <code>update</code> · <code>link</code> · <code>move</code> · <code>rename</code> · <code>repath</code> · <code>check declare</code> · <code>check run</code></div>
+        <div class="family">Read</div><div class="tools"><code>read find</code> · <code>read show</code> · <code>read status</code> · <code>overview</code> · <code>read digest</code> · <code>read ledger</code> · <code>types</code> · <code>next</code> · <code>model</code> · <code>explain</code> · <code>why</code> · <code>check list</code> · <code>ops measure versions</code> · <code>ops measure fix</code> · <code>ops pack list</code> · <code>ops pack show</code> · <code>ops pack validate</code></div>
+        <div class="family">Gate</div><div class="tools"><code>approve</code> · <code>ops pack use</code> · <code>ops migrate</code> · <code>ops upgrade</code> <span class="mono">(human only)</span></div>
+        <div class="family">Loop</div><div class="tools"><code>brief</code> · <code>candidate</code> · <code>review</code> · <code>report</code> · <code>triage</code> · <code>execution record</code></div>
+        <div class="family">Operate</div><div class="tools"><code>init</code> · <code>gate</code> · <code>do</code> · <code>ops doctor</code> · <code>ops reindex</code> · <code>ops sync</code> · <code>ops adapters render</code> · <code>ops rollback</code> · <code>ops pack create</code> · <code>ops codegraph setup</code> · <code>serve mcp</code> · <code>serve ui</code></div>
+        <div class="family">Seat</div><div class="tools"><code>seat grant</code> · <code>seat list</code> · <code>seat show</code> · <code>seat open</code> · <code>seat close</code> · <code>seat revoke</code></div>
       </div>
-      <p class="note"><b>39 tools, one table.</b> The CLI, MCP server and UI cannot drift from each other because they are generated from <code>src/context_rail/gateway/tools.py</code>.</p>
+      <p class="note"><b>58 tools, one table.</b> The CLI, MCP server and UI cannot drift from each other because they are generated from <code>src/context_rail/gateway/tools.py</code>.</p>
     </div>
   </section>
 
@@ -1602,7 +1591,7 @@ rail gate</code></pre>
       ui: {
         kind: "surface",
         title: "Loopback UI",
-        blurb: "A read surface plus a tool runner. No database, no build step, no external asset and no stored state.",
+        blurb: "A read surface that calls the same tools on request. No database, no build step, no external asset and no stored state.",
         points: ["Binds 127.0.0.1 and requires a per-run token.", "Host and Origin are checked; responses carry a strict CSP.", "Every tool call goes through gateway.invoke."],
         meta: "ui/server.py · ui/api.py · ui/page.py"
       },
@@ -1617,20 +1606,20 @@ rail gate</code></pre>
         kind: "boundary",
         title: "Gateway",
         blurb: "The single entry point for every surface. It validates parameters, resolves the actor and store, checks rights and approval, then calls a handler.",
-        points: ["Rights come from technical facts, never from tags or preset names.", "A profile's method list may narrow its actor; the human-only floor cannot be widened.", "Nothing executable runs before the charter is approved.", "No exception escapes: every fault becomes a typed Result."],
+        points: ["Rights come from technical facts, never from tags or preset names.", "A profile's method list may narrow its actor; the human-only floor cannot be widened.", "No candidate, check or review is recorded before the charter is approved.", "No exception escapes: every fault becomes a typed Result."],
         meta: "gateway/gateway.py"
       },
       handlers: {
         kind: "tool table",
-        title: "39 tools, one table",
+        title: "58 tools, one table",
         blurb: "Every command is a Tool entry: name, summary, permission, decision class, parameters and a lazily imported handler.",
-        points: ["Families: read, change, gate, loop and operate.", "Human-only: migrate, approve, pack use.", "Execution: verify, dispatch, review, merge, cto tick.", "The CLI, MCP server and UI all read this tuple."],
+        points: ["Families: read, change, gate, loop, seat and operate.", "Human-only: approve, ops migrate, ops upgrade, ops pack use.", "Execution: verify, candidate and review; brief is a read.", "The CLI, MCP server and UI all read this tuple."],
         meta: "gateway/tools.py"
       },
       kernel: {
         kind: "pure rules",
         title: "Kernel",
-        blurb: "Pure functions over primitives. No file, git, process or index access, and no imports from store, runner or gateway.",
+        blurb: "Pure functions over primitives. No file, git, process or index access, and no imports from store/, runner/ or gateway/.",
         points: ["Lifecycle: statuses map to five categories; transitions are pack data.", "Structure: executable, blocked, cycles, stuck and score rollup.", "Gates: fresh proofs, acceptance, review and human verdicts.", "Rights, budgets, measurement and triage are also pure."],
         meta: "kernel/*.py"
       },
@@ -1641,12 +1630,12 @@ rail gate</code></pre>
         points: ["Lock → expected etag → durable intent → temp + fsync → atomic replace.", "Then an immutable Record, the idempotency result and an index sync.", "Path confinement refuses escapes; adapter files are the one exception.", "Crash recovery rolls forward from the intent or reports what it cannot prove."],
         meta: "store/write.py"
       },
-      runner: {
+      yourtool: {
         kind: "executor",
-        title: "Runner",
-        blurb: "The only executor: droid sessions in isolated worktrees, cmd checks and git operations.",
-        points: ["Hard timeouts and capped output.", "Scrubbed environment with secret redaction.", "Worktree-locked working directory.", "Run facts come back through the write pipeline as Records."],
-        meta: "runner/ · gateway/handlers/dispatch/"
+        title: "Your tool, the executor",
+        blurb: "Any coding tool works the item its own way, with its own native sub-agents, in its own checkout. The rail launches nothing and holds no process executor.",
+        points: ["The brief is a read; the tool decides how the work is done.", "The tool commits, then rail loop candidate records that commit.", "A cmd check still runs one bounded command with a hard timeout, scrubbed environment and capped output.", "Nothing about the attempt reaches the store until the agent records it."],
+        meta: "context/work_brief.py · gateway/handlers/candidates.py"
       },
       files: {
         kind: "truth",
@@ -1665,8 +1654,8 @@ rail gate</code></pre>
       views: {
         kind: "computed output",
         title: "Computed views",
-        blurb: "Status, brief, digest, ledger, find and show are computed from the index, never stored as dashboards.",
-        points: ["Every list is bounded and reports what it omitted.", "Reads execute no command and hash no source tree.", "The brief and digest are the human-facing surfaces of the loop."],
+        blurb: "Status, overview, digest, ledger, find and show are computed from the index, never stored as dashboards.",
+        points: ["Every list is bounded and reports what it omitted.", "Reads execute no command and hash no source tree.", "The overview, brief and digest are the human-facing surfaces of the loop."],
         meta: "context/recipes.py · gateway/handlers/views.py"
       }
     };
