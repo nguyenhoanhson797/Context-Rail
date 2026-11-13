@@ -114,8 +114,9 @@ def targets_for(
         )
     if tool_name == "rename":
         slug = _text(params.get("old"))
+        writes = (slug,) if slug else ()
         return Targets(
-            writes=(slug,) if slug else (),
+            writes=writes + _rewritten_slugs(index, params),
             preset=_preset(index, slug),
         )
     if tool_name == "link":
@@ -160,6 +161,30 @@ def targets_for(
             preset=_preset(index, slug),
         )
     return Targets()
+
+
+def _rewritten_slugs(index: Index, params: Mapping[str, Any]) -> tuple[str, ...]:
+    """The slugs of the other documents a rename rewrites.
+
+    A slug the index does not hold contributes nothing: a replayed rename names
+    an ``old`` that no longer exists, and the handler owns that answer.
+    """
+    from context_rail.gateway.handlers.reshape import rewrite_targets
+
+    old, new = _text(params.get("old")), _text(params.get("new"))
+    if old is None or new is None or old == new:
+        return ()
+    if _doc(index, old) is None:
+        return ()
+    paths = rewrite_targets(index.store, index, old, new)
+    found: list[str] = []
+    for path in paths:
+        row = index.conn.execute(
+            "SELECT slug FROM docs WHERE path = ?", (path,)
+        ).fetchone()
+        if row is not None and row[0] not in found:
+            found.append(row[0])
+    return tuple(found)
 
 
 def tools_for(context: Context) -> frozenset[str]:
@@ -400,6 +425,13 @@ def _check_document(
             f"{slug or 'the document'!r} is outside the seat's write reach",
             reach_hint(reach, seat),
         )
+    for extra in targets.writes[1:]:
+        if not _writes(context, reach, extra):
+            return _refuse(
+                "write_out_of_reach",
+                f"{extra!r} is also rewritten and is outside the seat's write reach",
+                reach_hint(reach, seat),
+            )
     if tool_name == "move":
         status = targets.status
         moves = role.can.methods.get("move")

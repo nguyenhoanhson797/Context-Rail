@@ -306,12 +306,33 @@ def _placement_ops(
         source = current.get(slug)
         if source is None or source == path or is_scoped_skill(source):
             continue
+        _check_descendant_reach(ctx, slug, source)
         data = (store / source).read_bytes()
         ops.append(Op(source, None, etag(data)))
         ops.append(Op(path, data, ABSENT))
         moves.append({"from": source, "to": path})
         records = records or source.startswith("records/")
     return ops, target, records, moves
+
+
+def _check_descendant_reach(ctx: Context, slug: str, source: str) -> None:
+    """Refuse to move a descendant the caller may not write.
+
+    A placement change moves the whole subtree, so authorization has to cover
+    every document the commit relocates, not only the one the caller named.
+    """
+    reach = ctx.reach
+    if reach is None:
+        return
+    row = ctx.index.conn.execute(
+        "SELECT preset FROM docs WHERE slug = ? AND path = ?", (slug, source)
+    ).fetchone()
+    if row is None or not reach.can_write(slug, path=source, preset=row[0]):
+        raise WriteRefused(
+            "PERMISSION_DENIED",
+            f"{slug!r} would move outside the seat's write reach",
+            {"reason": "move_outside_reach", "slug": slug, "path": source},
+        )
 
 
 def update(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

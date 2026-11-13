@@ -446,7 +446,16 @@ def effective_decision(
     from context_rail.gateway.handlers.common import protected_change
 
     relation = params.get("rel") if tool.name == "link" else None
-    facts = protected_change(context, params, tool.name, relation=relation)
+    paths: tuple[str, ...] = ()
+    if tool.name == "rename":
+        from context_rail.gateway.handlers.reshape import rewrite_targets
+
+        old, new = str(params.get("old") or ""), str(params.get("new") or "")
+        if old and new:
+            paths = tuple(rewrite_targets(context.store, context.index, old, new))
+    facts = protected_change(
+        context, params, tool.name, relation=relation, paths=paths
+    )
     return rights.decision_class(tool.name, facts, context.policy)
 
 

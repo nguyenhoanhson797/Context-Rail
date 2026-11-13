@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from importlib import resources
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
@@ -173,7 +174,12 @@ def prepare_document_fields(preset: Preset, fields: dict[str, Any]) -> dict[str,
 
 
 def protected_change(
-    context: Context, params: dict[str, Any], op: str, *, relation: str | None = None
+    context: Context,
+    params: dict[str, Any],
+    op: str,
+    *,
+    relation: str | None = None,
+    paths: Sequence[str] = (),
 ) -> rights.ChangeFacts:
     """The technical facts of one generic write, from the documents involved.
 
@@ -181,7 +187,9 @@ def protected_change(
     the NOT_FOUND answer. Acceptance comes from what the write would leave on
     disk: the existing Check's value, or the value the new document receives.
     ``relation`` names the technical field a link changes; only ``depends_on``
-    is a reversible decision in the document model today.
+    is a reversible decision in the document model today. ``paths`` names every
+    other document the write rewrites, so a protected file cannot be reached
+    through an unprotected one.
     """
     from context_rail.store.approval import is_acceptance_path, protected_paths
 
@@ -206,9 +214,11 @@ def protected_change(
         if rel is not None:
             budget_increase = _budget_increase(context, rel, requested)
             rights_widening = _rights_widening(context, rel, requested)
+    members = protected_paths(context)
+    touched = rel is not None and rel in members
     return rights.ChangeFacts(
         method=op,
-        protected=rel is not None and rel in protected_paths(context),
+        protected=touched or any(path in members for path in paths),
         acceptance=acceptance,
         decision_id="dependency" if relation == "depends_on" else None,
         budget_increase=budget_increase,

@@ -277,6 +277,28 @@ def _linking_docs(index: Index, source: str) -> list[tuple[str]]:
     )
 
 
+def rewrite_targets(store: Path, index: Index, old: str, new: str) -> list[str]:
+    """The paths a rename of ``old`` to ``new`` would rewrite, source excluded.
+
+    Authorization reads this before the commit, so it applies the same rewrite
+    rule the commit does rather than guessing from the link graph: a document
+    whose bytes do not change is not touched.
+    """
+    try:
+        source = resolve_unique(index, old)
+    except LookupError:
+        return []
+    touched: list[str] = []
+    for (path,) in _linking_docs(index, source):
+        try:
+            current = (store / path).read_bytes()
+        except FileNotFoundError:
+            continue
+        if _rewrite(path, current, old, new) is not None:
+            touched.append(path)
+    return touched
+
+
 def _rewrite(path: str, data: bytes, old: str, new: str, *, stamp: bool = False) -> bytes | None:
     """The document's bytes with every link to ``old`` retargeted, or None.
 

@@ -381,3 +381,34 @@ def test_a_seat_cannot_triage_a_report_about_a_sibling_sprint(
     )
 
     assert refusal(refused) == ("PERMISSION_DENIED", "write_out_of_reach")
+
+
+def test_a_rename_cannot_rewrite_a_document_outside_the_seats_reach(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        etag = invoke("show", {"slug": role_store.b1}, store=role_store.store, actor=None)[
+            "value"
+        ]["doc"]["etag"]
+        linked = invoke(
+            "link",
+            {
+                "src": role_store.b1,
+                "rel": "depends_on",
+                "dst": role_store.o1,
+                "expect": etag,
+                "reason": "planning",
+            },
+            store=role_store.store,
+            actor=None,
+        )
+    assert is_ok(linked), linked
+
+    refused = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "rename",
+        {"old": role_store.o1, "new": "o1-renamed"},
+    )
+
+    assert refusal(refused) == ("PERMISSION_DENIED", "write_out_of_reach")

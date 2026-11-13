@@ -274,6 +274,46 @@ def test_rename_is_idempotent_with_a_key(store_with_links: Path) -> None:
     assert len(renamed) == 1
 
 
+def test_rename_cannot_rewrite_a_protected_document(approved_store: Path) -> None:
+    added = invoke(
+        "add",
+        {"preset": "task", "title": "Link holder"},
+        store=approved_store,
+        actor="cto",
+    )
+    assert is_ok(added), added
+    # The protected scope item depends on the unprotected task, so renaming the
+    # task rewrites the protected document's bytes.
+    etag = invoke("show", {"slug": "send-invoice"}, store=approved_store)["value"]["doc"][
+        "etag"
+    ]
+    linked = invoke(
+        "link",
+        {
+            "src": "send-invoice",
+            "rel": "depends_on",
+            "dst": "link-holder",
+            "expect": etag,
+            "reason": "planning",
+            "confirm": "APPROVE send-invoice",
+        },
+        store=approved_store,
+        actor="human",
+    )
+    assert is_ok(linked), linked
+    before = (approved_store / "project/send-invoice.md").read_bytes()
+
+    renamed = invoke(
+        "rename",
+        {"old": "link-holder", "new": "holder"},
+        store=approved_store,
+        actor="cto",
+    )
+
+    assert renamed["error"]["code"] == "PERMISSION_DENIED", renamed
+    assert (approved_store / "project/send-invoice.md").read_bytes() == before
+
+
 # ── relocate ──────────────────────────────────────────────────────────────
 
 
