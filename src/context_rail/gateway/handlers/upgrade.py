@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.execution import caller_session
+from context_rail.gateway.handlers.shipped import (
+    ShippedPlan,
+    commit_shipped,
+    plan_shipped,
+    unedited_shipped_copies,
+)
 from context_rail.gateway.identity import name_is_human
 from context_rail.store.upgrade import plan_upgrade
 from context_rail.model.errors import ModelError
 from context_rail.store.doc import etag
+from context_rail.store.lock import store_lock
 from context_rail.store.write import Op, WriteRefused, commit
 
 if TYPE_CHECKING:  # the gateway imports this module only when upgrade is invoked
@@ -17,9 +25,11 @@ if TYPE_CHECKING:  # the gateway imports this module only when upgrade is invoke
 
 __all__ = ["upgrade"]
 
+_SHIPPED_REASON = "upgrade shipped guidance"
+
 
 def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Rewrite profiles, local packs and the charter in place, then say what is next."""
+    """Rewrite profiles, local packs and the charter, then bring shipped guidance up to date."""
     if not name_is_human(actor) or caller_session() is not None:
         raise WriteRefused(
             "PERMISSION_DENIED",
@@ -35,34 +45,82 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 reason,
                 {"target": "store", "confirm": confirmation_phrase("upgrade", "store")},
             )
-    changes = plan_upgrade(ctx.store, ctx.manifest)
+    # A shipped copy the store never edited is replaced whole by the shipped step.
+    # Stripping its removed keys first would make it look edited, so it is left alone here.
+    replaced = unedited_shipped_copies(ctx.store, ctx.manifest.pack)
+    changes = [
+        change
+        for change in plan_upgrade(ctx.store, ctx.manifest)
+        if change.rel not in replaced
+    ]
     changed = [change.rel for change in changes]
+    reasons = {change.rel: list(change.reasons) for change in changes}
     summary: dict[str, Any] = {
         "changed": changed,
         "dry_run": dry_run,
-        "reasons": {change.rel: list(change.reasons) for change in changes},
+        "reasons": reasons,
         "next": [],
         "record": None,
+        "shipped": None,
     }
     if dry_run:
-        summary["next"] = _next(ctx, changed)
+        plan = _preview_shipped(ctx.store, actor)
+        if plan is not None:
+            summary["shipped"] = plan.report()
+        touched = plan.touched() if plan is not None else []
+        summary["next"] = _next(ctx, [*changed, *touched])
         return summary
     if changes:
         ops = [Op(change.rel, change.after, etag(change.before)) for change in changes]
         commit(ctx.store, ctx.manifest, ops, None, actor=actor, key=args.get("key"))
+    plan = _write_shipped(ctx.store, actor)
+    if changes or plan.ops:
         record = {
             "kind": "upgrade.completed",
             "about": [],
             "data": {
                 "schema": 1,
                 "changed": changed,
-                "reasons": {change.rel: list(change.reasons) for change in changes},
+                "reasons": reasons,
+                "shipped": plan.report(),
             },
         }
         # Records are placed by the pack, which only loads once the files above are rewritten.
         summary["record"] = commit(ctx.store, ctx.manifest, [], record, actor=actor)["record"]
-    summary["next"] = _next(ctx, changed)
+    summary["shipped"] = plan.report()
+    summary["next"] = _next(ctx, [*changed, *plan.touched()])
     return summary
+
+
+def _preview_shipped(store: Path, actor: str) -> ShippedPlan | None:
+    """The shipped writes a real run would make, read without writing.
+
+    None when the pack cannot load yet, because the rewrite has not run.
+    """
+    from context_rail.gateway.gateway import _open_context
+
+    try:
+        context = _open_context(store, actor)
+    except (ModelError, WriteRefused):
+        return None
+    try:
+        return plan_shipped(context, reason=_SHIPPED_REASON, seed=True)
+    finally:
+        context.close()
+
+
+def _write_shipped(store: Path, actor: str) -> ShippedPlan:
+    """Plan and commit the shipped copies against the pack the rewrite left behind."""
+    from context_rail.gateway.gateway import _open_context
+
+    context = _open_context(store, actor)
+    try:
+        with store_lock(store):
+            plan = plan_shipped(context, reason=_SHIPPED_REASON, seed=True)
+            commit_shipped(context, plan, actor=actor)
+    finally:
+        context.close()
+    return plan
 
 
 def _next(ctx: Context, changed: list[str]) -> list[str]:

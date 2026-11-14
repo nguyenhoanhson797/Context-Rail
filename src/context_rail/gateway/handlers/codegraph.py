@@ -8,17 +8,11 @@ profiles and skills off the retired hand-written code map.
 
 from __future__ import annotations
 
-import difflib
-import json
-from functools import lru_cache
-from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.locate import head_sha, worktree_git_dir
-from context_rail.core.util import now_iso
 from context_rail.model.codegraph import code_graph_source, effective_code_graph
-from context_rail.model.pack import canonical_pack_name
 from context_rail.store.codegraph import (
     freshness,
     last_event,
@@ -32,8 +26,7 @@ if TYPE_CHECKING:
 __all__ = ["adopt", "adopt_fingerprint", "probe_only", "refresh", "resolved", "setup", "status"]
 
 _SOURCE_WORDS = {"rail.yaml": "rail.yaml", "pack": "pack default", "default": "default"}
-_DIFF_LINES = 80
-_RETIRED_NOTE = "retired in this pack; delete it by hand once nothing relies on it"
+_ADOPT_REASON = "adopt the code graph"
 _ADOPT_HINT = (
     "the implementer profile still pins the retired code-map skill; "
     "run `rail ops codegraph adopt`"
@@ -109,22 +102,15 @@ def adopt(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     A copy the store changed by hand is never overwritten; its difference from
     the pack is reported instead. A second run finds nothing left to do.
     """
-    from context_rail.gateway.handlers.common import (
-        compose_doc,
-        doc_frontmatter,
-        document_version,
-        read_doc,
-        versioned_change_record,
-        versioned_kind,
+    from context_rail.gateway.handlers.shipped import (
+        commit_shipped,
+        plan_shipped,
+        shipped_fingerprints,
     )
-    from context_rail.gateway.handlers.onboarding import agent_ops
-    from context_rail.store.doc import etag, parse_doc
     from context_rail.store.lock import store_lock
-    from context_rail.store.write import Op, commit
 
     store = Path(ctx.store)
     dry_run = bool(args.get("dry_run"))
-    known = _adoptable().get(canonical_pack_name(ctx.pack.name), {})
     report: dict[str, Any] = {
         "adopted": [],
         "removed": [],
@@ -132,75 +118,19 @@ def adopt(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "customized": [],
         "dry_run": dry_run,
     }
-    if not known:
+    if not shipped_fingerprints(ctx.pack.name):
         report["line"] = "nothing to adopt: this pack never shipped the hand-written code map"
         return report
-    current = {
-        op.path: op.data.decode("utf-8")
-        for op in agent_ops(store, ctx.manifest, ctx.pack.name)
-        if op.data is not None
-    }
-    with store_lock(store):
-        ops: list[Op] = []
-        records: list[dict[str, Any]] = []
-        for path in sorted(known):
-            target = store / path
-            if not target.is_file():
-                continue
-            raw = target.read_bytes()
-            text = raw.decode("utf-8", errors="replace")
-            fingerprint = adopt_fingerprint(text)
-            wanted = current.get(path)
-            if wanted is not None and fingerprint == adopt_fingerprint(wanted):
-                report["already"].append(path)
-                continue
-            if fingerprint not in known[path]:
-                report["customized"].append(
-                    {"path": path, "diff": _diff(text, wanted)}
-                )
-                continue
-            actual = etag(raw)
-            if wanted is None:
-                ops.append(Op(path, None, actual))
-                report["removed"].append(path)
-                continue
-            _data, doc = read_doc(store, path)
-            front = doc_frontmatter(parse_doc(path, wanted.encode("utf-8")))
-            before = document_version(doc_frontmatter(doc), path)
-            front["version"] = before + 1
-            created = doc_frontmatter(doc).get("created")
-            if created is not None:
-                front["created"] = created
-            front["updated"] = now_iso()
-            after = compose_doc(front, parse_doc(path, wanted.encode("utf-8")).body)
-            kind = versioned_kind(doc, path)
-            ops.append(Op(path, after, actual))
-            report["adopted"].append(path)
-            if kind is not None:
-                records.append(
-                    versioned_change_record(
-                        kind=kind,
-                        rel=path,
-                        slug=doc.slug,
-                        before_version=before,
-                        after_version=before + 1,
-                        before_text=text,
-                        after_text=after.decode("utf-8"),
-                        before_etag=actual,
-                        after_etag=etag(after),
-                        reason="adopt the code graph",
-                    )
-                )
-        if ops and not dry_run:
-            commit(
-                store,
-                ctx.manifest,
-                ops,
-                records[0] if records else None,
-                actor=actor,
-                index=ctx.index,
-                extra_records=tuple(records[1:]),
-            )
+    if dry_run:
+        plan = plan_shipped(ctx, reason=_ADOPT_REASON, seed=False)
+    else:
+        with store_lock(store):
+            plan = plan_shipped(ctx, reason=_ADOPT_REASON, seed=False)
+            commit_shipped(ctx, plan, actor=actor)
+    report["adopted"] = plan.adopted
+    report["removed"] = plan.removed
+    report["already"] = plan.already
+    report["customized"] = plan.customized
     report["line"] = _adopt_line(report)
     return report
 
@@ -208,30 +138,6 @@ def adopt(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 def _adopt_line(report: dict[str, Any]) -> str:
     parts = [f"{len(report[name])} {name}" for name in ("adopted", "removed", "already", "customized")]
     return "code map: " + ", ".join(parts)
-
-
-def _diff(current: str, wanted: str | None) -> str:
-    if wanted is None:
-        return _RETIRED_NOTE
-    lines = list(
-        difflib.unified_diff(
-            current.replace("\r\n", "\n").splitlines(),
-            wanted.splitlines(),
-            "store",
-            "pack",
-            lineterm="",
-        )
-    )
-    if len(lines) > _DIFF_LINES:
-        lines = [*lines[:_DIFF_LINES], f"... {len(lines) - _DIFF_LINES} more lines"]
-    return "\n".join(lines)
-
-
-@lru_cache(maxsize=1)
-def _adoptable() -> dict[str, dict[str, list[str]]]:
-    """Per pack, the fingerprints of every profile and skill the old code map shipped."""
-    source = resources.files("context_rail").joinpath("packs", "adoptable.json")
-    return json.loads(source.read_text(encoding="utf-8"))
 
 
 def _build(ctx: Context, *, force: bool = False) -> dict[str, Any]:
