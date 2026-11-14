@@ -16,6 +16,7 @@ from context_rail.model.errors import ModelError
 from context_rail.model.manifest import render_path
 from context_rail.store.doc import Doc, parse_doc
 from context_rail.store.location import PathEscape, confine
+from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -53,12 +54,12 @@ def role_guide(ctx: Context, role: str) -> RoleGuide:
     In a store without roles the profile is the Actor profile named ``role``. In
     a store with roles it is the caller's seat profile when that seat holds the
     role, and there is none otherwise. Pinned skills come first, then the skills
-    the pack's role declares.
+    the pack's role declares. A profile that does not parse is named but not
+    used: its rules and its pins are left out.
     """
     found = _profile_document(ctx, role)
-    profile: Profile | None = None
-    if found is not None:
-        profile = parse_profile(found.fields, body=found.body, role_mode=ctx.role_mode)
+    profile = None if found is None else _parsed(found, ctx)
+    rules = "" if found is None or profile is None else found.body.strip()
     skills: list[SkillGuide] = []
     pinned: set[str] = set()
     if profile is not None:
@@ -76,7 +77,7 @@ def role_guide(ctx: Context, role: str) -> RoleGuide:
         role=role,
         profile_path=None if found is None else found.path,
         profile_version=None if found is None else _version(found.fields),
-        rules="" if found is None else found.body.strip(),
+        rules=rules,
         skills=tuple(skills),
         profile=profile,
     )
@@ -107,12 +108,13 @@ def render_role(guide: RoleGuide, limit: int, *, inline_skills: bool = True) -> 
     description and a read command; then the rules are clipped beside a read
     command for the profile; then the rules line drops out, since the header
     already names the profile path; then the descriptions go; and only then is
-    the text cut. A line that starts with ``#`` gains ``##`` so a body heading
-    never reads as a brief section.
+    the text cut. A profile that does not parse has no rules to clip; its line
+    is a read command instead. A line that starts with ``#`` gains ``##`` so a
+    body heading never reads as a brief section.
     """
     head = _head(guide)
-    rules = _demote(guide.rules)
-    pointer = _profile_pointer(guide)
+    rules = _rules_block(guide)
+    pointer = _clip_pointer(guide)
     if inline_skills:
         full = _assemble(head, rules, _inline_block(guide.skills))
         if len(full) <= limit:
@@ -135,12 +137,24 @@ def render_role(guide: RoleGuide, limit: int, *, inline_skills: bool = True) -> 
 
 
 def _profile_document(ctx: Context, role: str) -> Doc | None:
-    if not ctx.role_mode:
-        return ctx.profile_document(role)
-    seat = ctx.identity.seat
-    if seat is None or seat.role != role or seat.profile is None:
+    name = role
+    if ctx.role_mode:
+        seat = ctx.identity.seat
+        if seat is None or seat.role != role or seat.profile is None:
+            return None
+        name = seat.profile
+    try:
+        return ctx.profile_document(name)
+    except WriteRefused:
+        # Two profiles share the name, so neither is this role's profile.
         return None
-    return ctx.profile_document(seat.profile)
+
+
+def _parsed(found: Doc, ctx: Context) -> Profile | None:
+    try:
+        return parse_profile(found.fields, body=found.body, role_mode=ctx.role_mode)
+    except ModelError:
+        return None
 
 
 def _pinned_skill(ctx: Context, declared: str, name: str) -> SkillGuide:
@@ -168,7 +182,7 @@ def _role_skill(ctx: Context, slug: str) -> SkillGuide:
 def _read_note(store: Path, rel: str) -> bytes | None:
     try:
         return confine(store, rel).read_bytes()
-    except (FileNotFoundError, PathEscape):
+    except (OSError, PathEscape):
         return None
 
 
@@ -222,11 +236,28 @@ def _profile_slug(path: str) -> str:
     return leaf.parent.name if leaf.name == "profile.md" else leaf.stem
 
 
-def _profile_pointer(guide: RoleGuide) -> str | None:
-    if guide.profile_path is None:
+def _pointer(path: str) -> str:
+    return f"(read: rail read show {_profile_slug(path)} --path {path})"
+
+
+def _rules_block(guide: RoleGuide) -> str:
+    if guide.profile is None and guide.profile_path is not None:
+        return (
+            "The profile does not parse, so its rules are not shown. "
+            f"{_pointer(guide.profile_path)}"
+        )
+    return _demote(guide.rules)
+
+
+def _clip_pointer(guide: RoleGuide) -> str | None:
+    """The read command a clipped rules line ends with, if the rules can be clipped.
+
+    A profile that does not parse has no clippable rules; its rules line already
+    carries the read command.
+    """
+    if guide.profile is None or guide.profile_path is None:
         return None
-    slug = _profile_slug(guide.profile_path)
-    return f"(read: rail read show {slug} --path {guide.profile_path})"
+    return _pointer(guide.profile_path)
 
 
 def _demote(text: str) -> str:
