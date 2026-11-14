@@ -331,9 +331,6 @@ def brief(
     operating_state = _operating_state(context)
     headline = _headline(operating_state)
     guide = _overview_role_guide(context)
-    role_block = "## Your role\n" + render_role(
-        guide, min(3000, max(chars // 3, 240)), inline_skills=False
-    )
     skip = frozenset(skill.path for skill in guide.skills)
     sections, omitted = _brief_sections(
         context,
@@ -355,31 +352,13 @@ def brief(
         operating_state=operating_state,
         skip_memory=skip,
     )
-    text, trimmed = _fit(
-        copy.deepcopy(sections), max(chars - len(headline) - len(role_block) - 4, 1)
-    )
-    if trimmed.get("approval", 0) > 0:
-        compact_role = "## Your role\n" + render_role(
-            guide,
-            len(f"You are acting as: {guide.role}")
-            if guide.profile_path is None
-            else len(
-                f"You are acting as: {guide.role} (profile {guide.profile_path}"
-                + ("" if guide.profile_version is None else f" v{guide.profile_version}")
-                + ")"
-            ),
-            inline_skills=False,
-        )
-        if len(compact_role) < len(role_block):
-            role_block = compact_role
-            text, trimmed = _fit(
-                sections, max(chars - len(headline) - len(role_block) - 4, 1)
-            )
+    role_block, text, trimmed = _fit_with_role(sections, headline, guide, chars)
     for key, count in trimmed.items():
         omitted[key] += count
-    body = headline + ("\n\n" + text if text else "") + "\n\n" + role_block
-    if len(body) > chars:
-        body = headline + "\n\n" + role_block
+    body = headline + ("\n\n" + text if text else "")
+    if role_block:
+        candidate = body + "\n\n" + role_block
+        body = candidate if len(candidate) <= chars else headline + "\n\n" + role_block
     result = {
         "text": body[:chars],
         "estimated_tokens": estimate_tokens(body[:chars]),
@@ -405,6 +384,51 @@ def _overview_role_guide(context: Context) -> RoleGuide:
     if context.role_mode and context.identity.role is not None:
         role = context.identity.role.name
     return role_guide(context, role)
+
+
+def _fit_with_role(
+    sections: list[Section],
+    headline: str,
+    guide: RoleGuide,
+    chars: int,
+) -> tuple[str, str, dict[str, int]]:
+    head_line = f"You are acting as: {guide.role}"
+    if guide.profile_path is not None:
+        version = "" if guide.profile_version is None else f" v{guide.profile_version}"
+        head_line = f"{head_line} (profile {guide.profile_path}{version})"
+    normal = "## Your role\n" + render_role(
+        guide, min(3000, max(chars // 3, 240)), inline_skills=False
+    )
+    terse = "## Your role\n" + render_role(
+        guide,
+        sum(
+            len(f"- {s.name} (read: rail read show {s.name} --path {s.path})\n")
+            if not s.missing
+            else len(f"- {s.path}: missing (run rail ops upgrade)\n")
+            for s in guide.skills
+        )
+        + len(head_line)
+        + len("\nSkills:\n"),
+        inline_skills=False,
+    )
+    head_only = "## Your role\n" + head_line
+    candidates: list[str] = []
+    for candidate in (normal, terse, head_only, ""):
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    baseline_text, baseline_trimmed = _fit(
+        copy.deepcopy(sections), max(chars - len(headline) - 2, 1)
+    )
+    max_approval_trimmed = baseline_trimmed.get("approval", 0)
+
+    for candidate in candidates[:-1]:
+        budget = max(chars - len(headline) - len(candidate) - 4, 1)
+        text, trimmed = _fit(copy.deepcopy(sections), budget)
+        if trimmed.get("approval", 0) <= max_approval_trimmed and len(headline) + (len(text) + 2 if text else 0) + len(candidate) + 2 <= chars:
+            return candidate, text, trimmed
+
+    return "", baseline_text, baseline_trimmed
 
 
 def _operating_state(context: Context) -> dict[str, Any]:
