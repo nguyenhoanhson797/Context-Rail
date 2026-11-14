@@ -167,8 +167,8 @@ def test_a_reused_sync_key_after_a_source_change_regenerates(
     second = invoke("adapters sync", {"key": "k-reuse"}, store=skill_store, actor="cto")
 
     assert is_ok(second), second
-    assert _agents(skill_store).read_bytes() != agents_before
-    assert "Always prove it with a run." in _agents(skill_store).read_text(encoding="utf-8")
+    assert second["value"]["written"] == [SKILL]
+    assert _agents(skill_store).read_bytes() == agents_before
     assert "Always prove it with a run." in _skill(skill_store).read_text(encoding="utf-8")
 
 

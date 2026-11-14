@@ -136,21 +136,18 @@ def test_human_prose_outside_the_markers_survives(skill_store: Path) -> None:
     assert after.startswith(prefix) and after.endswith(suffix)
 
 
-def test_a_source_change_regenerates_the_managed_payload(skill_store: Path, tmp_path: Path) -> None:
+def test_a_source_change_regenerates_the_managed_payload(skill_store: Path) -> None:
     agents = _agents(skill_store)
     agents.write_text("# Team notes\n\nkeep me\n", encoding="utf-8", newline="\n")
     invoke("adapters sync", {}, store=skill_store, actor="cto")
 
-    body = tmp_path / "body.md"
-    body.write_text("# test-first\n\nAlways prove it with a run.\n", encoding="utf-8")
     source = skill_store / "workspace/skills/test-first.md"
     updated = invoke(
         "update",
         {
             "slug": "test-first",
             "expect": etag(source.read_bytes()),
-            "body_file": str(body),
-            "key": "skill-body",
+            "set": ["description=Prove it with a run first"],
         },
         store=skill_store,
         actor="cto",
@@ -162,8 +159,8 @@ def test_a_source_change_regenerates_the_managed_payload(skill_store: Path, tmp_
     assert sorted(result["value"]["written"]) == sorted([AGENTS, SKILL])
     text = agents.read_text(encoding="utf-8")
     assert text.startswith("# Team notes\n\nkeep me\n")
-    assert "Always prove it with a run." in text
-    assert "Always prove it with a run." in _skill(skill_store).read_text(encoding="utf-8")
+    assert "Prove it with a run first" in text
+    assert "Prove it with a run first" in _skill(skill_store).read_text(encoding="utf-8")
 
 
 def test_a_no_op_sync_appends_no_record(skill_store: Path) -> None:

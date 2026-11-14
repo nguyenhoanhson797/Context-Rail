@@ -7,6 +7,11 @@ hand edit inside an owned block or an unmarked skill file refuses the whole
 batch: the first needs a human ``--force`` with the exact phrase, the second is
 manual repair. A malformed marker pair is always manual repair. No refusal
 writes anything, and unmanaged prose is left byte-for-byte alone.
+
+The managed blocks point at the live briefs: they index each skill by name and
+description, so a skill body lives only in its ``SKILL.md`` mirror. A target the
+latest record lists and this sync no longer renders is deleted while its managed
+digest still matches that record; a drifted one refuses the batch.
 """
 
 from __future__ import annotations
@@ -16,12 +21,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from context_rail.context.work_brief import NAME_MODE_ROLES
 from context_rail.core.util import dump_frontmatter, sha256_hex
 from context_rail.gateway.handlers.common import is_skill_path
 from context_rail.model.errors import ModelError
 from context_rail.store import adapters
 from context_rail.store.doc import Doc, etag, parse_doc
 from context_rail.store.location import PathEscape
+from context_rail.store.query import record_data
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
 
 if TYPE_CHECKING:
@@ -32,15 +39,20 @@ __all__ = ["sync"]
 RECORD_KIND = "adapters.synced"
 AGENTS = "AGENTS.md"
 
-_COMMANDS = """\
+
+def _commands(roles: tuple[str, ...]) -> str:
+    """The record loop, naming the roles that take a brief in this store."""
+    names = ", ".join(roles)
+    return f"""\
 - `rail overview` shows what is executable and what needs a human.
-- `rail loop brief <item> --role implementer` prints the work order. Hand it to your own
-  sub-agent, in your own tool, in your own checkout.
+- `rail loop brief <item> --role <role>` prints the work order for a role. Roles that take a
+  brief here: {names}. Hand the order to your own sub-agent, in your own tool, in your
+  own checkout.
 - Commit, then record the commit with `rail loop candidate <item> --commit <sha>`.
 - `rail check declare` declares proof and `rail check run <item>` runs it. Unproven work is
   not done.
-- A different actor reviews: `rail loop brief <item> --role reviewer`, then
-  `rail loop review <item> --commit <sha> --verdict approve|reject`.
+- A different actor reviews: `rail loop brief <item> --role <role>` for the reviewing role,
+  then `rail loop review <item> --commit <sha> --verdict approve|reject`.
 - `rail change move <item> <status>` moves the Item once its gate allows it.
 - `rail loop report --item <item> --report-file <json>` files what happened, even when
   nothing did.
@@ -100,6 +112,16 @@ class _Target:
         return ABSENT if self.existing_bytes is None else etag(self.existing_bytes)
 
 
+@dataclass(frozen=True)
+class _Retirement:
+    """A target the latest record lists that this sync no longer renders."""
+
+    rel: str
+    display: str
+    current: str
+    conflict: str | None
+
+
 def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Render and write the managed instruction files that changed."""
     store = ctx.store
@@ -110,10 +132,13 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     skills, profiles, sources = _sources(store, ctx)
     requested = args.get("harness") or []
     harnesses = _harnesses(requested)
-    targets = _plan(root, skills, profiles, harnesses)
+    targets = _plan(root, skills, profiles, harnesses, _roles(ctx))
+    rendered = {target.display for target in targets}
+    retirements = _retirements(ctx, root, rendered, harnesses, forced=forced)
     written: list[str] = []
     unchanged: list[str] = []
     refused: list[str] = []
+    removed: list[str] = []
     reasons: dict[str, str] = {}
     expected: dict[str, str] = {}
     digests: dict[str, str] = {}
@@ -129,6 +154,12 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             continue
         written.append(target.display)
         expected[target.display] = current
+    for retirement in retirements:
+        if retirement.conflict is None:
+            removed.append(retirement.display)
+        else:
+            refused.append(retirement.display)
+            reasons[retirement.display] = retirement.conflict
 
     if refused and not dry_run:
         raise WriteRefused(
@@ -138,28 +169,42 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"refused": refused, "reasons": reasons},
         )
     if dry_run:
-        return _value(written, unchanged, refused, None, dry_run=True)
+        return _value(written, unchanged, refused, removed, None, dry_run=True)
 
     binding = _binding(
         sources,
         digests,
         refused,
         forced=forced,
-        current={target.display: target.current_etag for target in targets},
+        current={
+            **{target.display: target.current_etag for target in targets},
+            **{retirement.display: retirement.current for retirement in retirements},
+        },
         writes={
-            target.display: etag(target.new_text.encode("utf-8"))
-            for target in targets
-            if target.display in expected
+            **{
+                target.display: etag(target.new_text.encode("utf-8"))
+                for target in targets
+                if target.display in expected
+            },
+            **{display: ABSENT for display in removed},
         },
     )
     key = _bound_key(args["key"], binding)
     saved = replay(store, key)
-    if not written:
+    if not written and not removed:
         return _value(
-            [], unchanged, refused, saved["record"] if saved else None, dry_run=False
+            [], unchanged, refused, [], saved["record"] if saved else None, dry_run=False
         )
     if saved is not None:
-        return _value(saved["written"], [], [], saved["record"], dry_run=False)
+        replayed = saved["written"]
+        return _value(
+            [name for name in replayed if name in rendered],
+            [],
+            [],
+            [name for name in replayed if name not in rendered],
+            saved["record"],
+            dry_run=False,
+        )
 
     ops = [
         Op(
@@ -170,6 +215,11 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         for target in targets
         if target.display in expected
     ]
+    ops.extend(
+        Op(path=retirement.rel, data=None, expect=retirement.current)
+        for retirement in retirements
+        if retirement.conflict is None
+    )
     data = {
         "schema": 1,
         "paths": [target.display for target in targets],
@@ -187,7 +237,7 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         key=key,
         index=ctx.index,
     )
-    return _value(result["written"], unchanged, [], result["record"], dry_run=False)
+    return _value(written, unchanged, [], removed, result["record"], dry_run=False)
 
 
 def _binding(
@@ -232,6 +282,7 @@ def _value(
     written: list[str],
     unchanged: list[str],
     refused: list[str],
+    removed: list[str],
     record: str | None,
     *,
     dry_run: bool,
@@ -240,6 +291,7 @@ def _value(
         "written": written,
         "unchanged": unchanged,
         "refused": refused,
+        "removed": removed,
         "warnings": [],
         "record": record,
         "dry_run": dry_run,
@@ -290,9 +342,11 @@ def _plan(
     skills: list[_Skill],
     profiles: list[_Profile],
     harnesses: tuple[str, ...],
+    roles: tuple[str, ...],
 ) -> list[_Target]:
     """Every adapter target, rendered in a deterministic order."""
     targets: list[_Target] = []
+    payload = _agents_payload(skills, profiles, roles)
     if "agents" in harnesses:
         for skill in skills:
             text, digest = adapters.render_skill(skill.name, skill.text)
@@ -304,11 +358,10 @@ def _plan(
             _managed(
                 root,
                 adapters.AGENTS_PATH,
-                _agents_payload(skills, profiles),
+                payload,
             )
         )
     if "claude" in harnesses:
-        payload = _agents_payload(skills, profiles)
         targets.append(_managed(root, adapters.adapter_rel("claude"), payload))
         for profile in profiles:
             if profile.name not in adapters.CLAUDE_ROLES:
@@ -319,12 +372,11 @@ def _plan(
                 "model": "inherit",
             }
             frontmatter = "---\n" + dump_frontmatter(front) + "---\n"
-            body = f"# Context Rail {profile.name}\n\n{profile.doc.body.strip(chr(10))}\n"
             targets.append(
                 _managed(
                     root,
                     adapters.adapter_rel("claude-agent", profile.name),
-                    body,
+                    _claude_agent_body(profile.name),
                     frontmatter=frontmatter,
                 )
             )
@@ -334,7 +386,7 @@ def _plan(
             _managed(
                 root,
                 adapters.adapter_rel("cursor"),
-                _agents_payload(skills, profiles),
+                payload,
                 frontmatter=frontmatter,
             )
         )
@@ -343,7 +395,7 @@ def _plan(
             _managed(
                 root,
                 adapters.adapter_rel("gemini"),
-                _agents_payload(skills, profiles),
+                payload,
             )
         )
     return targets
@@ -408,7 +460,9 @@ def _decode(data: bytes | None, rel: str) -> tuple[str | None, str | None]:
         return None, f"{display} is not valid UTF-8; convert it to UTF-8 by hand"
 
 
-def _agents_payload(skills: list[_Skill], profiles: list[_Profile]) -> str:
+def _agents_payload(
+    skills: list[_Skill], profiles: list[_Profile], roles: tuple[str, ...]
+) -> str:
     lines = [
         "# Context Rail",
         "",
@@ -466,12 +520,18 @@ def _agents_payload(skills: list[_Skill], profiles: list[_Profile]) -> str:
         "again. `approval_mismatch` needs a human reapproval. If reads disagree with",
         "files, run `rail ops reindex`.",
         "",
+        "## Start here",
+        "",
+        "- Coordinators run `rail overview` first.",
+        "- Anyone handed an item runs `rail loop brief <item> --role <role>` and follows it.",
+        "  The brief's role section names your role, its rules and its skills.",
+        "",
         "## The loop",
         "",
         "The rail does not run agents. Your tool does, with its own sub-agents, models",
         "and sandboxes. The rail keeps the work order, the proof and the record:",
         "",
-        _COMMANDS.rstrip("\n"),
+        _commands(roles).rstrip("\n"),
         "",
         "## Transports",
         "",
@@ -487,28 +547,12 @@ def _agents_payload(skills: list[_Skill], profiles: list[_Profile]) -> str:
         lines.extend(f"- `{profile.name}` — {profile.title}" for profile in profiles)
     else:
         lines.append("No workspace profiles yet.")
-    lines.extend(
-        [
-            "",
-            "## Skills",
-            "",
-            "The workspace skills are mirrored under `.agents/skills/`; read the one you",
-            "are given before you start.",
-            "",
-        ]
-    )
-    for skill in skills:
-        description = skill.doc.fields.get("description")
-        lines.extend(
-            [
-                f"### {skill.name}",
-                "",
-                description if isinstance(description, str) else "",
-                "",
-                skill.doc.body.strip("\n"),
-                "",
-            ]
-        )
+    lines.extend(["", "## Skills", ""])
+    if skills:
+        lines.extend(_skill_line(skill) for skill in skills)
+    else:
+        lines.append("No workspace skills yet.")
+    lines.extend(["", "Your brief names the skills your role uses and how to read them."])
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -588,3 +632,106 @@ def _read(path: Path) -> bytes | None:
         return path.read_bytes()
     except FileNotFoundError:
         return None
+
+
+_ORPHAN_CHANGED = "orphan changed outside rail"
+
+
+def _roles(ctx: Context) -> tuple[str, ...]:
+    """The roles whose briefs this store serves: its declared roles, else the name-mode pair."""
+    if ctx.role_mode:
+        return tuple(ctx.pack.operating.roles)
+    return NAME_MODE_ROLES
+
+
+def _skill_line(skill: _Skill) -> str:
+    description = skill.doc.fields.get("description")
+    text = description if isinstance(description, str) else ""
+    return f"- `{skill.name}` — {text}".rstrip()
+
+
+def _claude_agent_body(role: str) -> str:
+    return (
+        f"# Context Rail {role}\n\n"
+        f"You act as the Context Rail {role}. Start with "
+        f"`rail loop brief <item> --role {role}` (the CTO starts with `rail overview`) "
+        "and follow its role section.\n"
+    )
+
+
+def _retirements(
+    ctx: Context,
+    root: Path,
+    rendered: set[str],
+    harnesses: tuple[str, ...],
+    *,
+    forced: bool,
+) -> list[_Retirement]:
+    """The recorded targets this sync drops, each marked when it must stay."""
+    retired: list[_Retirement] = []
+    for display, recorded in _recorded_digests(ctx).items():
+        if display in rendered or _harness_of(display) not in harnesses:
+            continue
+        rel = f"{adapters.ADAPTER_PREFIX}{display}"
+        try:
+            path = adapters.resolve_adapter(root, rel)
+        except PathEscape:
+            continue
+        data = _read(path)
+        if data is None:
+            continue
+        retired.append(
+            _Retirement(
+                rel=rel,
+                display=display,
+                current=etag(data),
+                conflict=_retirement_conflict(rel, data, recorded, forced=forced),
+            )
+        )
+    return retired
+
+
+def _retirement_conflict(rel: str, data: bytes, recorded: str, *, forced: bool) -> str | None:
+    """Why a target no longer rendered must stay, or None when it is unedited rail output."""
+    text, _undecodable = _decode(data, rel)
+    if text is None:
+        return _ORPHAN_CHANGED
+    state = adapters.read_managed(text)
+    if state is None:
+        return _ORPHAN_CHANGED
+    payload, digest = state
+    if digest == recorded and adapters.payload_digest(payload) == recorded:
+        return None
+    return None if forced else _ORPHAN_CHANGED
+
+
+def _recorded_digests(ctx: Context) -> dict[str, str]:
+    """The digests the newest adapters.synced record lists, by display path."""
+    row = ctx.index.conn.execute(
+        "SELECT d.path FROM docs d JOIN fields k ON k.path = d.path AND k.key = 'kind' "
+        "WHERE k.value_json = ? ORDER BY d.record_at DESC, d.slug DESC LIMIT 1",
+        (json.dumps(RECORD_KIND),),
+    ).fetchone()
+    if row is None:
+        return {}
+    digests = record_data(ctx.index, row[0]).get("payload_digests")
+    if not isinstance(digests, dict):
+        return {}
+    return {
+        display: digest
+        for display, digest in digests.items()
+        if isinstance(display, str) and isinstance(digest, str)
+    }
+
+
+def _harness_of(display: str) -> str | None:
+    """The harness whose sync renders this display path, when one does."""
+    if display == adapters.AGENTS_REL or display.startswith(f"{adapters.SKILLS_REL}/"):
+        return "agents"
+    if display == adapters.CLAUDE_REL or display.startswith(f"{adapters.CLAUDE_AGENTS_REL}/"):
+        return "claude"
+    if display == adapters.CURSOR_REL:
+        return "cursor"
+    if display == adapters.GEMINI_REL:
+        return "gemini"
+    return None
