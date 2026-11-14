@@ -31,6 +31,7 @@ from context_rail.gateway.handlers.common import (
 from context_rail.gateway.handlers.onboarding import agent_ops
 from context_rail.model.pack import canonical_pack_name
 from context_rail.store.doc import etag, parse_doc
+from context_rail.store.location import confine
 from context_rail.store.write import ABSENT, Op, commit
 
 if TYPE_CHECKING:
@@ -83,7 +84,7 @@ def unedited_shipped_copies(store: Path, pack_name: str) -> frozenset[str]:
     """Shipped copies the store still holds unedited, which the planner replaces whole."""
     found: set[str] = set()
     for path, fingerprints in shipped_fingerprints(pack_name).items():
-        target = Path(store) / path
+        target = confine(Path(store), path)
         if not target.is_file():
             continue
         text = target.read_bytes().decode("utf-8", errors="replace")
@@ -108,7 +109,7 @@ def plan_shipped(ctx: Context, *, reason: str, seed: bool) -> ShippedPlan:
         if op.data is not None:
             current.setdefault(op.path, op.data)
     for path in sorted(known):
-        target = store / path
+        target = confine(store, path)
         if not target.is_file():
             continue
         raw = target.read_bytes()
@@ -130,7 +131,7 @@ def plan_shipped(ctx: Context, *, reason: str, seed: bool) -> ShippedPlan:
         _rewrite(plan, store, path, text, actual, wanted, reason)
     if seed:
         for path, data in current.items():
-            if (store / path).is_file():
+            if confine(store, path).is_file():
                 continue
             plan.ops.append(Op(path, data, ABSENT))
             plan.seeded.append(path)

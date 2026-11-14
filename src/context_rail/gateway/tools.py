@@ -131,7 +131,7 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="upgrade",
-        summary="Rewrite an older store in place for the runtime-neutral engine.",
+        summary="Rewrite an older store in place, then bring unedited shipped profiles and skills up to date.",
         permission="human",
         params=(
             Param("dry_run", "bool", default=False, help="list the rewrites without writing"),

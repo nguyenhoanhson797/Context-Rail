@@ -7,10 +7,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from helpers import records_of, tree_bytes
 
+import context_rail.gateway.handlers.upgrade as upgrade_handler
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
+from context_rail.store.write import WriteRefused
 
 LEGACY = (
     Path(__file__).parents[1] / "fixtures" / "legacy_profiles" / "basic" / "workspace"
@@ -116,3 +119,42 @@ def test_upgrade_twice_changes_nothing_the_second_time(
     }
     assert again["value"]["changed"] == [] and again["value"]["next"] == []
     assert tree_bytes(store) == settled
+
+
+def test_a_half_finished_upgrade_says_so_and_a_rerun_finishes_it(
+    git_approved_store: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _legacy(git_approved_store)
+    path = store / IMPLEMENTER
+    path.write_text(
+        path.read_text(encoding="utf-8").rstrip("\n") + "\n- Our own rule.\n",
+        encoding="utf-8",
+    )
+    cause = "pin test-first cannot be resolved"
+
+    def refuse(*_args: Any, **_kwargs: Any) -> None:
+        raise WriteRefused("INTEGRATION_FAILURE", cause)
+
+    monkeypatch.setattr(upgrade_handler, "plan_shipped", refuse)
+    failed = _upgrade(store, confirm=PHRASE)
+
+    assert failed["ok"] is False, failed
+    error = failed["error"]
+    assert error["code"] == "INTEGRATION_FAILURE"
+    assert "store files were upgraded" in error["message"]
+    assert cause in error["message"]
+    assert "rail ops upgrade" in error["message"]
+    assert error["details"]["upgraded"] == [IMPLEMENTER]
+    assert records_of(store, "upgrade.completed") == []
+
+    monkeypatch.undo()
+    result = _upgrade(store, confirm=PHRASE)
+
+    assert is_ok(result), result
+    shipped = result["value"]["shipped"]
+    assert {CTO, REVIEWER} <= set(shipped["adopted"])
+    assert COORDINATE in shipped["seeded"]
+    assert [row["path"] for row in shipped["customized"]] == [IMPLEMENTER]
+    [record] = records_of(store, "upgrade.completed")
+    assert record["data"]["shipped"] == shipped

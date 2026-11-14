@@ -73,7 +73,7 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     if changes:
         ops = [Op(change.rel, change.after, etag(change.before)) for change in changes]
         commit(ctx.store, ctx.manifest, ops, None, actor=actor, key=args.get("key"))
-    plan = _write_shipped(ctx.store, actor)
+    plan = _write_shipped(ctx.store, actor, rewritten=bool(changes), changed=changed)
     if changes or plan.ops:
         record = {
             "kind": "upgrade.completed",
@@ -109,17 +109,47 @@ def _preview_shipped(store: Path, actor: str) -> ShippedPlan | None:
         context.close()
 
 
-def _write_shipped(store: Path, actor: str) -> ShippedPlan:
-    """Plan and commit the shipped copies against the pack the rewrite left behind."""
+def _write_shipped(
+    store: Path, actor: str, *, rewritten: bool, changed: list[str]
+) -> ShippedPlan:
+    """Plan and commit the shipped copies against the pack the rewrite left behind.
+
+    Once the rewrite is committed, any failure here leaves the store half upgraded,
+    so the refusal says so and names the re-run that finishes the upgrade. Before
+    the rewrite, the failure is raised unchanged because nothing was written.
+    """
     from context_rail.gateway.gateway import _open_context
 
-    context = _open_context(store, actor)
     try:
-        with store_lock(store):
-            plan = plan_shipped(context, reason=_SHIPPED_REASON, seed=True)
-            commit_shipped(context, plan, actor=actor)
-    finally:
-        context.close()
+        context = _open_context(store, actor)
+        try:
+            with store_lock(store):
+                plan = plan_shipped(context, reason=_SHIPPED_REASON, seed=True)
+                commit_shipped(context, plan, actor=actor)
+        finally:
+            context.close()
+    except Exception as exc:
+        if not rewritten:
+            raise
+        code = (
+            exc.code
+            if isinstance(exc, (WriteRefused, ModelError))
+            else "INTEGRATION_FAILURE"
+        )
+        cause = exc.message if isinstance(exc, (WriteRefused, ModelError)) else str(exc)
+        cause = (cause or exc.__class__.__name__).rstrip(".")
+        raise WriteRefused(
+            code,
+            "the store files were upgraded, but the shipped guidance step failed: "
+            f"{cause}. Fix that cause, then re-run `rail ops upgrade`; "
+            "the re-run brings shipped profiles and skills up to date and writes the upgrade record.",
+            {
+                "upgraded": changed,
+                "step": "shipped guidance",
+                "cause_code": code,
+                "rerun": "rail ops upgrade",
+            },
+        ) from exc
     return plan
 
 
