@@ -114,7 +114,9 @@ repository.
 
 ## Working rules
 
-- Test first: write the failing test, see it fail, implement, see it pass.
+- Lean testing: choose the smallest sufficient check; prefer existing tests and
+  checks; add a permanent test only when it guards a named failure and asserts an
+  externally required property; when a new test is warranted, see it fail first.
 - One commit per plan task, Conventional Commits style with the area as scope,
   e.g. `feat(store): ...`, `test: ...`, `docs: ...`.
 - Type hints on public functions; no bare `except`.

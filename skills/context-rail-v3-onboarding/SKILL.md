@@ -48,7 +48,7 @@ then runs the stages that are missing:
 | Workspace | the pack's profiles and skills | absent-only |
 | Picture | goal, vision, scope, Won't, `charter.md` | skipped when present |
 | Approval | an approval record with protected-file hashes | human-only, fresh phrase |
-| Agent files | `AGENTS.md` and `.agents/skills/<name>/SKILL.md` | runs after the picture exists; regenerated when a skill changes |
+| Agent files | `AGENTS.md` (an index of the store's skills and a "Start here" pointer) and `.agents/skills/<name>/SKILL.md` | runs after the picture exists; regenerated when a skill changes |
 | Git drivers | `.gitattributes` and clone-local merge drivers | offered only in a git checkout |
 
 ```powershell
@@ -132,7 +132,7 @@ The pipeline already renders the managed agent files. Re-run the renderer when
 a workspace skill changes:
 
 ```powershell
-rail ops adapters render                              # AGENTS.md + .agents/skills/
+rail ops adapters render                              # AGENTS.md + .agents/skills/ (skills index, no bodies)
 rail ops adapters render --harness claude --harness cursor --harness gemini
 rail ops adapters render --dry-run
 ```

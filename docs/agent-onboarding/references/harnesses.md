@@ -26,14 +26,16 @@ content and change the name (see the table below).
 The rail can also render managed copies for the common harnesses:
 
 ```bash
-rail ops adapters render                              # AGENTS.md + .agents/skills/
+rail ops adapters render                              # AGENTS.md + .agents/skills/ (skills index, no bodies)
 rail ops adapters render --harness claude --harness cursor --harness gemini
 ```
 
 That writes `CLAUDE.md`, `.claude/agents/<role>.md`,
 `.cursor/rules/context-rail.mdc`, `GEMINI.md` and one
-`.agents/skills/<name>/SKILL.md` per workspace skill. The managed block is
-marker-delimited and digest-checked; prose outside it is preserved.
+`.agents/skills/<name>/SKILL.md` per workspace skill, each with its full text.
+The managed block is marker-delimited and digest-checked; prose outside it is
+preserved. The block lists the skills by name without their bodies, and points
+at the live brief, which carries the role's rules and skills.
 
 ## The universal MCP descriptor
 

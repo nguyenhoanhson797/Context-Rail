@@ -87,9 +87,9 @@ rail seat close sprint-1
 |---|---|---|
 | Onboarding pipeline | `rail init --pack basic` | skeleton, pack profiles and skills, the offered picture, the fresh approval, agent files and optional git drivers |
 | Skeleton only | `rail init --pack basic --scaffold` | `rail.yaml`, `.gitignore`, empty pinned folders |
-| Picture source | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter" [--confirmer "<you>"]` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the pack's worker skills; the answers-file path also renders agent files and git drivers |
+| Picture source | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter" [--confirmer "<you>"]` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the engine skills and the pack's skills (the store's own copies); the answers-file path also renders agent files and git drivers |
 | Approve | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` | an approval record with the protected-file hashes |
-| Agent files | `rail ops adapters render [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block) and `.agents/skills/<name>/SKILL.md` per skill note |
+| Agent files | `rail ops adapters render [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block: read-first table, write protocol, a "Start here" pointer and a skills index without bodies) and `.agents/skills/<name>/SKILL.md` per skill |
 | Git drivers | `rail ops sync install` | `.gitattributes` and clone-local merge drivers |
 
 - Bare `init` is resumable: it keeps what exists and continues from the next
@@ -102,8 +102,16 @@ rail seat close sprint-1
 - The picture modes need the `human` actor. A CTO may only propose with
   `--draft-file`, and a draft records no approval.
 - `ops adapters render` is what makes the checkout agent-ready. Re-run it when a
-  skill note changes; `--force` replaces a hand-edited block (human only,
-  typed phrase `FORCE ADAPTERS adapters`).
+  skill changes; it also deletes the unedited copy of a skill the store has
+  retired. `--force` replaces a hand-edited block (human only, typed phrase
+  `FORCE ADAPTERS adapters`).
+- Every agent session starts with `rail overview` (coordinator) or
+  `rail loop brief <item> --role <role>`. The brief's role section names the role
+  ("You are acting as: <role>"), its profile rules and its skills.
+- An existing store keeps its copies of the shipped profiles and skills until a
+  human runs `rail ops upgrade`: unedited copies are refreshed, new skills are
+  seeded, retired copies are removed, and customised copies are reported, not
+  overwritten.
 
 ## Read the project in three commands
 

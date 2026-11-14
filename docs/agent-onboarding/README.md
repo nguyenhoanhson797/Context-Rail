@@ -226,6 +226,9 @@ This kit is the front door. The detailed operator skills live under `skills/`:
 | `context-rail-v3-ops` | You doctor, reindex, recover or ship |
 | `context-rail-v3-onboarding` | You are adopting the rail in a new project |
 
-Do not confuse these with the pack skills copied into a store's workspace
-(`test-first`, `review-checklist`). Those teach the agent doing the
-work how to do its job. These teach an operator how to drive the product.
+Do not confuse these with the skills a store carries. `rail init` seeds the
+engine skills and the pack skills into the store's workspace (`lean-testing`,
+`review-checklist` and the others), and `rail ops upgrade` refreshes them. Those
+teach the agent doing the work how to do its job, and every session reads them
+with its live brief. These public skills are optional setup reference for an
+operator: they teach an operator how to drive the product.

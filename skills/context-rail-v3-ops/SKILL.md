@@ -160,7 +160,7 @@ the UI Settings **Configuration** tab makes:
 
 ```powershell
 rail change update implementer --set skills=<list> --expect <etag> --key <k>
-rail change update test-first --set description=<text> --expect <etag> --key <k>
+rail change update review-checklist --set description=<text> --expect <etag> --key <k>
 rail ops measure versions --target-class profile --target implementer --before 1 --after 2
 rail ops rollback --target-class profile --target implementer --version 1
 ```

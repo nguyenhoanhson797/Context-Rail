@@ -19,14 +19,19 @@ Each `SKILL.md` is short and routes to `references/` only when needed:
 `context-rail-v3-workflows/references/ba-po-pack.yaml` for a complete tested v4
 pack (three workflows, per-workflow quality, verbs).
 
-Do not confuse these with the pack skills under
-`src/context_rail/packs/*/skills/` (`test-first`, `review-checklist`). Those
-are installed into a store's workspace and read by whichever agent does the work. These
-are how a human or an operator agent drives the product.
+Do not confuse these with the skills a store carries. `rail init` seeds the
+engine skills and the pack skills into the store's workspace, and
+`rail ops upgrade` refreshes them, so an agent reads them from the store with
+its live brief. These public skills are the optional setup reference for a human
+or an operator agent who sets up a project, and they are how such an agent
+drives the product.
 
 ## Install
 
-Skills are discovered from the agent's skill directory. For this environment:
+The public skills are optional: a store does not need them, because its own
+skills come with the store. Install them only when an agent should set up
+projects from this checkout. Skills are discovered from the agent's skill
+directory. For this environment:
 
 ```powershell
 Copy-Item -Recurse skills\context-rail-v3* "$HOME\.agents\skills\"

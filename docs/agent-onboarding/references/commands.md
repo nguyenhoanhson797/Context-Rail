@@ -204,7 +204,9 @@ rail --actor human ops pack use --name NAME --expect RAIL_YAML_ETAG [--map OLD=N
 tool that may write the index. `migrate` and `pack use` are human-only.
 `adapters render` writes the managed `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and
 `.cursor/rules/context-rail.mdc` blocks plus one `.agents/skills/<name>/SKILL.md`
-per workspace skill.
+per workspace skill. The `AGENTS.md` block holds a read-first table, the write
+protocol, a "Start here" pointer and a skills index without bodies; the bodies
+come with each session's brief.
 
 ## Transports
 
