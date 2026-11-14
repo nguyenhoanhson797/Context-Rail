@@ -37,3 +37,16 @@ def test_public_docs_commands_resolve() -> None:
     for path in _public_skill_and_onboarding_docs():
         text = path.read_text(encoding="utf-8")
         assert unknown_rail_commands(text) == [], path.relative_to(ROOT).as_posix()
+
+
+def test_command_check_flags_removed_and_unknown_commands() -> None:
+    bad = (
+        "`rail <seat> bogus`",
+        "`rail --actor cto loop dispatch`",
+        "`rail loop dispatch x`",
+        "`rail cto tick`",
+        "`rail chnage move x done`",
+        "`rail nosuch ...`",
+    )
+    for example in bad:
+        assert unknown_rail_commands(example) == [example.strip("`")], example

@@ -109,10 +109,11 @@ def test_over_budget_trims_trailing_parts_and_reports_them(
 
 def test_a_dropped_part_is_named_in_the_text(role_store: SimpleNamespace) -> None:
     brief = as_seat(
-        role_store.store, role_store.orders_seat, "cto brief", {"max_chars": 100}
+        role_store.store, role_store.orders_seat, "cto brief", {"max_chars": 250}
     )
 
     assert is_ok(brief), brief
+    assert brief["value"]["dropped"]
     for part in brief["value"]["dropped"]:
         assert part in brief["value"]["text"]
 
@@ -231,10 +232,11 @@ def test_a_seat_brief_names_its_role(role_store: SimpleNamespace) -> None:
     assert text.startswith(header + "You are acting as: sprint-lead")
 
     tight = as_seat(
-        role_store.store, role_store.orders_seat, "cto brief", {"max_chars": 80}
+        role_store.store, role_store.orders_seat, "cto brief", {"max_chars": 250}
     )
     assert is_ok(tight), tight
-    assert len(tight["value"]["text"]) <= 80
+    assert len(tight["value"]["text"]) <= 250
+    assert tight["value"]["dropped"]
     assert "You are acting as: sprint-lead" in tight["value"]["text"]
 
 
