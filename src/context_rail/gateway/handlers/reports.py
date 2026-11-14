@@ -525,9 +525,9 @@ def _fix_document(
     title = f"Fix {rows[0]['target']}"
     slug = unique_slug(ctx.index, title)
     stamp = now_iso()
-    relations: dict[str, Any] = {
-        "because_of": [f"[[{report}]]" for report in decision.reports],
-        "resolves": [f"[[{report}]]" for report in decision.reports],
+    raw_relations: dict[str, tuple[str, ...]] = {
+        "because_of": tuple(decision.reports),
+        "resolves": tuple(decision.reports),
     }
     parent = default_parent(
         ctx,
@@ -538,7 +538,11 @@ def _fix_document(
         },
     )
     if parent:
-        relations["part_of"] = [f"[[{parent}]]"]
+        raw_relations["part_of"] = (parent,)
+    relations = {
+        name: [f"[[{slug_val}]]" for slug_val in targets]
+        for name, targets in raw_relations.items()
+    }
     front: dict[str, Any] = {
         "primitive": "item",
         "preset": "fix",
@@ -566,11 +570,7 @@ def _fix_document(
                 slug=slug,
                 created=stamp,
                 fields=front,
-                relations={
-                    name: tuple(front[name])
-                    for name in ("because_of", "resolves", "part_of")
-                    if name in front
-                },
+                relations=raw_relations,
                 item=_cluster_item(rows),
             ),
         )
@@ -622,11 +622,7 @@ def _proposal_document(
                 slug=slug,
                 created=stamp,
                 fields=front,
-                relations={
-                    name: tuple(front[name])
-                    for name in ("because_of",)
-                    if name in front
-                },
+                relations={"because_of": tuple(decision.reports)},
             ),
         )
     except PlacementError as error:

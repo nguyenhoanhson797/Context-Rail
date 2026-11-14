@@ -456,6 +456,10 @@ def effective_decision(
         old, new = str(params.get("old") or ""), str(params.get("new") or "")
         if old and new:
             paths = tuple(rewrite_targets(context.store, context.index, old, new))
+    elif tool.name in ("update", "link"):
+        from context_rail.gateway.handlers.docs import planned_placement_moves
+
+        paths = tuple(planned_placement_moves(context, params, tool.name))
     facts = protected_change(
         context, params, tool.name, relation=relation, paths=paths
     )
@@ -666,17 +670,12 @@ def _confirmation_target(
 def _tool(name: Any) -> Tool:
     if not isinstance(name, str):
         raise WriteRefused("VALIDATION_FAILED", f"unknown tool {name!r}")
-    if name in REMOVED_COMMANDS:
+    if name in REMOVED_COMMANDS or name in REMOVED_FLAGS:
+        replacement = REMOVED_FLAGS.get(name) or REMOVED_COMMANDS[name]
         raise WriteRefused(
             "VALIDATION_FAILED",
             removed_message(name),
-            {"reason": "command_removed", "replacement": REMOVED_COMMANDS[name]},
-        )
-    if name in REMOVED_FLAGS:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            f"`rail {name}` was removed: {REMOVED_FLAGS[name]}",
-            {"reason": "command_removed", "replacement": REMOVED_FLAGS[name]},
+            {"reason": "command_removed", "replacement": replacement},
         )
     canonical = canonical_tool(name)
     if canonical not in _BY_NAME:
@@ -689,8 +688,8 @@ def _resolve_actor(actor: str | None) -> tuple[str, bool]:
 
     An unnamed caller is the human only on a person's channel (a terminal or
     the UI); anywhere else it is anonymous and may only read. Human-only tools
-    use the second value to refuse an unnamed caller, so a bare command cannot
-    record a human decision by accident.
+    require a named human, so an unnamed caller on a terminal cannot record an
+    unconfirmed human-only command by accident.
     """
     name, named = resolve_actor_name(actor)
     if name is not None:

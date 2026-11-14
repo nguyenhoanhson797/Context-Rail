@@ -437,3 +437,79 @@ def test_an_unsafe_cluster_name_still_exports(
     assert exported.startswith("engine-issues/")
     assert (store / exported).is_file()
     assert Path(exported).stem.upper() not in {"CON", "PRN", "AUX", "NUL"}
+
+
+def test_triage_fix_places_under_relation_token_without_brackets(
+    tmp_path: Path,
+) -> None:
+    from importlib import resources
+    import yaml
+    from helpers import approve_store, init_store, set_preset_placement, write_pack
+
+    store = init_store(tmp_path / "scrum-fix", "scrum")
+    pack_doc = yaml.safe_load(
+        resources.files("context_rail")
+        .joinpath("packs", "scrum", "pack.yaml")
+        .read_text(encoding="utf-8")
+    )
+    pack_doc["presets"]["fix"]["workflow"] = "sprint"
+    write_pack(store, "scrum", pack_doc)
+    set_preset_placement(store, fix="items/fix/{part_of.slug}/{slug}.md")
+    approve_store(store)
+    sprint = invoke(
+        "add", {"preset": "sprint", "title": "Sprint 1"}, store=store, actor="cto"
+    )
+    assert is_ok(sprint), sprint
+    assert is_ok(
+        invoke(
+            "move",
+            {
+                "slug": "sprint-1",
+                "status": "doing",
+                "expect": sprint["value"]["etag"],
+            },
+            store=store,
+            actor="cto",
+        )
+    )
+    story = invoke(
+        "add",
+        {"preset": "story", "title": "Story zero", "rel": ["part_of=sprint-1"]},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(story), story
+    for number, record_id in enumerate(
+        ("01JREPORT0000000000000901", "01JREPORT0000000000000902")
+    ):
+        write_record(
+            store,
+            record_id,
+            "report.filed",
+            {
+                "schema": 1,
+                "target_class": "item",
+                "target": "story-zero",
+                "item": "story-zero",
+                "run": None,
+                "nothing_to_report": False,
+                "what_happened": f"broke ({number})",
+                "expected": "works",
+                "observed": "fails",
+                "impact": "high",
+                "evidence": [],
+                "fingerprint": "item|story-zero|works|fails",
+            },
+            at="2026-10-28T12:00:00Z",
+        )
+    invoke("reindex", {}, store=store, actor="human")
+
+    result = _triage(store, "k-fix-placement")
+    assert is_ok(result), result
+    assert len(result["value"]["fix_items"]) == 1
+    shown = invoke(
+        "show", {"slug": result["value"]["fix_items"][0]}, store=store
+    )["value"]
+    assert "[[" not in shown["doc"]["path"]
+    assert "sprint-1" in shown["doc"]["path"]
+

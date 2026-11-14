@@ -216,10 +216,11 @@ def protected_change(
             rights_widening = _rights_widening(context, rel, requested)
     members = protected_paths(context)
     touched = rel is not None and rel in members
+    moved_acceptance = any(is_acceptance_path(context.index, path) for path in paths)
     return rights.ChangeFacts(
         method=op,
         protected=touched or any(path in members for path in paths),
-        acceptance=acceptance,
+        acceptance=acceptance or moved_acceptance,
         decision_id="dependency" if relation == "depends_on" else None,
         budget_increase=budget_increase,
         rights_widening=rights_widening,

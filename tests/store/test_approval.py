@@ -605,6 +605,46 @@ def test_a_scoped_approval_approves_the_charter(approved_store: Path) -> None:
     assert shown["approval"]["state"] == "approved"
 
 
+def test_a_scoped_approval_does_not_witness_unreviewed_charter_drift(
+    approved_store: Path,
+) -> None:
+    """Approving only the pack while charter.md has drifted cannot bless charter.md."""
+    from importlib import resources
+
+    store = approved_store
+    source = resources.files("context_rail").joinpath("packs", "basic", "pack.yaml")
+    text = source.read_text(encoding="utf-8").replace(
+        "todo: [doing, dropped]",
+        "todo: [doing, blocked, dropped]",
+    )
+    local = store / "packs" / "basic" / "pack.yaml"
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text(text, encoding="utf-8", newline="\n")
+    charter = store / "charter.md"
+    charter.write_text(
+        charter.read_text(encoding="utf-8") + "\nUnreviewed edit.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    approved = invoke(
+        "approve",
+        {
+            "target": "charter",
+            "confirm": "APPROVE charter",
+            "confirmer": "validator",
+            "scope": "pack",
+        },
+        store=store,
+        actor="human",
+    )
+    assert is_ok(approved), approved
+
+    shown = invoke("show", {"slug": "charter"}, store=store)["value"]
+    assert shown["approval"]["state"] == "mismatch"
+    assert "charter.md" in shown["approval"]["changed"]["changed"]
+
+
 def test_a_signature_is_not_valid_merely_for_existing() -> None:
     from context_rail.store.approval import verify_signature
 

@@ -322,13 +322,6 @@ def _removed_command(argv: list[str]) -> str | None:
     return _match_path(argv, index, REMOVED_COMMANDS)
 
 
-def _removed_message(name: str) -> str:
-    """The tombstone text for a removed command or a removed flag of one."""
-    if name in REMOVED_FLAGS:
-        return f"`rail {name}` was removed: {REMOVED_FLAGS[name]}"
-    return removed_message(name)
-
-
 def _removed_replacement(name: str) -> str:
     """What a caller of a removed command should run instead."""
     if name in REMOVED_FLAGS:
@@ -349,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
             removed,
             fail(
                 "VALIDATION_FAILED",
-                _removed_message(removed),
+                removed_message(removed),
                 {"reason": "command_removed", "replacement": _removed_replacement(removed)},
             ),
         )

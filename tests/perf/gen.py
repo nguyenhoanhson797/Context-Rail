@@ -89,41 +89,9 @@ def approve_generated(store: Path) -> None:
 
     Every gate is off: this unlocks the store, it does not set a quality bar.
     """
-    from context_rail.gateway.gateway import invoke
+    from helpers import approve_store
 
-    from helpers import approve_picture
-
-    gates = {
-        name: {
-            "require_checks": False,
-            "require_acceptance": False,
-            "require_review": False,
-            "require_human": False,
-        }
-        for name in ("item_done", "scope_done", "merge", "release")
-    }
-    fields = {
-        "primitive": "policy",
-        "preset": "charter",
-        "title": "Charter",
-        "tags": [],
-        "schema": 1,
-        "project": {"goal": "g0", "vision": "vision", "scope": [], "wont": []},
-        "protected_files": ["rail.yaml", "charter.md"],
-        "default_branch": "main",
-        "gates": gates,
-    }
-    (store / "charter.md").write_text(
-        "---\n" + dump_frontmatter(fields) + "---\n# Charter\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    opened = invoke("reindex", {}, store=store, actor="human")
-    if not opened["ok"]:
-        raise AssertionError(opened)
-    approved = approve_picture(store)
-    if not approved["ok"]:
-        raise AssertionError(approved)
+    approve_store(store, goal="g0")
 
 
 def _write_roles(store: Path) -> None:

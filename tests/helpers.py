@@ -867,7 +867,7 @@ def _charter_path(store: Path) -> str:
     return data.get("presets", {}).get("charter", "charter.md")
 
 
-def _write_charter(store: Path) -> None:
+def _write_charter(store: Path, *, goal: str = "goal") -> None:
     """Write the smallest charter this store's manifest accepts.
 
     Every gate is off: a store on a hand-written test pack is approved so that
@@ -890,7 +890,7 @@ def _write_charter(store: Path) -> None:
         "title": "Charter",
         "tags": [],
         "schema": 1,
-        "project": {"goal": "goal", "vision": "vision", "scope": [], "wont": []},
+        "project": {"goal": goal, "vision": "vision", "scope": [], "wont": []},
         "protected_files": ["rail.yaml", target.name],
         "default_branch": "main",
         "gates": gates,
@@ -903,7 +903,7 @@ def _write_charter(store: Path) -> None:
     )
 
 
-def approve_store(store: Path) -> None:
+def approve_store(store: Path, *, goal: str = "goal") -> None:
     """Write the smallest charter this store's manifest accepts, then approve it.
 
     Use this for a store that already exists; a new store gets its charter
@@ -911,7 +911,7 @@ def approve_store(store: Path) -> None:
     """
     from context_rail.gateway.gateway import invoke
 
-    _write_charter(store)
+    _write_charter(store, goal=goal)
     reindexed = invoke("reindex", {}, store=store, actor="human")
     assert reindexed["ok"] is True, reindexed
     approved = approve_picture(store)

@@ -236,8 +236,9 @@ del _alias, _canonical
 
 
 def removed_message(name: str) -> str:
-    """What a call to the removed command ``name`` is told."""
-    return f"`rail {name}` was removed: {REMOVED_COMMANDS[name]}"
+    """What a call to the removed command or flag ``name`` is told."""
+    replacement = REMOVED_FLAGS.get(name) or REMOVED_COMMANDS[name]
+    return f"`rail {name}` was removed: {replacement}"
 
 
 def canonical_tool(name: str) -> str:

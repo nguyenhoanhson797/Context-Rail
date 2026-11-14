@@ -264,6 +264,82 @@ def _add_record(
     return commit(store, ctx.manifest, [], request, actor=actor, key=key, index=index)
 
 
+def planned_placement_moves(
+    ctx: Context, params: Mapping[str, Any], op: str
+) -> list[str]:
+    """Source paths of descendants an ``update`` or ``link`` would relocate."""
+    slug_key = "src" if op == "link" else "slug"
+    raw_slug = params.get(slug_key)
+    if not isinstance(raw_slug, str) or not raw_slug.strip():
+        return []
+    try:
+        rel = resolve_unique(ctx.index, raw_slug.strip())
+        _data, doc = read_doc(ctx.store, rel)
+    except (LookupError, WriteRefused, OSError):
+        return []
+    preset = ctx.pack.presets.get(doc.preset or "")
+    if preset is None:
+        return []
+    fields = dict(doc.fields)
+    relations = dict(doc.relations)
+    if op == "update":
+        try:
+            values = parse_set_values(params.get("set") or [])
+            fields = prepare_document_fields(preset, {**fields, **values})
+        except WriteRefused:
+            return []
+    elif op == "link":
+        name = params.get("rel")
+        dst = params.get("dst")
+        if not isinstance(name, str) or not isinstance(dst, str) or not dst.strip():
+            return []
+        targets = list(relations.get(name, ()))
+        if params.get("remove"):
+            if dst in targets:
+                targets.remove(dst)
+        elif dst not in targets:
+            targets.append(dst)
+        if targets:
+            relations[name] = tuple(targets)
+        else:
+            relations.pop(name, None)
+    try:
+        target = expected_path(
+            PlacementContext(manifest=ctx.manifest, pack=ctx.pack, index=ctx.index),
+            PlacementRequest(
+                primitive=preset.primitive,
+                preset=preset.name,
+                slug=doc.slug,
+                created=doc.created,
+                fields=fields,
+                relations=relations,
+            ),
+            allow_existing=True,
+        )
+    except PlacementError:
+        return []
+    if target == rel:
+        return []
+    found, _errors = expected_paths(
+        ctx.index, ctx.manifest, ctx.pack, overrides={doc.slug: target}
+    )
+    current = {
+        slug: path
+        for slug, path in ctx.index.conn.execute(
+            "SELECT slug, path FROM docs WHERE broken = 0 ORDER BY path"
+        )
+    }
+    moved: list[str] = []
+    for slug, path in found.items():
+        if slug == doc.slug:
+            continue
+        source = current.get(slug)
+        if source is None or source == path or is_scoped_skill(source):
+            continue
+        moved.append(source)
+    return moved
+
+
 def _placement_ops(
     ctx: Context,
     index: Index,
@@ -847,12 +923,6 @@ def _require_gate(ctx: Context, doc: Doc, target: str, actor: str) -> None:
     """
     policy = ctx.policy
     if policy is None:
-        if category_of(ctx.pack, target) == "done":
-            raise WriteRefused(
-                "INVALID_STATE",
-                "the charter is not approved; nothing executes yet",
-                {"reason": "approval_missing", "target": target},
-            )
         return
     workflow = ctx.pack.workflow_for(doc.preset or "")
     name = workflow.gate_for(target)

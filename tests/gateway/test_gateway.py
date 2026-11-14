@@ -1365,3 +1365,70 @@ def test_an_unexpected_fault_logs_a_traceback_to_stderr(tmp_path, monkeypatch, c
     assert result["error"]["code"] == "INTERNAL"
     captured = capsys.readouterr()
     assert "Traceback" in captured.err
+
+
+def test_update_moving_an_acceptance_check_descendant_is_human_only(
+    tmp_path
+) -> None:
+    from helpers import approve_store, init_nested_store, set_preset_placement
+
+    store = init_nested_store(tmp_path / "descendant-acc")
+    set_preset_placement(
+        store,
+        check="{verifies}/checks/{slug}.md",
+    )
+    assert is_ok(
+        invoke("add", {"preset": "phase", "title": "Phase 1"}, store=store, actor="cto")
+    )
+    assert is_ok(
+        invoke(
+            "add",
+            {"preset": "sprint", "title": "Sprint 1", "rel": ["part_of=phase-1"]},
+            store=store,
+            actor="cto",
+        )
+    )
+    assert is_ok(
+        invoke(
+            "add",
+            {
+                "preset": "task",
+                "title": "Auth task",
+                "rel": ["part_of=sprint-1"],
+                "set": ["area=frontend"],
+            },
+            store=store,
+            actor="cto",
+        )
+    )
+    spec = tmp_path / "acc.json"
+    spec.write_text(
+        json.dumps({"schema": 1, "mode": "human", "acceptance": True}),
+        encoding="utf-8",
+    )
+    assert is_ok(
+        invoke(
+            "check",
+            {
+                "slug": "auth-signoff",
+                "target": "auth-task",
+                "spec_file": str(spec),
+                "expect": "absent",
+                "confirm": "APPROVE auth-signoff",
+            },
+            store=store,
+            actor="human",
+        )
+    )
+    approve_store(store)
+    task_etag = invoke("show", {"slug": "auth-task"}, store=store)["value"]["doc"]["etag"]
+
+    refused = invoke(
+        "update",
+        {"slug": "auth-task", "expect": task_etag, "set": ["area=backend"]},
+        store=store,
+        actor="cto",
+    )
+    assert not is_ok(refused), refused
+    assert refused["error"]["code"] == "PERMISSION_DENIED"
+

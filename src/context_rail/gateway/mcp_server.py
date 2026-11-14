@@ -14,7 +14,7 @@ from mcp.shared.exceptions import MCPError
 
 from context_rail import __version__
 from context_rail.core.result import fail
-from context_rail.core.tool_names import REMOVED_COMMANDS, REMOVED_FLAGS
+from context_rail.core.tool_names import REMOVED_COMMANDS, removed_message
 from context_rail.gateway.execution import (
     EXPLICIT_ACTOR,
     caller_identity,
@@ -88,16 +88,14 @@ def build_server(
     async def on_call_tool(_context: object, params: object) -> types.CallToolResult:
         name = getattr(params, "name", None)
         arguments = getattr(params, "arguments", None) or {}
-        if isinstance(name, str) and (name in REMOVED_COMMANDS or name in REMOVED_FLAGS):
+        if isinstance(name, str) and name in REMOVED_COMMANDS:
             # A removed command is a tombstone, not an unknown tool: the caller
             # is told what replaced it, exactly as the CLI and gateway do.
-            replacement = (
-                REMOVED_COMMANDS.get(name) or REMOVED_FLAGS.get(name) or ""
-            )
+            replacement = REMOVED_COMMANDS[name]
             return _result(
                 fail(
                     "VALIDATION_FAILED",
-                    f"`rail {name}` was removed: {replacement}",
+                    removed_message(name),
                     {"reason": "command_removed", "replacement": replacement},
                 )
             )

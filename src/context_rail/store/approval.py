@@ -217,14 +217,10 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
                 "changed": _changed_paths(hashes, hashes),
                 "snapshot_digest": snapshot_digest(hashes),
             }
-    approved = None if latest is None else latest["protected_hashes"]
-    # A scoped approval stores only the paths it covered, but it witnesses the
-    # whole picture: the charter's state follows the full snapshot it recorded.
-    stored = latest["data"].get("snapshot") if latest is not None else None
-    witnessed = stored if isinstance(stored, Mapping) else approved
+    approved = _folded_approval_hashes(context.index, target, latest)
     if latest is None:
         state = "missing"
-    elif witnessed == hashes:
+    elif approved == hashes:
         state = "approved"
     else:
         state = "mismatch"
@@ -238,6 +234,39 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
         "changed": _changed_paths(approved, hashes),
         "snapshot_digest": snapshot_digest(hashes),
     }
+
+
+def _folded_approval_hashes(
+    index: Any, target: str, latest: Mapping[str, Any] | None
+) -> dict[str, str | None] | None:
+    """Newest approved hash per protected path across ``target``'s approvals.
+
+    Each approval record speaks only for the ``files`` its scope covered (or its
+    ``protected_hashes`` keys when ``files`` is absent), so a scoped approval
+    updates its covered paths without blessing an unreviewed file.
+    """
+    if latest is None:
+        return None
+    folded: dict[str, str | None] = {}
+    for record in query.approval_records(index):
+        if record.get("target") != target:
+            continue
+        data = record["data"] if isinstance(record.get("data"), dict) else {}
+        stored = data.get("protected_hashes")
+        if not isinstance(stored, dict):
+            continue
+        files = data.get("files")
+        covered = (
+            [path for path in files if isinstance(path, str)]
+            if isinstance(files, list)
+            else list(stored)
+        )
+        for path in covered:
+            if path not in folded and path in stored:
+                folded[path] = stored[path]
+        if data.get("scope") in (None, "charter", "constitution"):
+            break
+    return folded or dict(latest["protected_hashes"])
 
 
 def _changed_paths(
