@@ -62,9 +62,10 @@ class ItemRow:
     etag: str
     updated: str = ""
     fields: dict[str, Any] = field(default_factory=dict)
-    # Index insertion position: `created` only carries seconds, so a burst of
-    # adds ties on it and the plan order needs the order the store recorded.
-    seq: int = 0
+    # Store write sequence (record ULID or index position): `created` only
+    # carries seconds, so a burst of adds ties on it and the plan order needs
+    # the order the store recorded even after a full reindex.
+    seq: tuple[int, Any] = (1, 0)
 
     def as_ref(self) -> dict[str, Any]:
         return {
@@ -494,15 +495,41 @@ def applicable_actions(
     # roles the role decides, and a store without roles never parses an empty one.
     declared = profile.allowed_methods if profile is not None else ()
     methods = canonical_methods(declared) if declared else None
+    identity = getattr(ctx, "identity", None)
+    role_actions: frozenset[str] | None = None
+    role_tools_set: frozenset[str] | None = None
+    if getattr(ctx, "role_mode", False) and identity is not None and not identity.human:
+        role = getattr(identity, "role", None)
+        if role is None:
+            return ()
+        from context_rail.model.roles import role_tools
+
+        role_tools_set = role_tools(role)
+        allowed_actions = role.can.methods.get("actions")
+        if allowed_actions is True:
+            role_actions = frozenset(ctx.pack.actions)
+        elif isinstance(allowed_actions, (list, tuple)):
+            role_actions = frozenset(allowed_actions)
+        else:
+            role_actions = frozenset()
     names: list[str] = []
     for action in ctx.pack.actions.values():
         if action.on != "*" and action.on != row.preset:
             continue
         if action.from_states and row.status not in action.from_states:
             continue
+        if role_actions is not None and action.name not in role_actions:
+            continue
         if methods is not None and action.tool not in methods:
             continue
         spec = specs.get(action.tool)
+        if (
+            role_tools_set is not None
+            and spec is not None
+            and spec.permission != "read"
+            and action.tool not in role_tools_set
+        ):
+            continue
         if spec is not None and rights.allowed(spec.permission, actor) is not None:
             continue
         if not _requires_met(ctx, action, row.slug):
@@ -735,6 +762,7 @@ def _rows(
     if not rows:
         return []
     paths = [row[8] for row in rows]
+    slugs = [row[0] for row in rows]
     fields: dict[str, dict[str, Any]] = {path: {} for path in paths}
     for path, key, value in index.conn.execute(
         "SELECT path, key, value_json FROM fields WHERE path IN "
@@ -742,6 +770,19 @@ def _rows(
         paths,
     ):
         fields[path][key] = json.loads(value)
+    created_seq: dict[str, str] = {}
+    for item_slug, record_slug in index.conn.execute(
+        "SELECT r.dst, MIN(d.slug) FROM relations r "
+        "JOIN docs d ON d.path = r.src_path "
+        "JOIN fields f ON f.path = d.path AND f.key = 'kind' "
+        "WHERE r.rel = 'about' AND d.primitive = 'record' AND d.broken = 0 "
+        "AND f.value_json = '\"doc.created\"' "
+        f"AND r.dst IN ({', '.join('?' * len(slugs))}) "
+        "GROUP BY r.dst",
+        slugs,
+    ):
+        if record_slug:
+            created_seq[item_slug] = record_slug
     return [
         ItemRow(
             slug=row[0],
@@ -755,7 +796,7 @@ def _rows(
             path=row[8],
             etag=row[9],
             fields=fields.get(row[8], {}),
-            seq=row[10],
+            seq=(0, created_seq[row[0]]) if row[0] in created_seq else (1, row[10]),
         )
         for row in rows
     ]

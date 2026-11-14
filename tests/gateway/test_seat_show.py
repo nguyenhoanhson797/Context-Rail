@@ -115,3 +115,36 @@ def test_an_anonymous_caller_reaches_no_seat_card(role_store: SimpleNamespace) -
     )
 
     assert refusal(card) == ("PERMISSION_DENIED", "out_of_reach")
+
+
+def test_seat_show_queue_head_intersects_with_caller_reach(
+    role_store: SimpleNamespace,
+) -> None:
+    """When viewing another seat whose anchor is readable, queue_head stays inside caller reach."""
+    path = role_store.store / "packs" / "scrum" / "pack.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["operating"]["roles"]["narrow-viewer"] = {
+        "anchor": {"item": ["story"]},
+        "reach": {"read": ["anchor", {"up": 1}], "write": []},
+        "can": {},
+        "sees": {"up": 1, "parts": ["title"], "budget": {"chars": 8000, "docs": 10}},
+        "workspace": "none",
+    }
+    path.write_text(
+        yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+    with as_human():
+        granted = invoke(
+            "seat grant",
+            {"seat": "viewer-o1", "role": "narrow-viewer", "anchor": role_store.o1},
+            store=role_store.store,
+            actor=None,
+        )
+    assert is_ok(granted), granted
+
+    card = as_seat(
+        role_store.store, "viewer-o1", {"seat": role_store.orders_seat}
+    )
+    assert is_ok(card), card
+    assert role_store.o2 not in card["value"].get("queue_head", [])
+

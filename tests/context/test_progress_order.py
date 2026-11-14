@@ -61,6 +61,32 @@ def test_groups_created_in_one_burst_keep_insertion_order(burst_store: Path) -> 
     ]
 
 
+def test_groups_created_in_one_burst_keep_insertion_order_after_reindex(
+    tmp_path: Path, fixed_clock: str
+) -> None:
+    store = init_store(tmp_path / "reindexed-plan", "scrum")
+    for name in ("Sprint two", "Sprint one", "Sprint three"):
+        sprint = _add(store, "sprint", name)
+        _add(store, "story", f"Work in {name}", sprint)
+    assert invoke("reindex", {"full": True}, store=store, actor="human")["ok"] is True
+
+    context = Context(
+        store=store,
+        manifest=load_manifest(store),
+        pack=load_pack("scrum", store),
+        actor="cto",
+    )
+    try:
+        view = operating.resolve_progress(context, compiled_model(store, "scrum"))
+    finally:
+        context.close()
+    assert [child["slug"] for child in view.children] == [
+        "sprint-two",
+        "sprint-one",
+        "sprint-three",
+    ]
+
+
 def test_an_explicit_order_still_wins(tmp_path: Path) -> None:
     """A declared order is semantic and outranks the insertion tiebreak."""
     store = init_store(tmp_path / "ordered", "scrum")

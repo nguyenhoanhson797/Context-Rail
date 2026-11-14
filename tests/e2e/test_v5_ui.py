@@ -206,3 +206,49 @@ def test_a_label_only_change_relabels_the_ui(
     assert after["operating"]["labels"]["shot"]["one"] == "Angle"
     assert before["digests"]["semantic"] == after["digests"]["semantic"]
     assert before["digests"]["presentation"] != after["digests"]["presentation"]
+
+
+def test_ui_snapshot_filters_relations_and_phase_by_reach_and_pins_human_channel(
+    role_store: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from context_rail.core.result import is_ok
+    from context_rail.gateway.execution import caller_identity, human_channel
+    from context_rail.gateway.gateway import invoke
+    from helpers import as_human, open_test_session
+
+    store = role_store.store
+    with as_human():
+        etag = invoke("show", {"slug": role_store.o1}, store=store, actor=None)["value"][
+            "doc"
+        ]["etag"]
+        assert is_ok(
+            invoke(
+                "link",
+                {
+                    "src": role_store.o1,
+                    "rel": "depends_on",
+                    "dst": role_store.b1,
+                    "expect": etag,
+                    "reason": "cross-sprint",
+                },
+                store=store,
+                actor=None,
+            )
+        )
+
+    token = open_test_session(store, role_store.orders_seat)
+    with caller_identity(None, None, session=token):
+        doc = api.context_document(store)
+    o1_doc = next(item for item in doc["tasks"] if item["id"] == role_store.o1)
+    assert role_store.b1 not in (o1_doc["relations"].get("depends_on") or [])
+
+    legacy = init_store(store.parent / "legacy-ui", "basic")
+    monkeypatch.setenv("RAIL_ACTOR", "worker-env")
+    with human_channel():
+        opened = api._open(legacy)
+    try:
+        assert opened.identity.human is True
+        assert opened.actor == "human"
+    finally:
+        opened.close()
+

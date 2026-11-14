@@ -280,8 +280,10 @@ def _resolve_extends(pack: Pack, store: Path, *, seen: tuple[str, ...]) -> Pack:
         if existing is not None and existing != category:
             _refuse(f"pack {pack.name!r} remaps status {status!r} from {existing!r} to {category!r}")
         merged_statuses[status] = category
-    merged_workflows = dict(base.workflows)
-    merged_workflows.update(pack.workflows)
+    merged_workflows = {
+        name: replace(workflow, statuses=merged_statuses)
+        for name, workflow in {**base.workflows, **pack.workflows}.items()
+    }
     merged_presets = dict(base.presets)
     merged_presets.update(pack.presets)
     merged_actions = dict(base.actions)

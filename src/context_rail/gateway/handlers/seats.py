@@ -522,9 +522,9 @@ def _named(value: Any) -> str | None:
 def seat_show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """One seat's role, reach, skills, budget, workspace, session and queue head.
 
-    A seat sees itself; a seat with a wider read reach sees another seat's card;
-    the human (terminal or channel) and an anonymous reader may view any live
-    seat. The card never writes.
+    A seat sees itself; a seat whose read reach covers another seat's anchor
+    sees that card; the human (terminal or channel) may view any live seat.
+    The card never writes.
     """
     requested = _named(args.get("seat"))
     if not ctx.role_mode:
@@ -584,11 +584,21 @@ def seat_show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if identity.session is not None and identity.name == target.seat
         else None
     )
+    caller_reach = ctx.reach
+    caller_readable = (
+        None
+        if caller_reach is None
+        else {
+            row.slug
+            for row in recipes.item_rows(ctx.index, ctx.pack, reach=caller_reach)
+        }
+    )
     head = [
         row.slug
         for row in recipes.item_rows(ctx.index, ctx.pack, reach=reach)
         if row.category in ("not_started", "active")
         and not _is_container(ctx, row.preset)
+        and (caller_readable is None or row.slug in caller_readable)
     ][:_QUEUE_HEAD]
     return {
         "seat": target.seat,

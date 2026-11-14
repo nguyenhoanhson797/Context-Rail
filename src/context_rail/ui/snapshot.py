@@ -172,6 +172,7 @@ def _project(context: Any, docs: list[dict[str, Any]], counts: dict[str, int]) -
         name = Path(context.store).parent.name
     return {
         "name": name,
+        "goal_slug": goal["id"] if goal else None,
         "store_root": str(Path(context.store).absolute()),
         "pack": context.pack.name,
         "state": state.get("state"),
@@ -197,6 +198,16 @@ def build(context: Any) -> dict[str, Any]:
     reach = getattr(context, "reach", None)
     if reach is not None:
         rows = [row for row in rows if reach.can_read(row[1], path=row[0], preset=row[3])]
+    readable_slugs = {row[1] for row in rows}
+    if reach is not None:
+        relations = {
+            path: {
+                rel_name: [dst for dst in dsts if dst in readable_slugs]
+                for rel_name, dsts in by_rel.items()
+                if any(dst in readable_slugs for dst in dsts)
+            }
+            for path, by_rel in relations.items()
+        }
     parents = {
         dst
         for by_rel in relations.values()

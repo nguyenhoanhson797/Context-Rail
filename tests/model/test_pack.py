@@ -539,6 +539,7 @@ def test_a_child_pack_keeps_its_own_default_workflow(tmp_path: Path) -> None:
 
     assert child.workflows["default"].initial == "doing"
     assert child.workflows["default"].transitions == {"doing": ("todo",)}
+    assert child.workflows["default"].statuses == child.statuses
 
 
 def test_state_lists_include_a_target_only_status() -> None:

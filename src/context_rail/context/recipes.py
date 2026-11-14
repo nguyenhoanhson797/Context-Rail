@@ -233,6 +233,8 @@ def freshness(context: Context, row: dict[str, Any] | None) -> str:
 def check_rows(context: Context, limit: int) -> tuple[list[dict[str, Any]], int]:
     """The Check states with their freshness, bounded, plus the omitted count."""
     rows = query.check_states(context.index)
+    if context.reach is not None:
+        rows = [row for row in rows if _reachable(context, row.get("item"))]
     shown = [
         {
             "check": row["slug"],
@@ -575,7 +577,15 @@ def _brief_sections(
     quality_section = by_key["quality"]
     quality_section.fixed.extend(_quality_lines(activity))
     rejected, rejected_total = query.rejected_reviews(context.index, limit=limit)
-    available = [_candidate_line(row) for row in activity["candidates"]]
+    candidates = activity["candidates"]
+    if context.reach is not None:
+        candidates = [row for row in candidates if _reachable(context, row.get("item"))]
+        kept_reviews = [
+            row for row in rejected if _reachable(context, row.get("item"))
+        ]
+        rejected_total -= len(rejected) - len(kept_reviews)
+        rejected = kept_reviews
+    available = [_candidate_line(row) for row in candidates]
     available.extend(
         f"review rejected {row['review']} — {row['item'] or '-'} "
         f"(commit {(row['candidate_commit'] or '-')[:12]})"

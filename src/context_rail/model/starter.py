@@ -128,6 +128,7 @@ def _level_lead(
             "report": leaves,
             "triage": leaves,
             "execution": leaves,
+            "actions": list(pack.actions),
             "grant": grants,
         },
         "sees": {

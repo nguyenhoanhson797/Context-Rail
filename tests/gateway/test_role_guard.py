@@ -456,3 +456,19 @@ def test_a_rename_cannot_rewrite_a_document_outside_the_seats_reach(
     )
 
     assert refusal(refused) == ("PERMISSION_DENIED", "write_out_of_reach")
+
+
+def test_applicable_actions_hides_actions_outside_the_roles_can_actions(
+    role_store: SimpleNamespace,
+) -> None:
+    edit_roles(
+        role_store.store,
+        lambda roles: roles["sprint-lead"]["can"].update({"actions": []}),
+    )
+    shown = as_seat(
+        role_store.store, role_store.orders_seat, "show", {"slug": role_store.o1}
+    )
+
+    assert is_ok(shown), shown
+    assert "file-bug" not in shown["value"]["card"]["actions"]
+

@@ -303,3 +303,73 @@ def test_the_brief_groups_items_by_workflow_and_status(tmp_path: Path) -> None:
     assert "- a-bug [bugfix/todo]" in text
     assert "- a-task [sprint/todo]" in text
     assert value["omitted"]["workflows"] == 0
+
+
+def test_brief_quality_section_filters_candidates_checks_and_reviews_by_reach(
+    role_store: Any, tmp_path: Path
+) -> None:
+    """recipes.brief() filters candidates, checks and rejected reviews by reach."""
+    from context_rail.gateway.execution import caller_identity
+    from context_rail.gateway.gateway import Context
+    from context_rail.gateway.identity import resolve_identity
+    from context_rail.model.manifest import load_manifest
+    from context_rail.model.pack import load_pack
+    from helpers import as_human, open_test_session, write_candidate, write_review_verdict
+
+    store = role_store.store
+    spec = tmp_path / "spec.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "cmd",
+                "acceptance": False,
+                "cmd": [sys.executable, "-c", "print('ok')"],
+                "inputs": ["src/**/*.py"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with as_human():
+        assert is_ok(
+            invoke(
+                "check",
+                {
+                    "slug": "secret-check",
+                    "target": role_store.b1,
+                    "spec_file": str(spec),
+                    "expect": "absent",
+                },
+                store=store,
+                actor=None,
+            )
+        )
+    sha = "b" * 40
+    write_candidate(store, "01JCANDSECRET000000000001", role_store.b1, sha, actor="impl")
+    write_review_verdict(
+        store,
+        "01JREVSECRET0000000000001",
+        role_store.b1,
+        sha,
+        verdict="reject",
+        reviewer="rev",
+    )
+    invoke("reindex", {}, store=store, actor="human")
+
+    token = open_test_session(store, role_store.orders_seat)
+    manifest = load_manifest(store)
+    ctx = Context(
+        store=store,
+        manifest=manifest,
+        pack=load_pack(manifest.pack, store),
+        actor=role_store.orders_seat,
+    )
+    try:
+        with caller_identity(None, None, session=token):
+            ctx.identity = resolve_identity(ctx, actor=None, session=token)
+            value = recipes.brief(ctx)
+    finally:
+        ctx.close()
+    assert role_store.b1 not in value["text"]
+    assert "secret-check" not in value["text"]
+

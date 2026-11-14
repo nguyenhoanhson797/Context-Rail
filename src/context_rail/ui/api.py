@@ -64,7 +64,15 @@ def context_document(store: Path) -> dict[str, Any]:
 
 def health_document(store: Path) -> dict[str, Any]:
     """The diagnostics document; the doctor runs behind this read only."""
-    result = invoke("doctor", {}, store=store)
+    from context_rail.gateway.execution import HUMAN_CHANNEL
+    from context_rail.gateway.identity import roles_declared
+
+    actor = (
+        "human"
+        if (HUMAN_CHANNEL.get() and not roles_declared(store))
+        else None
+    )
+    result = invoke("doctor", {}, store=store, actor=actor)
     if not result.get("ok"):
         error = result.get("error") or {}
         return {
@@ -97,7 +105,15 @@ def health_document(store: Path) -> dict[str, Any]:
 
 def doc_document(store: Path, slug: str) -> dict[str, Any]:
     """One document plus its body, relations and workflow card."""
-    shown = invoke("show", {"slug": slug}, store=store)
+    from context_rail.gateway.execution import HUMAN_CHANNEL
+    from context_rail.gateway.identity import roles_declared
+
+    actor = (
+        "human"
+        if (HUMAN_CHANNEL.get() and not roles_declared(store))
+        else None
+    )
+    shown = invoke("show", {"slug": slug}, store=store, actor=actor)
     if not shown.get("ok"):
         error = shown.get("error") or {}
         return {
@@ -264,13 +280,15 @@ def _open(store: Path) -> Context:
     manifest = load_manifest(store)
     pack = load_pack(manifest.pack, store)
     context = Context(store=store, manifest=manifest, pack=pack, actor="human")
+    human = HUMAN_CHANNEL.get()
+    pinned_actor = "human" if (human and not context.role_mode) else None
     context.identity = resolve_identity(
         context,
-        actor=None,
+        actor=pinned_actor,
         session=caller_session(),
         tty=HAS_TTY.get(),
         lens=LENS_SEAT.get(),
-        human_channel=HUMAN_CHANNEL.get(),
+        human_channel=human,
     )
     context.actor = context.identity.name
     context.actor_named = context.identity.kind != "anonymous"
