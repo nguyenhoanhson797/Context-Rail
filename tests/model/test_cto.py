@@ -126,7 +126,7 @@ def test_every_mode_parses_with_its_own_fields() -> None:
     for mode in ("review", "human"):
         parsed = parse_check({"schema": 1, "mode": mode, "acceptance": True})
         assert parsed.mode == mode
-    assert CHECK_MODES == ("cmd", "exists", "evidence", "review", "human")
+    assert CHECK_MODES == ("cmd", "exists", "evidence", "review", "human", "store")
 
 
 @pytest.mark.parametrize(

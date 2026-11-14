@@ -5,6 +5,7 @@ A payload the engine cannot read exactly is refused.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from importlib import resources
 from typing import Any
@@ -28,6 +29,7 @@ from context_rail.model.fields import (
 from context_rail.core.defaults import DEFAULT_PACK
 from context_rail.core.tool_names import ALIASES
 from context_rail.model.pack import canonical_pack_name
+from context_rail.model.primitives import CATEGORIES
 
 __all__ = [
     "CHECK_KEYS",
@@ -49,6 +51,7 @@ __all__ = [
     "REPORT_SCHEMA",
     "REPORT_TARGET_CLASSES",
     "SKILL_SCHEMA",
+    "STORE_BINDING_KEYS",
     "UNKNOWN",
     "VERDICT_KEYS",
     "VERDICT_SCHEMA",
@@ -72,7 +75,7 @@ UNKNOWN = "unknown"
 CHECK_SCHEMA = VERDICT_SCHEMA = PROFILE_SCHEMA = REPORT_SCHEMA = 1
 SKILL_SCHEMA = 1
 
-CHECK_MODES = ("cmd", "exists", "evidence", "review", "human")
+CHECK_MODES = ("cmd", "exists", "evidence", "review", "human", "store")
 CHECK_KEYS = (
     "schema",
     "mode",
@@ -82,17 +85,25 @@ CHECK_KEYS = (
     "inputs",
     "exists",
     "evidence",
+    "store",
+    "item",
+    "category",
     "timeout_s",
     "legacy",
 )
-#: Keys that only one mode may carry: every other mode must omit them.
+#: Check fields that only one mode may carry: every other mode must omit them.
+_MODE_SCOPED_KEYS = ("cmd", "inputs", "exists", "evidence", "store", "item", "category")
 MODE_ONLY_KEYS: dict[str, frozenset[str]] = {
     "cmd": frozenset({"cmd", "inputs"}),
     "exists": frozenset({"exists", "inputs"}),
     "evidence": frozenset({"evidence"}),
     "review": frozenset(),
     "human": frozenset(),
+    "store": frozenset({"store", "item", "category"}),
 }
+#: The closed binding a store verdict carries: the proof of one child item's category.
+STORE_BINDING_KEYS = ("path", "item", "doc", "commit", "etag", "category")
+_SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 LEGACY_KEYS = (
     "source_path",
     "line",
@@ -120,6 +131,7 @@ VERDICT_KEYS = (
     "evidence",
     "reason",
     "candidate_commit",
+    "store",
 )
 
 PROFILE_RECIPES = ("cto", "implementer", "reviewer")
@@ -228,6 +240,9 @@ class Check:
     evidence: tuple[str, ...]
     timeout_s: int | float | None
     legacy: dict[str, Any] | None
+    store: str | None = None
+    item: str | None = None
+    category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -246,6 +261,7 @@ class Verdict:
     evidence: tuple[str, ...]
     reason: str | None
     candidate_commit: str | None
+    store: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -297,7 +313,7 @@ def parse_check(fields: dict[str, Any]) -> Check:
     acceptance = boolean(data["acceptance"], "check.acceptance")
 
     allowed = MODE_ONLY_KEYS[mode]
-    for key in ("cmd", "inputs", "exists", "evidence"):
+    for key in _MODE_SCOPED_KEYS:
         if key in data and key not in allowed:
             refuse(f"check field {key!r} is not valid for mode {mode!r}")
 
@@ -305,6 +321,9 @@ def parse_check(fields: dict[str, Any]) -> Check:
     inputs: tuple[str, ...] = ()
     exists: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
+    store: str | None = None
+    item: str | None = None
+    category: str | None = None
     if mode == "cmd":
         cmd = string_list(data.get("cmd"), "check.cmd")
         inputs = string_list(data.get("inputs"), "check.inputs")
@@ -316,6 +335,11 @@ def parse_check(fields: dict[str, Any]) -> Check:
         inputs = string_list(data.get("inputs"), "check.inputs")
     elif mode == "evidence":
         evidence = string_list(data.get("evidence"), "check.evidence")
+    elif mode == "store":
+        require(data, ("store", "item", "category"), "check")
+        store = _store_path(data["store"], "check.store")
+        item = _slug(data["item"], "check.item")
+        category = _category(data["category"], "check.category")
     if mode in ("cmd", "exists"):
         for glob in inputs:
             relative_path(glob, "check.inputs", glob=True)
@@ -345,7 +369,41 @@ def parse_check(fields: dict[str, Any]) -> Check:
         evidence=evidence,
         timeout_s=timeout_s,
         legacy=legacy,
+        store=store,
+        item=item,
+        category=category,
     )
+
+
+def _store_path(raw: Any, what: str) -> str:
+    """A path relative to the master's parent folder; ``..`` names sibling repositories."""
+    text = string(raw, what).replace("\\", "/")
+    if "\x00" in text or text.startswith("/") or ":" in text:
+        refuse(f"{what} must be a relative path with no drive or stream: {text!r}")
+    return text
+
+
+def _slug(raw: Any, what: str) -> str:
+    text = string(raw, what)
+    if _SLUG.match(text) is None:
+        refuse(f"{what} must be an item slug, not {text!r}")
+    return text
+
+
+def _category(raw: Any, what: str) -> str:
+    text = string(raw, what)
+    if text not in CATEGORIES:
+        refuse(f"{what} must be one of " + ", ".join(CATEGORIES))
+    return text
+
+
+def _store_binding(raw: Any) -> dict[str, str]:
+    data = mapping(raw, "verdict.store")
+    no_unknown(data, STORE_BINDING_KEYS, "verdict.store")
+    require(data, STORE_BINDING_KEYS, "verdict.store")
+    binding = {key: string(data[key], f"verdict.store.{key}") for key in STORE_BINDING_KEYS}
+    _category(binding["category"], "verdict.store.category")
+    return binding
 
 
 def _legacy(raw: Any) -> dict[str, Any]:
@@ -388,6 +446,14 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
         if runner_digest is not None or exit_code is not None:
             refuse(f"mode {mode!r} carries no runner digest or exit code")
 
+    binding: dict[str, str] | None = None
+    if mode == "store":
+        if "store" not in payload:
+            refuse("a store verdict needs its store binding")
+        binding = _store_binding(payload["store"])
+    elif "store" in payload:
+        refuse(f"mode {mode!r} carries no store binding")
+
     return Verdict(
         schema=schema,
         check=string(payload["check"], "verdict.check"),
@@ -403,6 +469,7 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
         candidate_commit=_optional_string(
             payload.get("candidate_commit"), "verdict.candidate_commit"
         ),
+        store=binding,
     )
 
 
