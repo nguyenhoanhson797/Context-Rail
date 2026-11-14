@@ -419,6 +419,7 @@ def test_the_doctor_emits_no_other_stage1b_prefix_code() -> None:
             "seat_anchor_missing",
             "role_skill_missing",
             "session_stale",
+            "profile_skill_missing",
         }
     )
 

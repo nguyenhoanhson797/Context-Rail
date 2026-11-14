@@ -77,6 +77,7 @@ SEVERITIES: dict[str, str] = {
     "report_untriaged": "warning",
     "budget_exceeded": "warning",
     "profile_invalid": "error",
+    "profile_skill_missing": "warning",
     "adapter_modified": "warning",
     "gate_bypassed": "error",
     "placement_mismatch": "warning",
@@ -1108,6 +1109,7 @@ def _profile_issues(context: Any, rows: list[_Row]) -> list[dict[str, Any]]:
     from context_rail.model.cto import parse_profile
 
     role_mode = bool(getattr(context, "role_mode", False))
+    skill_paths = {row.path for row in rows if row.preset == "skill"}
     issues: list[dict[str, Any]] = []
     for row in rows:
         if row.primitive != "actor" or row.problems:
@@ -1118,7 +1120,7 @@ def _profile_issues(context: Any, rows: list[_Row]) -> list[dict[str, Any]]:
         except (OSError, UnicodeDecodeError):
             continue
         try:
-            parse_profile(dict(doc.fields), body=doc.body, role_mode=role_mode)
+            profile = parse_profile(dict(doc.fields), body=doc.body, role_mode=role_mode)
         except ModelError as error:
             issues.append(
                 _issue(
@@ -1127,6 +1129,18 @@ def _profile_issues(context: Any, rows: list[_Row]) -> list[dict[str, Any]]:
                     f"{path!r} is not a valid profile: {error.message}",
                 )
             )
+            continue
+        for pin in profile.skills:
+            if pin not in skill_paths:
+                issues.append(
+                    _issue(
+                        "profile_skill_missing",
+                        path,
+                        f"{path!r} pins skill note {pin!r}, which the store does not have",
+                        fix=f"run rail ops upgrade, or add the skill note {pin}",
+                        details={"profile": path, "skill": pin},
+                    )
+                )
     return issues
 
 
