@@ -5,9 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from context_rail.store.adapters import END_MARK
+from context_rail.store.adapters import END_MARK, START_MARK
 from context_rail.store.doc import etag, parse_doc
 from helpers import latest_record
 
@@ -184,6 +186,32 @@ def test_a_harness_limited_sync_keeps_the_other_records_so_a_later_sync_removes_
     assert result["value"]["removed"] == [SKILL]
     assert not (skill_store.parent / SKILL).exists()
     assert (skill_store.parent / CLAUDE).is_file()
+
+
+@pytest.mark.parametrize(
+    "shape",
+    ["bare_rule", "trailing_space_closer", "hidden_after_closer", "nested_start"],
+)
+def test_a_forced_sync_keeps_an_orphan_whose_text_is_not_rail_output(
+    skill_store: Path, shape: str
+) -> None:
+    assert is_ok(invoke("adapters sync", {}, store=skill_store, actor="cto"))
+    mirror = skill_store.parent / SKILL
+    rendered = mirror.read_text(encoding="utf-8")
+    block = rendered[rendered.index(START_MARK) :]
+    forged = {
+        "bare_rule": "---\n" + block,
+        "trailing_space_closer": "---\nname: test-first\n--- \n---\n" + block,
+        "hidden_after_closer": "---\nname: test-first\n...\nHAND EDIT\n---\n" + block,
+        "nested_start": rendered.replace(END_MARK, f"{START_MARK}\n{END_MARK}"),
+    }[shape]
+    mirror.write_text(forged, encoding="utf-8", newline="\n")
+    _remove_note(skill_store)
+    result = _forced_sync(skill_store)
+    assert is_ok(result), result
+    assert result["value"]["kept"] == [SKILL]
+    assert result["value"]["removed"] == []
+    assert mirror.read_text(encoding="utf-8") == forged
 
 
 def test_an_orphan_already_gone_leaves_the_record(skill_store: Path) -> None:

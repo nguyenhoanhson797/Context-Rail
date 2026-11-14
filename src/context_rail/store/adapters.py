@@ -29,7 +29,9 @@ __all__ = [
     "AdapterConflict",
     "HARNESSES",
     "adapter_rel",
+    "carries_marker",
     "fenced_parts",
+    "owned_prefix",
     "payload_digest",
     "project_root",
     "read_managed",
@@ -290,6 +292,23 @@ def fenced_parts(text: str) -> tuple[str, str] | None:
         return None
     start, _start_body, _end_line, end = bounds
     return normalized[:start], normalized[end:]
+
+
+def owned_prefix(prefix: str, *, frontmatter: bool) -> bool:
+    """Whether the text before a managed block is only what rail writes there.
+
+    Rail writes nothing before the block, or exactly one frontmatter block closed
+    by a bare ``---`` line. A spaced closer, an extra line or a ``...`` closer is
+    text a human put there.
+    """
+    if not frontmatter:
+        return prefix == ""
+    return prefix.endswith("\n---\n") and _frontmatter(prefix) == prefix
+
+
+def carries_marker(payload: str) -> bool:
+    """Whether a payload holds a marker line, which rail never renders into one."""
+    return _marker_line(payload) is not None
 
 
 # â”€â”€ internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

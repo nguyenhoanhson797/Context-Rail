@@ -687,6 +687,8 @@ _ORPHAN_CHANGED = "orphan changed outside rail"
 _ORPHAN_OUTSIDE = "orphan has text outside its managed block"
 _ORPHAN_NO_BLOCK = "orphan has no paired managed block"
 _ORPHAN_UNREADABLE = "orphan is not valid UTF-8"
+_ORPHAN_NESTED = "orphan holds a marker line inside its managed block"
+_ORPHAN_IO = "orphan cannot be read"
 
 
 def _roles(ctx: Context) -> tuple[str, ...]:
@@ -730,9 +732,14 @@ def _retirements(
         except PathEscape:
             retired.append(_Retirement(rel, display, digest, ABSENT, "gone"))
             continue
-        data = _read(path)
-        if data is None:
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
             retired.append(_Retirement(rel, display, digest, ABSENT, "gone"))
+            continue
+        except OSError:
+            verdict, reason = _held(forced, _ORPHAN_IO)
+            retired.append(_Retirement(rel, display, digest, ABSENT, verdict, reason))
             continue
         verdict, reason = _retirement_verdict(rel, data, digest, forced=forced)
         retired.append(_Retirement(rel, display, digest, etag(data), verdict, reason))
@@ -746,9 +753,10 @@ def _retirement_verdict(
 
     A file is deleted only when the text outside its managed block is exactly what
     rail renders there: a frontmatter block for a skill, a Claude agent or a Cursor
-    rule, and nothing otherwise. Anything else is a human's text, so the file is
-    kept, forced or not. Inside the block, the payload must still match the digest
-    the record lists; a drifted payload is deleted only by a forced sync.
+    rule, and nothing otherwise. A marker line inside the block is a human's too,
+    since rail never renders one into a payload. Anything else is held: kept under
+    a forced sync, refused otherwise. Inside the block, the payload must still match
+    the digest the record lists; a drifted payload is deleted only by a forced sync.
     """
     display = rel[len(adapters.ADAPTER_PREFIX) :]
     text, _undecodable = _decode(data, rel)
@@ -759,9 +767,12 @@ def _retirement_verdict(
     if parts is None or state is None:
         return _held(forced, _ORPHAN_NO_BLOCK)
     prefix, suffix = parts
-    if suffix or not _owned_prefix(prefix, display):
-        return _held(forced, _ORPHAN_OUTSIDE)
     payload, digest = state
+    if adapters.carries_marker(payload):
+        return _held(forced, _ORPHAN_NESTED)
+    frontmatter = _takes_frontmatter(display)
+    if suffix or not adapters.owned_prefix(prefix, frontmatter=frontmatter):
+        return _held(forced, _ORPHAN_OUTSIDE)
     if digest == recorded and adapters.payload_digest(payload) == recorded:
         return "remove", None
     return ("remove", None) if forced else ("refuse", _ORPHAN_CHANGED)
@@ -770,14 +781,6 @@ def _retirement_verdict(
 def _held(forced: bool, reason: str) -> tuple[str, str | None]:
     """A target that must not be deleted: kept under a forced sync, refused otherwise."""
     return ("keep", None) if forced else ("refuse", reason)
-
-
-def _owned_prefix(prefix: str, display: str) -> bool:
-    """Whether the text before a managed block is only the frontmatter rail renders there."""
-    if not _takes_frontmatter(display):
-        return prefix == ""
-    closing = "\n---\n"
-    return prefix.startswith("---\n") and prefix.find(closing) == len(prefix) - len(closing)
 
 
 def _takes_frontmatter(display: str) -> bool:
