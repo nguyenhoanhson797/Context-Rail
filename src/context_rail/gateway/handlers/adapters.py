@@ -11,7 +11,9 @@ writes anything, and unmanaged prose is left byte-for-byte alone.
 The managed blocks point at the live briefs: they index each skill by name and
 description, so a skill body lives only in its ``SKILL.md`` mirror. A target the
 latest record lists and this sync no longer renders is deleted while its managed
-digest still matches that record; a drifted one refuses the batch.
+digest still matches that record; a drifted one refuses the batch unless a human
+forces it. Text outside the managed block is never deleted: it refuses the batch,
+or with ``--force`` the file is kept and reported under ``kept``.
 """
 
 from __future__ import annotations
@@ -114,12 +116,19 @@ class _Target:
 
 @dataclass(frozen=True)
 class _Retirement:
-    """A target the latest record lists that this sync no longer renders."""
+    """A recorded target this sync no longer renders, and what becomes of it.
+
+    ``verdict`` is ``remove`` (delete it), ``keep`` (leave it on disk and carry
+    its record entry), ``refuse`` (the batch stops) or ``gone`` (already absent,
+    so the new record drops it).
+    """
 
     rel: str
     display: str
+    recorded: str
     current: str
-    conflict: str | None
+    verdict: str
+    reason: str | None = None
 
 
 def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -134,11 +143,25 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     harnesses = _harnesses(requested)
     targets = _plan(root, skills, profiles, harnesses, _roles(ctx))
     rendered = {target.display for target in targets}
-    retirements = _retirements(ctx, root, rendered, harnesses, forced=forced)
+    recorded = _recorded_digests(ctx)
+    retirements = _retirements(root, rendered, harnesses, recorded, forced=forced)
+    carried = {
+        display: digest
+        for display, digest in recorded.items()
+        if display not in rendered and _harness_of(display) not in harnesses
+    }
+    carried.update(
+        {
+            retirement.display: retirement.recorded
+            for retirement in retirements
+            if retirement.verdict == "keep"
+        }
+    )
     written: list[str] = []
     unchanged: list[str] = []
     refused: list[str] = []
     removed: list[str] = []
+    kept: list[str] = []
     reasons: dict[str, str] = {}
     expected: dict[str, str] = {}
     digests: dict[str, str] = {}
@@ -155,11 +178,14 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         written.append(target.display)
         expected[target.display] = current
     for retirement in retirements:
-        if retirement.conflict is None:
+        if retirement.verdict == "remove":
             removed.append(retirement.display)
-        else:
+        elif retirement.verdict == "keep":
+            kept.append(retirement.display)
+        elif retirement.verdict == "refuse":
             refused.append(retirement.display)
-            reasons[retirement.display] = retirement.conflict
+            reasons[retirement.display] = retirement.reason or _ORPHAN_CHANGED
+    dropped = [retirement.display for retirement in retirements if retirement.verdict == "gone"]
 
     if refused and not dry_run:
         raise WriteRefused(
@@ -169,11 +195,19 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"refused": refused, "reasons": reasons},
         )
     if dry_run:
-        return _value(written, unchanged, refused, removed, None, dry_run=True)
+        return _value(
+            written=written,
+            unchanged=unchanged,
+            refused=refused,
+            removed=removed,
+            kept=kept,
+            record=None,
+            dry_run=True,
+        )
 
     binding = _binding(
         sources,
-        digests,
+        {**digests, **carried},
         refused,
         forced=forced,
         current={
@@ -191,18 +225,25 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     )
     key = _bound_key(args["key"], binding)
     saved = replay(store, key)
-    if not written and not removed:
+    if not written and not removed and not dropped:
         return _value(
-            [], unchanged, refused, [], saved["record"] if saved else None, dry_run=False
+            written=[],
+            unchanged=unchanged,
+            refused=refused,
+            removed=[],
+            kept=kept,
+            record=saved["record"] if saved else None,
+            dry_run=False,
         )
     if saved is not None:
         replayed = saved["written"]
         return _value(
-            [name for name in replayed if name in rendered],
-            [],
-            [],
-            [name for name in replayed if name not in rendered],
-            saved["record"],
+            written=[name for name in replayed if name in rendered],
+            unchanged=[],
+            refused=[],
+            removed=[name for name in replayed if name not in rendered],
+            kept=kept,
+            record=saved["record"],
             dry_run=False,
         )
 
@@ -218,12 +259,12 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     ops.extend(
         Op(path=retirement.rel, data=None, expect=retirement.current)
         for retirement in retirements
-        if retirement.conflict is None
+        if retirement.verdict == "remove"
     )
     data = {
         "schema": 1,
-        "paths": [target.display for target in targets],
-        "payload_digests": {target.display: target.digest for target in targets},
+        "paths": [target.display for target in targets] + list(carried),
+        "payload_digests": {**{target.display: target.digest for target in targets}, **carried},
         "source_etags": sources,
         "harnesses": list(harnesses) if requested else [],
         "binding": binding,
@@ -237,7 +278,15 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         key=key,
         index=ctx.index,
     )
-    return _value(written, unchanged, [], removed, result["record"], dry_run=False)
+    return _value(
+        written=written,
+        unchanged=unchanged,
+        refused=[],
+        removed=removed,
+        kept=kept,
+        record=result["record"],
+        dry_run=False,
+    )
 
 
 def _binding(
@@ -279,12 +328,13 @@ def _bound_key(key: str | None, binding: str) -> str | None:
 
 
 def _value(
+    *,
     written: list[str],
     unchanged: list[str],
     refused: list[str],
     removed: list[str],
+    kept: list[str],
     record: str | None,
-    *,
     dry_run: bool,
 ) -> dict[str, Any]:
     return {
@@ -292,6 +342,7 @@ def _value(
         "unchanged": unchanged,
         "refused": refused,
         "removed": removed,
+        "kept": kept,
         "warnings": [],
         "record": record,
         "dry_run": dry_run,
@@ -635,6 +686,9 @@ def _read(path: Path) -> bytes | None:
 
 
 _ORPHAN_CHANGED = "orphan changed outside rail"
+_ORPHAN_OUTSIDE = "orphan has text outside its managed block"
+_ORPHAN_NO_BLOCK = "orphan has no paired managed block"
+_ORPHAN_UNREADABLE = "orphan is not valid UTF-8"
 
 
 def _roles(ctx: Context) -> tuple[str, ...]:
@@ -660,49 +714,79 @@ def _claude_agent_body(role: str) -> str:
 
 
 def _retirements(
-    ctx: Context,
     root: Path,
     rendered: set[str],
     harnesses: tuple[str, ...],
+    recorded: dict[str, str],
     *,
     forced: bool,
 ) -> list[_Retirement]:
-    """The recorded targets this sync drops, each marked when it must stay."""
+    """The recorded targets of the requested harnesses this sync no longer renders."""
     retired: list[_Retirement] = []
-    for display, recorded in _recorded_digests(ctx).items():
+    for display, digest in recorded.items():
         if display in rendered or _harness_of(display) not in harnesses:
             continue
         rel = f"{adapters.ADAPTER_PREFIX}{display}"
         try:
             path = adapters.resolve_adapter(root, rel)
         except PathEscape:
+            retired.append(_Retirement(rel, display, digest, ABSENT, "gone"))
             continue
         data = _read(path)
         if data is None:
+            retired.append(_Retirement(rel, display, digest, ABSENT, "gone"))
             continue
-        retired.append(
-            _Retirement(
-                rel=rel,
-                display=display,
-                current=etag(data),
-                conflict=_retirement_conflict(rel, data, recorded, forced=forced),
-            )
-        )
+        verdict, reason = _retirement_verdict(rel, data, digest, forced=forced)
+        retired.append(_Retirement(rel, display, digest, etag(data), verdict, reason))
     return retired
 
 
-def _retirement_conflict(rel: str, data: bytes, recorded: str, *, forced: bool) -> str | None:
-    """Why a target no longer rendered must stay, or None when it is unedited rail output."""
+def _retirement_verdict(
+    rel: str, data: bytes, recorded: str, *, forced: bool
+) -> tuple[str, str | None]:
+    """What happens to a target no longer rendered: ``remove``, ``keep`` or ``refuse``.
+
+    A file is deleted only when the text outside its managed block is exactly what
+    rail renders there: a frontmatter block for a skill, a Claude agent or a Cursor
+    rule, and nothing otherwise. Anything else is a human's text, so the file is
+    kept, forced or not. Inside the block, the payload must still match the digest
+    the record lists; a drifted payload is deleted only by a forced sync.
+    """
+    display = rel[len(adapters.ADAPTER_PREFIX) :]
     text, _undecodable = _decode(data, rel)
     if text is None:
-        return _ORPHAN_CHANGED
+        return _held(forced, _ORPHAN_UNREADABLE)
+    parts = adapters.fenced_parts(text)
     state = adapters.read_managed(text)
-    if state is None:
-        return _ORPHAN_CHANGED
+    if parts is None or state is None:
+        return _held(forced, _ORPHAN_NO_BLOCK)
+    prefix, suffix = parts
+    if suffix or not _owned_prefix(prefix, display):
+        return _held(forced, _ORPHAN_OUTSIDE)
     payload, digest = state
     if digest == recorded and adapters.payload_digest(payload) == recorded:
-        return None
-    return None if forced else _ORPHAN_CHANGED
+        return "remove", None
+    return ("remove", None) if forced else ("refuse", _ORPHAN_CHANGED)
+
+
+def _held(forced: bool, reason: str) -> tuple[str, str | None]:
+    """A target that must not be deleted: kept under a forced sync, refused otherwise."""
+    return ("keep", None) if forced else ("refuse", reason)
+
+
+def _owned_prefix(prefix: str, display: str) -> bool:
+    """Whether the text before a managed block is only the frontmatter rail renders there."""
+    if not _takes_frontmatter(display):
+        return prefix == ""
+    closing = "\n---\n"
+    return prefix.startswith("---\n") and prefix.find(closing) == len(prefix) - len(closing)
+
+
+def _takes_frontmatter(display: str) -> bool:
+    """Whether rail renders a frontmatter block ahead of this target's managed block."""
+    return display == adapters.CURSOR_REL or display.startswith(
+        (f"{adapters.SKILLS_REL}/", f"{adapters.CLAUDE_AGENTS_REL}/")
+    )
 
 
 def _recorded_digests(ctx: Context) -> dict[str, str]:

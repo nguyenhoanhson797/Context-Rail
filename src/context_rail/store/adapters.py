@@ -29,6 +29,7 @@ __all__ = [
     "AdapterConflict",
     "HARNESSES",
     "adapter_rel",
+    "fenced_parts",
     "payload_digest",
     "project_root",
     "read_managed",
@@ -275,6 +276,20 @@ def read_managed(text: str) -> tuple[str, str] | None:
     if match is None:
         return None
     return _frontmatter(prefix) + body, match.group(1)
+
+
+def fenced_parts(text: str) -> tuple[str, str] | None:
+    """The text before the managed block and the text after it, when the markers pair.
+
+    Both parts are outside the owned payload: a frontmatter block may precede the
+    block, and anything else in either part is a human's prose.
+    """
+    normalized = _lines(text)
+    bounds = _markers(normalized)
+    if bounds is None:
+        return None
+    start, _start_body, _end_line, end = bounds
+    return normalized[:start], normalized[end:]
 
 
 # â”€â”€ internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
