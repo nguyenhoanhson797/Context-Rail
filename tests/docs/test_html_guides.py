@@ -14,9 +14,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 GUIDES = sorted((ROOT / "docs").glob("*.html"))
 
-#: Commands the launcher owned. A guide may mention one inside a migration
-#: sentence, which always carries one of these words nearby.
-_REMOVED = ("loop dispatch", "loop merge", "loop tick", "droid exec")
+#: Commands the launcher owned or that were removed from the surface. A guide
+#: may mention one inside a migration sentence, which always carries one of
+#: these words nearby.
+_REMOVED = (
+    "loop dispatch",
+    "loop merge",
+    "loop tick",
+    "droid exec",
+    "doctor --repair",
+    "doctor --fix",
+)
 _MIGRATION = re.compile(
     r"removed|no longer|was renamed|delete|deleted|upgrade|migrat|used to|"
     r"replaced|not part of|gone",
@@ -71,3 +79,13 @@ def test_guides_name_no_retry_policy() -> None:
             if not _MIGRATION.search(window):
                 offenders.append((f"{path.name}:{line}", match.group(0)))
     assert offenders == [], offenders
+
+
+def test_engine_graph_tool_count_matches_the_tool_table() -> None:
+    from context_rail.gateway.tools import TOOLS
+
+    expected = len(TOOLS)
+    body = _guide_text(ROOT / "docs" / "context-rail-v3-engine-graph.html")
+    counts = [int(match) for match in re.findall(r"\b(\d+) tools\b", body)]
+    assert counts, "engine-graph guide does not state the tool count"
+    assert all(count == expected for count in counts), (counts, expected)

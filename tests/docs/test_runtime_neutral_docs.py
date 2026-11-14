@@ -14,6 +14,8 @@ FORBIDDEN = (
     "RAIL_DROID_BIN",
     "rail-report",
     "RAIL_RUNNER",
+    "doctor --repair",
+    "doctor --fix",
 )
 
 

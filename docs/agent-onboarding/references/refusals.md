@@ -20,7 +20,7 @@ command that produces it.
 1. Read the code and details.
 2. `rail ops doctor` for integrity.
 3. `rail ops reindex` when reads disagree with files.
-4. `rail ops doctor --repair` for an interrupted multi-file write.
+4. `rail ops repair` for an interrupted multi-file write.
 5. Only then edit files by hand; the next command re-syncs the index.
 
 Never hand-edit the SQLite index and never delete the store to fix a view.
@@ -54,7 +54,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | `duplicate_slug` | two documents share identity | `rail change rename` the newer one |
 | `required_field_missing` | a preset requires metadata | `rail change update <slug> --set field=value --expect <etag>` |
 | `adapter_modified` | a managed block was edited outside rail | Repair by hand, or a human runs `--force --confirm "FORCE ADAPTERS adapters"` |
-| `doctor` reports an interrupted write | a multi-file commit stopped mid-way | `rail ops doctor --repair`, then `rail ops reindex` |
+| `doctor` reports an interrupted write | a multi-file commit stopped mid-way | `rail ops repair`, then `rail ops reindex` |
 | The index is corrupt or missing | cache only | `rail ops reindex --full` |
 | `actor_required` | a name-mode write with no named actor and no terminal | Pass `--actor <name>` or set `RAIL_ACTOR` |
 | A profile key is refused (`model`, `runner`, `tools`, ...) | the store predates the runtime-neutral engine | A human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |

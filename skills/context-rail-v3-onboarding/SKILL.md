@@ -218,7 +218,7 @@ shots. If none fits, copy a pack and edit it — never fork the engine.
 | `VALIDATION_FAILED: unrecognized arguments` | Global options belong before the command; `add` is positional |
 | A check is `stale` | `rail check run <target>` again |
 | `agents` stage is `skipped (picture_deferred)` | Supply the picture, then re-run `rail init`; agent files need the picture to exist |
-| `doctor` reports an interrupted write | `rail ops doctor --repair`, then `rail ops reindex` |
+| `doctor` reports an interrupted write | `rail ops repair`, then `rail ops reindex` |
 | Two agents write at once | Both are safe: every write is an etag-checked commit; the loser re-reads and retries |
 
 ## What not to do

@@ -137,7 +137,7 @@ Read `error.code` and `error.details`; a refusal names the reason and the fix.
 | A check is `stale` | Run `rail check run` again; a stale pass is not a pass |
 | `approval_mismatch` | The semantic digest moved; a human must reapprove `pack:<name>` then the charter |
 | Reads disagree with files | `rail ops reindex`; never edit the index |
-| Interrupted multi-file write | `rail ops doctor --repair` |
+| Interrupted multi-file write | `rail ops repair` |
 
 ## Safety rules
 

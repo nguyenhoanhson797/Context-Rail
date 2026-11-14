@@ -38,7 +38,7 @@ OS user can act as you; use OS-level isolation if you need a real boundary.
 
 ```powershell
 rail ops doctor             # integrity issues
-rail ops doctor --repair    # finish or roll back an interrupted write first
+rail ops repair             # finish or roll back an interrupted write first
 rail ops reindex            # sync the index with the files
 rail ops reindex --full     # rebuild from scratch
 rail gate                   # doctor + approval and done gates (never runs checks)
@@ -122,7 +122,7 @@ refuses it before any check runs.
 1. Read the code and `error.details` in the envelope — refusals name the fix.
 2. `rail ops doctor` for integrity.
 3. `rail ops reindex` when reads disagree with files.
-4. `rail ops doctor --repair` for an interrupted multi-file write.
+4. `rail ops repair` for an interrupted multi-file write.
 5. Only then edit files by hand; the next command re-syncs the index.
 
 Never hand-edit the SQLite index and never delete the store to fix a view.

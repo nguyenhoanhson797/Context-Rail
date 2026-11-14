@@ -1078,7 +1078,7 @@ rail ops doctor</code></pre>
       </div>
       <div class="card">
         <h3>🛟 Crash safety</h3>
-        <p class="small">Temp file, fsync, atomic replace. An intent marker covers multi-file writes; <code>doctor --repair</code> finishes or rolls back.</p>
+        <p class="small">Temp file, fsync, atomic replace. An intent marker covers multi-file writes; <code>rail ops repair</code> finishes or rolls back.</p>
       </div>
     </div>
 
@@ -1159,7 +1159,7 @@ rail ops doctor</code></pre>
       <table>
         <thead><tr><th>Command</th><th>When</th></tr></thead>
         <tbody>
-          <tr><td><code>rail ops doctor</code> / <code>rail ops doctor --repair</code></td><td>Integrity check; finish or roll back interrupted writes.</td></tr>
+          <tr><td><code>rail ops doctor</code> / <code>rail ops repair</code></td><td>Integrity check; finish or roll back interrupted writes.</td></tr>
           <tr><td><code>rail ops reindex</code></td><td>Sync or rebuild the index explicitly.</td></tr>
           <tr><td><code>rail gate</code></td><td>Before you hand work off: doctor issues plus approval and done gates.</td></tr>
           <tr><td><code>rail ops pack list | show | validate | use | create</code></td><td>Inspect or switch the workflow pack.</td></tr>
@@ -1226,7 +1226,7 @@ rail ops doctor</code></pre>
           <li>Read the code in the envelope.</li>
           <li><code>rail ops doctor</code> for integrity.</li>
           <li><code>rail ops reindex</code> if reads disagree with files.</li>
-          <li><code>rail ops doctor --repair</code> for an interrupted write.</li>
+          <li><code>rail ops repair</code> for an interrupted write.</li>
           <li>Only then touch files by hand.</li>
         </ol>
       </div>

@@ -119,7 +119,7 @@ You are the operations agent. Restore a healthy store without losing history.
 1. Read the refusal's `error.code` and `error.details`.
 2. `rail ops doctor`.
 3. If reads disagree with files, `rail ops reindex`.
-4. If a multi-file write was interrupted, `rail ops doctor --repair`.
+4. If a multi-file write was interrupted, `rail ops repair`.
 5. If a managed block was edited, repair it by hand or let a human force it.
 6. If approval drifted, inspect `rail ops pack show --name <pack>` and let a
    human reapprove the pack and the charter.

@@ -505,7 +505,7 @@ def write_daemon_descriptor(store: Path, *, port: int, pid: int | None = None) -
 
 
 def clear_daemon_descriptor(store: Path) -> None:
-    """Remove a stale daemon descriptor (doctor --fix safe path)."""
+    """Remove a stale daemon descriptor (`rail ops repair --fix` safe path)."""
     descriptor = daemon_endpoint(store)
     if descriptor is not None:
         try:

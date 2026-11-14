@@ -149,8 +149,8 @@ In order:
 ```bash
 rail ops doctor
 rail ops reindex
-rail ops doctor --repair
-rail ops doctor --fix
+rail ops repair
+rail ops repair --fix
 ```
 
 Then read `rail read status` and `rail why <slug>`. Never delete the store to
