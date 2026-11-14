@@ -7,6 +7,7 @@ store, and every list is bounded with its omissions counted.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import time
@@ -354,8 +355,26 @@ def brief(
         operating_state=operating_state,
         skip_memory=skip,
     )
-    section_budget = max(chars - len(headline) - len(role_block) - 4, 1)
-    text, trimmed = _fit(sections, section_budget)
+    text, trimmed = _fit(
+        copy.deepcopy(sections), max(chars - len(headline) - len(role_block) - 4, 1)
+    )
+    if trimmed.get("approval", 0) > 0:
+        compact_role = "## Your role\n" + render_role(
+            guide,
+            len(f"You are acting as: {guide.role}")
+            if guide.profile_path is None
+            else len(
+                f"You are acting as: {guide.role} (profile {guide.profile_path}"
+                + ("" if guide.profile_version is None else f" v{guide.profile_version}")
+                + ")"
+            ),
+            inline_skills=False,
+        )
+        if len(compact_role) < len(role_block):
+            role_block = compact_role
+            text, trimmed = _fit(
+                sections, max(chars - len(headline) - len(role_block) - 4, 1)
+            )
     for key, count in trimmed.items():
         omitted[key] += count
     body = headline + ("\n\n" + text if text else "") + "\n\n" + role_block

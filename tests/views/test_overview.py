@@ -101,6 +101,14 @@ def test_the_role_block_survives_a_tight_budget(approved_store: Path) -> None:
     assert "## Your role" in text
     assert "You are acting as: cto" in text
 
+    tight = invoke(
+        "overview", {"max_chars": 700}, store=approved_store, actor="cto"
+    )
+    assert is_ok(tight), tight
+    tight_text = tight["value"]["text"]
+    assert len(tight_text) <= 700
+    assert "You are acting as:" in tight_text
+
 
 def test_conventions_skip_skills_listed_in_the_role(approved_store: Path) -> None:
     result = invoke(
