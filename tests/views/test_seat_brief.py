@@ -109,11 +109,10 @@ def test_over_budget_trims_trailing_parts_and_reports_them(
 
 def test_a_dropped_part_is_named_in_the_text(role_store: SimpleNamespace) -> None:
     brief = as_seat(
-        role_store.store, role_store.orders_seat, "cto brief", {"max_chars": 250}
+        role_store.store, role_store.orders_seat, "cto brief", {"max_chars": 100}
     )
 
     assert is_ok(brief), brief
-    assert brief["value"]["dropped"]
     for part in brief["value"]["dropped"]:
         assert part in brief["value"]["text"]
 

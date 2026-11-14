@@ -65,7 +65,9 @@ def seat_brief(
         heads = [f"{header_line}\n\n{tier}" for tier in role_tiers(guide, budget // 3)]
         text, trimmed, dropped, fitted = _fit_heads(heads, active, lines, budget)
     else:
-        text, trimmed, dropped, fitted, _ = _fit(header_line, active, lines, budget)
+        text, trimmed, dropped, fitted, _ = _fit(
+            header_line, active, lines, budget, keep_header=False
+        )
     return {
         "text": text,
         "estimated_tokens": recipes.estimate_tokens(text),
@@ -338,14 +340,11 @@ def _fit_heads(
     lines: Mapping[str, list[str]],
     budget: int,
 ) -> tuple[str, dict[str, int], list[str], list[str]]:
-    last_result: tuple[str, dict[str, int], list[str], list[str], bool] | None = None
     for head in heads:
-        result = _fit(head, parts, lines, budget)
-        last_result = result
+        result = _fit(head, parts, lines, budget, keep_header=True)
         if result[4]:
             return result[:4]
-    assert last_result is not None
-    return last_result[:4]
+    return _fit(heads[-1], parts, lines, budget, keep_header=False)[:4]
 
 
 def _fit(
@@ -353,6 +352,8 @@ def _fit(
     parts: list[str],
     lines: Mapping[str, list[str]],
     budget: int,
+    *,
+    keep_header: bool = True,
 ) -> tuple[str, dict[str, int], list[str], list[str], bool]:
     """Trim the last part's entries, then drop whole parts, until the text fits."""
     fitted = list(parts)
@@ -374,6 +375,8 @@ def _fit(
                 chunks.append("\n".join(keep))
         if not chunks:
             tail = omitted()
+            if not keep_header:
+                return tail
             return header + ("\n\n" + tail if tail else "")
         chunks.insert(0, header)
         body = "\n".join(chunks)
