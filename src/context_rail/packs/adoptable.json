@@ -1,19 +1,22 @@
 {
   "basic": {
     "workspace/cto/profile.md": [
-      "988dbe1c39d2f5ab7c16d8997d3b8d866668ecd81bfb856cbe31649431500e64"
+      "988dbe1c39d2f5ab7c16d8997d3b8d866668ecd81bfb856cbe31649431500e64",
+      "e7fb6cf1d85c23fc42d5d08d609133adedc360bad887b8f40f608f018b4f2d47"
     ],
     "workspace/cto/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
     ],
     "workspace/cto/skills/review-checklist.md": [
-      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6"
+      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6",
+      "1e2d721620cc5b5ee6bc8adf80b7ccdf613cfa86a8530473092c25c006bbf304"
     ],
     "workspace/cto/skills/test-first.md": [
       "21b9e2d72c41441cc291066dccb0a5ef8bb5216531487a194edf38933b90dcad"
     ],
     "workspace/profiles/implementer/profile.md": [
-      "397b82ae6d247333d535afea16229d0b12837bb3e0b7eebef91c9f76d1acf13c"
+      "397b82ae6d247333d535afea16229d0b12837bb3e0b7eebef91c9f76d1acf13c",
+      "1fb464153629f54b25429f2fddace0e028578b72d73608b4868cc5c10ea05aab"
     ],
     "workspace/profiles/implementer/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
@@ -22,30 +25,35 @@
       "21b9e2d72c41441cc291066dccb0a5ef8bb5216531487a194edf38933b90dcad"
     ],
     "workspace/profiles/reviewer/profile.md": [
-      "aa77d7a30e6d0816b65d9d6a1368154329b71306c7267fd2aa71192483b6f802"
+      "aa77d7a30e6d0816b65d9d6a1368154329b71306c7267fd2aa71192483b6f802",
+      "d3829b272596328be0042e0da1fa1d72bc3e9df826f0e70bd7a3bcbefd02b9d8"
     ],
     "workspace/profiles/reviewer/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
     ],
     "workspace/profiles/reviewer/skills/review-checklist.md": [
-      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6"
+      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6",
+      "1e2d721620cc5b5ee6bc8adf80b7ccdf613cfa86a8530473092c25c006bbf304"
     ]
   },
   "flow": {
     "workspace/cto/profile.md": [
-      "4b9d3f17d33dceeeea2d12a4d4b5237a211b8e43f797af26585f099421b43e13"
+      "4b9d3f17d33dceeeea2d12a4d4b5237a211b8e43f797af26585f099421b43e13",
+      "28ebded0e948e05f1ae65ad4b570e519ec9800eaceb7254d8c4fdcebd2319ff9"
     ],
     "workspace/cto/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
     ],
     "workspace/cto/skills/review-checklist.md": [
-      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6"
+      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6",
+      "1e2d721620cc5b5ee6bc8adf80b7ccdf613cfa86a8530473092c25c006bbf304"
     ],
     "workspace/cto/skills/test-first.md": [
       "21b9e2d72c41441cc291066dccb0a5ef8bb5216531487a194edf38933b90dcad"
     ],
     "workspace/profiles/implementer/profile.md": [
-      "0cd0de89c618414e8b33d521c4bd645526e28ab01b8a9fdbb1bdbb8b4a15d311"
+      "0cd0de89c618414e8b33d521c4bd645526e28ab01b8a9fdbb1bdbb8b4a15d311",
+      "170c2f68361e008c5d7c81c1c00c78a808fbd0fec22193a5a0f8f86fd9354398"
     ],
     "workspace/profiles/implementer/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
@@ -54,30 +62,35 @@
       "21b9e2d72c41441cc291066dccb0a5ef8bb5216531487a194edf38933b90dcad"
     ],
     "workspace/profiles/reviewer/profile.md": [
-      "05aa4641a6ae5344d572dc489cfcb35f56988c4f94e372798e6b384bc11759fd"
+      "05aa4641a6ae5344d572dc489cfcb35f56988c4f94e372798e6b384bc11759fd",
+      "b6fafad4e9e24ebc56685599a73a181cb077135b41162bb2cb6c514c3f2857f7"
     ],
     "workspace/profiles/reviewer/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
     ],
     "workspace/profiles/reviewer/skills/review-checklist.md": [
-      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6"
+      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6",
+      "1e2d721620cc5b5ee6bc8adf80b7ccdf613cfa86a8530473092c25c006bbf304"
     ]
   },
   "scrum": {
     "workspace/cto/profile.md": [
-      "d65250eafddbaa5d00db705e2eb5ac0999e68a5031161c0487832f99c4724245"
+      "d65250eafddbaa5d00db705e2eb5ac0999e68a5031161c0487832f99c4724245",
+      "f86d90b637ec7c1fc87dd1b2c4428f1500e55c424a47451666523272c9230f5c"
     ],
     "workspace/cto/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
     ],
     "workspace/cto/skills/review-checklist.md": [
-      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6"
+      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6",
+      "1e2d721620cc5b5ee6bc8adf80b7ccdf613cfa86a8530473092c25c006bbf304"
     ],
     "workspace/cto/skills/test-first.md": [
       "21b9e2d72c41441cc291066dccb0a5ef8bb5216531487a194edf38933b90dcad"
     ],
     "workspace/profiles/implementer/profile.md": [
-      "58c63179bb172b35791a09e1b1ee586eb25c94da5f6eb99fd57e2b43cd9ce85c"
+      "58c63179bb172b35791a09e1b1ee586eb25c94da5f6eb99fd57e2b43cd9ce85c",
+      "d254fb99312e399cf19a27e7aa2a6bb2bfe8218889c356298795ace8b187d9bc"
     ],
     "workspace/profiles/implementer/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
@@ -86,30 +99,35 @@
       "21b9e2d72c41441cc291066dccb0a5ef8bb5216531487a194edf38933b90dcad"
     ],
     "workspace/profiles/reviewer/profile.md": [
-      "eca879829bb5e6745b425f27caa83d3e50bfbfcf9c38b8985104749b375c4d10"
+      "eca879829bb5e6745b425f27caa83d3e50bfbfcf9c38b8985104749b375c4d10",
+      "6a0f092c60f211d5d39cb9948be2212cdafc4b6f61c5d792965570e6fec2b8da"
     ],
     "workspace/profiles/reviewer/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
     ],
     "workspace/profiles/reviewer/skills/review-checklist.md": [
-      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6"
+      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6",
+      "1e2d721620cc5b5ee6bc8adf80b7ccdf613cfa86a8530473092c25c006bbf304"
     ]
   },
   "waterfall": {
     "workspace/cto/profile.md": [
-      "fc8705f23a8585e644c038e801fbdd29a62cb06eedede26b4260a522284ffd85"
+      "fc8705f23a8585e644c038e801fbdd29a62cb06eedede26b4260a522284ffd85",
+      "d55b3ab9e19aa1f7f5bd69fdab44da1553b481359eb0a9c40f95ca160702001c"
     ],
     "workspace/cto/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
     ],
     "workspace/cto/skills/review-checklist.md": [
-      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6"
+      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6",
+      "1e2d721620cc5b5ee6bc8adf80b7ccdf613cfa86a8530473092c25c006bbf304"
     ],
     "workspace/cto/skills/test-first.md": [
       "21b9e2d72c41441cc291066dccb0a5ef8bb5216531487a194edf38933b90dcad"
     ],
     "workspace/profiles/implementer/profile.md": [
-      "c747111910190e6cbe81234b47c15d1fbf00f5a2e5504cd01186c2225a23ee91"
+      "c747111910190e6cbe81234b47c15d1fbf00f5a2e5504cd01186c2225a23ee91",
+      "3224134fe7ee6c47155c41f3d302e941f4d6cca58d839ef28eb56cb7dbb7727f"
     ],
     "workspace/profiles/implementer/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
@@ -118,13 +136,38 @@
       "21b9e2d72c41441cc291066dccb0a5ef8bb5216531487a194edf38933b90dcad"
     ],
     "workspace/profiles/reviewer/profile.md": [
-      "b61009bc1ab683ef27929f32d89b0b4e95951c394da5dc5c38e05b8bebba8fe3"
+      "b61009bc1ab683ef27929f32d89b0b4e95951c394da5dc5c38e05b8bebba8fe3",
+      "7a04fc23c36165c35bed11fd8df6354220d5b5d10b5d6d2dedb684e94b9627fb"
     ],
     "workspace/profiles/reviewer/skills/code-map.md": [
       "1593c325a9aeef316047aa9eeb82f0cee6d2d6ac29844c64f0e7a713b0f09a5b"
     ],
     "workspace/profiles/reviewer/skills/review-checklist.md": [
-      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6"
+      "2ae8b02f8872962919fbd77db616f01eb64bbf4b1f32fad4fea2a169fe5258a6",
+      "1e2d721620cc5b5ee6bc8adf80b7ccdf613cfa86a8530473092c25c006bbf304"
+    ]
+  },
+  "video": {
+    "workspace/cto/profile.md": [
+      "531b7b1974c4ed7991e72be204d59035b860d8308694c63e010fc9927144a717"
+    ],
+    "workspace/cto/skills/shot-brief.md": [
+      "050cb3e268187fcec0cde4482e397e8e2c0b1717b944d106f184ed51d060ad85"
+    ],
+    "workspace/cto/skills/take-review.md": [
+      "0bc6cffc4943ee8ec920c84638f91e9f255111fd9b6149139c0897199248609a"
+    ],
+    "workspace/profiles/implementer/profile.md": [
+      "b2bd9a2f1be174fd3f5b89691d721e126e9ed16080b038d77bcdecc845f5496c"
+    ],
+    "workspace/profiles/implementer/skills/shot-brief.md": [
+      "050cb3e268187fcec0cde4482e397e8e2c0b1717b944d106f184ed51d060ad85"
+    ],
+    "workspace/profiles/reviewer/profile.md": [
+      "b1e7188971f8e769617b33b0fc8fa49093e21a5ff617b57e4e318fe1fc31892a"
+    ],
+    "workspace/profiles/reviewer/skills/take-review.md": [
+      "0bc6cffc4943ee8ec920c84638f91e9f255111fd9b6149139c0897199248609a"
     ]
   }
 }

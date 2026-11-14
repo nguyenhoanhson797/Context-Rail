@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from context_rail.core.locate import head_sha, worktree_git_dir
 from context_rail.core.util import now_iso
 from context_rail.model.codegraph import code_graph_source, effective_code_graph
+from context_rail.model.pack import canonical_pack_name
 from context_rail.store.codegraph import (
     freshness,
     last_event,
@@ -123,7 +124,7 @@ def adopt(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
     store = Path(ctx.store)
     dry_run = bool(args.get("dry_run"))
-    known = _adoptable().get(ctx.pack.name, {})
+    known = _adoptable().get(canonical_pack_name(ctx.pack.name), {})
     report: dict[str, Any] = {
         "adopted": [],
         "removed": [],

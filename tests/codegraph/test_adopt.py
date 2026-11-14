@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from helpers import init_store
 
 from context_rail.gateway.gateway import invoke
 from context_rail.gateway.handlers.codegraph import adopt_fingerprint
@@ -73,6 +74,15 @@ def test_adopt_leaves_a_customized_profile_and_reports_the_difference(
     [entry] = [row for row in value["customized"] if row["path"] == IMPLEMENTER]
     assert "Never write to" in entry["diff"]
     assert {REVIEWER, CTO} <= set(value["adopted"])
+
+
+def test_adopt_finds_entries_for_a_pack_alias(tmp_path: Path) -> None:
+    store = init_store(tmp_path, pack="small")
+    shutil.copytree(LEGACY, store / "workspace", dirs_exist_ok=True)
+
+    value = _adopt(store)["value"]
+
+    assert {IMPLEMENTER, REVIEWER, CTO} <= set(value["adopted"])
 
 
 def test_adopt_twice_changes_nothing_the_second_time(legacy_store: Path) -> None:
