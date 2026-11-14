@@ -58,10 +58,15 @@ def _user_line_after_the_block(store: Path) -> Path:
 
 def test_managed_block_indexes_skills_without_bodies(skill_store: Path, tmp_path: Path) -> None:
     _set_body(skill_store, tmp_path, BODY_LINE)
+    note = parse_doc(
+        "workspace/skills/test-first.md",
+        (skill_store / "workspace" / "skills" / "test-first.md").read_bytes(),
+    )
+    description = note.fields["description"]
     result = invoke("adapters sync", {}, store=skill_store, actor="cto")
     assert is_ok(result), result
     agents = (skill_store.parent / AGENTS).read_text(encoding="utf-8")
-    assert "test-first" in agents and "Write the failing test first" in agents
+    assert "test-first" in agents and description in agents
     assert BODY_LINE not in agents
     assert BODY_LINE in (skill_store.parent / SKILL).read_text(encoding="utf-8")
 

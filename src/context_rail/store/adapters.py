@@ -311,9 +311,6 @@ def carries_marker(payload: str) -> bool:
     return _marker_line(payload) is not None
 
 
-# â”€â”€ internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-
 def _lines(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 

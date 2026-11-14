@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from context_rail.context import budget as budget_module
-from context_rail.context.role_brief import RoleGuide, render_role, role_guide
+from context_rail.context.role_brief import RoleGuide, role_guide, role_tiers
 from context_rail.kernel import budgets, structure
 from context_rail.store import query
 
@@ -357,8 +357,7 @@ def brief(
         omitted[key] += count
     body = headline + ("\n\n" + text if text else "")
     if role_block:
-        candidate = body + "\n\n" + role_block
-        body = candidate if len(candidate) <= chars else headline + "\n\n" + role_block
+        body = body + "\n\n" + role_block
     result = {
         "text": body[:chars],
         "estimated_tokens": estimate_tokens(body[:chars]),
@@ -392,30 +391,9 @@ def _fit_with_role(
     guide: RoleGuide,
     chars: int,
 ) -> tuple[str, str, dict[str, int]]:
-    head_line = f"You are acting as: {guide.role}"
-    if guide.profile_path is not None:
-        version = "" if guide.profile_version is None else f" v{guide.profile_version}"
-        head_line = f"{head_line} (profile {guide.profile_path}{version})"
-    normal = "## Your role\n" + render_role(
-        guide, min(3000, max(chars // 3, 240)), inline_skills=False
-    )
-    terse = "## Your role\n" + render_role(
-        guide,
-        sum(
-            len(f"- {s.name} (read: rail read show {s.name} --path {s.path})\n")
-            if not s.missing
-            else len(f"- {s.path}: missing (run rail ops upgrade)\n")
-            for s in guide.skills
-        )
-        + len(head_line)
-        + len("\nSkills:\n"),
-        inline_skills=False,
-    )
-    head_only = "## Your role\n" + head_line
-    candidates: list[str] = []
-    for candidate in (normal, terse, head_only, ""):
-        if candidate not in candidates:
-            candidates.append(candidate)
+    limit = min(3000, max(chars // 3, 240))
+    tiers = role_tiers(guide, limit, inline_skills=False)
+    candidates = [f"## Your role\n{tier}" for tier in tiers] + [""]
 
     baseline_text, baseline_trimmed = _fit(
         copy.deepcopy(sections), max(chars - len(headline) - 2, 1)

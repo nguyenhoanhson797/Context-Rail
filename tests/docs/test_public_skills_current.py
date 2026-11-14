@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from command_names import unknown_rail_commands
+
 from context_rail.core.tool_names import REMOVED_COMMANDS
 
 ROOT = Path(__file__).parents[2]
@@ -29,3 +31,9 @@ def test_public_docs_no_longer_name_test_first() -> None:
     for path in _public_skill_and_onboarding_docs():
         text = path.read_text(encoding="utf-8")
         assert "test-first" not in text, path.relative_to(ROOT).as_posix()
+
+
+def test_public_docs_commands_resolve() -> None:
+    for path in _public_skill_and_onboarding_docs():
+        text = path.read_text(encoding="utf-8")
+        assert unknown_rail_commands(text) == [], path.relative_to(ROOT).as_posix()

@@ -21,7 +21,7 @@ from context_rail.store.write import WriteRefused
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["RoleGuide", "SkillGuide", "acting", "render_role", "role_guide"]
+__all__ = ["RoleGuide", "SkillGuide", "acting", "render_role", "role_guide", "role_tiers"]
 
 
 @dataclass(frozen=True)
@@ -99,6 +99,20 @@ def acting(guide: RoleGuide) -> dict[str, Any]:
             for skill in guide.skills
         ],
     }
+
+
+def role_tiers(guide: RoleGuide, limit: int, *, inline_skills: bool = True) -> list[str]:
+    """Candidate renderings from fullest within ``limit`` down to the role line."""
+    full = render_role(guide, limit, inline_skills=inline_skills)
+    head = _head(guide)
+    terse = _assemble(head, "", _skills_block(guide.skills, description=False))
+    tiers: list[str] = []
+    for candidate in (full, terse, head):
+        if len(candidate) <= limit and candidate not in tiers:
+            tiers.append(candidate)
+    if not tiers:
+        tiers.append(full)
+    return tiers
 
 
 def render_role(guide: RoleGuide, limit: int, *, inline_skills: bool = True) -> str:

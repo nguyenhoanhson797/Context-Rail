@@ -9,12 +9,12 @@ cut is always named in the text.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from context_rail.context import recipes
 from context_rail.context.reach import ReachError, resolve_reach
-from context_rail.context.role_brief import render_role, role_guide
+from context_rail.context.role_brief import render_role, role_guide, role_tiers
 from context_rail.core.util import now_iso
 from context_rail.kernel import structure
 from context_rail.kernel.reach import ancestors, descendants, one_hop
@@ -61,10 +61,16 @@ def seat_brief(
     active = [part for part in role.sees.parts if lines.get(part)]
     header = f"# Seat {seat.seat} on {seat.anchor}"
     if with_role:
-        role_text = render_role(role_guide(context, seat.role), budget // 3)
-        if role_text:
-            header = f"{header}\n\n{role_text}"
-    text, trimmed, dropped, fitted = _fit(header, active, lines, budget)
+        guide = role_guide(context, seat.role)
+        role_prefix = f"{header}\n\n"
+        first_role = render_role(guide, budget // 3)
+        role_options = role_tiers(guide, max(budget - len(role_prefix), 1))
+        header = role_prefix + first_role
+        text, trimmed, dropped, fitted = _fit(
+            header, active, lines, budget, role_prefix=role_prefix, role_options=role_options
+        )
+    else:
+        text, trimmed, dropped, fitted = _fit(header, active, lines, budget)
     return {
         "text": text,
         "estimated_tokens": recipes.estimate_tokens(text),
@@ -336,6 +342,9 @@ def _fit(
     parts: list[str],
     lines: Mapping[str, list[str]],
     budget: int,
+    *,
+    role_prefix: str = "",
+    role_options: Sequence[str] = (),
 ) -> tuple[str, dict[str, int], list[str], list[str]]:
     """Trim the last part's entries, then drop whole parts, until the text fits."""
     fitted = list(parts)
@@ -349,25 +358,58 @@ def _fit(
         )
         return "omitted: " + ", ".join(bits) if bits else ""
 
-    def render() -> str:
+    def render(head: str = header) -> str:
         chunks: list[str] = []
         for part in fitted:
             keep = lines[part][: len(lines[part]) - trimmed.get(part, 0)]
             if keep:
                 chunks.append("\n".join(keep))
         if not chunks:
-            return omitted()
-        chunks.insert(0, header)
+            tail = omitted()
+            if not role_options:
+                return tail
+            if not tail:
+                return head
+            # Keep the role line even when every part was dropped; if header +
+            # tail would overflow and hide part names, replace the seat banner
+            # with just the role line so both role and omitted parts survive.
+            combined = head + "\n\n" + tail
+            if len(combined) <= budget:
+                return combined
+            short = role_options[-1] + "\n\n" + tail
+            return short if len(short) <= budget else combined
+        chunks.insert(0, head)
         body = "\n".join(chunks)
         tail = omitted()
         return body + ("\n\n" + tail if tail else "")
+
+    def fit_role(base: str) -> str:
+        if not role_options:
+            return base
+        for tier in role_options:
+            candidate = render(role_prefix + tier)
+            if len(candidate) <= budget:
+                return candidate
+        tail = omitted()
+        short_head = role_options[-1]
+        if not tail:
+            return short_head[:budget]
+        role_only = short_head + "\n\n" + tail
+        if len(role_only) <= budget:
+            return role_only
+        # When even the role line + full omitted list exceeds budget, keep the
+        # role line and compact the omitted list to fit the remaining budget.
+        compact = f"omitted: {', '.join(dropped)}" if dropped else tail
+        if len(short_head) + 2 + len(compact) <= budget:
+            return short_head + "\n\n" + compact
+        return role_only[:budget]
 
     while True:
         text = render()
         if len(text) <= budget:
             return text, trimmed, dropped, fitted
         if not fitted:
-            return text[:budget], trimmed, dropped, fitted
+            return fit_role(text)[:budget], trimmed, dropped, fitted
         last = fitted[-1]
         removed = trimmed.get(last, 0)
         if removed < len(lines[last]):

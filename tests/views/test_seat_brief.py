@@ -230,6 +230,13 @@ def test_a_seat_brief_names_its_role(role_store: SimpleNamespace) -> None:
     header = f"# Seat {role_store.orders_seat} on {role_store.orders}\n\n"
     assert text.startswith(header + "You are acting as: sprint-lead")
 
+    tight = as_seat(
+        role_store.store, role_store.orders_seat, "cto brief", {"max_chars": 80}
+    )
+    assert is_ok(tight), tight
+    assert len(tight["value"]["text"]) <= 80
+    assert "You are acting as: sprint-lead" in tight["value"]["text"]
+
 
 def _etag(store: Path, slug: str) -> str:
     with as_human():
