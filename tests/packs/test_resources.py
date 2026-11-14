@@ -9,7 +9,7 @@ from helpers import init_store
 
 PACKS = ("basic", "flow", "scrum", "waterfall")
 PRIMITIVE_TEMPLATES = ("item", "note", "record", "check")
-STAGE_1B_TEMPLATES = ("charter", "goal", "vision", "scope", "wont", "work-order")
+STAGE_1B_TEMPLATES = ("charter", "goal", "vision", "scope", "wont")
 CODE_TEMPLATES = ("code",)
 ROLES = ("cto", "implementer", "reviewer")
 GOVERNANCE = ("charter", "vision", "wont", "skill", "cto", "profile", "convention", "decision", "event", "check")
@@ -35,7 +35,7 @@ def test_builtin_pack_ships_every_declared_resource(name: str) -> None:
     root = _pack_dir(name)
     missing = [t for t in PRIMITIVE_TEMPLATES + STAGE_1B_TEMPLATES + CODE_TEMPLATES if not (root / "templates" / f"{t}.md").is_file()]
     missing += [r for r in ROLES if not (root / "profiles" / f"{r}.md").is_file()]
-    missing += [s for s in ("test-first", "review-checklist") if not (root / "skills" / s / "SKILL.md").is_file()]
+    missing += [s for s in ("review-checklist",) if not (root / "skills" / s / "SKILL.md").is_file()]
     assert missing == []
 
 

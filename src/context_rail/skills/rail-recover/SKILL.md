@@ -5,6 +5,7 @@ name: rail-recover
 description: Recover from a refused rail command by reading its error code and details, retrying only what the error allows, and stopping when the budget is spent.
 primitive: note
 preset: skill
+title: Recover from a refusal
 tags: []
 ---
 ### Recover from a refusal

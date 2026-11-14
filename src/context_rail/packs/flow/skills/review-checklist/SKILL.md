@@ -8,7 +8,7 @@ preset: skill
 title: Review checklist
 tags: []
 ---
-# Review checklist
+### Review checklist
 
 - The candidate commit is the one the Checks ran against, and the Check definitions are
   unchanged since they passed.
@@ -16,6 +16,8 @@ tags: []
 - The diff stays inside the Item's scope and the charter's conventions.
 - The `code area` impact lines match the diff; anything outside the predicted area is
   explained.
+- New tests are justified: each guards a named failure; no new test is fine when
+  existing checks prove the change; flag tests that only pin implementation.
 - No protected store document, adapter file or acceptance Check was edited by the worker.
 - Failures and unknowns are visible in the report instead of being presented as success.
 

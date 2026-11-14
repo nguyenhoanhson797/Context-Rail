@@ -5,6 +5,7 @@ name: rail-coordinate
 description: Run the CTO loop on the rail - read the queue, plan Items, hand off work, judge candidates, and leave human-only decisions to people.
 primitive: note
 preset: skill
+title: Coordinate the rail
 tags: []
 ---
 ### Coordinate the rail

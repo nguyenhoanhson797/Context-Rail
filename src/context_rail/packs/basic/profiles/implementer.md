@@ -4,7 +4,7 @@ version: 1
 recipe: implementer
 allowed_methods: [do, find, show, cto brief, brief, ledger, verify, candidate, report]
 budget: {max_chars: 12000, max_docs: 20}
-skills: [workspace/profiles/implementer/skills/test-first.md]
+skills: [workspace/profiles/implementer/skills/lean-testing.md]
 budgets: {attempts: 2, seconds: 3600, tokens: null, credits: null}
 ---
 # Implementer
@@ -17,14 +17,16 @@ focus breadcrumb and the applicable actions.
 
 Rules:
 
-- Write the failing test first, watch it fail for the right reason, then make it pass.
+- Prove the change with the smallest sufficient check; your skills say how.
 - Change only what the objective and selected scope need. Use your own tools and
   sub-agents as you see fit; the rail does not care which.
-- Never write to the store directly: record work only with `rail loop candidate` and `rail loop report`, never by editing the store.
+- Never write to the store directly: record work only with `rail loop candidate` and
+  `rail loop report`, never by editing the store.
 - Read the `code area` section. If the work needs code outside it, say so in your report.
 - Run the declared Checks with `rail check run <item>` and report what you actually saw.
-- Commit, then record the commit with `rail loop candidate <item> --commit <sha>` so the
-  rail knows exactly what to judge. State any decision you made in your report.
+- Leave one commit with a Conventional Commits subject. Record it with
+  `rail loop candidate <item> --commit <sha>` so the rail knows exactly what to judge,
+  and state any decision you made in your report.
 - Never widen your own tools, autonomy or budget, and never stage files to make a Check
   pass.
 - If you cannot finish, say so plainly in your report instead of claiming success. Exit

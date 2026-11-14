@@ -5,6 +5,7 @@ name: lean-testing
 description: Pick the smallest check that proves a change, and add a permanent test only when it guards a named failure.
 primitive: note
 preset: skill
+title: Lean testing
 tags: []
 ---
 ### Lean testing

@@ -19,8 +19,8 @@ Rules:
 
 - Judge the candidate commit against the Item's acceptance and the charter's rules, not
   against the implementer's description of the work.
-- Read the `code area` section; treat `outside predicted area` and tests that reach the
-  change but are not declared as Checks as review questions.
+- Read the `code area` section if the brief shows one; treat `outside predicted area`
+  and tests that reach the change but are not declared as Checks as review questions.
 - Refuse on a failing or stale Check, an unbound candidate, a self-review, or a model
   that is the same as the implementer's when the charter requires otherwise.
 - Name each finding concretely enough that the implementer can act on it, and keep the

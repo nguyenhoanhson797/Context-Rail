@@ -169,7 +169,6 @@ def test_builtin_pack_ships_body_templates() -> None:
         "vision.md",
         "scope.md",
         "wont.md",
-        "work-order.md",
     } <= shipped
 
 

@@ -49,9 +49,9 @@ def test_workspace_seed_writes_profiles_and_skills(tmp_path: Path) -> None:
     assert "workspace/profiles/implementer/profile.md" in result["written"]
     assert "workspace/profiles/reviewer/profile.md" in result["written"]
     assert (store / "workspace" / "cto" / "profile.md").is_file()
-    assert (store / "workspace" / "cto" / "skills" / "test-first.md").is_file()
+    assert (store / "workspace" / "cto" / "skills" / "rail-coordinate.md").is_file()
     assert (
-        store / "workspace" / "profiles" / "implementer" / "skills" / "test-first.md"
+        store / "workspace" / "profiles" / "implementer" / "skills" / "lean-testing.md"
     ).is_file()
 
 

@@ -505,12 +505,11 @@ def test_profile_body_must_be_a_nonempty_role_prompt() -> None:
 
 def test_builtin_skills_load_with_pinned_names() -> None:
     skills = load_builtin_skills()
-    assert sorted(skills) == ["review-checklist", "test-first"]
+    assert sorted(skills) == ["review-checklist"]
     for slug, text in skills.items():
         assert text.strip()
         assert f"name: {slug}" in text
         assert "version: 1" in text
-    assert "test-first" in skills
 
 
 # ── Reports ───────────────────────────────────────────────────────────────

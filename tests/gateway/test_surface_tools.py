@@ -8,6 +8,8 @@ from pathlib import Path
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from context_rail.gateway.tools import TOOLS
+from context_rail.model.manifest import load_manifest
+from context_rail.store.write import Op, commit
 from helpers import init_pack_store, init_store, workflow_pack_document
 
 
@@ -121,10 +123,21 @@ def test_next_excludes_an_open_dependency_and_names_it(
 
 
 def test_show_can_disambiguate_a_shared_skill_slug(approved_store: Path) -> None:
-    ambiguous = invoke("show", {"slug": "test-first"}, store=approved_store, actor="cto")
+    scoped = "workspace/profiles/reviewer/skills/review-checklist.md"
+    copy = (approved_store / scoped).read_bytes()
+    commit(
+        approved_store,
+        load_manifest(approved_store),
+        [Op("workspace/skills/review-checklist.md", copy, "absent")],
+        None,
+        actor="cto",
+    )
+    ambiguous = invoke(
+        "show", {"slug": "review-checklist"}, store=approved_store, actor="cto"
+    )
     shown = invoke(
         "show",
-        {"slug": "test-first", "path": "workspace/cto/skills/test-first.md"},
+        {"slug": "review-checklist", "path": scoped},
         store=approved_store,
         actor="cto",
     )
@@ -132,10 +145,10 @@ def test_show_can_disambiguate_a_shared_skill_slug(approved_store: Path) -> None
     assert ambiguous["ok"] is False
     assert ambiguous["error"]["code"] == "CONFLICT"
     assert is_ok(shown), shown
-    assert shown["value"]["doc"]["path"] == "workspace/cto/skills/test-first.md"
+    assert shown["value"]["doc"]["path"] == scoped
     wrong = invoke(
         "show",
-        {"slug": "charter", "path": "workspace/cto/skills/test-first.md"},
+        {"slug": "charter", "path": scoped},
         store=approved_store,
         actor="cto",
     )

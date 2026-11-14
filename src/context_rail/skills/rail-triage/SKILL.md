@@ -5,6 +5,7 @@ name: rail-triage
 description: Turn filed reports into fixes, decisions or proposals for the human, and close each loop.
 primitive: note
 preset: skill
+title: Triage reports
 tags: []
 ---
 ### Triage reports

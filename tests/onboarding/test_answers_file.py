@@ -127,7 +127,7 @@ def test_answers_file_runs_the_agents_stage_and_honours_the_harness(
     value = result["value"]
     assert value["stages"]["agents"]["state"] == "written"
     assert (tmp_path / "AGENTS.md").is_file()
-    assert (tmp_path / ".agents" / "skills" / "test-first" / "SKILL.md").is_file()
+    assert (tmp_path / ".agents" / "skills" / "lean-testing" / "SKILL.md").is_file()
 
 
 def test_answers_file_with_a_confirmer_approves_the_charter(
@@ -272,7 +272,7 @@ def test_shipped_profiles_are_materialized_without_runtime_fields(
     assert profiles["value"]["total"] == 2
     assert invoke("find", {"preset": "cto"}, store=store)["value"]["total"] == 1
     skills = invoke("find", {"preset": "skill"}, store=store)
-    assert skills["value"]["total"] == 4
+    assert skills["value"]["total"] == 5
 
 
 def test_materialized_profiles_are_well_formed_store_documents(
