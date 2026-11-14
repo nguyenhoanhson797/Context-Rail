@@ -222,6 +222,15 @@ def test_legacy_brief_is_unchanged(approved_store: Path) -> None:
     assert "seat" not in brief["value"]
 
 
+def test_a_seat_brief_names_its_role(role_store: SimpleNamespace) -> None:
+    brief = as_seat(role_store.store, role_store.orders_seat, "cto brief", {})
+
+    assert is_ok(brief), brief
+    text = brief["value"]["text"]
+    header = f"# Seat {role_store.orders_seat} on {role_store.orders}\n\n"
+    assert text.startswith(header + "You are acting as: sprint-lead")
+
+
 def _etag(store: Path, slug: str) -> str:
     with as_human():
         shown = invoke("show", {"slug": slug}, store=store, actor=None)

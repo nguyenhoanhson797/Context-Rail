@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from context_rail.context import budget as budget_module
+from context_rail.context.role_brief import RoleGuide, render_role, role_guide
 from context_rail.kernel import budgets, structure
 from context_rail.store import query
 
@@ -328,6 +329,11 @@ def brief(
         reports = kept_reports
     operating_state = _operating_state(context)
     headline = _headline(operating_state)
+    guide = _overview_role_guide(context)
+    role_block = "## Your role\n" + render_role(
+        guide, min(3000, max(chars // 3, 240)), inline_skills=False
+    )
+    skip = frozenset(skill.path for skill in guide.skills)
     sections, omitted = _brief_sections(
         context,
         approval=approval,
@@ -346,14 +352,18 @@ def brief(
         checks_omitted=checks_omitted,
         limit=limit,
         operating_state=operating_state,
+        skip_memory=skip,
     )
-    text, trimmed = _fit(sections, max(chars - len(headline) - 2, 1))
+    section_budget = max(chars - len(headline) - len(role_block) - 4, 1)
+    text, trimmed = _fit(sections, section_budget)
     for key, count in trimmed.items():
         omitted[key] += count
-    text = headline + "\n\n" + text
+    body = headline + ("\n\n" + text if text else "") + "\n\n" + role_block
+    if len(body) > chars:
+        body = headline + "\n\n" + role_block
     result = {
-        "text": text[:chars],
-        "estimated_tokens": estimate_tokens(text[:chars]),
+        "text": body[:chars],
+        "estimated_tokens": estimate_tokens(body[:chars]),
         "omitted": omitted,
         "approval": approval,
         "state": {
@@ -369,6 +379,13 @@ def brief(
     if reach is not None:
         result["omitted_outside_reach"] = total_items - len(items)
     return result
+
+
+def _overview_role_guide(context: Context) -> RoleGuide:
+    role = "cto"
+    if context.role_mode and context.identity.role is not None:
+        role = context.identity.role.name
+    return role_guide(context, role)
 
 
 def _operating_state(context: Context) -> dict[str, Any]:
@@ -488,6 +505,7 @@ def _brief_sections(
     checks_omitted: int,
     limit: int,
     operating_state: dict[str, Any] | None = None,
+    skip_memory: frozenset[str] = frozenset(),
 ) -> tuple[list[Section], dict[str, int]]:
     sections = [Section(key) for key in SECTION_KEYS]
     by_key = {section.key: section for section in sections}
@@ -611,7 +629,7 @@ def _brief_sections(
         reversible_section.fixed.append("none")
 
     conventions_section = by_key["conventions"]
-    memory, memory_omitted = _memory_rows(context.index, limit)
+    memory, memory_omitted = _memory_rows(context.index, limit, skip=skip_memory)
     conventions_section.entries.extend(memory)
     omitted["conventions"] = memory_omitted
     return sections, omitted
@@ -822,20 +840,22 @@ def approval_state(context: Context) -> dict[str, Any]:
     }
 
 
-def _memory_rows(ix: Any, limit: int) -> tuple[list[str], int]:
+def _memory_rows(
+    ix: Any, limit: int, skip: frozenset[str] = frozenset()
+) -> tuple[list[str], int]:
     where = (
         "WHERE d.broken = 0 AND d.primitive = 'note' "
         "AND (d.preset = 'convention' OR d.path LIKE 'workspace/%')"
     )
-    total = ix.conn.execute(f"SELECT COUNT(*) FROM docs d {where}").fetchone()[0]
     rows = ix.conn.execute(
         f"SELECT d.slug, d.title, d.excerpt, d.path FROM docs d {where} "
-        "ORDER BY d.updated DESC, d.slug ASC LIMIT ?",
-        (limit,),
+        "ORDER BY d.updated DESC, d.slug ASC"
     ).fetchall()
+    kept = [row for row in rows if row[3] not in skip]
+    shown_rows = kept[:limit]
     seen: dict[tuple[str, str], int] = {}
     order: list[tuple[str, str]] = []
-    for slug, title, excerpt, _path in rows:
+    for slug, title, excerpt, _path in shown_rows:
         key = (title or slug, " ".join((excerpt or "").split()))
         if key in seen:
             seen[key] += 1
@@ -849,7 +869,7 @@ def _memory_rows(ix: Any, limit: int) -> tuple[list[str], int]:
         if seen[key] > 1:
             line += f" ({seen[key]} copies)"
         shown.append(line)
-    return shown, max(total - len(rows), 0)
+    return shown, max(len(kept) - len(shown_rows), 0)
 
 
 def _code_graph_lines(context: Context) -> list[str]:

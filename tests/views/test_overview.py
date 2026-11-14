@@ -73,3 +73,42 @@ def test_overview_prints_each_identical_skill_once(
     ]
     assert len(review) == 1
     assert review[0].endswith("(2 copies)")
+
+
+def test_overview_ends_with_the_cto_role_and_its_skills(
+    approved_store: Path,
+) -> None:
+    result = invoke(
+        "overview", {"max_chars": 20000}, store=approved_store, actor="cto"
+    )
+
+    assert is_ok(result), result
+    text = result["value"]["text"]
+    assert "## Your role" in text
+    assert "You are acting as: cto" in text
+    assert "- rail-coordinate:" in text
+    assert text.index("## Conventions and memory") < text.index("## Your role")
+
+
+def test_the_role_block_survives_a_tight_budget(approved_store: Path) -> None:
+    result = invoke(
+        "overview", {"max_chars": 1500}, store=approved_store, actor="cto"
+    )
+
+    assert is_ok(result), result
+    text = result["value"]["text"]
+    assert len(text) <= 1500
+    assert "## Your role" in text
+    assert "You are acting as: cto" in text
+
+
+def test_conventions_skip_skills_listed_in_the_role(approved_store: Path) -> None:
+    result = invoke(
+        "overview", {"max_chars": 20000}, store=approved_store, actor="cto"
+    )
+
+    assert is_ok(result), result
+    section = _section(result["value"]["text"], "## Conventions and memory")
+    for line in section.splitlines():
+        assert not line.startswith("- Rail coordinate — ")
+

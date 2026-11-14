@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.context import recipes
 from context_rail.context.reach import ReachError, resolve_reach
+from context_rail.context.role_brief import render_role, role_guide
 from context_rail.core.util import now_iso
 from context_rail.kernel import structure
 from context_rail.kernel.reach import ancestors, descendants, one_hop
@@ -39,6 +40,7 @@ def seat_brief(
     *,
     max_chars: int | None = None,
     extra_parts: Mapping[str, str] | None = None,
+    with_role: bool = True,
 ) -> dict[str, Any]:
     """The bounded brief one seat may read, and what the budget left out."""
     documents = _documents(context, seat, role)
@@ -57,9 +59,12 @@ def seat_brief(
     documents = documents[:entries]
     lines = _lines(context, documents, role, extra_parts, seat)
     active = [part for part in role.sees.parts if lines.get(part)]
-    text, trimmed, dropped, fitted = _fit(
-        f"# Seat {seat.seat} on {seat.anchor}", active, lines, budget
-    )
+    header = f"# Seat {seat.seat} on {seat.anchor}"
+    if with_role:
+        role_text = render_role(role_guide(context, seat.role), budget // 3)
+        if role_text:
+            header = f"{header}\n\n{role_text}"
+    text, trimmed, dropped, fitted = _fit(header, active, lines, budget)
     return {
         "text": text,
         "estimated_tokens": recipes.estimate_tokens(text),
@@ -82,6 +87,7 @@ def seat_brief_for(
     seat: str | None = None,
     extra_parts: Mapping[str, str] | None = None,
     max_chars: int | None = None,
+    with_role: bool = True,
 ) -> dict[str, Any]:
     """The brief a role would read anchored at ``anchor``, with no live seat needed.
 
@@ -100,7 +106,14 @@ def seat_brief_for(
         granted_by=granted_by,
         granted_at=now_iso(),
     )
-    return seat_brief(context, live, role, max_chars=max_chars, extra_parts=extra_parts)
+    return seat_brief(
+        context,
+        live,
+        role,
+        max_chars=max_chars,
+        extra_parts=extra_parts,
+        with_role=with_role,
+    )
 
 
 def _documents(context: Context, seat: LiveSeat, role: Role) -> list[str]:

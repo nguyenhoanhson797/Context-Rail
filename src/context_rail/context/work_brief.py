@@ -442,6 +442,7 @@ def _context(
             granted_by=granted_by,
             extra_parts=extras,
             max_chars=limit,
+            with_role=False,
         )
         return brief["text"]
     return _neighbourhood(ctx, shown)
