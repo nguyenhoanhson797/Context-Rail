@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.context import code_area, recipes, surface
 from context_rail.context.budget import item_budget
+from context_rail.context.role_brief import acting, render_role, role_guide
 from context_rail.context.seat_brief import seat_brief_for
 from context_rail.model.codegraph import effective_code_graph
 from context_rail.model.roles import Role
@@ -21,6 +22,7 @@ from context_rail.store.codegraph import has_snapshot, open_graph
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
+    from context_rail.model.cto import Profile
 
 __all__ = [
     "DEFAULT_CHARS",
@@ -32,6 +34,7 @@ __all__ = [
 ]
 
 WORK_BRIEF_SECTIONS = (
+    "role",
     "objective",
     "context",
     "workflow",
@@ -65,6 +68,7 @@ _TRIM_ORDER = (
     "constraints",
     "conventions",
     "allowed rail methods",
+    "role",
     "selected scope",
     "recording",
     "objective",
@@ -109,6 +113,7 @@ def build_work_brief(
     title = doc.get("title") or item
     body = shown["body"]
     pack_role = ctx.pack.operating.roles.get(role) if ctx.role_mode else None
+    guide = role_guide(ctx, role)
     reviewing = reviews_work(ctx, role)
     checks = query.check_states(ctx.index, item)
     globs = sorted({glob for row in checks for glob in row["inputs"]})
@@ -122,7 +127,7 @@ def build_work_brief(
         "constraints": _constraints(ctx, item, pack_role, reviewing),
         "selected files": _selected_files(globs, candidate, reviewing),
         "checks": _check_lines(checks),
-        "allowed rail methods": _methods(ctx, role, pack_role),
+        "allowed rail methods": _methods(pack_role, guide.profile),
         "recording": _recording(item, reviewing),
     }
     extras: dict[str, str] = {}
@@ -133,7 +138,8 @@ def build_work_brief(
     area = _area_text(ctx, candidate, title=title, body=body, globs=globs, earlier=earlier)
     sections["code area"] = area
     extras["code_area"] = area
-    total = _budget(ctx, pack_role, max_chars)
+    total = _budget(pack_role, guide.profile, max_chars)
+    sections["role"] = render_role(guide, limit=max(total // 3, _FLOOR))
     sections["context"] = _context(
         ctx,
         item,
@@ -151,6 +157,7 @@ def build_work_brief(
     return {
         "item": item,
         "role": role,
+        "acting": acting(guide),
         "candidate": None if candidate is None else candidate["record_id"],
         "sections": fitted,
         "text": text,
@@ -159,11 +166,10 @@ def build_work_brief(
     }
 
 
-def _budget(ctx: Context, role: Role | None, max_chars: int | None) -> int:
+def _budget(role: Role | None, profile: Profile | None, max_chars: int | None) -> int:
     total = DEFAULT_CHARS
     if role is not None:
         total = role.sees.chars
-    profile = ctx.profile
     if profile is not None:
         total = min(total, int(profile.budget.get("max_chars", total)))
     if max_chars is not None:
@@ -228,10 +234,7 @@ def _conventions(reviewing: bool) -> str:
             "Judge the candidate commit against the item's acceptance and the "
             "charter, not against the implementer's description of the work."
         )
-    return (
-        "Follow the repository's own conventions. Write the failing test first, "
-        "watch it fail for the right reason, then make it pass."
-    )
+    return "Follow the repository's own conventions."
 
 
 def _constraints(
@@ -299,11 +302,10 @@ def _check_lines(checks: Sequence[dict[str, Any]]) -> str:
     return "\n".join(f"- {row['slug']}" for row in checks) or "(none declared)"
 
 
-def _methods(ctx: Context, role: str, pack_role: Role | None) -> str:
+def _methods(pack_role: Role | None, profile: Profile | None) -> str:
     if pack_role is not None:
         allowed = sorted(key for key, value in pack_role.can.methods.items() if value)
         return ", ".join(allowed) or "(read only)"
-    profile = ctx.profile
     if profile is not None:
         return ", ".join(profile.allowed_methods)
     return ", ".join(_WORKER_METHODS)

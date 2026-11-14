@@ -228,7 +228,7 @@ class Context:
         actor, and narrowing an actor's methods never syncs the index ahead of
         the handler.
         """
-        found = self._actor_document(name)
+        found = self.profile_document(name)
         if found is None:
             return None
         return parse_profile(found.fields, body=found.body, role_mode=self.role_mode)
@@ -272,7 +272,8 @@ class Context:
         """Whether this store's pack declares roles, so seats rather than names act."""
         return bool(getattr(self.pack.operating, "roles", None))
 
-    def _actor_document(self, name: str) -> Doc | None:
+    def profile_document(self, name: str) -> Doc | None:
+        """The store document of the Actor profile called ``name``, or None."""
         candidates: list[tuple[str, Doc]] = []
         for preset in self.pack.presets.values():
             if preset.primitive != "actor":
