@@ -146,7 +146,7 @@ def test_a_drifted_orphan_is_removed_only_by_a_forced_sync(skill_store: Path) ->
     assert not mirror.exists()
 
 
-def test_a_user_line_after_the_block_is_refused_then_kept_by_a_forced_sync(
+def test_a_user_line_after_the_block_is_refused_then_kept_and_released_by_a_forced_sync(
     skill_store: Path,
 ) -> None:
     assert is_ok(invoke("adapters sync", {}, store=skill_store, actor="cto"))
@@ -163,6 +163,14 @@ def test_a_user_line_after_the_block_is_refused_then_kept_by_a_forced_sync(
     assert kept["value"]["kept"] == [SKILL]
     assert kept["value"]["removed"] == []
     assert "My note." in mirror.read_text(encoding="utf-8")
+    kept_bytes = mirror.read_bytes()
+    assert SKILL not in latest_record(skill_store, "adapters.synced")["data"]["payload_digests"]
+    follow = invoke("adapters sync", {}, store=skill_store, actor="cto")
+    assert is_ok(follow), follow
+    assert follow["value"]["kept"] == [] and follow["value"]["removed"] == []
+    assert mirror.read_bytes() == kept_bytes
+    doctor = invoke("doctor", {}, store=skill_store, actor="human")
+    assert "adapter_modified" not in [issue["code"] for issue in doctor["value"]["issues"]]
 
 
 def test_a_harness_limited_sync_keeps_the_other_records_so_a_later_sync_removes_the_orphan(
@@ -178,18 +186,13 @@ def test_a_harness_limited_sync_keeps_the_other_records_so_a_later_sync_removes_
     assert (skill_store.parent / CLAUDE).is_file()
 
 
-def test_a_kept_orphan_leaves_the_record_once_its_file_is_gone(skill_store: Path) -> None:
+def test_an_orphan_already_gone_leaves_the_record(skill_store: Path) -> None:
     assert is_ok(invoke("adapters sync", {}, store=skill_store, actor="cto"))
-    mirror = _user_line_after_the_block(skill_store)
     _remove_note(skill_store)
-    kept = _forced_sync(skill_store)
-    assert is_ok(kept), kept
-    assert kept["value"]["kept"] == [SKILL]
-    assert SKILL in latest_record(skill_store, "adapters.synced")["data"]["payload_digests"]
-    mirror.unlink()
+    (skill_store.parent / SKILL).unlink()
     result = invoke("adapters sync", {}, store=skill_store, actor="cto")
     assert is_ok(result), result
-    assert result["value"]["written"] == [] and result["value"]["removed"] == []
+    assert result["value"]["written"] == [AGENTS] and result["value"]["removed"] == []
     assert result["value"]["record"] is not None
     data = latest_record(skill_store, "adapters.synced")["data"]
     assert SKILL not in data["paths"] and SKILL not in data["payload_digests"]

@@ -13,7 +13,8 @@ description, so a skill body lives only in its ``SKILL.md`` mirror. A target the
 latest record lists and this sync no longer renders is deleted while its managed
 digest still matches that record; a drifted one refuses the batch unless a human
 forces it. Text outside the managed block is never deleted: it refuses the batch,
-or with ``--force`` the file is kept and reported under ``kept``.
+or with ``--force`` the file is kept, reported under ``kept``, and released from
+the record.
 """
 
 from __future__ import annotations
@@ -118,7 +119,7 @@ class _Target:
 class _Retirement:
     """A recorded target this sync no longer renders, and what becomes of it.
 
-    ``verdict`` is ``remove`` (delete it), ``keep`` (leave it on disk and carry
+    ``verdict`` is ``remove`` (delete it), ``keep`` (leave it on disk and release
     its record entry), ``refuse`` (the batch stops) or ``gone`` (already absent,
     so the new record drops it).
     """
@@ -150,13 +151,6 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         for display, digest in recorded.items()
         if display not in rendered and _harness_of(display) not in harnesses
     }
-    carried.update(
-        {
-            retirement.display: retirement.recorded
-            for retirement in retirements
-            if retirement.verdict == "keep"
-        }
-    )
     written: list[str] = []
     unchanged: list[str] = []
     refused: list[str] = []
@@ -185,7 +179,11 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         elif retirement.verdict == "refuse":
             refused.append(retirement.display)
             reasons[retirement.display] = retirement.reason or _ORPHAN_CHANGED
-    dropped = [retirement.display for retirement in retirements if retirement.verdict == "gone"]
+    released = [
+        retirement.display
+        for retirement in retirements
+        if retirement.verdict in ("gone", "keep")
+    ]
 
     if refused and not dry_run:
         raise WriteRefused(
@@ -225,7 +223,7 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     )
     key = _bound_key(args["key"], binding)
     saved = replay(store, key)
-    if not written and not removed and not dropped:
+    if not written and not removed and not released:
         return _value(
             written=[],
             unchanged=unchanged,
