@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from context_rail.gateway.gateway import Context
+from context_rail.gateway.handlers import onboarding
 from context_rail.gateway.handlers.init import skeleton
+from context_rail.gateway.handlers.onboarding import agent_ops
 from context_rail.gateway.handlers.onboarding_pipeline import workspace_seed
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
+from context_rail.store.write import WriteRefused
 
 
 def _context(store: Path) -> Context:
@@ -79,3 +84,21 @@ def test_workspace_seed_returns_unchanged_when_complete(tmp_path: Path) -> None:
         context.close()
 
     assert result == {"state": "unchanged", "written": []}
+
+
+def test_an_unresolvable_pin_is_refused_at_seeding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skeleton(None, _args(tmp_path), "human", allow_existing=True)
+    store = tmp_path / "context-rail"
+    manifest = load_manifest(store)
+    monkeypatch.setattr(onboarding, "load_skill_sources", lambda pack: {})
+
+    pattern = (
+        r"the packaged cto profile pins workspace/cto/skills/[a-z-]+\.md, "
+        r"but no pack or engine skill is named [a-z-]+"
+    )
+    with pytest.raises(WriteRefused, match=pattern) as refused:
+        agent_ops(store, manifest, "basic")
+
+    assert refused.value.code == "INTEGRATION_FAILURE"

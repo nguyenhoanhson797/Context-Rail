@@ -9,16 +9,11 @@ vocabulary anywhere in the payload.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-from context_rail.core import tool_names
-from context_rail.gateway import tools as tool_table
-from context_rail.gateway.gateway import invoke
+from command_names import rail_commands, unknown_rail_commands
 
-_COMMAND = re.compile(r"`rail ([^`]+)`")
-_PLACEHOLDER = re.compile(r"\s*<[^>]+>")
-_BY_NAME = {tool.name: tool for tool in tool_table.TOOLS}
+from context_rail.gateway.gateway import invoke
 
 #: Words the deleted launcher used. None may appear as instruction in a
 #: generated file, in any casing.
@@ -42,23 +37,6 @@ def _payload(approved_store: Path, harness: list[str]) -> list[tuple[str, str]]:
     return [(rel, (root / rel).read_text(encoding="utf-8")) for rel in result["value"]["written"]]
 
 
-def _resolve(command: str) -> bool:
-    """Whether `rail <command>` reaches a tool or an alias of one."""
-    text = command.replace("\n", " ")
-    text = re.split(r" --", text)[0].strip()
-    text = _PLACEHOLDER.sub("", text).strip()
-    text = text.replace("approve|reject", "").strip()
-    if text.startswith("--"):
-        return True
-    if text in tool_names.VISIBLE_ALIASES:
-        return True
-    words = text.split()
-    for end in range(len(words), 0, -1):
-        if " ".join(words[:end]) in _BY_NAME:
-            return True
-    return False
-
-
 def test_every_generated_command_reaches_a_tool(approved_store: Path) -> None:
     files = _payload(approved_store, ["agents", "claude", "cursor", "gemini"])
     assert files
@@ -67,11 +45,8 @@ def test_every_generated_command_reaches_a_tool(approved_store: Path) -> None:
     for rel, body in files:
         if rel.endswith("SKILL.md"):
             continue
-        for match in _COMMAND.finditer(body):
-            seen += 1
-            command = match.group(1)
-            if not _resolve(command):
-                unknown.append((rel, command))
+        seen += len(rail_commands(body))
+        unknown.extend((rel, command) for command in unknown_rail_commands(body))
     assert seen > 20, f"only {seen} commands found; the payload lost its commands"
     assert unknown == [], unknown
 

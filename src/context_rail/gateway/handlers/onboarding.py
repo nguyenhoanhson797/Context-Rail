@@ -39,7 +39,7 @@ from context_rail.gateway.handlers.init import (
 )
 from context_rail.model.cto import (
     load_pack_profile,
-    load_pack_skills,
+    load_skill_sources,
 )
 from context_rail.model.manifest import (
     Manifest,
@@ -994,7 +994,7 @@ def agent_ops(store: Path, manifest: Manifest, pack_name: str) -> list[Op]:
     """The active pack's Actor profiles and scoped skill Notes, absent-only."""
     ops: list[Op] = []
     pack = load_pack(pack_name, store)
-    skills = load_pack_skills(pack_name)
+    skills = load_skill_sources(pack_name)
     for name in ("cto", "implementer", "reviewer"):
         profile = load_pack_profile(pack_name, name)
         preset = "cto" if name == "cto" else "profile"
@@ -1006,9 +1006,14 @@ def agent_ops(store: Path, manifest: Manifest, pack_name: str) -> list[Op]:
         for declared in profile.skills:
             slug = PurePosixPath(declared).stem
             text = skills.get(slug)
-            if text is not None:
-                text = _apply_metadata(text, pack.presets["skill"])
-                ops.append(Op(declared, text.encode("utf-8"), ABSENT))
+            if text is None:
+                raise WriteRefused(
+                    "INTEGRATION_FAILURE",
+                    f"the packaged {name} profile pins {declared}, "
+                    f"but no pack or engine skill is named {slug}",
+                )
+            text = _apply_metadata(text, pack.presets["skill"])
+            ops.append(Op(declared, text.encode("utf-8"), ABSENT))
     return ops
 
 

@@ -62,8 +62,10 @@ __all__ = [
     "Verdict",
     "load_builtin_profile",
     "load_builtin_skills",
+    "load_engine_skills",
     "load_pack_profile",
     "load_pack_skills",
+    "load_skill_sources",
     "parse_check",
     "parse_profile",
     "parse_report",
@@ -656,13 +658,28 @@ def load_pack_skills(pack: str) -> dict[str, str]:
     """Every skill Note a built-in pack ships, keyed by its directory name."""
     canonical = canonical_pack_name(pack)
     root = resources.files("context_rail").joinpath("packs", canonical, "skills")
+    return _skills_under(root, f"packs/{canonical}/skills")
+
+
+def load_engine_skills() -> dict[str, str]:
+    """Every skill the engine ships, keyed by its directory name."""
+    root = resources.files("context_rail").joinpath("skills")
+    return _skills_under(root, "skills")
+
+
+def load_skill_sources(pack: str) -> dict[str, str]:
+    """Engine skills, overridden by the pack's own skills of the same name."""
+    return {**load_engine_skills(), **load_pack_skills(pack)}
+
+
+def _skills_under(root: Any, label: str) -> dict[str, str]:
     skills: dict[str, str] = {}
     for entry in sorted(root.iterdir(), key=lambda item: item.name):
         if not entry.is_dir():
             continue
-        label = f"packs/{canonical}/skills/{entry.name}/SKILL.md"
-        text = _read(entry.joinpath("SKILL.md"), label)
-        fields, body = _split(text, label)
+        entry_label = f"{label}/{entry.name}/SKILL.md"
+        text = _read(entry.joinpath("SKILL.md"), entry_label)
+        fields, body = _split(text, entry_label)
         _check_skill(entry.name, fields, body)
         skills[entry.name] = text
     return skills
