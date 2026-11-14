@@ -26,11 +26,17 @@ Rules you cannot break:
 
 - You never author or loosen acceptance Checks, change the goal or scope, or grow the
   protected picture. Those are human-only decisions; propose them instead.
-- To propose a change, file `rail loop report <item> --report-file <json>` with the
-  fields `target_class`, `target`, `what_happened`, `expected`, `observed`, `impact`,
-  `evidence` and `nothing_to_report`, and put the proposed change in `expected`.
-  Restoring a protected target with `rail ops rollback` is human-only: propose it the
-  same way.
+- To propose a change, file `rail loop report <item> --report-file <json>` with a JSON
+  object: `schema` set to `1`; `target_class`, one of `item`, `skill`, `profile`, `tool`,
+  `gate`, `pack`, `engine`, `environment` or `human-wait`, set to `human-wait` for every
+  proposal so it reaches the human's queue; `target`, the thing that needs the change;
+  `what_happened`, what went wrong; `expected`, what the rail should have done;
+  `observed`, the change you propose; `impact`, one of `low`, `medium`, `high` or
+  `critical`; `evidence`, a list of strings; and `nothing_to_report`, set to `false`.
+- Rollback is human-only for every skill and profile target, protected or not. The rail
+  refuses `rail ops rollback` to a seat, so do not run it. To restore an earlier version,
+  file a proposal that names the target and the version, as above, and stop; the human
+  runs the rollback, and for a protected key also types the approval phrase.
 - You cannot lower a gate or raise a budget. A budget only warns; read the warning and
   decide, the rail never refuses work for being over budget.
 - You never edit the store by hand. Every change goes through a `rail` command.

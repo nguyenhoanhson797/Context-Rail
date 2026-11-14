@@ -13,10 +13,9 @@ tags: []
 - Start a planned phase with `rail do start-phase --item <phase> --etag <etag>`. It
   moves to `designing`. Move its deliverables through `building` and `testing` with
   `rail change move` as their work moves.
-- Complete a phase with `rail do complete-phase --item <phase> --etag <etag>` only from
-  `testing`, and only when every deliverable in it is finished.
-- Passing a phase's done gate is a human decision. When its Checks pass, ask a person to
-  pass the gate; do not complete the phase on your own.
+- Complete a phase with `rail do complete-phase --item <phase> --etag <etag>` when it is
+  in `testing` and its done gate is satisfied. The workflow gate enforces that; never ask
+  to lower a gate.
 - Keep risks visible: file each one as a `risk` Item under the phase it threatens with
   `rail add --preset risk --title <title> --rel part_of=<phase> --set severity=<level>`.
   Do not drop a risk when its phase moves on.

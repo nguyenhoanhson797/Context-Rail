@@ -66,6 +66,15 @@ def test_overview_prints_each_identical_skill_once(
 
     assert is_ok(result), result
     section = _section(result["value"]["text"], "## Conventions and memory")
-    lines = [line for line in section.splitlines() if line.startswith("- ")]
-    assert sum(line.startswith("- Review checklist") for line in lines) == 1
+    assert section.count("- Review checklist — ") == 1
     assert section.count("(2 copies)") == 1
+    start = section.index("- Review checklist — ")
+    marker = section.index("(2 copies)")
+    assert start < marker
+    for title in (
+        "Lean testing",
+        "Coordinate the rail",
+        "Recover from a refusal",
+        "Triage reports",
+    ):
+        assert f"- {title} — " not in section[start:marker], title
