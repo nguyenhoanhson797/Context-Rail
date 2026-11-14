@@ -14,8 +14,9 @@ tags: []
   moves to `designing`. Move its deliverables through `building` and `testing` with
   `rail change move` as their work moves.
 - Complete a phase with `rail do complete-phase --item <phase> --etag <etag>` when it is
-  in `testing` and its done gate is satisfied. The workflow gate enforces that; never ask
-  to lower a gate.
+  in `testing`. The rail refuses it while a deliverable is open (the phase requires its
+  children to be done) or while its done gate is unmet. If it refuses, report the refusal
+  and stop; never ask to lower a gate.
 - Keep risks visible: file each one as a `risk` Item under the phase it threatens with
   `rail add --preset risk --title <title> --rel part_of=<phase> --set severity=<level>`.
   Do not drop a risk when its phase moves on.

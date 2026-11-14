@@ -836,7 +836,7 @@ def _memory_rows(ix: Any, limit: int) -> tuple[list[str], int]:
     seen: dict[tuple[str, str], int] = {}
     order: list[tuple[str, str]] = []
     for slug, title, excerpt, _path in rows:
-        key = (title or slug, excerpt or "")
+        key = (title or slug, " ".join((excerpt or "").split()))
         if key in seen:
             seen[key] += 1
             continue

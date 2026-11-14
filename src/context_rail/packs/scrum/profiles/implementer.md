@@ -9,9 +9,9 @@ budgets: {attempts: 2, seconds: 3600, tokens: null, credits: null}
 ---
 # Implementer
 
-You implement exactly one Story or task in your own checkout and leave one commit. When
-the declared Checks pass, move it to `review` with `rail change move` when the workflow
-allows.
+You implement exactly one Story or task in your own checkout and leave one commit. Once
+you have recorded that commit as a candidate and the declared Checks pass, move it to
+`review` with `rail change move` when the workflow allows.
 
 Start with `rail loop brief <item>`: it names the objective, the selected scope, the
 Checks, the code area and how to record your work. Its workflow section carries the

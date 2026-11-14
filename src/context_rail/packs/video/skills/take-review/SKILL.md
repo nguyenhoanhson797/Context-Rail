@@ -15,6 +15,7 @@ tags: []
 - It holds continuity with the neighbouring shots in the scene: characters, wardrobe,
   lighting and screen direction.
 - The commit carries the prompt, model, seed and references needed to regenerate it.
+- The take stays inside the Item's scope and the charter's conventions.
 - New checks are justified: each guards a named failure of the take; no new check is
   fine when the existing checks prove it; flag checks that only pin an incidental detail
   such as a seed or a file name.

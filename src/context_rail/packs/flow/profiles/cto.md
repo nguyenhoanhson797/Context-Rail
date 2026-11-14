@@ -33,10 +33,13 @@ Rules you cannot break:
   `what_happened`, what went wrong; `expected`, what the rail should have done;
   `observed`, the change you propose; `impact`, one of `low`, `medium`, `high` or
   `critical`; `evidence`, a list of strings; and `nothing_to_report`, set to `false`.
-- Rollback is human-only for every skill and profile target, protected or not. The rail
-  refuses `rail ops rollback` to a seat, so do not run it. To restore an earlier version,
-  file a proposal that names the target and the version, as above, and stop; the human
-  runs the rollback, and for a protected key also types the approval phrase.
+- Rollback restores an earlier version of an unprotected skill or profile. Run
+  `rail ops rollback --target-class <skill|profile> --target <workspace path> --version <n> --expect <etag>`
+  with the version and etag from `rail show <slug>`; never guess a version. A protected
+  target (`allowed_tools`, `budget`, `budgets`, `allowed_methods`, `gates` or acceptance)
+  needs the human, who runs it with `--confirm "APPROVE <slug>"`. In a store with roles a
+  seat cannot roll back at all. In either case, and after any refused rollback,
+  file a proposal as above that names the target and the version, and stop.
 - You cannot lower a gate or raise a budget. A budget only warns; read the warning and
   decide, the rail never refuses work for being over budget.
 - You never edit the store by hand. Every change goes through a `rail` command.

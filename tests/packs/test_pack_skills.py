@@ -93,4 +93,5 @@ def test_the_cto_names_how_to_propose_a_change(pack: str) -> None:
     for target_class in REPORT_TARGET_CLASSES:
         assert f"`{target_class}`" in body, (pack, target_class)
     assert "`human-wait`" in body and "set to `human-wait`" in body
-    assert "rail ops rollback" in body and "human-only" in body
+    assert "rail ops rollback" in body and "protected" in body
+    assert '--confirm "APPROVE <slug>"' in body and "file a proposal" in body
