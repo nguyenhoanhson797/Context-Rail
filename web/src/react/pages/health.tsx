@@ -4,7 +4,7 @@
    finding by hand: the remedy is shown, and the store stays the truth. */
 import { useMemo, useState } from 'react';
 import { Check, CircleCheck, FileText, GitBranch, Lock, RotateCcw, ShieldAlert, ShieldCheck, Terminal, TriangleAlert } from '../icons';
-import { object, rows, text, type Data, type PageProps } from '../contracts';
+import { object, rows, text, type PageProps } from '../contracts';
 import { cn } from '../ui';
 import { titleCase } from './operating';
 
@@ -21,8 +21,7 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
   const actions = Array.isArray(execution.actions) ? execution.actions.filter((a): a is string => typeof a === 'string') : [];
   const doctor = object(health?.doctor);
   const issues = useMemo(() => rows(doctor.issues), [doctor]);
-  const counts = object(doctor.counts);
-  const cache = object(health?.cache);
+  const bySeverity = object(doctor.by_severity);
   const state = health ? text(health.state, 'unknown') : 'unknown';
   const [severity, setSeverity] = useState('all');
   const [copied, setCopied] = useState('');
@@ -34,21 +33,29 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
       const name = text(issue.severity, 'info');
       out[name] = (out[name] ?? 0) + 1;
     }
+    for (const name of SEVERITIES) {
+      if (bySeverity[name] !== undefined) out[name] = Number(bySeverity[name]) || 0;
+    }
     return out;
-  }, [issues]);
+  }, [issues, bySeverity]);
 
+  const totalFindings = doctor.total !== undefined ? Number(doctor.total) || 0 : issues.length;
   const shown = severity === 'all' ? issues : issues.filter((issue) => text(issue.severity, 'info') === severity);
   const approval = text(charter.state, text(project.state, 'unknown'));
+  const projectDoc = text(project.goal_slug, text(charter.id));
   const asOf = text(health?.as_of);
+  const apiError = text(health?.error);
+  const apiErrorCode = text(health?.error_code);
+  const failureMessage = healthError || apiError;
   const reasons = Array.isArray(health?.reasons) ? health!.reasons.filter((r): r is string => typeof r === 'string') : [];
 
-  const tone = state === 'ok' && !tallies.error ? 'ok' : tallies.error ? 'bad' : state === 'error' ? 'bad' : 'warn';
+  const tone = state === 'ok' && !tallies.error ? 'ok' : tallies.error || state === 'error' || Boolean(healthError) ? 'bad' : 'warn';
 
   return (
     <div className="rh-page">
       <header className="rh-head">
         <div>
-          <div className="rf-kicker">{`store schema ${text(health?.schema, text(snap.schema))} · ${issues.length} ${issues.length === 1 ? 'finding' : 'findings'}`}</div>
+          <div className="rf-kicker">{`store schema ${text(health?.schema, text(snap.schema))} · ${state === 'ok' ? `${totalFindings} ${totalFindings === 1 ? 'finding' : 'findings'}` : `health ${state}`}`}</div>
           <h1>Health</h1>
           <p>Facts about the store and the approval contract. A finding is never a work item, and a remedy is never applied silently.</p>
         </div>
@@ -67,13 +74,15 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
           <b>
             {tone === 'ok'
               ? 'The store is consistent'
-              : tone === 'bad'
-                ? `${tallies.error || 0} ${tallies.error === 1 ? 'error needs' : 'errors need'} attention`
-                : 'Health could not be fully read'}
+              : state === 'ok' && tallies.error
+                ? `${tallies.error} ${tallies.error === 1 ? 'error needs' : 'errors need'} attention`
+                : apiErrorCode
+                  ? `Health check failed (${apiErrorCode})`
+                  : 'Health could not be fully read'}
           </b>
           <span>
-            {healthError
-              ? healthError
+            {failureMessage
+              ? failureMessage
               : asOf
                 ? `Read as of ${new Date(asOf).toLocaleString()}`
                 : 'No dated health read has arrived yet.'}
@@ -89,7 +98,7 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
               aria-pressed={severity === name}
               onClick={() => setSeverity(severity === name ? 'all' : name)}
             >
-              <i aria-hidden="true" /> {name} <b>{tallies[name] ?? Number(counts[name]) ?? 0}</b>
+              <i aria-hidden="true" /> {name} <b>{state === 'ok' ? (tallies[name] ?? 0) : '—'}</b>
             </button>
           ))}
         </div>
@@ -99,12 +108,20 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
         <section className="rh-card wide">
           <div className="rh-card-head">
             <h2>Doctor findings</h2>
-            <span className="rh-hint">{severity === 'all' ? `${issues.length} total` : `${shown.length} ${severity}`}</span>
+            <span className="rh-hint">{state !== 'ok' ? state : severity === 'all' ? `${totalFindings} total` : `${shown.length} ${severity}`}</span>
             {severity !== 'all' ? (
               <button type="button" className="rf-chip" onClick={() => setSeverity('all')}>Show all</button>
             ) : null}
           </div>
-          {!issues.length ? (
+          {state !== 'ok' ? (
+            <div className="rh-clean">
+              <TriangleAlert size={16} aria-hidden="true" />
+              <div>
+                <b>{state === 'error' || Boolean(failureMessage) ? (apiErrorCode || 'Health check failed') : 'Checking health…'}</b>
+                <span>{failureMessage || reasons[0] || 'Diagnostics have not completed yet; findings are unknown.'}</span>
+              </div>
+            </div>
+          ) : !totalFindings && !issues.length ? (
             <div className="rh-clean">
               <CircleCheck size={16} aria-hidden="true" />
               <div>
@@ -124,24 +141,25 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
             <ul className="rh-findings">
               {shown.map((issue, index) => {
                 const level = text(issue.severity, 'info');
-                const file = text(issue.file);
+                const path = text(issue.path);
+                const code = text(issue.code);
+                const fix = text(issue.fix);
                 return (
-                  <li className={cn('rh-finding', `tone-${SEVERITY_TONE[level] ?? 'info'}`)} key={`${text(issue.check)}-${index}`}>
+                  <li className={cn('rh-finding', `tone-${SEVERITY_TONE[level] ?? 'info'}`)} key={`${code}-${path}-${index}`}>
                     <span className="rh-finding-dot" aria-hidden="true" />
                     <div className="rh-finding-main">
                       <div className="rh-finding-line">
-                        <b>{text(issue.message, text(issue.check))}</b>
-                        <code className="rh-code">{text(issue.check)}</code>
+                        <b>{text(issue.message, code)}</b>
+                        {code ? <code className="rh-code">{code}</code> : null}
                       </div>
                       <div className="rh-finding-meta">
                         <span className="rh-level">{level}</span>
-                        {file ? <span className="rh-file trunc" title={file}>{file}</span> : null}
-                        {text(issue.field) ? <span className="rh-field">{text(issue.field)}</span> : null}
+                        {path ? <span className="rh-file trunc" title={path}>{path}</span> : null}
                       </div>
-                      {text(issue.fix_hint) ? (
+                      {fix ? (
                         <div className="rh-fix">
                           <Terminal size={11} aria-hidden="true" />
-                          <span>{text(issue.fix_hint)}</span>
+                          <span>{fix}</span>
                         </div>
                       ) : null}
                     </div>
@@ -207,25 +225,6 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
           <p className="rh-note">Execution progress comes from execution records only and is never merged into workflow completion.</p>
         </section>
 
-        <section className="rh-card">
-          <div className="rh-card-head">
-            <h2>Index cache</h2>
-          </div>
-          {Object.keys(cache).length ? (
-            <dl className="rh-digests">
-              {Object.entries(cache).slice(0, 6).map(([key, value]) => (
-                <div className="rh-digest" key={key}>
-                  <dt>{key.replace(/_/g, ' ')}</dt>
-                  <dd><code>{typeof value === 'object' ? JSON.stringify(value) : text(value)}</code></dd>
-                </div>
-              ))}
-            </dl>
-          ) : (
-            <p className="rh-empty">No cache facts were reported with this read.</p>
-          )}
-          <p className="rh-note">The index is a rebuildable cache. Files are the truth.</p>
-        </section>
-
         <section className="rh-card wide">
           <div className="rh-card-head">
             <h2>Where this store lives</h2>
@@ -236,7 +235,7 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
             <div className="rh-digest"><dt>store root</dt><dd><code className="trunc" title={text(project.store_root)}>{text(project.store_root, '—')}</code></dd></div>
           </dl>
           <div className="rh-links">
-            <button type="button" className="rf-chip" onClick={() => openDoc(text(project.name))} disabled={!text(project.name)}>
+            <button type="button" className="rf-chip" onClick={() => openDoc(projectDoc)} disabled={!projectDoc}>
               <FileText size={12} aria-hidden="true" /> Open the project doc
             </button>
           </div>

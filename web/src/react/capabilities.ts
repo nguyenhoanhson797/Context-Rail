@@ -46,7 +46,7 @@ const presetOf = (doc: Data): string => text(doc.preset, text(doc.type));
 export function allItems(snapshot: Snapshot | Data): Data[] {
   const seen = new Set<string>();
   const items: Data[] = [];
-  for (const key of ['tasks', 'phases', 'milestones']) {
+  for (const key of ['tasks', 'phases', 'milestones', 'scope_items']) {
     for (const doc of rows(object(snapshot)[key])) {
       const id = text(doc.id);
       if (!id || seen.has(id)) continue;
@@ -406,6 +406,70 @@ export function recordsOf(snapshot: Snapshot | Data, includeActivity = false): R
 export interface TreeRow {
   doc: Data;
   depth: number;
+}
+
+export interface TreeNode {
+  doc: Data;
+  id: string;
+  title: string;
+  preset: string;
+  status: string;
+  category: string;
+  container: boolean;
+  kids: TreeNode[];
+  depth: number;
+}
+
+export function hierarchyTreeOf(snapshot: Snapshot | Data): { roots: TreeNode[]; loose: TreeNode[] } {
+  const byId = new Map<string, TreeNode>();
+  for (const doc of allItems(snapshot)) {
+    const id = text(doc.id);
+    byId.set(id, {
+      doc,
+      id,
+      title: text(doc.title, id),
+      preset: presetOf(doc),
+      status: text(doc.status),
+      category: text(doc.category, 'unknown'),
+      container: doc.container === true,
+      kids: [],
+      depth: 0,
+    });
+  }
+  const roots: TreeNode[] = [];
+  const loose: TreeNode[] = [];
+  for (const node of byId.values()) {
+    const parent = text(node.doc.phase, strings(object(node.doc.relations).part_of)[0] ?? '');
+    const up = parent ? byId.get(parent) : undefined;
+    if (up && up.container && up.id !== node.id) {
+      up.kids.push(node);
+      continue;
+    }
+    if (node.container) roots.push(node);
+    else loose.push(node);
+  }
+  const order = (a: TreeNode, b: TreeNode) => a.title.localeCompare(b.title);
+  const walk = (node: TreeNode, depth: number, seen: Set<string>) => {
+    if (seen.has(node.id)) return;
+    const next = new Set(seen);
+    next.add(node.id);
+    node.depth = depth;
+    node.kids.sort((a, b) => Number(b.container) - Number(a.container) || order(a, b));
+    for (const kid of node.kids) walk(kid, depth + 1, next);
+  };
+  roots.sort(order);
+  loose.sort(order);
+  for (const root of roots) walk(root, 0, new Set());
+  return { roots, loose };
+}
+
+export function isCompleteItem(doc: Data, rule: CompletionRule): boolean {
+  const preset = presetOf(doc);
+  const status = text(doc.status);
+  const presetStates = rule.presets[preset];
+  if (presetStates?.length) return presetStates.includes(status);
+  if (rule.states.length) return rule.states.includes(status);
+  return text(doc.category, 'unknown') === (rule.category || 'done');
 }
 
 export function treeOf(snapshot: Snapshot | Data, roots: Data[]): TreeRow[] {

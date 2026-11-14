@@ -3,9 +3,9 @@ import type { PageProps } from '../contracts';
 import { ACCENTS, applyPrefs, readPrefs, savePrefs, type Prefs } from '../preferences';
 import { Panel, PageHeading, cn } from '../ui';
 import { Check, Keyboard as KeyboardGlyph, Monitor, Moon, Palette, Sun } from '../icons';
+import { G_NAV_SHORTCUTS } from '../keyboard';
 import { ConfigSettings } from './config';
-
-const titleCase = (id: string): string => id.replace(/-/g, ' ').replace(/(^|\s)\w/g, (c) => c.toUpperCase());
+import { titleCase } from './operating';
 
 /* Every value about to land in a style attribute is a fixed swatch from ACCENTS, never store text. */
 const swatch = (value: string): CSSProperties => ({ '--c': /^#[0-9a-f]{3,8}$/i.test(value) ? value : '#4B5BD6' }) as CSSProperties;
@@ -20,14 +20,7 @@ const SHORTCUTS: [string, [string, string[]][]][] = [
       ['Close panel or dialog', ['Esc']],
     ],
   ],
-  [
-    'Navigate (press G, then a key)',
-    [
-      ['Flow', ['G', 'B']],
-      ['Plan', ['G', 'R']],
-      ['Records', ['G', 'D']],
-    ],
-  ],
+  ['Navigate (press G, then a key)', G_NAV_SHORTCUTS],
   [
     'Command menu',
     [

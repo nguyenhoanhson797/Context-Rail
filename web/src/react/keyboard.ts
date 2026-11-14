@@ -1,6 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { Route } from './contracts';
-const G_KEYS: Record<string,Route> = {b:'board',r:'roadmap',d:'decisions'};
+export const G_KEYS: Record<string, Route> = { b: 'board', r: 'roadmap', d: 'decisions', c: 'activity' };
+export const G_NAV_KEYS: Partial<Record<Route, string>> = Object.fromEntries(
+  Object.entries(G_KEYS).map(([key, route]) => [route, key.toUpperCase()]),
+);
+export const G_NAV_SHORTCUTS: [string, [string, string]][] = [
+  ['Flow', ['G', 'B']],
+  ['Plan', ['G', 'R']],
+  ['Records', ['G', 'D']],
+  ['Catch up', ['G', 'C']],
+];
 export function useRailKeyboard({navigate,togglePalette,toggleTheme,toggleSidebar,dialogOpen,paletteOpen,sidebarOpen=false}:{navigate:(route:Route,params?:Record<string,string>)=>void;togglePalette:()=>void;toggleTheme:()=>void;toggleSidebar:()=>void;dialogOpen:boolean;paletteOpen:boolean;sidebarOpen?:boolean}) {
   const pending=useRef(0);
   useEffect(()=>{

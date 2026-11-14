@@ -158,9 +158,9 @@ function EventDetail({ event }: { event: EventFact }) {
 export function ActivityPage({ snapshot, params, navigate, openDoc, busy, refresh }: PageProps) {
   const byId = useMemo(() => itemById(snapshot), [snapshot]);
   const events = useMemo(() => eventsOf(object(snapshot)), [snapshot]);
-  const [query, setQuery] = useState(params.get('q') ?? '');
-  const [kind, setKind] = useState(params.get('kind') ?? 'all');
-  const [actor, setActor] = useState(params.get('actor') ?? 'all');
+  const query = params.get('q') ?? '';
+  const kind = params.get('kind') ?? 'all';
+  const actor = params.get('actor') ?? 'all';
   const [shown, setShown] = useState(PAGE);
 
   const kinds = useMemo(() => {
@@ -267,13 +267,10 @@ export function ActivityPage({ snapshot, params, navigate, openDoc, busy, refres
             value={query}
             placeholder="Search kind, actor, subject or payload…"
             aria-label="Search the event log"
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setShown(PAGE);
-            }}
+            onChange={(event) => setParam('q', event.target.value)}
           />
           {query ? (
-            <button type="button" className="ra-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+            <button type="button" className="ra-clear" aria-label="Clear search" onClick={() => setParam('q', '')}>
               <X size={12} aria-hidden="true" />
             </button>
           ) : null}
@@ -283,10 +280,7 @@ export function ActivityPage({ snapshot, params, navigate, openDoc, busy, refres
           <select
             value={actor}
             aria-label="Filter by actor"
-            onChange={(event) => {
-              setActor(event.target.value);
-              setShown(PAGE);
-            }}
+            onChange={(event) => setParam('actor', event.target.value === 'all' ? '' : event.target.value)}
           >
             <option value="all">Everyone</option>
             {actors.map(([name, count]) => (
@@ -385,20 +379,20 @@ export function ActivityPage({ snapshot, params, navigate, openDoc, busy, refres
     </div>
   );
 
-  function pickKind(next: string) {
-    setKind(next);
+  function setParam(name: string, next: string) {
     setShown(PAGE);
     const values: Record<string, string> = {};
     for (const [key, value] of params) values[key] = value;
-    if (next === 'all') delete values.kind;
-    else values.kind = next;
+    if (!next) delete values[name];
+    else values[name] = next;
     navigate('activity', values);
   }
 
+  function pickKind(next: string) {
+    setParam('kind', next === 'all' ? '' : next);
+  }
+
   function clearFilters() {
-    setKind('all');
-    setActor('all');
-    setQuery('');
     setShown(PAGE);
     const values: Record<string, string> = {};
     for (const [key, value] of params) {

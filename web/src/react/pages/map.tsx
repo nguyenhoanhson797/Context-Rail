@@ -5,88 +5,30 @@
    never disagree about what "complete" means. */
 import { useMemo, useState } from 'react';
 import { ArrowRight, ChevronDown, Layers, RotateCcw, Search, Target, X } from '../icons';
-import { object, rows, text, type Data, type PageProps } from '../contracts';
+import { object, rows, text, type PageProps } from '../contracts';
 import { cn } from '../ui';
-import { CATEGORY_LABEL } from '../capabilities';
+import {
+  CATEGORY_LABEL,
+  allItems,
+  completionOf,
+  hierarchyTreeOf,
+  isCompleteItem,
+  type CompletionRule,
+  type TreeNode,
+} from '../capabilities';
 import { focusName, hierarchyLevels, labelOf, progressOf, titleCase, unitLabel } from './operating';
 
-interface Node {
-  doc: Data;
-  id: string;
-  title: string;
-  preset: string;
-  status: string;
-  category: string;
-  container: boolean;
-  kids: Node[];
-  depth: number;
-}
-
-const workOf = (snapshot: Data): Data[] => {
-  const seen = new Set<string>();
-  const out: Data[] = [];
-  for (const key of ['phases', 'milestones', 'tasks', 'scope_items']) {
-    for (const doc of rows(snapshot[key])) {
-      const id = text(doc.id);
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      out.push(doc);
-    }
-  }
-  return out;
-};
-
-function buildTree(work: Data[]): { roots: Node[]; loose: Node[] } {
-  const byId = new Map<string, Node>();
-  for (const doc of work) {
-    const id = text(doc.id);
-    byId.set(id, {
-      doc,
-      id,
-      title: text(doc.title, id),
-      preset: text(doc.preset, text(doc.type)),
-      status: text(doc.status),
-      category: text(doc.category, 'unknown'),
-      container: doc.container === true,
-      kids: [],
-      depth: 0,
-    });
-  }
-  const roots: Node[] = [];
-  const loose: Node[] = [];
-  for (const node of byId.values()) {
-    const parent = text(node.doc.phase);
-    const up = parent ? byId.get(parent) : undefined;
-    if (up && up.container && up.id !== node.id) {
-      up.kids.push(node);
-      continue;
-    }
-    if (node.container) roots.push(node);
-    else loose.push(node);
-  }
-  const order = (a: Node, b: Node) => a.title.localeCompare(b.title);
-  const walk = (node: Node, depth: number) => {
-    node.depth = depth;
-    node.kids.sort((a, b) => Number(b.container) - Number(a.container) || order(a, b));
-    for (const kid of node.kids) walk(kid, depth + 1);
-  };
-  roots.sort(order);
-  loose.sort(order);
-  for (const root of roots) walk(root, 0);
-  return { roots, loose };
-}
-
-const countLeaves = (node: Node, doneCategory: string): { total: number; done: number } => {
+const countLeaves = (node: TreeNode, rule: CompletionRule): { total: number; done: number } => {
   let total = 0;
   let done = 0;
   for (const kid of node.kids) {
     if (kid.container) {
-      const nested = countLeaves(kid, doneCategory);
+      const nested = countLeaves(kid, rule);
       total += nested.total;
       done += nested.done;
-    } else {
+    } else if (!rule.of.length || rule.of.includes(kid.preset)) {
       total += 1;
-      if (kid.category === doneCategory) done += 1;
+      if (isCompleteItem(kid.doc, rule)) done += 1;
     }
   }
   return { total, done };
@@ -94,8 +36,8 @@ const countLeaves = (node: Node, doneCategory: string): { total: number; done: n
 
 /* A search keeps the ancestors of every hit, so a match never arrives orphaned
    from the container that explains it. */
-function prune(node: Node, needle: string): Node | null {
-  const kids = node.kids.map((kid) => prune(kid, needle)).filter((kid): kid is Node => kid !== null);
+function prune(node: TreeNode, needle: string): TreeNode | null {
+  const kids = node.kids.map((kid) => prune(kid, needle)).filter((kid): kid is TreeNode => kid !== null);
   const self = !needle || `${node.title} ${node.id} ${node.preset} ${node.status}`.toLowerCase().includes(needle);
   if (!self && !kids.length) return null;
   return { ...node, kids };
@@ -103,21 +45,21 @@ function prune(node: Node, needle: string): Node | null {
 
 /* A kind filter keeps the containers that hold a match, so a bug still arrives
    with the sprint that explains it, but never with its unrelated siblings. */
-function pruneKind(node: Node, kind: string): Node | null {
+function pruneKind(node: TreeNode, kind: string): TreeNode | null {
   if (kind === 'all') return node;
-  const kids = node.kids.map((kid) => pruneKind(kid, kind)).filter((kid): kid is Node => kid !== null);
+  const kids = node.kids.map((kid) => pruneKind(kid, kind)).filter((kid): kid is TreeNode => kid !== null);
   if (node.preset === kind) return { ...node, kids };
   if (node.container && kids.length) return { ...node, kids };
   return null;
 }
 
-const countNodes = (nodes: Node[]): number =>
+const countNodes = (nodes: TreeNode[]): number =>
   nodes.reduce((sum, node) => sum + 1 + countNodes(node.kids), 0);
 
 export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: PageProps) {
   const snap = object(snapshot);
   const progress = progressOf(snapshot);
-  const doneCategory = text(object(progress.rule).category, 'done');
+  const rule = useMemo(() => completionOf(snapshot), [snapshot]);
   const counted = useMemo(() => {
     const map = new Map<string, { total: number; complete: number }>();
     for (const child of rows(progress.children)) {
@@ -126,14 +68,14 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
     return map;
   }, [progress]);
 
-  const work = useMemo(() => workOf(snap), [snap]);
-  const tree = useMemo(() => buildTree(work), [work]);
+  const work = useMemo(() => allItems(snap), [snap]);
+  const tree = useMemo(() => hierarchyTreeOf(snap), [snap]);
   const levels = hierarchyLevels(snapshot);
   const focus = focusName(snapshot);
   const groupLabel = text(progress.group) ? labelOf(snapshot, text(progress.group), true) : 'Groups';
 
-  const [query, setQuery] = useState(params.get('q') ?? '');
-  const [preset, setPreset] = useState('all');
+  const query = params.get('q') ?? '';
+  const preset = params.get('kind') ?? 'all';
   const [open, setOpen] = useState<Set<string>>(() => new Set(tree.roots.map((root) => root.id)));
   const [depth, setDepth] = useState(2);
 
@@ -142,9 +84,9 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
     () =>
       tree.roots
         .map((root) => prune(root, needle))
-        .filter((root): root is Node => root !== null)
+        .filter((root): root is TreeNode => root !== null)
         .map((root) => pruneKind(root, preset))
-        .filter((root): root is Node => root !== null),
+        .filter((root): root is TreeNode => root !== null),
     [tree, needle, preset],
   );
 
@@ -176,7 +118,7 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
 
   const expandTo = (limit: number) => {
     const next = new Set<string>();
-    const walk = (node: Node) => {
+    const walk = (node: TreeNode) => {
       if (node.depth < limit - 1 && node.kids.length) {
         next.add(node.id);
         for (const kid of node.kids) walk(kid);
@@ -187,10 +129,10 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
     setDepth(limit);
   };
 
-  const renderNode = (node: Node) => {
+  const renderNode = (node: TreeNode) => {
     const isOpen = open.has(node.id) || !!needle;
     const engine = counted.get(node.id);
-    const local = countLeaves(node, doneCategory);
+    const local = countLeaves(node, rule);
     const sum = engine ?? { total: local.total, complete: local.done };
     const share = sum.total ? Math.round((sum.complete / sum.total) * 100) : 0;
     const isFocus = !!focus && (node.title === focus || node.id === focus);
@@ -276,10 +218,10 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
             value={query}
             placeholder="Find a container or a work item…"
             aria-label="Search the project map"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => setParam('q', event.target.value)}
           />
           {query ? (
-            <button type="button" className="rm-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+            <button type="button" className="rm-clear" aria-label="Clear search" onClick={() => setParam('q', '')}>
               <X size={12} aria-hidden="true" />
             </button>
           ) : null}
@@ -305,7 +247,7 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
       </div>
 
       <div className="rm-presets" role="group" aria-label="Filter by kind">
-        <button type="button" className={cn('ra-kindchip', preset === 'all' && 'on')} aria-pressed={preset === 'all'} onClick={() => setPreset('all')}>
+        <button type="button" className={cn('ra-kindchip', preset === 'all' && 'on')} aria-pressed={preset === 'all'} onClick={() => setParam('kind', '')}>
           All kinds <b>{work.length}</b>
         </button>
         {presets.map(([name, count]) => (
@@ -314,7 +256,7 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
             key={name}
             className={cn('ra-kindchip', preset === name && 'on')}
             aria-pressed={preset === name}
-            onClick={() => setPreset(name)}
+            onClick={() => setParam('kind', name)}
           >
             {labelOf(snapshot, name, true)} <b>{count}</b>
           </button>
@@ -331,7 +273,7 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
           <div className="rf-emptystate">
             <b>Nothing matches this view</b>
             <span>{`${work.length} items are recorded. Clear the search or kind to see them.`}</span>
-            <button type="button" className="rf-chip" onClick={() => { setQuery(''); setPreset('all'); }}>Clear filters</button>
+            <button type="button" className="rf-chip" onClick={() => clearFilters()}>Clear filters</button>
           </div>
         ) : roots.length ? (
           <ul className="rm-tree">{roots.map(renderNode)}</ul>
@@ -349,6 +291,22 @@ export function MapPage({ snapshot, params, navigate, openDoc, busy, refresh }: 
       </main>
     </div>
   );
+
+  function setParam(name: string, next: string) {
+    const values: Record<string, string> = {};
+    for (const [key, value] of params) values[key] = value;
+    if (!next) delete values[name];
+    else values[name] = next;
+    navigate('lens', values);
+  }
+
+  function clearFilters() {
+    const values: Record<string, string> = {};
+    for (const [key, value] of params) {
+      if (key !== 'kind' && key !== 'q') values[key] = value;
+    }
+    navigate('lens', values);
+  }
 
   function toggle(id: string) {
     setOpen((current) => {

@@ -4,7 +4,7 @@
    never invents eligibility and never runs an action the pack did not declare. */
 import { useMemo, useState } from 'react';
 import { ArrowRight, CircleDot, RotateCcw, Search, Target, X } from '../icons';
-import { object, rows, text, type Data, type PageProps } from '../contracts';
+import { rows, text, type PageProps } from '../contracts';
 import { cn } from '../ui';
 import { CATEGORY_LABEL, categoryOf, itemById } from '../capabilities';
 import { focusName, labelOf, queueOf, queuePolicyOf, titleCase } from './operating';
@@ -28,8 +28,8 @@ export function QueuePage({ snapshot, params, navigate, openDoc, busy, refresh }
   const error = text(queue.error);
   const omitted = Number(queue.omitted) || 0;
 
-  const [query, setQuery] = useState(params.get('q') ?? '');
-  const [kind, setKind] = useState(params.get('kind') ?? 'all');
+  const query = params.get('q') ?? '';
+  const kind = params.get('kind') ?? 'all';
   const [workflow, setWorkflow] = useState('all');
   const [onlyFocus, setOnlyFocus] = useState(false);
   const [sort, setSort] = useState<Sort>('engine');
@@ -120,10 +120,10 @@ export function QueuePage({ snapshot, params, navigate, openDoc, busy, refresh }
             value={query}
             placeholder="Search the queue…"
             aria-label="Search the queue"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => setParam('q', event.target.value)}
           />
           {query ? (
-            <button type="button" className="rm-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+            <button type="button" className="rm-clear" aria-label="Clear search" onClick={() => setParam('q', '')}>
               <X size={12} aria-hidden="true" />
             </button>
           ) : null}
@@ -253,20 +253,21 @@ export function QueuePage({ snapshot, params, navigate, openDoc, busy, refresh }
     </div>
   );
 
-  function pickKind(next: string) {
-    setKind(next);
+  function setParam(name: string, next: string) {
     const values: Record<string, string> = {};
     for (const [key, value] of params) values[key] = value;
-    if (next === 'all') delete values.kind;
-    else values.kind = next;
+    if (!next) delete values[name];
+    else values[name] = next;
     navigate('now', values);
   }
 
+  function pickKind(next: string) {
+    setParam('kind', next === 'all' ? '' : next);
+  }
+
   function clearFilters() {
-    setKind('all');
     setWorkflow('all');
     setOnlyFocus(false);
-    setQuery('');
     const values: Record<string, string> = {};
     for (const [key, value] of params) {
       if (key !== 'kind' && key !== 'q') values[key] = value;

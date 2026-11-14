@@ -65,6 +65,30 @@ def test_the_health_screen_shows_the_digests_it_reads() -> None:
     assert "semantic" in body and "presentation" in body
 
 
+def test_the_health_screen_reads_the_health_api_contract() -> None:
+    """/api/health emits {code, path, message, fix} and by_severity, never check/file/fix_hint."""
+    body = (WEB / "pages" / "health.tsx").read_text(encoding="utf-8")
+    for stale in ("issue.check", "issue.file", "issue.field", "issue.fix_hint", "doctor.counts", "Index cache"):
+        assert stale not in body, f"health.tsx still reads stale field {stale!r}"
+    for current in ("issue.code", "issue.path", "issue.fix", "by_severity", "error_code", "goal_slug"):
+        assert current in body, f"health.tsx ignores {current!r}"
+
+
+def test_g_shortcuts_have_one_source_of_truth() -> None:
+    keyboard = (WEB / "keyboard.ts").read_text(encoding="utf-8")
+    app = _app()
+    settings = (WEB / "pages" / "settings-page.tsx").read_text(encoding="utf-8")
+    assert "export const G_KEYS" in keyboard
+    assert "G_KEYS" in app or "G_NAV_KEYS" in app, "App.tsx defines its own G-key map"
+    assert "G_KEYS" in settings or "G_NAV_SHORTCUTS" in settings, "settings-page.tsx hardcodes G-key shortcuts"
+
+
+@pytest.mark.parametrize("module", ["activity", "queue", "map"])
+def test_url_filter_params_are_not_copied_into_stale_mount_state(module: str) -> None:
+    body = (WEB / "pages" / f"{module}.tsx").read_text(encoding="utf-8")
+    assert "useState(params.get(" not in body, f"{module}.tsx freezes URL params in mount state"
+
+
 @pytest.mark.parametrize("route", ["now", "lens", "activity", "doctor"])
 def test_the_sidebar_offers_every_store_screen(route: str) -> None:
     """A screen nobody can navigate to is not a screen."""

@@ -62,14 +62,14 @@ import { crumbModel, trailOf, TRAIL_ROUTES } from './crumbs';
 import { ToolForm } from './ToolForm';
 
 import { DocumentNavigation } from './wikiLinks';
-import { useRailKeyboard } from './keyboard';
+import { G_NAV_KEYS, useRailKeyboard } from './keyboard';
 import { restorePreferences } from './preferences';
 import { CommandPalette, ConfirmDialog, DocDrawer, StatusGlyph, type PaletteGroup, type PaletteItem } from './overlays';
 const address = () => parseAddress(location.hash);
 const routeIcons: Partial<Record<Route, typeof House>> = {summary:LayoutDashboard,now:House,board:SquareKanban,roadmap:RouteIcon,scope:Target,catalog:Folders,decisions:GitBranch,activity:History,doctor:Stethoscope,pack:FileText,settings:Settings,workflow:RouteIcon,execution:GitBranch,timeline:RouteIcon};
 /* The legacy palette order and its G-key labels (web/src/core/palette.js). */
 const paletteRoutes: Route[] = ['board','roadmap','decisions','settings'];
-const navKeys: Partial<Record<Route,string>> = {board:'B',roadmap:'R',decisions:'D',activity:'C'};
+const navKeys = G_NAV_KEYS;
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD = isMac ? '⌘' : 'Ctrl';
 const CONFIRM_TEXT: Record<string, [string, string]> = {
