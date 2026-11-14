@@ -155,13 +155,14 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
     data = mapping(fields, "charter")
     schema = schema_version(data, CHARTER_SCHEMA, "charter")
     no_unknown(data, CHARTER_KEYS, "charter")
-    require(data, ("project", "default_branch", "protected_files"), "charter")
+    require(data, ("project", "default_branch"), "charter")
 
     project = parse_project(data["project"])
+    raw_protected = data.get("protected_files", ["rail.yaml", "charter.md"])
     protected_files = tuple(
         dict.fromkeys(
             relative_path(path, "charter.protected_files")
-            for path in _list(data.get("protected_files", []), "charter.protected_files")
+            for path in _list(raw_protected, "charter.protected_files")
         )
     )
     gates = _gates(data.get("gates"))

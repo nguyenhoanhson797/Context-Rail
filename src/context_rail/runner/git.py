@@ -116,7 +116,7 @@ def status_porcelain(cwd: Path, confine_to: Path) -> tuple[str, ...]:
     """The raw ``git status --porcelain`` entries, including untracked files."""
     # A truncated listing is never proof: read it generously and refuse a cut.
     result = _checked(
-        ["status", "--porcelain", "-z", "--untracked-files=all"],
+        ["--no-optional-locks", "status", "--porcelain", "-z", "--untracked-files=all"],
         cwd=cwd,
         confine_to=confine_to,
     )

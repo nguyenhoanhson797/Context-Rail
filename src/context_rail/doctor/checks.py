@@ -72,6 +72,7 @@ SEVERITIES: dict[str, str] = {
     "check_invalid": "error",
     "check_stale": "warning",
     "check_unknown": "warning",
+    "check_untracked": "warning",
     "review_invalid": "error",
     "report_untriaged": "warning",
     "budget_exceeded": "warning",
@@ -114,7 +115,7 @@ SEVERITIES: dict[str, str] = {
 
 SEVERITIES.update(stage2.SEVERITY)
 
-_REPAIR = "rail ops doctor --repair"
+_REPAIR = "rail ops repair"
 _APPROVE = (
     'rail approve charter --confirm "APPROVE charter" --confirmer <you>; '
     'after a pack change, also rail approve pack:<name> --confirm "APPROVE pack:<name>"'
@@ -123,7 +124,11 @@ _RELOCATE = "rail change repath"
 _TRIAGE = "rail loop triage"
 _CHARTER = "charter.md"
 _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
-_FRESHNESS_CODES = {"stale": "check_stale", "unknown": "check_unknown"}
+_FRESHNESS_CODES = {
+    "stale": "check_stale",
+    "unknown": "check_unknown",
+    "untracked": "check_untracked",
+}
 
 
 @dataclass(frozen=True)
@@ -707,7 +712,47 @@ def _tampered(store: Path, path: str) -> bool:
     declared = front.pop("digest", None)
     if declared is None:
         return False
-    return declared != record_digest(front)
+    try:
+        if declared == record_digest(front):
+            return False
+        text = data.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+        _head, sep, body = text.partition("\n---\n")
+        if sep and _legacy_markdown_digest_matches(front, body, declared):
+            return False
+    except TypeError:
+        return True
+    return True
+
+
+_LEGACY_PAYLOAD_KEYS = ("id", "primitive", "preset", "kind", "at", "actor", "about", "data")
+
+
+def _legacy_markdown_digest_matches(
+    front: dict[str, Any], body: str, declared: str
+) -> bool:
+    """Whether ``declared`` matches the pre-frontmatter digest format.
+
+    Before frontmatter digests, markdown records digested ``{**payload, 'body': body}``
+    and verified nothing else. Accept that digest only when no extra frontmatter
+    keys beyond standard presentation fields were tampered onto the payload, or
+    when the core payload fields themselves match the digest.
+    """
+    if any(key not in front for key in _LEGACY_PAYLOAD_KEYS):
+        return False
+    # In the legacy writer, ``title`` and ``fields`` were written to frontmatter
+    # outside ``payload`` unless JSON-style; for ``_add_record`` markdown records,
+    # ``payload["data"]`` was ``{}`` while ``title`` lived in frontmatter.
+    legacy = {key: front[key] for key in _LEGACY_PAYLOAD_KEYS}
+    legacy["body"] = body
+    if declared != record_digest(legacy):
+        return False
+    # Legacy digests did not cover presentation keys like ``title`` directly when
+    # ``data`` was empty; still reject obvious missing/non-string title edits if
+    # ``data`` carried a title that disagrees with frontmatter.
+    data = front.get("data")
+    if isinstance(data, dict) and "title" in data and front.get("title") != data["title"]:
+        return False
+    return True
 
 
 def _relation_type_issues(
@@ -796,7 +841,7 @@ def _daemon_issues(store: Path) -> list[dict[str, Any]]:
             "daemon_stale",
             str(endpoint),
             "a daemon descriptor remains but its process is gone",
-            fix="rail ops doctor --fix",
+            fix=_REPAIR,
         )
     ]
 

@@ -58,7 +58,9 @@ def etag(data: bytes) -> str:
 
 def record_digest(payload: dict[str, Any]) -> str:
     """SHA-256 of the canonical JSON of ``payload`` with the ``digest`` key excluded."""
-    canonical = {key: value for key, value in payload.items() if key != "digest"}
+    canonical = {
+        key: _normalize_dates(value) for key, value in payload.items() if key != "digest"
+    }
     return sha256_hex(
         json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
     )

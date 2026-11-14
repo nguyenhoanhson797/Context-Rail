@@ -130,8 +130,15 @@ def test_upgrade_rewrites_role_launcher_keys_and_the_runs_part() -> None:
 
 
 def test_charter_pins_reviewer_setting_only_when_absent() -> None:
-    assert upgrade_charter_fields({"schema": 1})[0]["reviewer_different_model"] is True
-    explicit = {"schema": 1, "reviewer_different_model": False}
+    upgraded, reasons = upgrade_charter_fields({"schema": 1})
+    assert upgraded["reviewer_different_model"] is True
+    assert upgraded["protected_files"] == ["rail.yaml", "charter.md"]
+    assert len(reasons) == 2
+    explicit = {
+        "schema": 1,
+        "reviewer_different_model": False,
+        "protected_files": ["rail.yaml"],
+    }
     assert upgrade_charter_fields(explicit) == (explicit, [])
 
 
@@ -140,9 +147,10 @@ def test_charter_text_gets_the_explicit_line_once() -> None:
 
     upgraded, reasons = upgrade_charter_text(text)
 
-    assert "reviewer_different_model: true\n---" in upgraded
+    assert "reviewer_different_model: true\n" in upgraded
+    assert "protected_files: [rail.yaml, charter.md]\n" in upgraded
     assert reasons and upgrade_charter_text(upgraded) == (upgraded, [])
-    kept = "---\nreviewer_different_model: false\n---\nx\n"
+    kept = "---\nreviewer_different_model: false\nprotected_files: [rail.yaml]\n---\nx\n"
     assert upgrade_charter_text(kept) == (kept, [])
 
 

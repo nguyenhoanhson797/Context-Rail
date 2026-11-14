@@ -118,17 +118,20 @@ def _upgrade_role(role: dict[str, Any], name: str, reasons: list[str]) -> None:
 
 
 def upgrade_charter_fields(fields: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """Write ``reviewer_different_model: true`` when the charter never chose."""
-    if "reviewer_different_model" in fields:
-        return dict(fields), []
-    return (
-        {**fields, "reviewer_different_model": True},
-        ["pinned reviewer_different_model: true"],
-    )
+    """Pin explicit charter defaults when the charter omitted them."""
+    updated = dict(fields)
+    reasons: list[str] = []
+    if "reviewer_different_model" not in updated:
+        updated["reviewer_different_model"] = True
+        reasons.append("pinned reviewer_different_model: true")
+    if "protected_files" not in updated:
+        updated["protected_files"] = ["rail.yaml", "charter.md"]
+        reasons.append("pinned protected_files: [rail.yaml, charter.md]")
+    return updated, reasons
 
 
 def upgrade_charter_text(text: str) -> tuple[str, list[str]]:
-    """Add the explicit reviewer setting to a charter document, line-wise."""
+    """Add explicit charter settings to a charter document, line-wise."""
     newline = "\r\n" if "\r\n" in text else "\n"
     lines = text.replace("\r\n", "\n").split("\n")
     span = _frontmatter_span(lines)
@@ -141,7 +144,12 @@ def upgrade_charter_text(text: str) -> tuple[str, list[str]]:
     _, reasons = upgrade_charter_fields(fields)
     if not reasons:
         return text, []
-    lines.insert(end, "reviewer_different_model: true")
+    added: list[str] = []
+    if "reviewer_different_model" not in fields:
+        added.append("reviewer_different_model: true")
+    if "protected_files" not in fields:
+        added.append("protected_files: [rail.yaml, charter.md]")
+    lines[end:end] = added
     return newline.join(lines), reasons
 
 

@@ -352,42 +352,108 @@ def freshness_of(
         return "unknown"
     stats = selected_stats(worktree, matched)
     state = freshness(verdict, definition, snapshot, stats)
-    if state == "fresh" and _untracked_matches(worktree, globs):
-        # An untracked file is a change the index cannot see, so a verdict
-        # that never covered it is not proof about it.
-        return "untracked"
+    if state == "fresh":
+        untracked = _untracked_state(worktree, snapshot, globs, ctx.store, ctx.manifest)
+        if untracked is not None:
+            return untracked
     return state
 
 
-def _untracked_matches(worktree: Path, globs: Sequence[str]) -> bool:
-    """Whether an untracked, unignored file matches the declared inputs.
+_MAX_UNTRACKED_DIRS = 10_000
 
-    This is the one freshness read that asks git: the index by design cannot
-    see a file git never recorded. A refused listing never upgrades a verdict,
-    so it reports no untracked match and leaves the index's judgement in place.
+
+def _untracked_state(
+    worktree: Path,
+    snapshot: IndexSnapshot,
+    globs: Sequence[str],
+    store: Path,
+    manifest: Any,
+) -> str | None:
+    """``'untracked'`` or ``'unknown'`` when the checkout adds an untracked input.
+
+    Reads never run git: declared literal prefixes are walked directly with
+    ``os.scandir`` against ``snapshot.entries``, skipping ``.git`` and the
+    store's own prefixes. Unreadable folders, walk caps or bad globs fail
+    closed to ``'unknown'``.
     """
-    patterns = []
+    from context_rail.store.location import owns_path, store_prefixes
+
+    patterns: list[re.Pattern[str]] = []
+    roots: set[str] = set()
     for text in globs:
         if not text:
             continue
+        norm = str(text).replace("\\", "/").strip("/")
         try:
-            patterns.append(glob_regex(str(text).replace("\\", "/")))
+            patterns.append(glob_regex(norm))
         except re.error:
-            return False
+            return "unknown"
+        head = _literal_prefix(norm)
+        roots.add(head)
     if not patterns:
-        return False
-    try:
-        listing = git_runner.status_porcelain(worktree, confine_to=worktree)
-    except WriteRefused:
-        return False
-    for record in listing:
-        if not record.startswith("?? "):
+        return None
+    if "" in roots:
+        roots = {""}
+    ignored = store_prefixes(store, worktree, manifest)
+    tracked = snapshot.entries
+    scanned_dirs = 0
+    stack: list[tuple[Path, str]] = []
+    for prefix in sorted(roots):
+        target = worktree if not prefix else worktree / Path(*prefix.split("/"))
+        try:
+            os.lstat(target)
+        except FileNotFoundError:
             continue
-        # ``-z`` prints paths verbatim, so the record is the path itself.
-        path = record[3:].replace("\\", "/")
-        if any(pattern.match(path) for pattern in patterns):
-            return True
-    return False
+        except OSError:
+            return "unknown"
+        if os.path.islink(target):
+            rel = prefix
+            if rel and rel not in tracked and any(p.match(rel) for p in patterns):
+                return "untracked"
+            continue
+        if os.path.isdir(target):
+            stack.append((target, prefix))
+        elif os.path.isfile(target):
+            if prefix and prefix not in tracked and any(p.match(prefix) for p in patterns):
+                return "untracked"
+    while stack:
+        scanned_dirs += 1
+        if scanned_dirs > _MAX_UNTRACKED_DIRS:
+            return "unknown"
+        directory, prefix = stack.pop()
+        try:
+            with os.scandir(directory) as handle:
+                entries = list(handle)
+        except OSError:
+            return "unknown"
+        for entry in entries:
+            name = entry.name
+            if name == ".git":
+                continue
+            rel = f"{prefix}/{name}" if prefix else name
+            if owns_path(rel, ignored):
+                continue
+            try:
+                is_symlink = entry.is_symlink()
+                is_dir = False if is_symlink else entry.is_dir(follow_symlinks=False)
+                is_file = False if (is_symlink or is_dir) else entry.is_file(follow_symlinks=False)
+            except OSError:
+                return "unknown"
+            if is_dir:
+                stack.append((Path(entry.path), rel))
+            elif is_file or is_symlink:
+                if rel not in tracked and any(pattern.match(rel) for pattern in patterns):
+                    return "untracked"
+    return None
+
+
+def _literal_prefix(glob_text: str) -> str:
+    parts: list[str] = []
+    for segment in glob_text.split("/"):
+        if not segment or any(ch in segment for ch in "*?["):
+            break
+        parts.append(segment)
+    return "/".join(parts)
 
 
 # ── verification modes ────────────────────────────────────────────────────

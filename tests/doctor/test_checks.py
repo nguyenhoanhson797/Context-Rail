@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from context_rail.core.result import is_ok
@@ -344,7 +345,7 @@ def test_intent_pending_reported_alone(store_factory) -> None:
 
     assert [issue["code"] for issue in report["issues"]] == ["intent_pending"]
     assert report["issues"][0]["severity"] == "error"
-    assert report["issues"][0]["fix"] == "rail ops doctor --repair"
+    assert report["issues"][0]["fix"] == "rail ops repair"
 
 
 def test_placement_mismatch_reported_alone(store_factory) -> None:
@@ -717,3 +718,135 @@ def test_a_finished_container_with_finished_children_is_clean(tmp_path: Path) ->
     )
 
     assert "container_inconsistent" not in _codes(store)
+
+
+def test_a_markdown_record_with_unquoted_yaml_date_does_not_crash_doctor(
+    store_factory,
+) -> None:
+    store = store_factory()
+    created = invoke(
+        "add", {"preset": "decision", "title": "Keep records"}, store=store, actor="cto"
+    )
+    assert is_ok(created), created
+    record = store / created["value"]["path"]
+    text = record.read_text(encoding="utf-8").replace("\r\n", "\n")
+    head, _, body = text.partition("\n---\n")
+    record.write_text(
+        head + "\ndate: 2026-10-28\n---\n" + body, encoding="utf-8", newline="\n"
+    )
+
+    assert "record_tampered" in _codes(store)
+
+
+def test_legacy_body_inclusive_markdown_record_digest_is_accepted(
+    store_factory,
+) -> None:
+    from context_rail.store.doc import record_digest, record_frontmatter
+
+    store = store_factory()
+    created = invoke(
+        "add", {"preset": "decision", "title": "Legacy decision"}, store=store, actor="cto"
+    )
+    assert is_ok(created), created
+    record = store / created["value"]["path"]
+    raw = record.read_bytes()
+    front = dict(record_frontmatter(raw) or {})
+    text = raw.decode("utf-8").replace("\r\n", "\n")
+    _head, _, body = text.partition("\n---\n")
+    legacy_payload = {
+        "id": front["id"],
+        "primitive": "record",
+        "preset": front["preset"],
+        "kind": front["kind"],
+        "at": front["at"],
+        "actor": front["actor"],
+        "about": front["about"],
+        "data": front["data"],
+        "body": body,
+    }
+    front["digest"] = record_digest(legacy_payload)
+    record.write_text(
+        "---\n" + dump_frontmatter(front) + "---\n" + body,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert "record_tampered" not in _codes(store)
+    touch_doc(store, created["value"]["path"], actor="someone-else")
+    assert "record_tampered" in _codes(store)
+
+
+def test_doctor_reports_untracked_check_freshness_and_stale_daemon_fix(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    from context_rail.gateway.daemon import daemon_endpoint
+
+    store = git_approved_store.store
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "cmd",
+                "acceptance": False,
+                "cmd": [sys.executable, "-c", "print('ok')"],
+                "inputs": ["src/**/*.py"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert is_ok(
+        invoke(
+            "check",
+            {
+                "slug": "smoke",
+                "target": git_approved_store.item,
+                "spec_file": str(spec),
+                "expect": "absent",
+            },
+            store=store,
+            actor="cto",
+        )
+    )
+    assert invoke("verify", {"target": "smoke"}, store=store, actor="cto")["value"]["passed"] is True
+    (git_approved_store.root / "src" / "extra.py").write_text("x = 1\n", encoding="utf-8")
+    daemon_file = daemon_endpoint(store)
+    assert daemon_file is not None
+    daemon_file.parent.mkdir(parents=True, exist_ok=True)
+    daemon_file.write_text('{"pid": 99999999, "port": 1}\n', encoding="utf-8")
+
+    report = _doctor(store)
+    by_code = {issue["code"]: issue for issue in report["issues"]}
+    assert "check_untracked" in by_code
+    assert by_code["check_untracked"]["severity"] == "warning"
+    assert "daemon_stale" in by_code
+    assert by_code["daemon_stale"]["fix"] == "rail ops repair"
+
+
+def test_doctor_repair_checks_permission_before_replaying_intents(
+    store_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from context_rail.gateway.gateway import Context
+    from context_rail.gateway.handlers.doctor import doctor_repair
+    from context_rail.kernel import rights
+    from context_rail.model.manifest import load_manifest
+    from context_rail.model.pack import load_pack
+    from context_rail.store.write import WriteRefused
+
+    store = store_factory(docs=3)
+    intent_path, _after_bytes = _craft_intent(store, "items/task/t1.md")
+    monkeypatch.setattr(rights, "allowed", lambda perm, actor: "refused" if perm == "write" else None)
+    ctx = Context(
+        store=store,
+        manifest=load_manifest(store),
+        pack=load_pack("basic", store),
+        actor="reviewer",
+    )
+    try:
+        with pytest.raises(WriteRefused) as exc_info:
+            doctor_repair(ctx, {}, "reviewer")
+    finally:
+        ctx.close()
+    assert exc_info.value.code == "PERMISSION_DENIED"
+    assert intent_path.exists()
+

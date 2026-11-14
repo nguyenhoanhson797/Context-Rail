@@ -616,3 +616,11 @@ def test_solo_charter_mode_is_accepted_and_full_is_the_default() -> None:
 def test_a_bogus_charter_mode_is_refused() -> None:
     with pytest.raises(ModelError):
         parse_charter(charter_fields(mode="shared"))
+
+
+def test_a_charter_without_protected_files_defaults_to_manifest_and_charter() -> None:
+    fields = charter_fields()
+    del fields["protected_files"]
+    charter = parse_charter(fields)
+    assert charter.protected_files == ("rail.yaml", "charter.md")
+

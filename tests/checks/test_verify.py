@@ -734,3 +734,38 @@ def test_an_untracked_input_is_not_fresh(
 
     shown = invoke("show", {"slug": "smoke"}, store=store)["value"]
     assert shown["freshness"] == "untracked"
+
+
+def test_freshness_reads_launch_no_process_and_fail_closed_on_bad_tree(
+    git_approved_store: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Freshness reads walk the checkout with os.scandir, never git, and fail closed."""
+    import subprocess
+    from context_rail.gateway.handlers import checks as checks_handler
+
+    store = git_approved_store.store
+    assert is_ok(
+        declare(
+            store,
+            tmp_path,
+            "smoke",
+            cmd_payload([sys.executable, "-c", "print('ok')"], ["src/**/*.py"]),
+        )
+    )
+    assert invoke("verify", {"target": "smoke"}, store=store, actor="cto")["value"]["passed"] is True
+
+    def refuse(*args: object, **kwargs: object) -> object:
+        raise AssertionError("freshness reads must not launch any process")
+
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    monkeypatch.setattr(subprocess, "run", refuse)
+    assert invoke("show", {"slug": "smoke"}, store=store)["value"]["freshness"] == "fresh"
+
+    (git_approved_store.root / "src" / "extra.py").write_text(
+        "x = 1\n", encoding="utf-8", newline="\n"
+    )
+    assert invoke("show", {"slug": "smoke"}, store=store)["value"]["freshness"] == "untracked"
+
+    monkeypatch.setattr(checks_handler, "_untracked_state", lambda *a, **k: "unknown")
+    assert invoke("show", {"slug": "smoke"}, store=store)["value"]["freshness"] == "unknown"
+

@@ -35,6 +35,7 @@ STAGE1B_CODES = {
     "check_invalid": "error",
     "check_stale": "warning",
     "check_unknown": "warning",
+    "check_untracked": "warning",
     "review_invalid": "error",
     "report_untriaged": "warning",
     "profile_invalid": "error",
@@ -222,6 +223,20 @@ def _case_check_unknown(tmp_path: Path, answers: Path, factory: Callable[..., Pa
     return store
 
 
+def _case_check_untracked(tmp_path: Path, answers: Path, factory: Callable[..., Path]) -> Path:
+    project, store = _approved(tmp_path, answers, "check-untracked", git=True)
+    added = invoke(
+        "add", {"preset": "task", "title": "Login page"}, store=store, actor="cto"
+    )
+    assert is_ok(added), added
+    declared = _declare(store, tmp_path, "unit", target="login-page", payload=_cmd_spec(PASSING_CMD))
+    assert is_ok(declared), declared
+    verified = invoke("verify", {"target": "unit"}, store=store, actor="cto")
+    assert is_ok(verified), verified
+    (project / "src" / "extra.py").write_text("VALUE = 3\n", encoding="utf-8", newline="\n")
+    return store
+
+
 def _case_review_invalid(tmp_path: Path, answers: Path, factory: Callable[..., Path]) -> Path:
     _project, store = _approved(tmp_path, answers, "review-invalid")
     added = invoke(
@@ -329,6 +344,7 @@ _CASES = {
     "check_invalid": _case_check_invalid,
     "check_stale": _case_check_stale,
     "check_unknown": _case_check_unknown,
+    "check_untracked": _case_check_untracked,
     "review_invalid": _case_review_invalid,
     "report_untriaged": _case_report_untriaged,
     "profile_invalid": _case_profile_invalid,

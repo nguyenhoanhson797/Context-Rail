@@ -29,6 +29,11 @@ def doctor_repair(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
     """Roll interrupted writes forward, then apply the safe fixes."""
     if args.get("dry_run"):
         return run_doctor(ctx.store, ctx.manifest, ctx.pack, ctx.index)
+    refusal = rights.allowed("write", actor)
+    if refusal is not None:
+        raise WriteRefused(
+            "PERMISSION_DENIED", refusal, {"tool": "doctor repair", "param": "repair"}
+        )
     repair(ctx.store)
     return doctor_fix(ctx, {}, actor)
 
