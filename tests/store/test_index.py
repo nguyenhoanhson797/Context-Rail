@@ -654,3 +654,45 @@ def test_contained_directory_symlink_is_not_traversed(store_factory):
             )
     finally:
         drop(link)
+
+
+def test_sync_paths_updates_added_changed_and_removed_documents(store_factory):
+    store = store_factory(docs=4)
+    rel = "items/task/Incremental.md"
+    target = store / rel
+    initial = (
+        "---\n"
+        "primitive: item\n"
+        "preset: task\n"
+        "slug: incremental\n"
+        "status: todo\n"
+        "---\n"
+        "# Incremental\n\nFirst body.\n"
+    ).encode("utf-8")
+    updated = initial.replace(b"status: todo", b"status: done")
+
+    with opened(store) as index:
+        assert index.sync().added == 4
+        target.write_bytes(initial)
+        stats = index.sync_paths([rel, "rail.yaml"], payloads={rel: initial})
+        assert (stats.added, stats.changed, stats.removed) == (1, 0, 0)
+        row = index.conn.execute(
+            "SELECT status FROM docs WHERE path = ?", (rel,)
+        ).fetchone()
+        assert row == ("todo",)
+
+        target.write_bytes(updated)
+        stats = index.sync_paths([rel], payloads={rel: updated})
+        assert (stats.added, stats.changed, stats.removed) == (0, 1, 0)
+        row = index.conn.execute(
+            "SELECT status FROM docs WHERE path = ?", (rel,)
+        ).fetchone()
+        assert row == ("done",)
+
+        target.unlink()
+        stats = index.sync_paths([rel])
+        assert (stats.added, stats.changed, stats.removed) == (0, 0, 1)
+        assert (
+            count(index, f"SELECT count(*) FROM docs WHERE path = '{rel}'") == 0
+        )
+

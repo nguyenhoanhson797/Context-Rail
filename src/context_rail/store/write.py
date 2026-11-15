@@ -268,7 +268,21 @@ def commit(
             _save_idem(store, sha256_hex(key.encode("utf-8")), result)
         intent_path.unlink(missing_ok=True)
         if index is not None:
-            index.sync()
+            if requests:
+                touched = [
+                    *(target.rel for target in targets if target.space == "store"),
+                    *(planned_record.rel for planned_record in planned),
+                ]
+                payloads: dict[str, bytes] = {
+                    target.rel: target.data
+                    for target in targets
+                    if target.space == "store" and target.data is not None
+                }
+                for planned_record in planned:
+                    payloads[planned_record.rel] = planned_record.data
+                index.sync_paths(touched, payloads=payloads)
+            else:
+                index.sync()
     return result
 
 

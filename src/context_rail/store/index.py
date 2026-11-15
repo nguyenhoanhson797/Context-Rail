@@ -13,7 +13,7 @@ import json
 import os
 import sqlite3
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -272,6 +272,7 @@ _SCHEMA = (
     )
     """,
     "CREATE INDEX candidates_item_at ON candidates(item, at DESC)",
+    *_SEEK_INDEXES,
 )
 
 #: Projection tables keyed by the store path of their evidence.
@@ -543,6 +544,53 @@ class Index:
             )
         return SyncStats(len(added), len(changed), len(removed), skipped)
 
+    def sync_paths(
+        self,
+        paths: Iterable[str],
+        *,
+        payloads: Mapping[str, bytes] | None = None,
+    ) -> SyncStats:
+        """Refresh known relative store paths when the caller already synced under lock."""
+        candidates = sorted({path for path in paths if _is_indexable_rel(path)})
+        if not candidates:
+            return SyncStats(0, 0, 0, 0)
+        root = self.store.resolve()
+        stored = {
+            path: (mtime_ns, size)
+            for path, mtime_ns, size in self.conn.execute(
+                f"SELECT path, mtime_ns, size FROM docs WHERE path IN "
+                f"({', '.join('?' * len(candidates))})",
+                candidates,
+            )
+        }
+        seen: dict[str, tuple[int, int]] = {}
+        for rel in candidates:
+            if _has_linked_parent(self.store, rel):
+                continue
+            target = self.store / rel
+            try:
+                if target.is_symlink():
+                    resolved = target.resolve()
+                    if not (resolved == root or root in resolved.parents) or not target.is_file():
+                        continue
+                elif not target.is_file():
+                    continue
+                stat = target.stat()
+            except OSError:
+                continue
+            seen[rel] = (stat.st_mtime_ns, stat.st_size)
+        added = [path for path in candidates if path in seen and path not in stored]
+        changed = [path for path in candidates if path in seen and path in stored]
+        removed = [path for path in candidates if path not in seen and path in stored]
+        if added or changed or removed:
+            _transaction(
+                self.conn,
+                lambda link: self._apply(
+                    link, seen, added, changed, removed, known_payloads=payloads
+                ),
+            )
+        return SyncStats(len(added), len(changed), len(removed), 0)
+
     def rebuild(self) -> SyncStats:
         """Drop every indexed row and sync the store from scratch."""
 
@@ -622,6 +670,8 @@ class Index:
         added: list[str],
         changed: list[str],
         removed: list[str],
+        *,
+        known_payloads: Mapping[str, bytes] | None = None,
     ) -> None:
         for path in removed:
             row = conn.execute("SELECT rowid FROM docs WHERE path = ?", (path,)).fetchone()
@@ -631,7 +681,12 @@ class Index:
         targets = [*added, *changed]
         for start in range(0, len(targets), READ_BATCH):
             chunk = targets[start : start + READ_BATCH]
-            payloads = self._payloads(chunk)
+            missing = (
+                [path for path in chunk if path not in known_payloads]
+                if known_payloads is not None
+                else chunk
+            )
+            loaded = self._payloads(missing) if missing else {}
             # BEGIN IMMEDIATE holds the write lock, so this read cannot race a
             # concurrent sync that already stored one of these paths.
             known = dict(
@@ -643,7 +698,11 @@ class Index:
             )
             for path in chunk:
                 mtime_ns, size = seen[path]
-                data = payloads[path]
+                data = (
+                    known_payloads[path]
+                    if known_payloads is not None and path in known_payloads
+                    else loaded[path]
+                )
                 doc = parse_doc(path, data)
                 self._store(conn, doc, data, mtime_ns, size, rowid=known.get(path))
 
@@ -1098,7 +1157,8 @@ def _connect(path: Path, busy_timeout_ms: int) -> sqlite3.Connection:
         try:
             conn.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
             conn.execute("PRAGMA journal_mode = WAL")
-            conn.execute("PRAGMA synchronous = NORMAL")
+            # The index is a rebuildable local cache; write.commit fsyncs truth files.
+            conn.execute("PRAGMA synchronous = OFF")
             return conn
         except sqlite3.DatabaseError as exc:
             conn.close()
@@ -1122,9 +1182,40 @@ def _ensure_seek_indexes(conn: sqlite3.Connection) -> None:
     They are additive and keyed on existing tables, so an older cache keeps its
     rows and gains the seek paths the CTO views need at ten thousand documents.
     """
+    existing = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+    }
+    if {"reports_class_at", "docs_primitive"}.issubset(existing):
+        return
     for statement in _SEEK_INDEXES:
         conn.execute(statement)
     conn.commit()
+
+
+def _is_indexable_rel(rel: str) -> bool:
+    parts = rel.split("/")
+    if any(part.startswith(".") or part in _UNCOUNTED_DIRS for part in parts[:-1]):
+        return False
+    name = parts[-1]
+    if name in _UNCOUNTED_NAMES or name.lower().endswith(".tmp"):
+        return False
+    return name.lower().endswith(_DOC_SUFFIXES)
+
+
+def _has_linked_parent(store: Path, rel: str) -> bool:
+    current = store
+    for part in rel.split("/")[:-1]:
+        current = current / part
+        try:
+            info = os.lstat(current)
+        except OSError:
+            return True
+        if current.is_symlink() or bool(
+            getattr(info, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+        ):
+            return True
+    return False
 
 
 def _create(conn: sqlite3.Connection, wanted: str) -> None:

@@ -141,12 +141,17 @@ def _worktree_git_dir(store: Path) -> tuple[Path, Path] | None:
     """``(this worktree's git dir, worktree root)``, or None outside git."""
     for directory in (store, *store.parents):
         marker = directory / ".git"
+        try:
+            os.lstat(marker)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError as exc:
+            raise StoreLocationError(f"{marker} cannot be inspected: {exc}") from None
         if marker.is_dir():
             return marker, directory
         if marker.is_file():
             return _gitdir_target(marker), directory
-        if marker.exists() or marker.is_symlink():
-            raise StoreLocationError(f"{marker} is not a git directory or gitdir file")
+        raise StoreLocationError(f"{marker} is not a git directory or gitdir file")
     return None
 
 
