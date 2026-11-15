@@ -15,6 +15,7 @@ __all__ = ["rail_commands", "unknown_rail_commands"]
 
 _COMMAND = re.compile(r"`(rail [^`]+)`")
 _PLACEHOLDER = re.compile(r"\s*<[^>]+>")
+_FLAG_OPTION = re.compile(r"(?:^|\s)(--[a-z0-9-]+)(?:=|\s|$)")
 _BY_NAME = {tool.name: tool for tool in tool_table.TOOLS}
 _VALUE_GLOBAL_FLAGS = frozenset({"--store", "--actor", "--session-env"})
 _BARE_GLOBAL_FLAGS = frozenset({"--help", "-h", "--version", "--no-daemon"})
@@ -85,6 +86,22 @@ def _resolves(command: str) -> bool:
     words = text.split()
     for end in range(len(words), 0, -1):
         prefix = " ".join(words[:end])
-        if prefix in tool_names.VISIBLE_ALIASES or prefix in _BY_NAME:
-            return True
+        canonical = tool_names.ALIASES.get(prefix, prefix)
+        if canonical in _BY_NAME:
+            return _flags_valid(_BY_NAME[canonical], " ".join(tokens))
     return False
+
+
+def _flags_valid(tool: tool_table.Tool, raw: str) -> bool:
+    """Every ``--flag`` supplied to ``tool`` is declared on its non-positional schema."""
+    allowed = {
+        f"--{param.name.replace('_', '-')}"
+        for param in tool.params
+        if not param.positional
+    } | {"--help"}
+    if tool.name == "sync":
+        allowed.add("--install")
+    for match in _FLAG_OPTION.finditer(raw):
+        if match.group(1) not in allowed:
+            return False
+    return True

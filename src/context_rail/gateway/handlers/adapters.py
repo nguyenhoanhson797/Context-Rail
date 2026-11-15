@@ -57,7 +57,7 @@ def _commands(roles: tuple[str, ...]) -> str:
 - A different actor reviews: `rail loop brief <item> --role <role>` for the reviewing role,
   then `rail loop review <item> --commit <sha> --verdict approve|reject`.
 - `rail change move <item> <status>` moves the Item once its gate allows it.
-- `rail loop report --item <item> --report-file <json>` files what happened, even when
+- `rail loop report <item> --report-file <json>` files what happened, even when
   nothing did.
 - Human-only actions need the exact phrase the command prints.
 """

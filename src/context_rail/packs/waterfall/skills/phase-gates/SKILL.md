@@ -18,5 +18,5 @@ tags: []
   children to be done) or while its done gate is unmet. If it refuses, report the refusal
   and stop; never ask to lower a gate.
 - Keep risks visible: file each one as a `risk` Item under the phase it threatens with
-  `rail add --preset risk --title <title> --rel part_of=<phase> --set severity=<level>`.
+  `rail change add risk "<title>" --rel part_of=<phase> --set severity=<level>`.
   Do not drop a risk when its phase moves on.

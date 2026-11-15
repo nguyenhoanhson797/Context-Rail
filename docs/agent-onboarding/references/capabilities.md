@@ -26,7 +26,7 @@ immutable model. Commands, agents and the UI read that model. None of them parse
 | `note` | durable knowledge, including skills, vision and Won't |
 | `record` | immutable history: runs, verdicts, approvals, events, decisions |
 | `check` | declared proof with a spec and a freshness rule |
-| `actor` | a profile: prompt, recipe, model, tools, methods, budgets |
+| `actor` | a profile: prompt, recipe, methods, budgets, skills |
 | `policy` | the charter: gates, decision rights, budgets |
 
 **8 relations**
@@ -155,8 +155,9 @@ revoke through every seat the target granted. A run seat is implicit
 
 Identity resolution in role mode:
 
-1. A `RAIL_SESSION` token resolves to its seat. The token is stored only as a
-   SHA-256 hash under the local directory (never in the store tree).
+1. A `RAIL_SESSION` token (or the variable named by `--session-env NAME`, with
+   no fallback to `RAIL_SESSION`) resolves to its seat. The token is stored only
+   as a SHA-256 hash under the local directory (never in the store tree).
 2. A terminal human with no token is the human. `ui serve` is human-only; the
    UI's per-run channel is the other human proof.
 3. Anything else is anonymous: read tools only, with an empty reach.
@@ -215,8 +216,11 @@ path from the work graph.
 
 ## Checks and evidence
 
-A Check is a document with a strict JSON spec and a freshness rule. Modes
-include existence, command exit, JSON assertion, human verdict and acceptance.
+A Check is a document with a strict JSON spec and a freshness rule. Its six
+modes are `cmd` (command exit), `exists` (relative files), `evidence` (declared
+proof), `review` (separated candidate review), `human` (human sign-off) and
+`store` (committed child-store item category, checked against child `HEAD` and
+item etag without running git). Every Check also sets `acceptance: true|false`.
 `rail check declare` creates or edits it; `rail check run` executes it and
 records a verdict. A stale verdict is not a pass.
 

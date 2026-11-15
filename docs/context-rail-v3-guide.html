@@ -863,10 +863,12 @@ the work needs; the brief reads only what it must.</code></pre>
           <pre><code>rail init --pack basic --scaffold</code></pre>
           <p class="small" style="margin-top: 8px;">
             Packs by workflow: <code>basic</code> (one stream), <code>flow</code>
-            (continuous kanban), <code>scrum</code> (sprints) and
-            <code>waterfall</code> (phase gates). <code>small</code> and
-            <code>indie</code> still resolve to <code>basic</code> and
-            <code>flow</code> for existing stores.
+            (continuous kanban), <code>scrum</code> (sprints),
+            <code>waterfall</code> (phase gates), <code>video</code> (scenes and
+            shots) and <code>portfolio</code> (cross-project coordination across
+            child stores). <code>small</code> and <code>indie</code> still
+            resolve to <code>basic</code> and <code>flow</code> for existing
+            stores.
             This walkthrough uses <code>--scaffold</code> so each step stays
             visible; bare <code>rail init --pack basic</code> runs the full
             resumable pipeline, including the picture offer, approval, agent
@@ -1149,7 +1151,7 @@ rail ops doctor</code></pre>
           <tr><td><code>rail check run &lt;item&gt; --worktree &lt;path&gt;</code></td><td>Verdicts for the item's executable checks.</td></tr>
           <tr><td><code>rail loop review &lt;item&gt; --commit &lt;sha&gt; --verdict approve</code></td><td>A different actor's verdict on exactly that commit.</td></tr>
           <tr><td><code>rail change move &lt;item&gt; &lt;status&gt;</code></td><td>The move, once the gate reads a fresh check and an approving review.</td></tr>
-          <tr><td><code>rail loop report --item &lt;item&gt; --report-file &lt;json&gt;</code></td><td>What happened, even when nothing did.</td></tr>
+          <tr><td><code>rail loop report &lt;item&gt; --report-file &lt;json&gt;</code></td><td>What happened, even when nothing did.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1166,7 +1168,7 @@ rail ops doctor</code></pre>
           <tr><td><code>rail ops sync install</code></td><td>Install the git drivers for store-only clones.</td></tr>
           <tr><td><code>rail --actor human migrate</code></td><td>Import a v1/v2 store into a fresh v3 store.</td></tr>
           <tr><td><code>rail --actor human ops upgrade</code></td><td>Rewrite an older v3 store: <code>dispatch</code> becomes <code>queue</code>, and <code>merge</code> and <code>policy.retries</code> are dropped with a hint.</td></tr>
-          <tr><td><code>rail serve mcp</code> · <code>rail serve ui</code></td><td>Same tool table over MCP or a loopback web UI.</td></tr>
+          <tr><td><code>rail serve mcp</code> · <code>rail serve ui</code> · <code>rail serve daemon</code></td><td>Same tool table over MCP, a loopback web UI or the store's warm daemon.</td></tr>
         </tbody>
       </table>
     </div>

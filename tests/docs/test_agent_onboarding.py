@@ -11,7 +11,9 @@ def _read(rel: str) -> str:
     return (_ROOT / rel).read_text(encoding="utf-8")
 
 
-def test_the_kit_index_names_every_entry_point() -> None:
+def test_the_kit_index_names_every_entry_point(tmp_path: Path) -> None:
+    from context_rail.store.packs import pack_origins
+
     text = _read("docs/agent-onboarding/README.md")
 
     for phrase in (
@@ -22,6 +24,8 @@ def test_the_kit_index_names_every_entry_point() -> None:
         "rail types",
         "MCP",
         "references/",
+        "--session-env",
+        *pack_origins(tmp_path),
     ):
         assert phrase in text, phrase
 
@@ -63,6 +67,8 @@ def test_the_onboarding_skill_is_discoverable_and_complete() -> None:
 
 
 def test_the_capability_reference_covers_the_full_power_surface() -> None:
+    from context_rail.model.cto import CHECK_MODES
+
     text = _read("docs/agent-onboarding/references/capabilities.md")
 
     for phrase in (
@@ -79,8 +85,18 @@ def test_the_capability_reference_covers_the_full_power_surface() -> None:
         "MCP",
         "semantic_digest",
         "Records",
+        "--session-env",
+        *CHECK_MODES,
     ):
         assert phrase in text, phrase
+    assert "JSON assertion" not in text
+    assert "model, tools" not in text
+
+
+def test_playbooks_name_only_real_pack_presets() -> None:
+    text = _read("docs/agent-onboarding/references/playbooks.md")
+    assert "rail change add render" not in text
+    assert "rail loop execution" in text
 
 
 def test_the_harness_reference_covers_the_common_harnesses() -> None:
