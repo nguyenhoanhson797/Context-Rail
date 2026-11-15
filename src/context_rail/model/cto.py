@@ -379,10 +379,16 @@ def parse_check(fields: dict[str, Any]) -> Check:
 
 def _store_path(raw: Any, what: str) -> str:
     """A path relative to the master's parent folder; ``..`` names sibling repositories."""
-    text = string(raw, what).replace("\\", "/")
+    text = string(raw, what)
+    if text != text.strip():
+        refuse(f"{what} must not have leading or trailing whitespace: {text!r}")
+    text = text.replace("\\", "/")
     if "\x00" in text or text.startswith("/") or ":" in text:
         refuse(f"{what} must be a relative path with no drive or stream: {text!r}")
-    return text
+    normalized = text.rstrip("/")
+    if not normalized or any(part == "" for part in normalized.split("/")):
+        refuse(f"{what} must be a relative path with no empty segments: {text!r}")
+    return normalized
 
 
 def _slug(raw: Any, what: str) -> str:
@@ -404,6 +410,7 @@ def _store_binding(raw: Any) -> dict[str, str]:
     no_unknown(data, STORE_BINDING_KEYS, "verdict.store")
     require(data, STORE_BINDING_KEYS, "verdict.store")
     binding = {key: string(data[key], f"verdict.store.{key}") for key in STORE_BINDING_KEYS}
+    _store_path(binding["path"], "verdict.store.path")
     _category(binding["category"], "verdict.store.category")
     return binding
 

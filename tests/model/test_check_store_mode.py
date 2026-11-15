@@ -105,6 +105,11 @@ def test_store_mode_refuses_absolute_or_drive_paths(path: str) -> None:
         pytest.param("", id="empty"),
         pytest.param("   ", id="blank"),
         pytest.param("../a\x00b", id="nul"),
+        pytest.param(" ../auth/context-rail", id="leading-space"),
+        pytest.param("../auth/context-rail ", id="trailing-space"),
+        pytest.param("/", id="slash-only"),
+        pytest.param("\\", id="backslash-only"),
+        pytest.param("../auth//context-rail", id="empty-segment"),
     ],
 )
 def test_store_mode_refuses_a_nul_or_empty_path(path: str) -> None:
@@ -114,7 +119,7 @@ def test_store_mode_refuses_a_nul_or_empty_path(path: str) -> None:
 
 
 def test_store_mode_accepts_parent_segments_and_normalises_backslashes() -> None:
-    spec = parse_check(_store_spec(store="..\\auth\\context-rail"))
+    spec = parse_check(_store_spec(store="..\\auth\\context-rail\\"))
     assert spec.store == "../auth/context-rail"
 
 

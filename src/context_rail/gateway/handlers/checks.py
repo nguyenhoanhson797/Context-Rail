@@ -25,6 +25,11 @@ from context_rail.gateway.handlers.common import (
     template_body,
     validate_relation_targets,
 )
+from context_rail.gateway.handlers.store_check import (
+    resolve_child_store,
+    store_freshness,
+    store_payload,
+)
 from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import Check, parse_check, parse_verdict
 from context_rail.model.fields import glob_regex
@@ -78,7 +83,7 @@ EVIDENCE_MODES = ("evidence", "human")
 ITEM_WIDE_SKIP = ("human", "review")
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 _RECORD_ID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
-_EXECUTABLE_MODES = ("cmd", "exists", "evidence", "review")
+_EXECUTABLE_MODES = ("cmd", "exists", "evidence", "review", "store")
 
 
 class _DuplicateKey(Exception):
@@ -98,6 +103,9 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             return _declared_response(store, saved)
         spec = parse_check(_read_spec(args["spec_file"]))
         _validate_definition(spec)
+        if spec.mode == "store":
+            assert spec.store is not None
+            resolve_child_store(ctx, spec.store)
         preset = preset_for(ctx.pack, "check")
         target = _trimmed(args.get("target"))
         relations = {"verifies": (target,)} if target else {}
@@ -324,6 +332,8 @@ def freshness_of(
     """
     if row is None:
         return "missing"
+    if row.get("mode") == "store":
+        return store_freshness(ctx, row)
     verdict: dict[str, Any] | None = None
     if row.get("verdict") is not None:
         verdict = {
@@ -479,6 +489,8 @@ def _verify_one(
             payload = _review_payload(ctx, row)
         elif mode == "human":
             payload = _human_payload(ctx, row, supplied, actor)
+        elif mode == "store":
+            payload = store_payload(ctx, row)
         else:  # pragma: no cover - parse_check pins the mode enum
             raise WriteRefused("VALIDATION_FAILED", f"unknown check mode {mode!r}")
     except GlobError as error:
@@ -784,6 +796,10 @@ def _frontmatter(preset: Preset, spec: Check, item: str | None) -> dict[str, Any
         front["inputs"] = list(spec.inputs)
     elif spec.mode == "evidence":
         front["evidence"] = list(spec.evidence)
+    elif spec.mode == "store":
+        front["store"] = spec.store
+        front["item"] = spec.item
+        front["category"] = spec.category
     if spec.timeout_s is not None:
         front["timeout_s"] = spec.timeout_s
     if spec.legacy is not None:

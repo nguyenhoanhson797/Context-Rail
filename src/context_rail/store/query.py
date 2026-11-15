@@ -439,6 +439,7 @@ def _check_state(ix: Index, row: Sequence[Any]) -> dict[str, Any]:
         "candidate_commit": None,
         "runner_digest": None,
         "reason": None,
+        "store_binding": None,
     }
     if latest is not None:
         record_id, at, passed, check_etag, blobs, candidate, digest, data = latest
@@ -454,6 +455,7 @@ def _check_state(ix: Index, row: Sequence[Any]) -> dict[str, Any]:
                 "candidate_commit": candidate,
                 "runner_digest": digest,
                 "reason": payload.get("reason"),
+                "store_binding": payload.get("store"),
             }
         )
     return state
