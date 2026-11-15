@@ -36,6 +36,11 @@ from context_rail.model.fields import (
     string_list,
 )
 from context_rail.model.pack import Pack
+from context_rail.model.results import (
+    RESULT_ADOPTION_KIND,
+    RESULT_KIND,
+    parse_result,
+)
 from context_rail.model.seats import SEAT_GRANTED, SEAT_KINDS, SEAT_REVOKED, parse_seat_event
 from context_rail.store.doc import (
     BAD_ENCODING,
@@ -57,7 +62,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 10
+INDEX_SCHEMA = 11
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -216,11 +221,47 @@ _SCHEMA = (
         item TEXT,
         run_id TEXT,
         candidate_commit TEXT,
+        result_record TEXT,
+        result_body_hash TEXT,
         reviewer TEXT,
         verdict TEXT,
         data_json TEXT NOT NULL
     )
     """,
+    "CREATE INDEX reviews_item_result ON reviews(item, result_record)",
+    """
+    CREATE TABLE results(
+        path TEXT PRIMARY KEY,
+        record_id TEXT NOT NULL,
+        item TEXT,
+        at TEXT,
+        actor TEXT,
+        outcome TEXT,
+        candidate_commit TEXT,
+        body_hash TEXT,
+        item_digest TEXT,
+        work_cycle TEXT,
+        contract_digest TEXT,
+        valid INTEGER NOT NULL,
+        problem TEXT,
+        data_json TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX results_item_at ON results(item, at DESC, record_id DESC)",
+    """
+    CREATE TABLE result_adoptions(
+        path TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        item TEXT NOT NULL,
+        workflow TEXT NOT NULL,
+        item_digest TEXT NOT NULL,
+        work_cycle TEXT,
+        at TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        PRIMARY KEY(path, item)
+    )
+    """,
+    "CREATE INDEX result_adoptions_item_at ON result_adoptions(item, at DESC, record_id DESC)",
     """
     CREATE TABLE seats(
         path TEXT PRIMARY KEY,
@@ -282,6 +323,8 @@ _PATH_TABLES = (
     "reports",
     "approvals",
     "reviews",
+    "results",
+    "result_adoptions",
     "executions",
     "seats",
     "candidates",
@@ -340,8 +383,36 @@ _PROJECTION_COLUMNS = {
         "item",
         "run_id",
         "candidate_commit",
+        "result_record",
+        "result_body_hash",
         "reviewer",
         "verdict",
+        "data_json",
+    ),
+    "results": (
+        "path",
+        "record_id",
+        "item",
+        "at",
+        "actor",
+        "outcome",
+        "candidate_commit",
+        "body_hash",
+        "item_digest",
+        "work_cycle",
+        "contract_digest",
+        "valid",
+        "problem",
+        "data_json",
+    ),
+    "result_adoptions": (
+        "path",
+        "record_id",
+        "item",
+        "workflow",
+        "item_digest",
+        "work_cycle",
+        "at",
         "data_json",
     ),
     "executions": (
@@ -397,6 +468,8 @@ _PROJECTED_KINDS = frozenset(
         _REPORT_KIND,
         _APPROVAL_KIND,
         _REVIEW_KIND,
+        RESULT_KIND,
+        RESULT_ADOPTION_KIND,
         CANDIDATE_KIND,
         EXECUTION_KIND,
         TRIAGE_KIND,
@@ -428,6 +501,8 @@ _REVIEW_KEYS = (
     "implementer_model",
     "reviewer_model",
     "candidate_commit",
+    "result_record",
+    "result_body_hash",
     "verdict",
     "findings",
     "evidence",
@@ -436,7 +511,7 @@ _REVIEW_KEYS = (
     "notes",
     "harness",
 )
-_REVIEW_REQUIRED = ("schema", "item", "reviewer_actor", "candidate_commit", "verdict")
+_REVIEW_REQUIRED = ("schema", "item", "reviewer_actor", "verdict")
 _REVIEW_VERDICTS = ("approve", "reject")
 
 
@@ -726,8 +801,9 @@ class Index:
         if not broken:
             try:
                 projected = _projection(doc)
-            except ModelError:
+            except ModelError as exc:
                 problems.append(INVALID_PAYLOAD)
+                projected = _invalid_diagnostic_projection(doc, exc.message)
         values = (
             doc.slug,
             doc.path,
@@ -758,6 +834,9 @@ class Index:
         else:
             self._clear(conn, doc.path, rowid)
         if broken:
+            stub = _broken_result_stub(doc)
+            if stub is not None:
+                self._write_projection(conn, stub)
             return
         if doc.fields:
             conn.executemany(
@@ -864,6 +943,10 @@ def _projection(doc: Doc) -> list[tuple[str, tuple[Any, ...]]]:
         return _execution_rows(doc, record_id, data)
     if kind == CANDIDATE_KIND:
         return _candidate_rows(doc, record_id, data)
+    if kind == RESULT_KIND:
+        return _result_rows(doc, record_id, data)
+    if kind == RESULT_ADOPTION_KIND:
+        return _result_adoption_rows(doc, record_id, data)
     if kind in SEAT_KINDS:
         return _seat_rows(doc, record_id, kind, data)
     return _review_rows(doc, record_id, data)
@@ -978,7 +1061,12 @@ def _review_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[s
     ):
         _optional_text(payload.get(name), f"review.{name}")
     reviewer = string(payload["reviewer_actor"], "review.reviewer_actor")
-    candidate = string(payload["candidate_commit"], "review.candidate_commit")
+    raw_commit = payload.get("candidate_commit")
+    candidate = None if raw_commit is None else string(raw_commit, "review.candidate_commit")
+    result_record = _optional_text(payload.get("result_record"), "review.result_record")
+    result_body_hash = _optional_text(payload.get("result_body_hash"), "review.result_body_hash")
+    if candidate is None and result_record is None:
+        refuse("review needs candidate_commit or result_record")
     verdict = string(payload["verdict"], "review.verdict")
     if verdict not in _REVIEW_VERDICTS:
         refuse("review.verdict must be approve or reject")
@@ -987,8 +1075,189 @@ def _review_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[s
             string_list(payload[name], f"review.{name}", allow_empty=True)
     if payload.get("profile_version") is not None:
         integer(payload["profile_version"], "review.profile_version", positive=True)
-    row = (doc.path, record_id, item, run_id, candidate, reviewer, verdict, _json(data))
+    row = (
+        doc.path,
+        record_id,
+        item,
+        run_id,
+        candidate,
+        result_record,
+        result_body_hash,
+        reviewer,
+        verdict,
+        _json(data),
+    )
     return [("reviews", row)]
+
+
+def _result_rows(
+    doc: Doc, record_id: str, data: dict[str, Any]
+) -> list[tuple[str, tuple[Any, ...]]]:
+    parsed = parse_result(data)
+    envelope_at = _at(doc)
+    if envelope_at is None:
+        refuse("result record needs an ISO 8601 envelope at")
+    envelope_actor = doc.fields.get("actor")
+    if not isinstance(envelope_actor, str) or envelope_actor != parsed.actor:
+        refuse("result actor does not match envelope actor")
+    about = tuple(doc.relations.get("about", ()))
+    if len(about) != 1 or about[0] != parsed.item:
+        refuse("result item does not match envelope about")
+    row = (
+        doc.path,
+        record_id,
+        parsed.item,
+        envelope_at,
+        parsed.actor,
+        parsed.outcome,
+        parsed.candidate_commit,
+        parsed.body_hash,
+        parsed.item_digest,
+        parsed.work_cycle,
+        parsed.contract_digest,
+        1,
+        None,
+        _json(data),
+    )
+    return [("results", row)]
+
+
+def _invalid_diagnostic_projection(
+    doc: Doc, reason: str
+) -> list[tuple[str, tuple[Any, ...]]]:
+    """Keep identity-resolvable invalid ``result.recorded`` rows so newest bad evidence stays visible."""
+    if doc.primitive != "record" or doc.fields.get("kind") != RESULT_KIND:
+        return []
+    record_id = _record_id(doc)
+    raw_data = doc.fields.get("data")
+    data = raw_data if isinstance(raw_data, dict) else {}
+    about = tuple(doc.relations.get("about", ()))
+    item = about[0] if len(about) == 1 and isinstance(about[0], str) and about[0] else None
+    if item is None:
+        raw_item = data.get("item")
+        if isinstance(raw_item, str) and raw_item:
+            item = raw_item
+    if item is None:
+        return []
+    envelope_at = _at(doc)
+    actor = doc.fields.get("actor")
+    if not isinstance(actor, str) or not actor:
+        raw_actor = data.get("actor")
+        actor = raw_actor if isinstance(raw_actor, str) and raw_actor else None
+    outcome = data.get("outcome") if isinstance(data.get("outcome"), str) else None
+    candidate_commit = (
+        data.get("candidate_commit")
+        if isinstance(data.get("candidate_commit"), str)
+        else None
+    )
+    body_hash = data.get("body_hash") if isinstance(data.get("body_hash"), str) else None
+    item_digest = (
+        data.get("item_digest") if isinstance(data.get("item_digest"), str) else None
+    )
+    work_cycle = data.get("work_cycle") if isinstance(data.get("work_cycle"), str) else None
+    contract_digest = (
+        data.get("contract_digest")
+        if isinstance(data.get("contract_digest"), str)
+        else None
+    )
+    return [
+        (
+            "results",
+            (
+                doc.path,
+                record_id,
+                item,
+                envelope_at,
+                actor,
+                outcome,
+                candidate_commit,
+                body_hash,
+                item_digest,
+                work_cycle,
+                contract_digest,
+                0,
+                reason,
+                _json(data),
+            ),
+        )
+    ]
+
+
+def _broken_result_stub(doc: Doc) -> list[tuple[str, tuple[Any, ...]]] | None:
+    """Preserve a broken stub when a result file's path identifies an item."""
+    if "records/" not in doc.path and not doc.path.startswith("records/"):
+        return None
+    parts = doc.path.split("/")
+    if not doc.path.endswith(".md") or len(parts) < 4:
+        return None
+    # Layout convention for result records: records/<folder>/<workflow>/<item>/<id>.md
+    item = parts[-2]
+    record_id = doc.slug
+    reason = ", ".join(doc.problems) if doc.problems else PARSE_ERROR
+    return [
+        (
+            "results",
+            (
+                doc.path,
+                record_id,
+                item,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                0,
+                reason,
+                "{}",
+            ),
+        )
+    ]
+
+
+def _result_adoption_rows(
+    doc: Doc, record_id: str, data: dict[str, Any]
+) -> list[tuple[str, tuple[Any, ...]]]:
+    payload = _strict(
+        data,
+        ("schema", "workflow", "items"),
+        "results_adopted",
+        ("schema", "workflow", "items"),
+    )
+    workflow = string(payload["workflow"], "results_adopted.workflow")
+    at = _at(doc)
+    if at is None:
+        refuse("results.adopted record needs an ISO 8601 at")
+    items = payload["items"]
+    if not isinstance(items, list):
+        refuse("results_adopted.items must be a list")
+    rows: list[tuple[str, tuple[Any, ...]]] = []
+    for index, entry in enumerate(items):
+        what = f"results_adopted.items[{index}]"
+        item_map = mapping(entry, what)
+        no_unknown(item_map, ("item", "item_digest", "work_cycle"), what)
+        require(item_map, ("item", "item_digest"), what)
+        slug = string(item_map["item"], f"{what}.item")
+        digest = string(item_map["item_digest"], f"{what}.item_digest")
+        cycle = _optional_text(item_map.get("work_cycle"), f"{what}.work_cycle")
+        rows.append(
+            (
+                "result_adoptions",
+                (
+                    doc.path,
+                    record_id,
+                    slug,
+                    workflow,
+                    digest,
+                    cycle,
+                    at,
+                    _json(data),
+                ),
+            )
+        )
+    return rows
 
 
 def _seat_rows(

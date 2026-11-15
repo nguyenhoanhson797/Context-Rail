@@ -24,10 +24,19 @@ from context_rail.model.pack import load_pack
 from context_rail.model.presentation import default_presentation
 from context_rail.model.results import (
     RESULT_BODY_MAX_BYTES,
+    RESULT_KIND,
+    RESULT_OUTCOMES,
+    RESULT_SCHEMA,
     ArtifactSpec,
+    ResultBinding,
+    ResultPayload,
     ResultProtocol,
+    ResultSelection,
     extract_markdown_h2_headings,
+    parse_result,
     parse_results,
+    result_body_hash,
+    validate_result_body,
 )
 from helpers import (
     compiled_model,
@@ -705,3 +714,171 @@ def test_result_contract_and_placement_changes_affect_semantic_digest_only(
     after_placement = load_project("result-test", store)
     assert after_placement.semantic_digest != after_preset.semantic_digest
     assert after_placement.results["sprint"].produce.digest != after_preset.results["sprint"].produce.digest
+
+
+def _valid_result_payload(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "schema": RESULT_SCHEMA,
+        "item": "task-1",
+        "attempt": 1,
+        "actor": "implementer",
+        "at": "2026-11-15T10:00:00Z",
+        "outcome": "completed",
+        "candidate_commit": None,
+        "body_hash": "a" * 64,
+        "item_digest": "b" * 64,
+        "work_cycle": None,
+        "contract_digest": "c" * 64,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_validate_result_body_normalizes_and_checks_sections() -> None:
+    sections = ("Summary", "Findings", "Evidence", "Next steps")
+    raw_crlf = (
+        "\ufeff# Title\r\n\r\n"
+        "## Summary\r\nConfirmed cause.\r\n\r\n"
+        "```markdown\r\n## Fake\r\n```\r\n\r\n"
+        "## Findings\r\nNot applicable: no regressions.\r\n\r\n"
+        "## Evidence\r\n<!-- note -->\r\nObserved in logs.\r\n\r\n"
+        "## Next steps\r\nProceed to review.\r\n"
+    )
+    normalized = raw_crlf.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    validate_result_body(raw_crlf, sections)
+    assert result_body_hash(raw_crlf) == result_body_hash(normalized)
+    assert len(result_body_hash(raw_crlf)) == 64
+
+    # Comment-only or whitespace-only section is empty
+    comment_only = (
+        "## Summary\n<!-- just a comment -->\n   \n"
+        "## Findings\nDetails.\n"
+        "## Evidence\nLogs.\n"
+        "## Next steps\nDone.\n"
+    )
+    with pytest.raises(ModelError) as err:
+        validate_result_body(comment_only, sections)
+    assert err.value.code == "VALIDATION_FAILED"
+
+    # Fenced heading cannot satisfy required heading
+    fenced_only = (
+        "## Summary\nOk.\n"
+        "```md\n## Findings\nInside fence.\n```\n"
+        "## Evidence\nLogs.\n"
+        "## Next steps\nDone.\n"
+    )
+    with pytest.raises(ModelError) as err:
+        validate_result_body(fenced_only, sections)
+    assert err.value.code == "VALIDATION_FAILED"
+
+    # Out of order heading is refused
+    out_of_order = (
+        "## Summary\nOk.\n"
+        "## Evidence\nLogs.\n"
+        "## Findings\nDetails.\n"
+        "## Next steps\nDone.\n"
+    )
+    with pytest.raises(ModelError) as err:
+        validate_result_body(out_of_order, sections)
+    assert err.value.code == "VALIDATION_FAILED"
+
+    # Duplicate required heading is refused
+    duplicate_heading = (
+        "## Summary\nOk.\n"
+        "## Summary\nAgain.\n"
+        "## Findings\nDetails.\n"
+        "## Evidence\nLogs.\n"
+        "## Next steps\nDone.\n"
+    )
+    with pytest.raises(ModelError) as err:
+        validate_result_body(duplicate_heading, sections)
+    assert err.value.code == "VALIDATION_FAILED"
+
+
+def test_validate_result_body_enforces_exact_256kib_limit() -> None:
+    sections = ("Summary",)
+    prefix = "## Summary\n"
+    exact = prefix + ("x" * (RESULT_BODY_MAX_BYTES - len(prefix.encode("utf-8"))))
+    assert len(exact.encode("utf-8")) == RESULT_BODY_MAX_BYTES
+    validate_result_body(exact, sections)
+
+    too_big = exact + "x"
+    assert len(too_big.encode("utf-8")) == RESULT_BODY_MAX_BYTES + 1
+    with pytest.raises(ModelError) as err:
+        validate_result_body(too_big, sections)
+    assert err.value.code == "VALIDATION_FAILED"
+
+
+def test_parse_result_payload_validates_fields_and_refuses_unknown_keys() -> None:
+    assert RESULT_KIND == "result.recorded"
+    assert RESULT_OUTCOMES == ("completed", "partial", "blocked", "failed")
+
+    parsed = parse_result(
+        _valid_result_payload(
+            candidate_commit="0123456789abcdef" * 2 + "01234567",
+            work_cycle="01JCYC00000000000000000001",
+            seat="impl-1",
+            seat_role="implementer",
+            profile="implementer",
+            profile_version=1,
+            skills=[
+                {
+                    "identity": "workspace/skills/test/SKILL.md",
+                    "version": 1,
+                    "etag": "0123456789abcdef",
+                }
+            ],
+            model="test-model",
+            harness="test-harness",
+        )
+    )
+    assert isinstance(parsed, ResultPayload)
+    assert parsed.item == "task-1"
+    assert parsed.outcome == "completed"
+    assert parsed.work_cycle == "01JCYC00000000000000000001"
+    assert parsed.seat == "impl-1"
+    assert parsed.profile_version == 1
+
+    # Payload `at` may be omitted (envelope `at` is authoritative); if present, validated
+    omitted_at = _valid_result_payload()
+    omitted_at.pop("at")
+    assert parse_result(omitted_at).at is None
+
+    # ResultBinding and ResultSelection dataclasses exist with expected fields
+    binding = ResultBinding(
+        record="01JRES00000000000000000001",
+        body_hash="a" * 64,
+        item_digest="b" * 64,
+        work_cycle=None,
+        contract_digest="c" * 64,
+        candidate_commit=None,
+    )
+    selection = ResultSelection(
+        record={"record_id": binding.record},
+        binding=binding,
+        current=True,
+        completed=True,
+        reasons=(),
+    )
+    assert selection.binding.record == binding.record
+
+    # Negative payload cases
+    for bad in (
+        _valid_result_payload(extra=1),
+        _valid_result_payload(schema=2),
+        _valid_result_payload(item="Not A Slug"),
+        _valid_result_payload(attempt=0),
+        _valid_result_payload(outcome="unknown"),
+        _valid_result_payload(candidate_commit="short"),
+        _valid_result_payload(body_hash="A" * 64),
+        _valid_result_payload(item_digest="bad"),
+        _valid_result_payload(contract_digest="bad"),
+        _valid_result_payload(work_cycle="not-a-ulid"),
+        _valid_result_payload(at="not-a-timestamp"),
+        _valid_result_payload(seat="Invalid Seat"),
+        _valid_result_payload(seat_role="Invalid Role"),
+        _valid_result_payload(profile_version=0),
+    ):
+        with pytest.raises(ModelError):
+            parse_result(bad)
+

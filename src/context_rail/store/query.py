@@ -51,9 +51,14 @@ __all__ = [
     "count_reports_by_fingerprint",
     "report_for_candidate",
     "reports_by_fingerprint",
+    "result_adoption_for",
+    "result_by_record",
+    "result_count",
+    "results_for_item",
     "reversible_decisions",
     "review_for",
     "review_for_item",
+    "review_for_result",
     "seat_events",
     "show",
     "totals_for_candidates",
@@ -739,13 +744,119 @@ def report_for_candidate(ix: Index, candidate_id: str) -> str | None:
     return None if row is None else row[0]
 
 
+_RESULT_SELECT = (
+    "SELECT path, record_id, item, at, actor, outcome, candidate_commit, "
+    "body_hash, item_digest, work_cycle, contract_digest, valid, problem, data_json "
+    "FROM results"
+)
+_RESULT_ORDER = "ORDER BY at DESC, record_id DESC"
+
+
+def result_by_record(ix: Index, record_id: str) -> dict[str, Any] | None:
+    """One projected producer result by its ``record_id``, or None."""
+    record_id = _text(record_id, "record")
+    row = ix.conn.execute(
+        f"{_RESULT_SELECT} WHERE record_id = ? LIMIT 1", (record_id,)
+    ).fetchone()
+    return None if row is None else _result_row(row)
+
+
+def results_for_item(
+    ix: Index, item: str, *, limit: int = 5
+) -> list[dict[str, Any]]:
+    """Producer results for ``item``, ordered by envelope ``(at DESC, record_id DESC)``."""
+    item = _text(item, "item")
+    limit = _bounded(limit, LIMIT_BOUNDS, "limit")
+    rows = ix.conn.execute(
+        f"{_RESULT_SELECT} WHERE item = ? {_RESULT_ORDER} LIMIT ?", (item, limit)
+    ).fetchall()
+    return [_result_row(row) for row in rows]
+
+
+def result_count(ix: Index, item: str) -> int:
+    """How many producer results (including invalid diagnostic stubs) exist for ``item``."""
+    item = _text(item, "item")
+    row = ix.conn.execute(
+        "SELECT COUNT(*) FROM results WHERE item = ?", (item,)
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def result_adoption_for(
+    ix: Index, item: str, workflow: str | None = None
+) -> dict[str, Any] | None:
+    """The newest ``results.adopted`` snapshot entry for ``item`` (optionally matching ``workflow``)."""
+    item = _text(item, "item")
+    if workflow is None:
+        row = ix.conn.execute(
+            "SELECT path, record_id, item, workflow, item_digest, work_cycle, at, data_json "
+            "FROM result_adoptions WHERE item = ? ORDER BY at DESC, record_id DESC LIMIT 1",
+            (item,),
+        ).fetchone()
+    else:
+        row = ix.conn.execute(
+            "SELECT path, record_id, item, workflow, item_digest, work_cycle, at, data_json "
+            "FROM result_adoptions WHERE item = ? AND workflow = ? "
+            "ORDER BY at DESC, record_id DESC LIMIT 1",
+            (item, _text(workflow, "workflow")),
+        ).fetchone()
+    if row is None:
+        return None
+    path, record_id, owner, wf, item_digest, cycle, at, data_json = row
+    return {
+        "path": path,
+        "record_id": record_id,
+        "item": owner,
+        "workflow": wf,
+        "item_digest": item_digest,
+        "work_cycle": cycle,
+        "at": at,
+        "data": json.loads(data_json),
+    }
+
+
+def _result_row(row: Sequence[Any]) -> dict[str, Any]:
+    (
+        path,
+        record_id,
+        item,
+        at,
+        actor,
+        outcome,
+        candidate_commit,
+        body_hash,
+        item_digest,
+        work_cycle,
+        contract_digest,
+        valid,
+        problem,
+        data_json,
+    ) = row
+    return {
+        "record_id": record_id,
+        "path": path,
+        "item": item,
+        "at": at,
+        "actor": actor,
+        "outcome": outcome,
+        "candidate_commit": candidate_commit,
+        "body_hash": body_hash,
+        "item_digest": item_digest,
+        "work_cycle": work_cycle,
+        "contract_digest": contract_digest,
+        "valid": bool(valid),
+        "problem": problem,
+        "data": json.loads(data_json),
+    }
+
+
 def review_for(ix: Index, candidate: str) -> dict[str, Any] | None:
     """The newest review bound to exactly ``candidate``, or None."""
     candidate = _text(candidate, "candidate")
     row = ix.conn.execute(
         """
-        SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.reviewer,
-               r.verdict, r.data_json, r.path
+        SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.result_record,
+               r.result_body_hash, r.reviewer, r.verdict, r.data_json, r.path
         FROM reviews r JOIN docs d ON d.path = r.path
         WHERE r.candidate_commit = ?
         ORDER BY d.record_at DESC, r.record_id DESC LIMIT 1
@@ -754,7 +865,18 @@ def review_for(ix: Index, candidate: str) -> dict[str, Any] | None:
     ).fetchone()
     if row is None:
         return None
-    record_id, item, run_id, bound, reviewer, verdict, data_json, path = row
+    (
+        record_id,
+        item,
+        run_id,
+        bound,
+        result_record,
+        result_body_hash,
+        reviewer,
+        verdict,
+        data_json,
+        path,
+    ) = row
     payload = json.loads(data_json)
     return {
         "review": record_id,
@@ -762,6 +884,56 @@ def review_for(ix: Index, candidate: str) -> dict[str, Any] | None:
         "item": item,
         "run": run_id,
         "candidate_commit": bound,
+        "result_record": result_record,
+        "result_body_hash": result_body_hash,
+        "reviewer": reviewer,
+        "verdict": verdict,
+        "findings": payload.get("findings", []),
+        "evidence": payload.get("evidence", []),
+        "data": payload,
+        "path": path,
+    }
+
+
+def review_for_result(
+    ix: Index, item: str, result_record: str
+) -> dict[str, Any] | None:
+    """The newest review bound to ``(item, result_record)``, or None."""
+    item = _text(item, "item")
+    result_record = _text(result_record, "result_record")
+    row = ix.conn.execute(
+        """
+        SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.result_record,
+               r.result_body_hash, r.reviewer, r.verdict, r.data_json, r.path
+        FROM reviews r JOIN docs d ON d.path = r.path
+        WHERE r.item = ? AND r.result_record = ?
+        ORDER BY d.record_at DESC, r.record_id DESC LIMIT 1
+        """,
+        (item, result_record),
+    ).fetchone()
+    if row is None:
+        return None
+    (
+        record_id,
+        owner,
+        run_id,
+        bound,
+        res_id,
+        res_hash,
+        reviewer,
+        verdict,
+        data_json,
+        path,
+    ) = row
+    payload = json.loads(data_json)
+    return {
+        "review": record_id,
+        "record_id": record_id,
+        "item": owner,
+        "run": run_id,
+        "candidate_commit": bound,
+        "result_record": res_id,
+        "result_body_hash": res_hash,
         "reviewer": reviewer,
         "verdict": verdict,
         "findings": payload.get("findings", []),
@@ -776,8 +948,8 @@ def review_for_item(ix: Index, item: str) -> dict[str, Any] | None:
     item = _text(item, "item")
     row = ix.conn.execute(
         """
-        SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.reviewer,
-               r.verdict, r.data_json, r.path
+        SELECT r.record_id, r.item, r.run_id, r.candidate_commit, r.result_record,
+               r.result_body_hash, r.reviewer, r.verdict, r.data_json, r.path
         FROM reviews r JOIN docs d ON d.path = r.path
         WHERE r.item = ?
         ORDER BY d.record_at DESC, r.record_id DESC LIMIT 1
@@ -786,7 +958,18 @@ def review_for_item(ix: Index, item: str) -> dict[str, Any] | None:
     ).fetchone()
     if row is None:
         return None
-    record_id, owner, run_id, bound, reviewer, verdict, data_json, path = row
+    (
+        record_id,
+        owner,
+        run_id,
+        bound,
+        result_record,
+        result_body_hash,
+        reviewer,
+        verdict,
+        data_json,
+        path,
+    ) = row
     payload = json.loads(data_json)
     return {
         "review": record_id,
@@ -794,6 +977,8 @@ def review_for_item(ix: Index, item: str) -> dict[str, Any] | None:
         "item": owner,
         "run": run_id,
         "candidate_commit": bound,
+        "result_record": result_record,
+        "result_body_hash": result_body_hash,
         "reviewer": reviewer,
         "verdict": verdict,
         "findings": payload.get("findings", []),
