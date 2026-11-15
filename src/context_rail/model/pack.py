@@ -31,6 +31,15 @@ from context_rail.model.primitives import (
     PRIMITIVES,
     WORKABLE_CATEGORIES,
 )
+from context_rail.model.results import (
+    ArtifactSpec,
+    ResultProtocol,
+    parse_results,
+    parse_workflow_results,
+    validate_result_protocol,
+    validate_template_headings,
+    validate_workflow_overrides,
+)
 
 __all__ = [
     "DEPRECATED_PACK_ALIASES",
@@ -49,10 +58,13 @@ __all__ = [
     "canonical_pack_name",
     "check_pack_name",
     "effective_measurement_min_runs",
+    "effective_results_for",
     "load_pack",
     "pack_layout",
     "pack_layout_source",
-    "pack_policy_digest", "pack_source",
+    "pack_policy_digest",
+    "pack_source",
+    "result_template_problems",
 ]
 
 PACK_KEYS = (
@@ -67,6 +79,7 @@ PACK_KEYS = (
     "workflows",
     "actions",
     "operating",
+    "results",
     "extends",
 )
 REQUIRED_PACK_KEYS = ("name", "version", "statuses", "initial", "transitions", "presets", "policy")
@@ -83,7 +96,7 @@ PRESET_KEYS = (
 EXECUTION_KEYS = ("queue",)
 RENAMED_EXECUTION_KEYS = {"dispatch": "queue"}
 REMOVED_EXECUTION_KEYS = ("merge",)
-WORKFLOW_KEYS = ("initial", "transitions", "execution", "quality")
+WORKFLOW_KEYS = ("initial", "transitions", "execution", "quality", "results")
 QUALITY_KEYS = ("gate", "checks")
 LAYOUT_FILE = "layout.yaml"
 LAYOUT_KEYS = ("placement", "presets")
@@ -135,6 +148,7 @@ class Workflow:
     execution: dict[str, dict[str, bool]]
     quality: dict[str, QualityRule]
     statuses: dict[str, str] = field(default_factory=dict)
+    results: dict[str, ArtifactSpec] = field(default_factory=dict)
 
     def queued(self, status: str) -> bool:
         """Whether an Item in ``status`` may appear in the work queue."""
@@ -186,7 +200,10 @@ class Pack:
     workflows: dict[str, Workflow]
     actions: dict[str, Action] = field(default_factory=dict)
     operating: OperatingSpec | None = None
+    results: ResultProtocol | None = None
     extends: str | None = None
+    _raw_results: Any = field(default=None, repr=False, compare=False)
+    _template_packs: tuple[str, ...] = field(default=(), repr=False, compare=False)
 
     def workflow(self, name: str) -> Workflow:
         """The workflow called ``name``, refusing an unknown one."""
@@ -290,11 +307,27 @@ def _resolve_extends(pack: Pack, store: Path, *, seen: tuple[str, ...]) -> Pack:
     merged_actions.update(pack.actions)
     merged_policy = dict(base.policy)
     merged_policy.update(pack.policy)
+    merged_results = _merge_results(pack, base, merged_presets)
+    for wf_name, workflow in merged_workflows.items():
+        if not workflow.results:
+            continue
+        if merged_results is None:
+            _refuse(
+                f"pack {pack.name!r} workflow {wf_name!r} declares results "
+                "without pack-level results"
+            )
+        validate_workflow_overrides(
+            workflow.results,
+            presets=merged_presets,
+            where=f"workflows.{wf_name}.results",
+        )
     # Every child preset's workflow and every child action source must resolve
     # against the merged registries (child presets may select base workflows).
     for preset in merged_presets.values():
         if preset.workflow not in merged_workflows:
             _refuse(f"pack {pack.name!r} preset {preset.name!r} names unknown workflow {preset.workflow!r}")
+    base_chain = base._template_packs or (base.name,)
+    template_packs = tuple(dict.fromkeys((pack.name, *base_chain)))
     return replace(
         pack,
         statuses=merged_statuses,
@@ -303,7 +336,27 @@ def _resolve_extends(pack: Pack, store: Path, *, seen: tuple[str, ...]) -> Pack:
         actions=merged_actions,
         policy=merged_policy,
         operating=pack.operating or base.operating,
+        results=merged_results,
+        _template_packs=template_packs,
     )
+
+
+def _merge_results(
+    pack: Pack, base: Pack, merged_presets: dict[str, Preset]
+) -> ResultProtocol | None:
+    if pack._raw_results is not None:
+        return parse_results(
+            pack._raw_results,
+            presets=merged_presets,
+            where="results",
+            inherited=base.results,
+        )
+    if base.results is not None:
+        validate_result_protocol(
+            base.results, presets=merged_presets, where="results"
+        )
+        return base.results
+    return None
 
 
 def pack_layout_source(name: str, store: Path) -> Any | None:
@@ -365,6 +418,82 @@ def pack_policy_digest(pack: Pack) -> str:
     return sha256_hex(canonical.encode("utf-8"))
 
 
+def effective_results_for(pack: Pack, workflow_name: str) -> ResultProtocol | None:
+    """The effective producer/review artifact specs for ``workflow_name``."""
+    if pack.results is None:
+        return None
+    workflow = pack.workflows.get(workflow_name)
+    if workflow is None or not workflow.results:
+        return pack.results
+    return ResultProtocol(
+        produce=workflow.results.get("produce", pack.results.produce),
+        review=workflow.results.get("review", pack.results.review),
+    )
+
+
+def result_template_problems(pack: Pack, store: Path) -> list[dict[str, str]]:
+    """Validate that every declared result/review artifact template exists and declares its sections."""
+    if pack.results is None:
+        return []
+    problems: list[dict[str, str]] = []
+    seen_checks: set[tuple[str, tuple[str, ...]]] = set()
+    for wf_name in sorted(pack.workflows):
+        protocol = effective_results_for(pack, wf_name)
+        if protocol is None:
+            continue
+        for role, spec in (("produce", protocol.produce), ("review", protocol.review)):
+            key = (spec.preset, spec.sections)
+            if key in seen_checks:
+                continue
+            seen_checks.add(key)
+            preset = pack.presets.get(spec.preset)
+            if preset is None:
+                continue
+            template = preset.template.replace("{primitive}", preset.primitive)
+            source = _template_source(pack, template, store)
+            if source is None:
+                problems.append(
+                    {
+                        "path": template,
+                        "message": f"pack {pack.name!r} ships no {template}",
+                    }
+                )
+                continue
+            text = _read_text(source, template)
+            problem = validate_template_headings(
+                text, spec.sections, template=template
+            )
+            if problem is not None:
+                problems.append(
+                    {
+                        "path": template,
+                        "message": f"pack {pack.name!r} {wf_name}.{role}: {problem}",
+                    }
+                )
+    return problems
+
+
+def _template_source(pack: Pack, template: str, store: Path) -> Any | None:
+    parts = [part for part in template.split("/") if part]
+    search_names = pack._template_packs or (pack.name,)
+    candidates: list[str] = []
+    for name in search_names:
+        candidates.append(name)
+        candidates.append(canonical_pack_name(name))
+    for candidate_name in dict.fromkeys(candidates):
+        local = Path(store) / "packs" / candidate_name
+        if (local / "pack.yaml").is_file():
+            candidate = local.joinpath(*parts)
+            if candidate.is_file():
+                return candidate
+        builtin = _builtin_pack(candidate_name)
+        if builtin is not None:
+            candidate = builtin.parent.joinpath(*parts)
+            if candidate.is_file():
+                return candidate
+    return None
+
+
 def _builtin_pack(name: str) -> Any | None:
     candidate = resources.files("context_rail").joinpath("packs", name, "pack.yaml")
     return candidate if candidate.is_file() else None
@@ -413,12 +542,46 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
         _refuse(f"initial status {initial!r} is not a declared status")
     transitions = _transitions(data["transitions"], statuses)
     execution = _execution(data.get("execution", {}), statuses)
+    if version < 2 and "results" in data:
+        _refuse("pack version 1 may not declare results; declare version 2")
     workflows = _workflows(
-        data.get("workflows", {}), statuses, initial, transitions, execution
+        data.get("workflows", {}),
+        statuses,
+        initial,
+        transitions,
+        execution,
+        version=version,
+        extends=extends,
     )
     presets = _presets(data["presets"], workflows)
     policy = _policy(data["policy"])
     actions = parse_actions(data.get("actions", {}), statuses, presets, workflows)
+
+    raw_results = data["results"] if "results" in data else None
+    results: ResultProtocol | None = None
+    if "results" in data:
+        if raw_results is None or isinstance(raw_results, bool):
+            _refuse("results must be a mapping")
+        if extends is None:
+            results = parse_results(raw_results, presets=presets, where="results")
+        else:
+            # Parse structure here; inherited half and merged presets validate in _resolve_extends.
+            parse_workflow_results(
+                raw_results, presets=presets, where="results", validate_presets=False
+            )
+    if extends is None:
+        for wf_name, workflow in workflows.items():
+            if not workflow.results:
+                continue
+            if results is None:
+                _refuse(
+                    f"workflows.{wf_name}.results requires pack-level results"
+                )
+            validate_workflow_overrides(
+                workflow.results,
+                presets=presets,
+                where=f"workflows.{wf_name}.results",
+            )
 
     pack = Pack(
         name=name,
@@ -431,7 +594,9 @@ def _parse_pack(text: str, requested_name: str) -> Pack:
         execution=execution,
         workflows=workflows,
         actions=actions,
+        results=results,
         extends=extends,
+        _raw_results=raw_results,
     )
     if "operating" not in data:
         return pack
@@ -484,6 +649,9 @@ def _workflows(
     initial: str,
     transitions: dict[str, tuple[str, ...]],
     execution: dict[str, dict[str, bool]],
+    *,
+    version: int = 2,
+    extends: str | None = None,
 ) -> dict[str, Workflow]:
     """The default workflow from the top level, then every declared workflow."""
     workflows = {
@@ -516,6 +684,16 @@ def _workflows(
         workflow_transitions = _transitions(body["transitions"], statuses)
         workflow_execution = _execution(body.get("execution", {}), statuses)
         workflow_quality = _quality(body.get("quality", {}), statuses)
+        workflow_results: dict[str, ArtifactSpec] = {}
+        if "results" in body:
+            if version < 2:
+                _refuse("pack version 1 may not declare results; declare version 2")
+            workflow_results = parse_workflow_results(
+                body["results"],
+                presets={},
+                where=f"{where}.results",
+                validate_presets=False,
+            )
         workflows[name] = Workflow(
             name=name,
             initial=workflow_initial,
@@ -523,6 +701,7 @@ def _workflows(
             execution=workflow_execution,
             quality=workflow_quality,
             statuses=statuses,
+            results=workflow_results,
         )
     return workflows
 

@@ -135,6 +135,11 @@ def test_a_v1_pack_hashes_exactly_as_it_did_before_operating(tmp_path: Path) -> 
 
     payload = asdict(pack)
     payload.pop("operating", None)
+    payload.pop("results", None)
+    payload.pop("_raw_results", None)
+    payload.pop("_template_packs", None)
+    for wf in payload.get("workflows", {}).values():
+        wf.pop("results", None)
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     expected = sha256_hex(body.encode("utf-8"))
 

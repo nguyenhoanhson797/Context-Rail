@@ -549,3 +549,42 @@ def test_state_lists_include_a_target_only_status() -> None:
     )
 
     assert "b" in workflow_statuses(flow)
+
+
+def test_pack_extends_inherits_and_overrides_results(tmp_path: Path) -> None:
+    from helpers import result_pack_document, write_pack
+
+    base = result_pack_document("base-ext")
+    write_pack(tmp_path, "base-ext", base)
+    child = {
+        "name": "child-ext",
+        "version": 2,
+        "extends": "base-ext",
+        "statuses": {"todo": "not_started", "done": "done"},
+        "initial": "todo",
+        "transitions": {"todo": ["done"], "done": []},
+        "presets": {
+            "child-finding": {
+                "primitive": "record",
+                "tags": ["result"],
+                "required": ["workflow_name"],
+                "template": "templates/finding.md",
+            }
+        },
+        "policy": {"stuck_hours": 24},
+        "results": {
+            "produce": {
+                "preset": "child-finding",
+                "sections": ["Summary", "Evidence"],
+            }
+        },
+    }
+    write_pack(tmp_path, "child-ext", child)
+
+    loaded = load_pack("child-ext", tmp_path)
+
+    assert loaded.results is not None
+    assert loaded.results.produce.preset == "child-finding"
+    assert loaded.results.produce.sections == ("Summary", "Evidence")
+    assert loaded.results.review.preset == "assessment"
+    assert loaded.results.review.sections == ("Summary", "Findings", "Evidence", "Verdict")

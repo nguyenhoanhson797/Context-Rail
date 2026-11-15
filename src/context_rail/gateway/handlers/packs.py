@@ -30,6 +30,7 @@ from context_rail.model.pack import (
     effective_measurement_min_runs,
     load_pack,
     pack_layout,
+    result_template_problems,
 )
 from context_rail.model.presentation import load_presentation
 from context_rail.model.roles import parse_roles
@@ -149,10 +150,16 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
                         "message": f"pack {name!r} ships no {template}",
                     }
                 )
+        existing_paths = {problem["path"] for problem in problems}
+        for problem in result_template_problems(pack, ctx.store):
+            if problem["path"] in existing_paths:
+                continue
+            problems.append(problem)
         try:
             has_layout = pack_layout(name, ctx.store) is not None
+            layout_manifest: dict[str, Any] | None = None
             if has_layout:
-                initial_manifest(name, ctx.store)
+                _, layout_manifest = initial_manifest(name, ctx.store)
         except ModelError as error:
             problems.append(
                 {
@@ -161,10 +168,19 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
                     "fix": _fix_for_path("layout.yaml " + error.message),
                 }
             )
+            layout_manifest = None
         try:
-            _compiled(ctx.store, name, pack)
+            _compiled(ctx.store, name, pack, layout_manifest)
         except ModelError as error:
-            path = "surface.yaml" if "surface.yaml" in error.message else "pack.yaml"
+            path = (
+                "surface.yaml"
+                if "surface.yaml" in error.message
+                else (
+                    "layout.yaml"
+                    if "placement" in error.message or "presets." in error.message
+                    else "pack.yaml"
+                )
+            )
             problems.append(
                 {
                     "path": path,
@@ -396,7 +412,15 @@ def _compiled(store: Path, name: str, pack: Any, manifest: Any = None) -> Projec
     from context_rail.model.compiler import _placement
 
     presentation = load_presentation(name, store, pack)
-    placement = None if manifest is None else _placement(manifest)
+    if manifest is None:
+        placement = None
+    elif isinstance(manifest, dict):
+        placement = {
+            "placement": dict(manifest.get("placement", {})),
+            "presets": dict(manifest.get("presets", {})),
+        }
+    else:
+        placement = _placement(manifest)
     return compile_project(pack, pack.operating, presentation, placement=placement)
 
 

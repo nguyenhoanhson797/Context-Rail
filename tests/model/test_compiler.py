@@ -242,3 +242,25 @@ def test_a_placement_change_is_semantic(tmp_path: Path) -> None:
 
     assert first.semantic_digest != second.semantic_digest
     assert semantic_digest(pack) == compile_project(pack).semantic_digest
+
+
+def test_compile_project_omits_results_for_legacy_pack_and_compiles_for_result_pack(
+    tmp_path: Path,
+) -> None:
+    from helpers import init_result_store
+
+    write_pack(tmp_path, "plain", _PLAIN)
+    plain_model = compiled_model(tmp_path, "plain")
+    assert plain_model.results == {}
+    assert "results" not in plain_model.as_dict()
+
+    store = init_result_store(tmp_path / "res")
+    result_model = compiled_model(store, "result-test")
+    assert "bugfix" in result_model.results
+    assert result_model.as_dict()["results"]["bugfix"]["produce"]["sections"] == [
+        "Summary",
+        "Reproduction",
+        "Findings",
+        "Evidence",
+        "Next steps",
+    ]

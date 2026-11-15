@@ -241,3 +241,35 @@ def test_the_neutral_presentation_is_used_when_surface_is_absent(
 
     assert model.presentation.labels["shot"].many == "Shots"
     assert model.presentation_digest == compile_project(pack).presentation_digest
+
+
+def test_result_contract_changes_semantic_digest_only(tmp_path: Path) -> None:
+    from context_rail.model.compiler import load_project
+    from helpers import init_result_store
+
+    store = init_result_store(tmp_path)
+    before = load_project("result-test", store)
+
+    surface_path = store / "packs" / "result-test" / "surface.yaml"
+    surface_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "labels": {"task": {"one": "Item", "many": "Items"}},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    after_surface = load_project("result-test", store)
+    assert after_surface.semantic_digest == before.semantic_digest
+    assert after_surface.presentation_digest != before.presentation_digest
+
+    pack_path = store / "packs" / "result-test" / "pack.yaml"
+    doc = yaml.safe_load(pack_path.read_text(encoding="utf-8"))
+    doc["results"]["produce"]["sections"] = ["Summary", "Evidence"]
+    pack_path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8", newline="\n")
+    after_pack = load_project("result-test", store)
+    assert after_pack.semantic_digest != before.semantic_digest
+    assert after_pack.results["sprint"].produce.digest != before.results["sprint"].produce.digest

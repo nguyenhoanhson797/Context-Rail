@@ -818,6 +818,103 @@ def workflow_pack_document(name: str = "twoways") -> dict[str, Any]:
     return document
 
 
+DEFAULT_PRODUCER_SECTIONS: tuple[str, ...] = (
+    "Summary",
+    "Findings",
+    "Evidence",
+    "Next steps",
+)
+BUGFIX_PRODUCER_SECTIONS: tuple[str, ...] = (
+    "Summary",
+    "Reproduction",
+    "Findings",
+    "Evidence",
+    "Next steps",
+)
+DEFAULT_REVIEW_SECTIONS: tuple[str, ...] = (
+    "Summary",
+    "Findings",
+    "Evidence",
+    "Verdict",
+)
+
+
+def result_pack_document(
+    name: str = "result-test",
+    *,
+    producer_preset: str = "finding",
+    review_preset: str = "assessment",
+) -> dict[str, Any]:
+    """A version-2 workflow pack declaring optional ``results`` contracts."""
+    document = workflow_pack_document(name)
+    document["version"] = 2
+    document["presets"][producer_preset] = {
+        "primitive": "record",
+        "tags": ["result"],
+        "required": ["workflow_name"],
+        "template": f"templates/{producer_preset}.md",
+    }
+    document["presets"][review_preset] = {
+        "primitive": "record",
+        "tags": ["review"],
+        "required": ["workflow_name"],
+        "template": f"templates/{review_preset}.md",
+    }
+    document["results"] = {
+        "produce": {
+            "preset": producer_preset,
+            "sections": list(DEFAULT_PRODUCER_SECTIONS),
+        },
+        "review": {
+            "preset": review_preset,
+            "sections": list(DEFAULT_REVIEW_SECTIONS),
+        },
+    }
+    document["workflows"]["bugfix"]["results"] = {
+        "produce": {
+            "preset": producer_preset,
+            "sections": list(BUGFIX_PRODUCER_SECTIONS),
+        }
+    }
+    return document
+
+
+def result_body(
+    sections: Sequence[str], *, values: Mapping[str, str] | None = None
+) -> str:
+    """Render a Markdown body containing ordered ``## <section>`` headings."""
+    body_values = dict(values or {})
+    blocks = []
+    for section in sections:
+        content = body_values.get(section, f"{section} recorded.")
+        blocks.append(f"## {section}\n{content}\n")
+    return "\n".join(blocks)
+
+
+def init_result_store(tmp_path: Path, *, approve: bool = True) -> Path:
+    """Initialize a store on :func:`result_pack_document` with its templates and layout."""
+    document = result_pack_document()
+    name = document["name"]
+    store = Path(tmp_path) / "context-rail"
+    templates = store / "packs" / name / "templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    for preset_name, sections in (
+        ("finding", DEFAULT_PRODUCER_SECTIONS),
+        ("assessment", DEFAULT_REVIEW_SECTIONS),
+    ):
+        heading_text = "\n".join(f"## {section}\n" for section in sections)
+        (templates / f"{preset_name}.md").write_text(
+            f"# {{title}}\n\n{heading_text}",
+            encoding="utf-8",
+            newline="\n",
+        )
+    layout = {
+        "finding": "records/findings/{field:workflow_name}/{about.slug}/{id}.md",
+        "assessment": "records/assessments/{field:workflow_name}/{about.slug}/{id}.md",
+    }
+    return init_pack_store(tmp_path, document, layout=layout, approve=approve)
+
+
 def init_pack_store(
     tmp_path: Path,
     document: dict[str, Any],
