@@ -233,6 +233,7 @@ def test_workflow_results_cannot_declare_without_pack_or_complete_pair(
         lambda d: d["workflows"]["bugfix"]["results"].__setitem__("produce", None),
         lambda d: d["workflows"]["bugfix"]["results"]["produce"].pop("sections"),
         lambda d: d["workflows"]["bugfix"]["results"]["produce"].__setitem__("preset", "note"),
+        lambda d: d["results"]["produce"].__setitem__("sections", ["# Summary"]),
     ],
 )
 def test_invalid_result_declarations_are_refused(
@@ -247,7 +248,7 @@ def test_invalid_result_declarations_are_refused(
     assert err.value.code == "VALIDATION_FAILED"
 
 
-def test_markdown_heading_parser_ignores_fences_and_refuses_bad_names() -> None:
+def test_markdown_heading_parser_ignores_fences() -> None:
     md = (
         "# Title\n\n"
         "```markdown\n## FakeBacktick\n```\n\n"
@@ -467,6 +468,90 @@ def test_compile_results_refuses_bad_and_missing_placements(tmp_path: Path) -> N
     assert dup_err.value.code == "VALIDATION_FAILED"
 
 
+@pytest.mark.parametrize(
+    "bad_template",
+    [
+        "records/{id}_con.md",
+        "records/dir:bad/{id}.md",
+        "records/CON_{id}/{id}.md",
+        "records/con.{id}/{id}.md",
+        "records/C:drive_{id}/{id}.md",
+        "records/bad\x00_{id}/{id}.md",
+        "records/{id}../{id}.md",
+        "records/..{id}/{id}.md",
+        "records/" + ("a/" * 95) + "{id}.md",
+        "records/" + ("x" * 78) + "_{id}/{id}.md",
+        "records/{slug}.md",
+        "records/{about.slug}/{slug}.md",
+    ],
+)
+def test_compile_results_refuses_unsafe_tokenized_or_non_record_placements(
+    tmp_path: Path, bad_template: str
+) -> None:
+    doc = result_pack_document("unsafe-place")
+    store = _setup_result_pack(tmp_path, doc)
+    pack = load_pack("unsafe-place", store)
+
+    with pytest.raises(ModelError) as err:
+        compile_results(
+            pack,
+            {
+                "placement": {"record": "records/{yyyy}-{mm}/{id}.json"},
+                "presets": {
+                    "finding": bad_template,
+                    "assessment": "records/assessments/{about.slug}/{id}.md",
+                },
+            },
+        )
+    assert err.value.code == "VALIDATION_FAILED"
+
+
+def test_pack_validate_refuses_result_pack_without_layout_and_unsafe_layout_tokens(
+    tmp_path: Path,
+) -> None:
+    store = init_store(tmp_path)
+    doc = result_pack_document("no-layout-res")
+    write_pack(store, doc["name"], doc)
+    copy_pack_templates(store, doc["name"])
+    _write_template(
+        store,
+        doc["name"],
+        "templates/finding.md",
+        "# {title}\n\n## Summary\n\n## Findings\n\n## Evidence\n\n## Next steps\n",
+    )
+    _write_template(
+        store,
+        doc["name"],
+        "templates/assessment.md",
+        "# {title}\n\n## Summary\n\n## Findings\n\n## Evidence\n\n## Verdict\n",
+    )
+
+    no_layout = invoke("pack validate", {"name": doc["name"]}, store=store, actor="human")
+    assert no_layout["ok"] is True
+    assert no_layout["value"]["valid"] is False
+    assert any(
+        problem["path"] == "layout.yaml"
+        for problem in no_layout["value"]["problems"]
+    )
+
+    # Also test pack validate when layout.yaml gives a record-incompatible {slug} placement
+    _write_layout(
+        store,
+        doc["name"],
+        {
+            "finding": "records/findings/{slug}.md",
+            "assessment": "records/assessments/{id}.md",
+        },
+    )
+    bad_slug = invoke("pack validate", {"name": doc["name"]}, store=store, actor="human")
+    assert bad_slug["ok"] is True
+    assert bad_slug["value"]["valid"] is False
+    assert any(
+        problem["path"] == "layout.yaml"
+        for problem in bad_slug["value"]["problems"]
+    )
+
+
 def test_pack_extension_inherits_and_overrides_one_artifact(tmp_path: Path) -> None:
     base_doc = result_pack_document("base-res")
     store = _setup_result_pack(tmp_path, base_doc)
@@ -590,7 +675,6 @@ def test_result_contract_and_placement_changes_affect_semantic_digest_only(
 
     # Changing sections changes semantic_digest and artifact digest
     doc = result_pack_document("result-test")
-    pack_path = store / "packs" / "result-test" / "pack.yaml"
     doc["results"]["produce"]["sections"] = ["Summary", "Findings", "Next steps"]
     write_pack(store, "result-test", doc)
     after_sections = load_project("result-test", store)

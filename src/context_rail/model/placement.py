@@ -28,6 +28,7 @@ __all__ = [
     "parse_template",
     "preset_tokens",
     "render_simple",
+    "safe_placement_template",
     "safe_relative_path",
     "safe_segment",
     "tokens_used",
@@ -197,6 +198,65 @@ def safe_relative_path(path: str, where: str = "placement") -> str:
     for segment in path.split("/"):
         safe_segment(segment, where)
     return path
+
+
+def safe_placement_template(template: str, where: str = "placement") -> tuple[Token, ...]:
+    """Parse ``template`` and validate literal segments and path-safety constraints."""
+    tokens = parse_template(template, where)
+    if template.startswith("/"):
+        _refuse(f"{where} must be relative")
+    if "\\" in template:
+        _refuse(f"{where} must use POSIX separators")
+    if _DRIVE.match(template):
+        _refuse(f"{where} must not be drive-qualified")
+    if any(ord(char) < 32 for char in template):
+        _refuse(f"{where} has a control character")
+    if len(template) > MAX_PATH_LEN:
+        _refuse(f"{where} is longer than {MAX_PATH_LEN} characters")
+
+    # Split tokens on "/" so both literal-only segments and literal runs around
+    # tokens inside a segment pass safe_segment checks (no ':', '..', NUL, etc.).
+    segments: list[list[Token]] = [[]]
+    for token in tokens:
+        if not token.literal:
+            segments[-1].append(token)
+            continue
+        pieces = token.raw.split("/")
+        for index, piece in enumerate(pieces):
+            if piece:
+                segments[-1].append(Token(LITERAL, piece))
+            if index < len(pieces) - 1:
+                segments.append([])
+
+    for seg_tokens in segments:
+        if not seg_tokens:
+            _refuse(f"{where} has an empty path segment")
+        if all(token.literal for token in seg_tokens):
+            safe_segment("".join(token.raw for token in seg_tokens), where)
+            continue
+        literal_text = "".join(token.raw for token in seg_tokens if token.literal)
+        raw_seg = "".join(
+            token.raw if token.literal else "{" + token.raw + "}"
+            for token in seg_tokens
+        )
+        if _DRIVE.match(literal_text):
+            _refuse(f"{where} has a drive-qualified segment")
+        if any(char in _BAD_SEGMENT for char in literal_text):
+            _refuse(f"{where} has a Windows-unsafe character")
+        if any(ord(char) < 32 for char in literal_text):
+            _refuse(f"{where} has a control character")
+        if len(raw_seg) > MAX_SEGMENT_LEN:
+            _refuse(f"{where} has a segment longer than {MAX_SEGMENT_LEN}")
+        if ".." in literal_text:
+            _refuse(f"{where} has a parent or current-directory segment")
+        # Check literal stem before any extension or token delimiter for Windows device names
+        for token in seg_tokens:
+            if not token.literal:
+                continue
+            stem = token.raw.lstrip("._-").rstrip("._-").split(".", 1)[0].upper()
+            if stem in WINDOWS_RESERVED_NAMES:
+                _refuse(f"{where} uses the reserved name {token.raw!r}")
+    return tokens
 
 
 def check_placement_root(path: str, primitive: str, where: str = "placement") -> str:

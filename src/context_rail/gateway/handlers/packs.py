@@ -158,7 +158,7 @@ def pack_validate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
         try:
             has_layout = pack_layout(name, ctx.store) is not None
             layout_manifest: dict[str, Any] | None = None
-            if has_layout:
+            if has_layout or pack.results is not None:
                 _, layout_manifest = initial_manifest(name, ctx.store)
         except ModelError as error:
             problems.append(

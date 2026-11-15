@@ -25,7 +25,7 @@ from context_rail.model.operating import (
     operating_as_dict,
     parse_operating,
 )
-from context_rail.model.placement import parse_template, safe_relative_path, safe_segment, tokens_used
+from context_rail.model.placement import safe_placement_template
 from context_rail.model.presentation import (
     Presentation,
     default_presentation,
@@ -474,17 +474,13 @@ def _resolve_artifact_placement(
             "VALIDATION_FAILED",
             f"{where} placement for preset {preset_name!r} must be a non-empty string",
         )
-    used = tokens_used(raw, f"presets.{preset_name}")
-    if not any(token.kind in ("slug", "id") for token in used):
+    tokens = safe_placement_template(raw, f"presets.{preset_name}")
+    used = tuple(token for token in tokens if not token.literal)
+    if not any(token.kind == "id" for token in used):
         raise ModelError(
             "VALIDATION_FAILED",
-            f"presets.{preset_name} placement {raw!r} must include {{slug}} or {{id}}",
+            f"presets.{preset_name} placement {raw!r} must include {{id}} for record artifacts",
         )
-    for part in raw.split("/"):
-        if "{" not in part:
-            safe_segment(part, f"presets.{preset_name}")
-    if "\\" in raw or raw.startswith("/"):
-        safe_relative_path(raw, f"presets.{preset_name}")
     first = raw.split("/", 1)[0]
     if first != "records":
         raise ModelError(
