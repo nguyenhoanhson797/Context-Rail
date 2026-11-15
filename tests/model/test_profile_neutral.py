@@ -11,7 +11,7 @@ from context_rail.core.util import load_yaml
 from context_rail.model.cto import PROFILE_METHODS, REMOVED_PROFILE_KEYS, parse_profile
 from context_rail.model.errors import ModelError
 
-PACKS = ("basic", "flow", "scrum", "video", "waterfall")
+PACKS = ("basic", "flow", "portfolio", "scrum", "video", "waterfall")
 FORBIDDEN_WORDS = ("droid", "rail-report", "parent writes", "worktree")
 REMOVED_COMMANDS = ("dispatch", "merge", "tick", "loop dispatch", "loop merge", "loop tick")
 
@@ -87,8 +87,8 @@ def test_shipped_profiles_parse_and_name_no_runtime(pack: str, role: str, text: 
     assert "rail loop brief" in body or role == "cto"
 
 
-def test_shipped_profiles_cover_five_packs_three_roles() -> None:
-    assert len(shipped_profiles()) == 15
+def test_shipped_profiles_cover_six_packs_three_roles() -> None:
+    assert len(shipped_profiles()) == 18
 
 
 def test_skill_allowed_tools_is_free_form(tmp_path: Any) -> None:

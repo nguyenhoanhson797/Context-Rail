@@ -281,5 +281,37 @@
       "021b0dc8065e74af886685ea2f0475d23ca1d728afc0a7914126f24ea7f9b036",
       "4b1f93bf1d976c9457a37338843b558f2cf3199ba35ecd7c8f3f9660f3619b12"
     ]
+  },
+  "portfolio": {
+    "workspace/cto/profile.md": [
+      "f317d23d7b75c14ea26effc23f4f868998d02ef8149f72085fabe6ce49a114e1"
+    ],
+    "workspace/cto/skills/portfolio-lead.md": [
+      "6b66f5726cc50e6d5498e9baf2fe2cd47f15ed039c61692d0c62680fe1378a1b"
+    ],
+    "workspace/cto/skills/rail-coordinate.md": [
+      "a6f1aca2158d9182d001e7f1b35c7e1a2146f4979281152b263ee4a7455f723c"
+    ],
+    "workspace/cto/skills/rail-recover.md": [
+      "419685a27eb36f2679f4336133de566c668a5fb2a57301d608acd57965a754c0"
+    ],
+    "workspace/cto/skills/rail-triage.md": [
+      "2861be1d74985b17ad36bead22242e4ed0e5ef6f1e6d9b079d953e5f2aba192d"
+    ],
+    "workspace/profiles/implementer/profile.md": [
+      "adb9e4b8571fdc73541b47c2d3c9f4011b2a4acc37f2b5e7430f1b7efc274bf7"
+    ],
+    "workspace/profiles/implementer/skills/lean-testing.md": [
+      "72da2a3e98adfc86902a9cedda6add9cde59f89af232ef897cb535c441aef68e"
+    ],
+    "workspace/profiles/reviewer/profile.md": [
+      "439cc41b9e1a6a376812505dc039ff8fc008f85253d5b95b8c8e59a5f79e4a75"
+    ],
+    "workspace/profiles/reviewer/skills/review-checklist.md": [
+      "6a746d299db57047dd6f6cc430cc6e3d6ae50619e1922d8ee531e72d90856790"
+    ],
+    "workspace/skills/portfolio-report.md": [
+      "4124bc92b178676272f5a9b69d2b6fb673606a2442840ddd7a942979e5357b97"
+    ]
   }
 }

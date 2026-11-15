@@ -68,11 +68,19 @@ def test_pack_policy_retries_refused_with_upgrade_hint(tmp_path: Path) -> None:
     assert "retries" in error.message and "rail ops upgrade" in error.message
 
 
-@pytest.mark.parametrize("name", ["basic", "flow", "scrum", "video", "waterfall"])
+@pytest.mark.parametrize("name", ["basic", "flow", "portfolio", "scrum", "video", "waterfall"])
 def test_shipped_packs_validate(tmp_path: Path, name: str) -> None:
     pack = load_pack(name, tmp_path)
 
     assert "retries" not in pack.policy
     assert all(set(flags) <= {"queue"} for flags in pack.execution.values())
-    result = invoke("pack validate", {"name": name}, store=init_store(tmp_path / "s", pack=name), actor="human")
+    store = init_store(tmp_path / "s", pack=name)
+    roles = getattr(pack.operating, "roles", None)
+    if roles:
+        from helpers import as_human
+
+        with as_human():
+            result = invoke("pack validate", {"name": name}, store=store, actor=None)
+    else:
+        result = invoke("pack validate", {"name": name}, store=store, actor="human")
     assert result["ok"] is True, result

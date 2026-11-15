@@ -7,7 +7,7 @@ import pytest
 from context_rail.model.pack import load_pack
 from helpers import init_store
 
-PACKS = ("basic", "flow", "scrum", "waterfall")
+PACKS = ("basic", "flow", "portfolio", "scrum", "waterfall")
 PRIMITIVE_TEMPLATES = ("item", "note", "record", "check")
 STAGE_1B_TEMPLATES = ("charter", "goal", "vision", "scope", "wont")
 CODE_TEMPLATES = ("code",)

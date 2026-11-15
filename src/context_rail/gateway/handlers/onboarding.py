@@ -993,6 +993,7 @@ def _charter_frontmatter(
 def agent_ops(store: Path, manifest: Manifest, pack_name: str) -> list[Op]:
     """The active pack's Actor profiles and scoped skill Notes, absent-only."""
     ops: list[Op] = []
+    emitted_skills: set[str] = set()
     pack = load_pack(pack_name, store)
     skills = load_skill_sources(pack_name)
     for name in ("cto", "implementer", "reviewer"):
@@ -1014,6 +1015,25 @@ def agent_ops(store: Path, manifest: Manifest, pack_name: str) -> list[Op]:
                 )
             text = _apply_metadata(text, pack.presets["skill"])
             ops.append(Op(declared, text.encode("utf-8"), ABSENT))
+            emitted_skills.add(slug)
+    if pack.operating is not None and pack.operating.roles:
+        for role in pack.operating.roles.values():
+            for slug in role.skills:
+                if slug in emitted_skills:
+                    continue
+                text = skills.get(slug)
+                if text is None:
+                    raise WriteRefused(
+                        "INTEGRATION_FAILURE",
+                        f"the packaged {role.name} role pins {slug}, "
+                        f"but no pack or engine skill is named {slug}",
+                    )
+                text = _apply_metadata(text, pack.presets["skill"])
+                path = render_path(
+                    manifest, primitive="note", preset="skill", slug=slug
+                )
+                ops.append(Op(path, text.encode("utf-8"), ABSENT))
+                emitted_skills.add(slug)
     return ops
 
 

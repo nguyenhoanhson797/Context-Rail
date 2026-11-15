@@ -8,9 +8,10 @@ import pytest
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import init_store
+from context_rail.model.pack import load_pack
+from helpers import as_human, init_store
 
-PACKS = ("basic", "flow", "scrum", "waterfall", "video")
+PACKS = ("basic", "flow", "portfolio", "scrum", "waterfall", "video")
 
 
 @pytest.mark.parametrize("pack", PACKS)
@@ -28,17 +29,17 @@ def test_every_shipped_pack_validates_with_the_code_template(
 @pytest.mark.parametrize("pack", PACKS)
 def test_every_shipped_pack_offers_the_code_preset(tmp_path: Path, pack: str) -> None:
     store = init_store(tmp_path, pack=pack)
-
-    added = invoke(
-        "add",
-        {
-            "preset": "code",
-            "title": f"src/{pack}.py",
-            "set": [f"source_path=src/{pack}.py", "kind=file"],
-        },
-        store=store,
-        actor="cto",
-    )
+    args = {
+        "preset": "code",
+        "title": f"src/{pack}.py",
+        "set": [f"source_path=src/{pack}.py", "kind=file"],
+    }
+    roles = getattr(load_pack(pack, store).operating, "roles", None)
+    if roles:
+        with as_human():
+            added = invoke("add", args, store=store, actor=None)
+    else:
+        added = invoke("add", args, store=store, actor="cto")
 
     assert is_ok(added), added
     assert added["value"]["path"] == f"notes/code/src-{pack}-py.md"

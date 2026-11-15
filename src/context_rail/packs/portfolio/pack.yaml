@@ -1,0 +1,214 @@
+name: portfolio
+version: 2
+statuses:
+  proposed: not_started
+  intake: not_started
+  planned: not_started
+  running: active
+  delegated: active
+  integrating: active
+  releasing: active
+  verified: done
+  released: done
+  retired: done
+  blocked: blocked
+  dropped: dropped
+initial: proposed
+transitions:
+  proposed: [running, dropped]
+  intake: [planned, dropped]
+  planned: [delegated, releasing, blocked, dropped]
+  running: [retired, blocked, dropped]
+  delegated: [integrating, blocked, dropped]
+  integrating: [verified, delegated, blocked, dropped]
+  releasing: [released, blocked, dropped]
+  verified: [released, integrating]
+  released: [integrating]
+  retired: [running]
+  blocked: [running, planned, delegated, integrating, releasing, dropped]
+  dropped: [proposed, intake, planned]
+execution:
+  integrating: {queue: false}
+workflows:
+  component:
+    initial: proposed
+    transitions:
+      proposed: [running, dropped]
+      running: [retired, blocked, dropped]
+      retired: [running]
+      blocked: [running, dropped]
+      dropped: [proposed]
+  slice:
+    initial: intake
+    transitions:
+      intake: [planned, dropped]
+      planned: [delegated, blocked, dropped]
+      delegated: [integrating, blocked, dropped]
+      integrating: [verified, delegated, blocked, dropped]
+      verified: [released, integrating]
+      released: [integrating]
+      blocked: [planned, delegated, integrating, dropped]
+      dropped: [intake]
+    execution:
+      integrating: {queue: false}
+    quality:
+      verified: {gate: item_done}
+  release:
+    initial: planned
+    transitions:
+      planned: [releasing, dropped]
+      releasing: [released, blocked, dropped]
+      released: [releasing]
+      blocked: [releasing, dropped]
+      dropped: [planned]
+    quality:
+      released: {gate: release}
+presets:
+  goal:       {primitive: item,   tags: [goal], container: true}
+  scope:      {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
+  component:  {primitive: item,   tags: [component], container: true, workflow: component, required: [store], template: templates/component.md}
+  slice:      {primitive: item,   tags: [slice], container: false, workflow: slice, fields: {priority: [must, should, could, wont]}, template: templates/slice.md}
+  release:    {primitive: item,   tags: [release], container: false, workflow: release, template: templates/release.md}
+  task:       {primitive: item,   tags: [task], container: false, workflow: slice}
+  bug:        {primitive: item,   tags: [bug], container: false, workflow: slice}
+  risk:       {primitive: item,   tags: [risk], container: false, fields: {severity: [low, medium, high, critical]}}
+  question:   {primitive: item,   tags: [question], container: false}
+  note:       {primitive: note,   tags: []}
+  convention: {primitive: note,   tags: [convention]}
+  contract:   {primitive: note,   tags: [contract], template: templates/contract.md}
+  code:       {primitive: note,   tags: [code], fields: {kind: [file, module, class, function, method]}, template: templates/code.md}
+  decision:   {primitive: record, tags: [decision]}
+  event:      {primitive: record, tags: [event]}
+  check:      {primitive: check,  tags: []}
+  charter:    {primitive: policy, tags: [], template: templates/charter.md}
+  vision:     {primitive: note,   tags: []}
+  wont:       {primitive: note,   tags: []}
+  skill:      {primitive: note,   tags: []}
+  cto:        {primitive: actor,  tags: []}
+  profile:    {primitive: actor,  tags: []}
+  fix:        {primitive: item,   tags: [], container: false, workflow: slice}
+policy: {stuck_hours: 24, measurement_min_runs: 10, code_graph: none}
+operating:
+  version: 2
+  unit: slice
+  hierarchy:
+    - preset: component
+      order: sequence
+      required: true
+  focus:
+    preset: component
+    category: active
+    resolve: none
+  queue:
+    presets: [slice]
+    require: transition
+    focus: priority
+  progress:
+    group: component
+    of: [slice]
+    complete:
+      states: [verified, released]
+  roles:
+    portfolio-lead:
+      anchor: project
+      reach:
+        read: [project]
+        write: [project]
+      can:
+        add: [component, slice, release, contract, decision, convention, task, bug, fix, risk, question, note]
+        update: [component, slice, release, contract, convention, task, bug, fix, risk, question, note]
+        move:
+          component: [proposed, running, retired, blocked, dropped]
+          slice: [intake, planned, delegated, integrating, verified, released, blocked, dropped]
+          release: [planned, releasing, released, blocked, dropped]
+          task: [intake, planned, delegated, integrating, verified, released, blocked, dropped]
+          bug: [intake, planned, delegated, integrating, verified, released, blocked, dropped]
+          fix: [intake, planned, delegated, integrating, verified, released, blocked, dropped]
+        link: [part_of, depends_on, verifies, about, because_of, supersedes, resolves, owned_by]
+        rename: [component, slice, release, contract, convention, task, bug, fix]
+        relocate: true
+        check: [component, slice, release, task, bug, fix]
+        verify: [component, slice, release, task, bug, fix]
+        report: [component, slice, release, task, bug, fix]
+        triage: [component, slice, release, task, bug, fix]
+        actions: [start-component, plan-slice, delegate-slice, integrate-slice, verify-slice, ship-release, triage-report]
+        grant: [component-cto]
+      sees:
+        up: 0
+        down: 1
+        parts: [title, status, next, blockers, waits]
+        budget: {chars: 12000, docs: 60}
+      workspace: none
+      skills: [portfolio-lead]
+    component-cto:
+      anchor: {level: component}
+      reach:
+        read:
+          - anchor
+          - {up: 1}
+          - {related: [depends_on]}
+          - {preset: [contract, decision, convention]}
+        write: [anchor]
+      can:
+        add: [slice]
+        update: [slice]
+        move:
+          slice: [planned, delegated, integrating, blocked]
+        link: [part_of]
+        check: [slice]
+        verify: [slice]
+        report: [slice]
+        actions: [plan-slice, delegate-slice, integrate-slice]
+      sees:
+        up: 1
+        down: all
+        relations: [depends_on]
+        parts: [title, status, next, body, acceptance, blockers, candidates, records]
+        budget: {chars: 12000, docs: 40}
+      workspace: none
+      skills: [portfolio-report]
+actions:
+  start-component:
+    "on": component
+    from: [proposed]
+    tool: change move
+    args: {slug: "{item}", status: running, expect: "{etag}"}
+    use_when: "a component repository is ready to coordinate"
+  plan-slice:
+    "on": slice
+    from: [intake]
+    tool: change move
+    args: {slug: "{item}", status: planned, expect: "{etag}"}
+    use_when: "a slice is scoped and ready to assign"
+  delegate-slice:
+    "on": slice
+    from: [planned]
+    tool: change move
+    args: {slug: "{item}", status: delegated, expect: "{etag}"}
+    use_when: "a component CTO takes responsibility for a slice"
+  integrate-slice:
+    "on": slice
+    from: [delegated]
+    tool: change move
+    args: {slug: "{item}", status: integrating, expect: "{etag}"}
+    use_when: "the child repo finished work and its store check is ready for lead verification"
+  verify-slice:
+    "on": slice
+    from: [integrating]
+    tool: change move
+    args: {slug: "{item}", status: verified, expect: "{etag}"}
+    requires: {check: store}
+    use_when: "every store check on the slice passed and the lead verifies it"
+  ship-release:
+    "on": release
+    from: [releasing]
+    tool: change move
+    args: {slug: "{item}", status: released, expect: "{etag}"}
+    requires: {review: false}
+    use_when: "all slices for the release are verified and the release gate passes"
+  triage-report:
+    "on": "*"
+    from: []
+    tool: loop triage
+    args: {report: "{report}"}
+    use_when: "an untriaged report needs a decision, fix or proposal"

@@ -1,0 +1,19 @@
+version: 1
+labels:
+  component: {one: Component, many: Components}
+  slice: {one: Slice, many: Slices}
+  release: {one: Release, many: Releases}
+  contract: {one: Contract, many: Contracts}
+screens:
+  - {id: summary, kind: summary, title: Portfolio}
+  - {id: board, kind: board, title: Slices, preset: slice, group_by: status}
+  - {id: plan, kind: timeline, title: Components, preset: component}
+  - {id: workflow, kind: workflow, title: Workflow}
+  - {id: execution, kind: execution, title: Progress}
+  - {id: catalog, kind: catalog, title: Releases, preset: release}
+  - {id: records, kind: records, title: Records}
+  - {id: pack, kind: pack, title: Pack}
+fields:
+  card: [status, workflow, priority]
+  filters: [component, status, workflow]
+  columns: [title, status]
