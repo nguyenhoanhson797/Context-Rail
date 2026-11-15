@@ -339,17 +339,34 @@ def _record_contract_review(
 
     # Determine producer identity/model from candidate and/or result record.
     prod_row = selection.record if selection.record is not None else None
+    candidate_hash = (
+        (
+            selection.binding.body_hash
+            if selection.binding is not None
+            else prod_row.get("body_hash")
+        )
+        if prod_row is not None
+        else None
+    )
     if (
         verdict == "reject"
-        and selection.record is not None
+        and prod_row is not None
         and (
-            selection.record.get("item") != slug
+            prod_row.get("item") != slug
             or (
                 candidate is not None
-                and selection.record.get("candidate_commit") != candidate["commit"]
+                and prod_row.get("candidate_commit") != candidate["commit"]
             )
+            or not candidate_hash
         )
     ):
+        if result_arg is not None and not candidate_hash:
+            raise WriteRefused(
+                "INVALID_STATE",
+                "; ".join(selection.reasons)
+                or f"result {result_arg!r} has no verifiable body hash",
+                {"reason": "result_unhashed", "item": slug, "result": result_arg},
+            )
         prod_row = None
 
     prod_data = (prod_row.get("data") or {}) if prod_row is not None else {}
@@ -600,9 +617,14 @@ def _review_value(row: Mapping[str, Any]) -> dict[str, Any]:
         "commit": row.get("commit"),
         "verdict": row["verdict"],
     }
-    if row.get("result_record") is not None or row.get("path") is not None:
+    data = row.get("data")
+    is_contract = (
+        isinstance(data, Mapping)
+        and data.get("review_contract_digest") is not None
+    )
+    if is_contract or row.get("result_record") is not None:
         value["result"] = row.get("result_record")
-    if row.get("path") is not None:
+    if is_contract and row.get("path") is not None:
         value["path"] = row.get("path")
     return value
 

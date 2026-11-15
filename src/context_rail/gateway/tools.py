@@ -248,7 +248,11 @@ TOOLS: tuple[Tool, ...] = (
         permission="write",
         params=(
             Param("item", "str", required=True, positional=True, help="leaf Item slug"),
-            Param("commit", "str", help="the candidate: a sha, a branch or HEAD (required without result contract)"),
+            Param(
+                "commit",
+                "str",
+                help="the candidate: sha/prefix in the index (contract review), or sha, branch or HEAD (legacy review)",
+            ),
             Param("result", "str", help="specific producer result record id"),
             Param("verdict", "str", required=True, help="approve or reject"),
             Param("notes_file", "str", help="markdown review notes (required when workflow defines a review contract)", path=True),

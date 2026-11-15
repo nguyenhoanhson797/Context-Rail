@@ -304,6 +304,8 @@ def test_review_key_replays(leaf_item: SimpleNamespace) -> None:
 
     assert is_ok(first) and is_ok(second), (first, second)
     assert first["value"]["record"] == second["value"]["record"]
+    assert set(second["value"].keys()) == set(first["value"].keys())
+    assert second["value"]["replayed"] is True
     assert len(records_of(leaf_item.store, "review.verdict")) == 1
 
 

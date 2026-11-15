@@ -682,3 +682,113 @@ def test_review_does_not_implicitly_run_result_mode_checks_and_cli_supports_flag
     assert out["value"]["commit"] is None
     assert out["value"]["result"] == produced["record"]
     assert out["value"]["checks_verified"] == ["peer-rev"]
+
+
+def test_contract_review_reject_broken_or_unhashed_producer_stub(
+    tmp_path: Path,
+) -> None:
+    store = init_result_store(tmp_path / "proj")
+    task = _add_item(store, "task", "Broken stub task")
+    stub_id = "01JBR0KENSTVB0000000000001"
+    stub_path = store / "records" / "findings" / "sprint" / task / f"{stub_id}.md"
+    stub_path.parent.mkdir(parents=True, exist_ok=True)
+    stub_path.write_text(
+        f"---\nid: {stub_id}\nprimitive: record\npreset: finding\nkind: result.recorded\n"
+        f"about: [{task}]\n"
+        "---\nnot valid frontmatter or body: [\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    with _context(store) as ctx:
+        rows = query.results_for_item(ctx.index, task)
+        assert len(rows) == 1
+        assert rows[0]["record_id"] == stub_id
+        assert rows[0]["body_hash"] is None
+
+    notes_path = _write_notes(
+        tmp_path / "reject-stub.md", result_body(DEFAULT_REVIEW_SECTIONS)
+    )
+
+    # Implicit reject treats unhashed/broken producer stub as missing/unbindable evidence
+    implicit = invoke(
+        "review",
+        {"item": task, "verdict": "reject", "notes_file": str(notes_path)},
+        store=store,
+        actor="reviewer",
+    )
+    assert is_ok(implicit), implicit
+    assert implicit["value"]["commit"] is None
+    assert implicit["value"]["result"] is None
+    assert implicit["value"]["verdict"] == "reject"
+
+    # Explicit --result naming an unhashed/broken stub refuses cleanly with INVALID_STATE
+    explicit = invoke(
+        "review",
+        {
+            "item": task,
+            "result": stub_id,
+            "verdict": "reject",
+            "notes_file": str(notes_path),
+        },
+        store=store,
+        actor="reviewer",
+    )
+    assert refusal(explicit)[0] == "INVALID_STATE"
+
+
+def test_contract_review_set_fields_and_in_store_notes_refusal(
+    tmp_path: Path,
+) -> None:
+    store = init_result_store(tmp_path / "proj")
+    task = _add_item(store, "task", "Set field task")
+    record_result_for_test(store, task, actor="implementer")
+    notes_path = _write_notes(
+        tmp_path / "set-notes.md", result_body(DEFAULT_REVIEW_SECTIONS)
+    )
+
+    # Custom metadata field via --set persists on the review record
+    ok = invoke(
+        "review",
+        {
+            "item": task,
+            "verdict": "approve",
+            "notes_file": str(notes_path),
+            "set": ["confidence=high"],
+        },
+        store=store,
+        actor="reviewer",
+    )
+    assert is_ok(ok), ok
+    doc = parse_doc(ok["value"]["path"], (store / ok["value"]["path"]).read_bytes())
+    assert doc.fields["confidence"] == "high"
+
+    # Reserved engine-owned field via --set refuses
+    reserved = invoke(
+        "review",
+        {
+            "item": task,
+            "verdict": "approve",
+            "notes_file": str(notes_path),
+            "set": ["body_hash=abc"],
+        },
+        store=store,
+        actor="reviewer",
+    )
+    assert refusal(reserved)[0] == "VALIDATION_FAILED"
+
+    # Notes file inside the store directory is FORBIDDEN
+    inside_notes = _write_notes(
+        store / "notes" / "inside.md", result_body(DEFAULT_REVIEW_SECTIONS)
+    )
+    inside = invoke(
+        "review",
+        {
+            "item": task,
+            "verdict": "approve",
+            "notes_file": str(inside_notes),
+        },
+        store=store,
+        actor="reviewer",
+    )
+    assert refusal(inside)[0] == "FORBIDDEN"
+

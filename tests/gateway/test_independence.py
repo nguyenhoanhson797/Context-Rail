@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from helpers import as_human, restrict_code_write, write_candidate, write_record
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import Context, invoke
@@ -16,7 +17,6 @@ from context_rail.gateway.handlers.independence import (
 from context_rail.kernel.seats import LiveSeat
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
-from helpers import as_human, restrict_code_write, write_candidate, write_record
 
 SHA = "a" * 40
 
@@ -256,3 +256,92 @@ def test_code_reach_unresolvable_anchor_fails_closed(task: SimpleNamespace) -> N
     )
 
     assert violations == ["src/a.py", "b.py"]
+
+
+def test_commitless_result_produce_independence_blocks_same_seat_and_profile(
+    tmp_path: Path,
+) -> None:
+    from helpers import DEFAULT_PRODUCER_SECTIONS, init_result_store, result_body
+
+    from context_rail.core.util import dump_frontmatter, new_ulid
+    from context_rail.model.results import (
+        RESULT_KIND,
+        RESULT_SCHEMA,
+        result_body_hash,
+    )
+    from context_rail.store.doc import record_digest
+    from context_rail.store.results import item_content_digest
+
+    store = init_result_store(tmp_path / "proj")
+    added = invoke("add", {"preset": "task", "title": "Result Indep"}, store=store, actor="cto")
+    assert is_ok(added), added
+    item = added["value"]["slug"]
+
+    body = result_body(DEFAULT_PRODUCER_SECTIONS)
+    record_id = new_ulid()
+    item_path = f"items/task/{item}.md"
+    ctx_init = context_for(store)
+    try:
+        contract_digest = ctx_init.model.results["sprint"].produce.digest
+    finally:
+        ctx_init.index.close()
+    payload = {
+        "schema": RESULT_SCHEMA,
+        "item": item,
+        "attempt": 1,
+        "actor": "impl-1",
+        "outcome": "completed",
+        "candidate_commit": None,
+        "body_hash": result_body_hash(body),
+        "item_digest": item_content_digest(store, item_path),
+        "work_cycle": None,
+        "contract_digest": contract_digest,
+        "seat": "impl-1",
+        "seat_role": "implementer",
+        "profile": "shared-prof",
+        "profile_version": 1,
+    }
+    front: dict[str, object] = {
+        "id": record_id,
+        "primitive": "record",
+        "preset": "finding",
+        "kind": RESULT_KIND,
+        "at": "2026-11-12T10:00:00Z",
+        "actor": "impl-1",
+        "about": [item],
+        "workflow_name": "sprint",
+        "data": payload,
+    }
+    front["digest"] = record_digest(front)
+    rec_path = store / "records" / "findings" / "sprint" / item / f"{record_id}.md"
+    rec_path.parent.mkdir(parents=True, exist_ok=True)
+    rec_path.write_text(
+        f"---\n{dump_frontmatter(front)}---\n{body}",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    ctx = context_for(store)
+    try:
+        assert ctx.index.conn.execute(
+            "SELECT COUNT(*) FROM candidates WHERE item = ?", (item,)
+        ).fetchone()[0] == 0
+        assert ctx.index.conn.execute(
+            "SELECT COUNT(*) FROM results WHERE item = ?", (item,)
+        ).fetchone()[0] == 1
+        by_seat = independence_refusal(
+            ctx, item=item, step_kinds=("produce",), acting=("impl-1", "other-prof")
+        )
+        by_profile = independence_refusal(
+            ctx, item=item, step_kinds=("produce",), acting=("rev-1", "shared-prof")
+        )
+        clean = independence_refusal(
+            ctx, item=item, step_kinds=("produce",), acting=("rev-1", "rev-prof")
+        )
+    finally:
+        ctx.index.close()
+
+    assert by_seat is not None and "produce" in by_seat and "impl-1" in by_seat
+    assert by_profile is not None and "produce" in by_profile and "shared-prof" in by_profile
+    assert clean is None
+
