@@ -50,13 +50,20 @@ from context_rail.model.manifest import (
 )
 from context_rail.model.pack import Pack, canonical_pack_name, load_pack
 from context_rail.model.policy import Charter, parse_answers
+from context_rail.model.results import (
+    RESULT_ADOPTION_KIND,
+    RESULT_ADOPTION_SCHEMA,
+    parse_result_adoption,
+)
 from context_rail.store.approval import (
     APPROVAL_KIND,
     APPROVAL_SCHEMA,
+    PACK_DIGEST_KEY,
     protected_paths,
     protected_snapshot,
     snapshot_digest,
 )
+from context_rail.store.results import item_content_digest, work_cycle
 from context_rail.store.placement import (
     PlacementContext,
     PlacementError,
@@ -350,6 +357,18 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 f"the protected picture is at {digest}, not {expect}",
                 {"expected": expect, "actual": digest},
             )
+        extra_records: list[dict[str, Any]] = []
+        reserved_kinds: frozenset[str] = frozenset()
+        adoption = _planned_result_adoption(
+            ctx,
+            target=target,
+            scope=scope,
+            files=files,
+            pack_name=pack_name,
+        )
+        if adoption is not None:
+            extra_records.append(adoption)
+            reserved_kinds = frozenset({RESULT_ADOPTION_KIND})
         result = commit(
             store,
             ctx.manifest,
@@ -374,6 +393,8 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             actor=actor,
             key=args["key"],
             index=index,
+            extra_records=tuple(extra_records),
+            reserved_kinds=reserved_kinds,
         )
     summary: dict[str, Any] = {
         "approval": result.get("record"),
@@ -479,6 +500,86 @@ def _approval_diff(
         if before.get(path) != hashes.get(path)
     ]
     return changed[:100], max(len(changed) - 100, 0)
+
+
+def _planned_result_adoption(
+    ctx: Context,
+    *,
+    target: str,
+    scope: str,
+    files: list[str],
+    pack_name: str | None,
+) -> dict[str, Any] | None:
+    """Build a ``results.adopted`` snapshot record on first pack/whole-picture contract approval.
+
+    File-scoped approvals (``manifest``, ``checks``, single protected docs, or
+    narrow ``workflow:<name>`` without whole-picture/pack coverage) never
+    activate adoption. Already-activated workflows are never re-snapshotted.
+    """
+    from context_rail.store import query
+
+    active_pack = pack_name or ctx.pack.name
+    if active_pack != ctx.pack.name:
+        return None
+    if target not in ("charter", f"pack:{active_pack}"):
+        return None
+    if scope not in ("charter", "constitution", "pack") and not scope.startswith("workflow:"):
+        return None
+    pack_digest_key = PACK_DIGEST_KEY.format(name=active_pack)
+    pack_yaml_key = f"packs/{active_pack}/pack.yaml"
+    if pack_digest_key not in files and pack_yaml_key not in files:
+        return None
+
+    compiled_results = getattr(ctx.model, "results", None)
+    if not compiled_results:
+        return None
+
+    if scope.startswith("workflow:"):
+        wf = scope[len("workflow:") :].strip()
+        candidate_workflows = [wf] if wf in compiled_results else []
+    else:
+        candidate_workflows = sorted(compiled_results)
+
+    already_active = query.result_activated_workflows(ctx.index, active_pack)
+    newly_adopted = [wf for wf in candidate_workflows if wf not in already_active]
+    if not newly_adopted:
+        return None
+
+    adopted_set = set(newly_adopted)
+    rows = ctx.index.conn.execute(
+        "SELECT path, slug, workflow FROM docs "
+        "WHERE primitive = 'item' AND broken = 0 AND category = 'done' "
+        "ORDER BY path"
+    ).fetchall()
+    historical_done: list[dict[str, Any]] = []
+    for path, slug, workflow in rows:
+        wf = workflow or "default"
+        if wf not in adopted_set:
+            continue
+        historical_done.append(
+            {
+                "item": slug,
+                "workflow": wf,
+                "item_digest": item_content_digest(ctx.store, path),
+                "work_cycle": work_cycle(ctx, slug),
+            }
+        )
+
+    payload = parse_result_adoption(
+        {
+            "schema": RESULT_ADOPTION_SCHEMA,
+            "pack": active_pack,
+            "workflows": newly_adopted,
+            "historical_done": historical_done,
+        }
+    )
+    about = sorted({entry["item"] for entry in historical_done})
+    return {
+        "preset": "event",
+        "kind": RESULT_ADOPTION_KIND,
+        "about": about,
+        "data": payload,
+    }
 
 
 def read_answers(path: Path) -> dict[str, Any]:

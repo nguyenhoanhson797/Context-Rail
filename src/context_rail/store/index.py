@@ -41,6 +41,7 @@ from context_rail.model.results import (
     RESULT_ADOPTION_KIND,
     RESULT_KIND,
     parse_result,
+    parse_result_adoption,
     parse_review,
 )
 from context_rail.model.seats import SEAT_GRANTED, SEAT_KINDS, SEAT_REVOKED, parse_seat_event
@@ -64,7 +65,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 12
+INDEX_SCHEMA = 13
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -257,16 +258,28 @@ _SCHEMA = (
     CREATE TABLE result_adoptions(
         path TEXT NOT NULL,
         record_id TEXT NOT NULL,
+        pack TEXT NOT NULL,
         item TEXT NOT NULL,
         workflow TEXT NOT NULL,
         item_digest TEXT NOT NULL,
         work_cycle TEXT,
         at TEXT NOT NULL,
         data_json TEXT NOT NULL,
-        PRIMARY KEY(path, item)
+        PRIMARY KEY(path, item, workflow)
     )
     """,
     "CREATE INDEX result_adoptions_item_at ON result_adoptions(item, at DESC, record_id DESC)",
+    """
+    CREATE TABLE result_activations(
+        path TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        pack TEXT NOT NULL,
+        workflow TEXT NOT NULL,
+        at TEXT NOT NULL,
+        PRIMARY KEY(path, pack, workflow)
+    )
+    """,
+    "CREATE INDEX result_activations_pack_wf ON result_activations(pack, workflow, at ASC, record_id ASC)",
     """
     CREATE TABLE seats(
         path TEXT PRIMARY KEY,
@@ -330,6 +343,7 @@ _PATH_TABLES = (
     "reviews",
     "results",
     "result_adoptions",
+    "result_activations",
     "executions",
     "seats",
     "candidates",
@@ -414,12 +428,20 @@ _PROJECTION_COLUMNS = {
     "result_adoptions": (
         "path",
         "record_id",
+        "pack",
         "item",
         "workflow",
         "item_digest",
         "work_cycle",
         "at",
         "data_json",
+    ),
+    "result_activations": (
+        "path",
+        "record_id",
+        "pack",
+        "workflow",
+        "at",
     ),
     "executions": (
         "path",
@@ -1304,40 +1326,33 @@ def _broken_result_stub(
 def _result_adoption_rows(
     doc: Doc, record_id: str, data: dict[str, Any]
 ) -> list[tuple[str, tuple[Any, ...]]]:
-    payload = _strict(
-        data,
-        ("schema", "workflow", "items"),
-        "results_adopted",
-        ("schema", "workflow", "items"),
-    )
-    workflow = string(payload["workflow"], "results_adopted.workflow")
+    payload = parse_result_adoption(data)
     at = _at(doc)
     if at is None:
         refuse("results.adopted record needs an ISO 8601 at")
-    items = payload["items"]
-    if not isinstance(items, list):
-        refuse("results_adopted.items must be a list")
-    rows: list[tuple[str, tuple[Any, ...]]] = []
-    for index, entry in enumerate(items):
-        what = f"results_adopted.items[{index}]"
-        item_map = mapping(entry, what)
-        no_unknown(item_map, ("item", "item_digest", "work_cycle"), what)
-        require(item_map, ("item", "item_digest"), what)
-        slug = string(item_map["item"], f"{what}.item")
-        digest = string(item_map["item_digest"], f"{what}.item_digest")
-        cycle = _optional_text(item_map.get("work_cycle"), f"{what}.work_cycle")
+    pack_name = payload["pack"]
+    raw_json = _json(data)
+    rows: list[tuple[str, tuple[Any, ...]]] = [
+        (
+            "result_activations",
+            (doc.path, record_id, pack_name, wf, at),
+        )
+        for wf in payload["workflows"]
+    ]
+    for entry in payload["historical_done"]:
         rows.append(
             (
                 "result_adoptions",
                 (
                     doc.path,
                     record_id,
-                    slug,
-                    workflow,
-                    digest,
-                    cycle,
+                    pack_name,
+                    entry["item"],
+                    entry["workflow"],
+                    entry["item_digest"],
+                    entry["work_cycle"],
                     at,
-                    _json(data),
+                    raw_json,
                 ),
             )
         )

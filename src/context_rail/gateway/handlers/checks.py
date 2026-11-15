@@ -25,6 +25,10 @@ from context_rail.gateway.handlers.common import (
     template_body,
     validate_relation_targets,
 )
+from context_rail.gateway.handlers.result_checks import (
+    result_freshness,
+    run_result_check,
+)
 from context_rail.gateway.handlers.store_check import (
     resolve_child_store,
     store_freshness,
@@ -82,7 +86,7 @@ EVIDENCE_MODES = ("evidence", "human")
 #: and a review proves one exact candidate the review command produced.
 ITEM_WIDE_SKIP = ("human", "review")
 _RECORD_ID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
-_EXECUTABLE_MODES = ("cmd", "exists", "evidence", "review", "store")
+_EXECUTABLE_MODES = ("cmd", "exists", "evidence", "review", "store", "result")
 
 
 class _DuplicateKey(Exception):
@@ -268,7 +272,12 @@ def verify(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 {"check": rows[0]["slug"], "mode": rows[0]["mode"]},
             )
     key = args["key"]
-    worktree = _resolve_worktree(ctx, args.get("worktree"))
+    needs_worktree = any(
+        (single or selected["mode"] not in ITEM_WIDE_SKIP)
+        and selected["mode"] in SHELL_MODES
+        for selected in rows
+    )
+    worktree = _resolve_worktree(ctx, args.get("worktree")) if needs_worktree else None
     results: list[dict[str, Any]] = []
     for selected in rows:
         if not single and selected["mode"] in ITEM_WIDE_SKIP:
@@ -333,6 +342,8 @@ def freshness_of(
         return "missing"
     if row.get("mode") == "store":
         return store_freshness(ctx, row)
+    if row.get("mode") == "result":
+        return result_freshness(ctx, row)
     verdict: dict[str, Any] | None = None
     if row.get("verdict") is not None:
         verdict = {
@@ -490,6 +501,8 @@ def _verify_one(
             payload = _human_payload(ctx, row, supplied, actor)
         elif mode == "store":
             payload = store_payload(ctx, row)
+        elif mode == "result":
+            payload = run_result_check(ctx, row)
         else:  # pragma: no cover - parse_check pins the mode enum
             raise WriteRefused("VALIDATION_FAILED", f"unknown check mode {mode!r}")
     except GlobError as error:

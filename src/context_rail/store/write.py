@@ -40,6 +40,7 @@ from context_rail.model.manifest import Manifest
 from context_rail.model.metadata import prepare_fields
 from context_rail.model.pack import load_pack
 from context_rail.model.primitives import PRIMITIVES, RECORD_STAMPED_KEYS, RELATIONS
+from context_rail.model.results import RESULT_ADOPTION_KIND
 from context_rail.model.seats import SEAT_KINDS
 from context_rail.kernel.relations import endpoint_problem
 from context_rail.store.adapters import ADAPTER_PREFIX, project_root, resolve_adapter
@@ -105,6 +106,7 @@ _RECORD_PAYLOAD_ORDER = (
 #: Files a commit may place, but that a record may never occupy.
 _PROTOCOL_FILES = frozenset({"rail.yaml", ".gitignore"})
 _ETAG_RE = re.compile(r"^[0-9a-f]{16}$")
+_RESERVED_RECORD_KINDS = frozenset(SEAT_KINDS) | frozenset({RESULT_ADOPTION_KIND})
 _REPLACE_RETRIES = 5
 
 
@@ -221,10 +223,10 @@ def commit(
     targets = _plan_ops(store, ops)
     requests = _record_requests(record, extra_records)
     for request in requests:
-        if request.kind in SEAT_KINDS and request.kind not in reserved_kinds:
+        if request.kind in _RESERVED_RECORD_KINDS and request.kind not in reserved_kinds:
             raise WriteRefused(
                 "VALIDATION_FAILED",
-                f"{request.kind!r} is an engine-owned seat record; seat commands write it",
+                f"{request.kind!r} is an engine-owned reserved record kind",
                 {"kind": request.kind, "reason": "reserved_kind"},
             )
 

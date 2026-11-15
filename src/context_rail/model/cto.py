@@ -50,6 +50,7 @@ __all__ = [
     "REPORT_MAX_EVIDENCE",
     "REPORT_SCHEMA",
     "REPORT_TARGET_CLASSES",
+    "RESULT_BINDING_KEYS",
     "SKILL_SCHEMA",
     "STORE_BINDING_KEYS",
     "UNKNOWN",
@@ -77,7 +78,7 @@ UNKNOWN = "unknown"
 CHECK_SCHEMA = VERDICT_SCHEMA = PROFILE_SCHEMA = REPORT_SCHEMA = 1
 SKILL_SCHEMA = 1
 
-CHECK_MODES = ("cmd", "exists", "evidence", "review", "human", "store")
+CHECK_MODES = ("cmd", "exists", "evidence", "review", "human", "store", "result")
 CHECK_KEYS = (
     "schema",
     "mode",
@@ -102,9 +103,19 @@ MODE_ONLY_KEYS: dict[str, frozenset[str]] = {
     "review": frozenset(),
     "human": frozenset(),
     "store": frozenset({"store", "item", "category"}),
+    "result": frozenset(),
 }
 #: The closed binding a store verdict carries: the proof of one child item's category.
 STORE_BINDING_KEYS = ("path", "item", "doc", "commit", "etag", "category")
+#: The closed binding a result verdict carries: exact result record, hashes and cycle.
+RESULT_BINDING_KEYS = (
+    "record",
+    "body_hash",
+    "item_digest",
+    "work_cycle",
+    "contract_digest",
+    "candidate_commit",
+)
 LEGACY_KEYS = (
     "source_path",
     "line",
@@ -133,6 +144,7 @@ VERDICT_KEYS = (
     "reason",
     "candidate_commit",
     "store",
+    "result",
 )
 
 PROFILE_RECIPES = ("cto", "implementer", "reviewer")
@@ -263,6 +275,7 @@ class Verdict:
     reason: str | None
     candidate_commit: str | None
     store: dict[str, str] | None = None
+    result: dict[str, str | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -420,6 +433,22 @@ def _store_binding(raw: Any, *, passed: bool) -> dict[str, str]:
     return binding
 
 
+def _result_binding(raw: Any) -> dict[str, str | None]:
+    data = mapping(raw, "verdict.result")
+    no_unknown(data, RESULT_BINDING_KEYS, "verdict.result")
+    require(data, RESULT_BINDING_KEYS, "verdict.result")
+    return {
+        "record": string(data["record"], "verdict.result.record"),
+        "body_hash": string(data["body_hash"], "verdict.result.body_hash"),
+        "item_digest": string(data["item_digest"], "verdict.result.item_digest"),
+        "work_cycle": _optional_string(data["work_cycle"], "verdict.result.work_cycle"),
+        "contract_digest": string(data["contract_digest"], "verdict.result.contract_digest"),
+        "candidate_commit": _optional_string(
+            data["candidate_commit"], "verdict.result.candidate_commit"
+        ),
+    }
+
+
 def _legacy(raw: Any) -> dict[str, Any]:
     data = mapping(raw, "check.legacy")
     no_unknown(data, LEGACY_KEYS, "check.legacy")
@@ -469,6 +498,17 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
     elif "store" in payload:
         refuse(f"mode {mode!r} carries no store binding")
 
+    result_binding: dict[str, str | None] | None = None
+    if mode == "result":
+        raw_result = payload.get("result")
+        if raw_result is None:
+            if passed:
+                refuse("a passing result verdict needs its result binding")
+        else:
+            result_binding = _result_binding(raw_result)
+    elif "result" in payload:
+        refuse(f"mode {mode!r} carries no result binding")
+
     return Verdict(
         schema=schema,
         check=string(payload["check"], "verdict.check"),
@@ -485,6 +525,7 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
             payload.get("candidate_commit"), "verdict.candidate_commit"
         ),
         store=binding,
+        result=result_binding,
     )
 
 

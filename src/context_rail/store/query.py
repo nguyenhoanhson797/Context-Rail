@@ -51,6 +51,7 @@ __all__ = [
     "count_reports_by_fingerprint",
     "report_for_candidate",
     "reports_by_fingerprint",
+    "result_activated_workflows",
     "result_adoption_for",
     "result_by_record",
     "result_count",
@@ -445,6 +446,7 @@ def _check_state(ix: Index, row: Sequence[Any]) -> dict[str, Any]:
         "runner_digest": None,
         "reason": None,
         "store_binding": None,
+        "result_binding": None,
     }
     if latest is not None:
         record_id, at, passed, check_etag, blobs, candidate, digest, data = latest
@@ -461,6 +463,7 @@ def _check_state(ix: Index, row: Sequence[Any]) -> dict[str, Any]:
                 "runner_digest": digest,
                 "reason": payload.get("reason"),
                 "store_binding": payload.get("store"),
+                "result_binding": payload.get("result"),
             }
         )
     return state
@@ -782,30 +785,42 @@ def result_count(ix: Index, item: str) -> int:
     return int(row[0]) if row is not None else 0
 
 
+def result_activated_workflows(ix: Index, pack: str) -> set[str]:
+    """Workflows in ``pack`` already covered by a ``results.adopted`` snapshot."""
+    pack = _text(pack, "pack")
+    rows = ix.conn.execute(
+        "SELECT DISTINCT workflow FROM result_activations WHERE pack = ?",
+        (pack,),
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
 def result_adoption_for(
-    ix: Index, item: str, workflow: str | None = None
+    ix: Index, item: str, workflow: str | None = None, *, pack: str | None = None
 ) -> dict[str, Any] | None:
-    """The newest ``results.adopted`` snapshot entry for ``item`` (optionally matching ``workflow``)."""
+    """The first ``results.adopted`` snapshot entry for ``item`` (optionally matching ``pack``/``workflow``)."""
     item = _text(item, "item")
-    if workflow is None:
-        row = ix.conn.execute(
-            "SELECT path, record_id, item, workflow, item_digest, work_cycle, at, data_json "
-            "FROM result_adoptions WHERE item = ? ORDER BY at DESC, record_id DESC LIMIT 1",
-            (item,),
-        ).fetchone()
-    else:
-        row = ix.conn.execute(
-            "SELECT path, record_id, item, workflow, item_digest, work_cycle, at, data_json "
-            "FROM result_adoptions WHERE item = ? AND workflow = ? "
-            "ORDER BY at DESC, record_id DESC LIMIT 1",
-            (item, _text(workflow, "workflow")),
-        ).fetchone()
+    clauses = ["item = ?"]
+    params: list[Any] = [item]
+    if workflow is not None:
+        clauses.append("workflow = ?")
+        params.append(_text(workflow, "workflow"))
+    if pack is not None:
+        clauses.append("pack = ?")
+        params.append(_text(pack, "pack"))
+    where = " AND ".join(clauses)
+    row = ix.conn.execute(
+        "SELECT path, record_id, pack, item, workflow, item_digest, work_cycle, at, data_json "
+        f"FROM result_adoptions WHERE {where} ORDER BY at ASC, record_id ASC LIMIT 1",
+        params,
+    ).fetchone()
     if row is None:
         return None
-    path, record_id, owner, wf, item_digest, cycle, at, data_json = row
+    path, record_id, pack_name, owner, wf, item_digest, cycle, at, data_json = row
     return {
         "path": path,
         "record_id": record_id,
+        "pack": pack_name,
         "item": owner,
         "workflow": wf,
         "item_digest": item_digest,

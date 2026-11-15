@@ -17,7 +17,14 @@ from dataclasses import dataclass
 from context_rail.kernel.rights import separation_problem
 from context_rail.model.policy import Charter
 
-__all__ = ["FRESHNESS", "CheckState", "GateDecision", "ReviewState", "evaluate_gate"]
+__all__ = [
+    "FRESHNESS",
+    "CheckState",
+    "GateDecision",
+    "ResultState",
+    "ReviewState",
+    "evaluate_gate",
+]
 
 FRESHNESS = ("fresh", "stale", "unknown", "missing", "untracked")
 APPROVED = "approve"
@@ -36,15 +43,30 @@ class CheckState:
 
 
 @dataclass(frozen=True)
+class ResultState:
+    """Current producer result evidence for one item, as read from the store."""
+
+    record: str | None
+    body_hash: str | None
+    current: bool
+    completed: bool
+    reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ReviewState:
-    """The reviewer's verdict on one candidate commit."""
+    """The reviewer's verdict on one candidate commit and/or producer result."""
 
     verdict: str
-    candidate: str
+    candidate: str | None
     reviewer: str
     model: str | None = None
     implementer: str | None = None
     implementer_model: str | None = None
+    result_record: str | None = None
+    result_body_hash: str | None = None
+    current: bool = True
+    reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -63,15 +85,26 @@ def evaluate_gate(
     review: ReviewState | None,
     human: bool,
     candidate: str | None,
+    *,
+    result_required: bool = False,
+    result: ResultState | None = None,
 ) -> GateDecision:
-    """Decide one gate; an unknown gate, freshness or missing candidate blocks."""
+    """Decide one gate; an unknown gate, freshness, missing candidate or missing result blocks."""
     if gate not in policy.gates:
         return GateDecision(False, (f"unknown gate {gate!r}",))
     rule = policy.gates[gate]
     selected = tuple(checks)
     reasons: list[str] = []
+    if result_required:
+        reasons.extend(_result_reasons(result))
+    has_result_backed_review = (
+        result_required
+        and review is not None
+        and review.result_record is not None
+    )
     if not candidate and (
-        rule.require_review or any(check.requires_candidate for check in selected)
+        any(check.requires_candidate for check in selected)
+        or (rule.require_review and not has_result_backed_review)
     ):
         reasons.append("no candidate commit was supplied")
     if gate == "scope_done" and target not in policy.project.get("scope", ()):
@@ -87,10 +120,30 @@ def evaluate_gate(
     if rule.require_acceptance and not _has_fresh_acceptance(selected):
         reasons.append("no acceptance check passed fresh")
     if rule.require_review:
-        reasons.extend(_review_reasons(policy, review, candidate))
+        reasons.extend(
+            _review_reasons(
+                policy,
+                review,
+                candidate,
+                result_required=result_required,
+                result=result,
+            )
+        )
     if rule.require_human and not human:
         reasons.append("a human verdict or approval is required")
     return GateDecision(not reasons, tuple(reasons))
+
+
+def _result_reasons(result: ResultState | None) -> list[str]:
+    if result is None or not result.record:
+        return ["no current completed producer result was recorded"]
+    if not result.current or not result.completed:
+        if result.reasons:
+            return list(result.reasons)
+        if not result.current:
+            return [f"producer result {result.record!r} is not current"]
+        return [f"producer result {result.record!r} is not completed"]
+    return []
 
 
 def _check_reasons(checks: tuple[CheckState, ...], candidate: str | None) -> list[str]:
@@ -116,17 +169,52 @@ def _has_fresh_acceptance(checks: tuple[CheckState, ...]) -> bool:
 
 
 def _review_reasons(
-    policy: Charter, review: ReviewState | None, candidate: str | None
+    policy: Charter,
+    review: ReviewState | None,
+    candidate: str | None,
+    *,
+    result_required: bool = False,
+    result: ResultState | None = None,
 ) -> list[str]:
     if review is None:
         return ["no review was recorded"]
     reasons: list[str] = []
     if review.verdict != APPROVED:
         reasons.append(f"the review verdict is {review.verdict!r}, not {APPROVED!r}")
-    if not review.candidate:
-        reasons.append("the review is not bound to a candidate commit")
-    elif review.candidate != candidate:
-        reasons.append(f"the review approved {review.candidate}, not {candidate}")
+    if not review.current:
+        if review.reasons:
+            reasons.extend(review.reasons)
+        else:
+            reasons.append("the review is no longer current")
+    if result_required:
+        if not review.result_record:
+            reasons.append("the review is not bound to a producer result")
+        elif result is not None and result.record is not None:
+            if review.result_record != result.record:
+                reasons.append(
+                    f"the review approved result {review.result_record}, not {result.record}"
+                )
+            elif (
+                result.body_hash is not None
+                and review.result_body_hash != result.body_hash
+            ):
+                reasons.append(
+                    "the review result_body_hash does not match the current result"
+                )
+        if candidate:
+            if not review.candidate:
+                reasons.append("the review is not bound to a candidate commit")
+            elif review.candidate != candidate:
+                reasons.append(f"the review approved {review.candidate}, not {candidate}")
+        elif review.candidate:
+            reasons.append(
+                f"the review approved candidate {review.candidate}, but no candidate is current"
+            )
+    else:
+        if not review.candidate:
+            reasons.append("the review is not bound to a candidate commit")
+        elif review.candidate != candidate:
+            reasons.append(f"the review approved {review.candidate}, not {candidate}")
     if not review.reviewer:
         reasons.append("the review has no reviewer")
     if review.implementer or review.implementer_model:

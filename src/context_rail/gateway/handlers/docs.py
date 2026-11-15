@@ -10,12 +10,10 @@ from context_rail.core.util import now_iso, slugify
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.handlers.common import (
     apply_tag_edits,
-    check_gate_state,
     compose_doc,
     default_parent,
     doc_frontmatter,
     document_version,
-    gate_candidate,
     load_body,
     parse_relations,
     parse_set_values,
@@ -26,11 +24,11 @@ from context_rail.gateway.handlers.common import (
     read_doc,
     record_data,
     record_path_for,
-    review_gate_state,
     slug_of_path,
     template_body,
     unique_slug,
     validate_actor_write,
+    validate_field_values,
     validate_relation_targets,
     versioned_change_record,
     versioned_kind,
@@ -38,10 +36,8 @@ from context_rail.gateway.handlers.common import (
 from context_rail.kernel import gates, rights
 from context_rail.kernel.lifecycle import category_of, check_transition
 from context_rail.model.cto import SKILL_SCHEMA
-from context_rail.model.manifest import render_path
 from context_rail.model.pack import Preset
 from context_rail.model.primitives import RELATIONS
-from context_rail.store import query
 from context_rail.store.doc import Doc, etag
 from context_rail.store.index import Index
 from context_rail.store.lock import store_lock
@@ -665,6 +661,8 @@ def move(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if resolution is not None:
             front["resolution"] = resolution
         front["updated"] = now_iso()
+        from_category = category_of(ctx.pack, doc.status or "")
+        to_category = category_of(ctx.pack, target)
         result = commit(
             store,
             ctx.manifest,
@@ -675,6 +673,8 @@ def move(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "data": {
                     "from": doc.status,
                     "to": target,
+                    "from_category": from_category,
+                    "to_category": to_category,
                     "resolution": resolution,
                     "workflow": workflow.name,
                 },
@@ -914,67 +914,92 @@ def _response(store: Path, index: Index, result: dict[str, Any]) -> dict[str, An
 
 
 def _require_gate(ctx: Context, doc: Doc, target: str, actor: str) -> None:
-    """Refuse a move the workflow's gate, or the done default, does not allow.
+    """Refuse a move the workflow's gate, or the done/result requirement, does not allow."""
+    from context_rail.gateway.handlers.proofs import completion_facts
 
-    The newest review of the Item supplies the candidate commit the gate binds
-    its Checks to; without one the newest recorded candidate is used, then the
-    newest Check's candidate, so an approval is never implied by the transition
-    itself.
-    """
     policy = ctx.policy
-    if policy is None:
-        return
     workflow = ctx.pack.workflow_for(doc.preset or "")
+    target_category = category_of(ctx.pack, target)
+    results_map = getattr(ctx.model, "results", {}) or {}
+    contract_enabled = workflow.name in results_map
+
+    if policy is None:
+        if target_category != "done" or not contract_enabled:
+            return
+        facts = completion_facts(
+            ctx,
+            doc.slug,
+            target,
+            workflow_name=workflow.name,
+            assessment=False,
+        )
+        if (
+            facts.result is not None
+            and facts.result.record
+            and facts.result.current
+            and facts.result.completed
+        ):
+            return
+        reasons = (
+            list(facts.result.reasons)
+            if facts.result is not None and facts.result.reasons
+            else ["no current completed producer result was recorded"]
+        )
+        raise WriteRefused(
+            "BUSINESS_RULE_VIOLATED",
+            "the completion result contract is not satisfied",
+            {
+                "gate": "item_done",
+                "path": doc.path,
+                "candidate": facts.candidate,
+                "missing": ["result"],
+                "reasons": reasons,
+                "command": f"rail loop result {doc.slug} --body-file <file>",
+            },
+        )
+
     name = workflow.gate_for(target)
     if name is None:
-        if category_of(ctx.pack, target) != "done":
+        if target_category != "done":
             return
         name = (
             "scope_done"
             if doc.slug in policy.project.get("scope", ())
             else "item_done"
         )
-    required = workflow.checks_for(target)
-    rows = query.check_states(ctx.index, doc.slug)
-    missing: list[str] = []
-    if required is None:
-        selected = rows
-    else:
-        by_slug = {row["slug"]: row for row in rows}
-        selected = [by_slug[slug] for slug in required if slug in by_slug]
-        missing = [slug for slug in required if slug not in by_slug]
-    states = [check_gate_state(ctx, row) for row in selected]
-    review = review_gate_state(query.review_for_item(ctx.index, doc.slug))
-    candidate = gate_candidate(ctx.index, doc.slug, review, states)
+    facts = completion_facts(
+        ctx,
+        doc.slug,
+        target,
+        workflow_name=workflow.name,
+        assessment=False,
+    )
     decision = gates.evaluate_gate(
         policy,
         name,
         doc.slug,
-        states,
-        review,
+        facts.checks,
+        facts.review,
         ctx.identity.human,
-        candidate,
+        facts.candidate,
+        result_required=facts.result_required and target_category == "done",
+        result=facts.result,
     )
-    if decision.allowed and not missing:
+    if decision.allowed and not facts.missing:
         return
     reasons = list(decision.reasons)
-    if missing:
-        reasons.append("required check(s) are not declared: " + ", ".join(missing))
-    stale = [
-        state.slug
-        for state in states
-        if state.freshness != "fresh" or not state.passed
-    ]
+    if facts.missing:
+        reasons.append("required check(s) are not declared: " + ", ".join(facts.missing))
     raise WriteRefused(
         "BUSINESS_RULE_VIOLATED",
         f"the {name} gate is not satisfied",
         {
             "gate": name,
             "path": doc.path,
-            "candidate": candidate,
-            "missing": [*missing, *stale],
+            "candidate": facts.candidate,
+            "missing": [*facts.missing, *facts.stale],
             "reasons": reasons,
-            "command": _gate_command(doc.slug, missing),
+            "command": _gate_command(doc.slug, list(facts.missing)),
         },
     )
 

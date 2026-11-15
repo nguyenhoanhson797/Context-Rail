@@ -353,7 +353,13 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if new_status != row["status"]:
             data = _rewrite_status(current_data, new_status)
             changes.append(
-                {"slug": row["slug"], "from": row["status"], "to": new_status}
+                {
+                    "slug": row["slug"],
+                    "from": row["status"],
+                    "to": new_status,
+                    "from_category": current.statuses.get(row["status"]),
+                    "to_category": target.statuses.get(new_status),
+                }
             )
         ops.append(Op(row["path"], data, current_etag))
     changes.sort(key=lambda row: row["slug"])

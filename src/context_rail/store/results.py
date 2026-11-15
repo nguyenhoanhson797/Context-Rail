@@ -24,7 +24,12 @@ from context_rail.store.approval import semantic_hash
 from context_rail.store.doc import parse_doc, record_digest, record_frontmatter
 from context_rail.store.location import PathEscape, confine
 
-__all__ = ["item_content_digest", "select_result", "work_cycle"]
+__all__ = [
+    "historical_result_exempt",
+    "item_content_digest",
+    "select_result",
+    "work_cycle",
+]
 
 
 def item_content_digest(store: Path, item_path: str) -> str:
@@ -240,6 +245,27 @@ def select_result(
         reasons.append(
             f"result names candidate commit {bound_commit!r}, which does not exist for {item!r}"
         )
+    if bound_commit is not None:
+        cand_row = query.candidate_for_commit(ix, item, bound_commit)
+        if cand_row is None:
+            reasons.append(
+                f"candidate commit {bound_commit!r} is not recorded for item {item!r}"
+            )
+        elif payload is not None:
+            cand_actor = cand_row.get("actor")
+            cand_seat = cand_row.get("seat")
+            res_seat = payload.seat
+            res_actor = payload.actor
+            if res_seat is not None:
+                same_producer = cand_seat == res_seat or (
+                    cand_seat is None and cand_actor == res_actor
+                )
+            else:
+                same_producer = cand_seat is None and cand_actor == res_actor
+            if not same_producer:
+                reasons.append(
+                    f"result producer {res_seat or res_actor!r} does not match candidate producer {cand_seat or cand_actor!r}"
+                )
 
     current = not reasons
     outcome = payload.outcome if payload is not None else selected.get("outcome")
@@ -254,6 +280,42 @@ def select_result(
         completed=completed,
         reasons=tuple(reasons),
     )
+
+
+def historical_result_exempt(context: Any, item: str) -> bool:
+    """True only for an already-done item snapshotted at contract adoption and unchanged since.
+
+    Only assessment paths (doctor and gate reports) may consult this exemption;
+    never ``move``.
+    """
+    ix = context.index
+    row = ix.conn.execute(
+        "SELECT path, workflow, category FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 ORDER BY path",
+        (item,),
+    ).fetchall()
+    if len(row) != 1:
+        return False
+    item_path, workflow, category = row[0]
+    if category != "done":
+        return False
+    wf = workflow or "default"
+    pack_name = getattr(context.pack, "name", None)
+    if not isinstance(pack_name, str) or not pack_name:
+        return False
+    if wf not in query.result_activated_workflows(ix, pack_name):
+        return False
+    entry = query.result_adoption_for(ix, item, wf, pack=pack_name)
+    if entry is None:
+        return False
+    if query.result_count(ix, item) > 0:
+        return False
+    try:
+        current_digest = item_content_digest(Path(context.store), item_path)
+    except (OSError, PathEscape, ModelError):
+        return False
+    if current_digest != entry["item_digest"]:
+        return False
+    return work_cycle(context, item) == entry["work_cycle"]
 
 
 def _item_doc_row(ix: Any, slug: str) -> tuple[str, str] | None:

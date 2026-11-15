@@ -751,18 +751,33 @@ def check_gate_state(
     )
 
 
-def review_gate_state(review: dict[str, Any] | None) -> gates.ReviewState | None:
+def review_gate_state(
+    review: dict[str, Any] | None,
+    *,
+    current: bool = True,
+    reasons: Sequence[str] = (),
+) -> gates.ReviewState | None:
     """The newest review of one Item as a gate reads it, or None."""
     if review is None:
         return None
     data = review.get("data") or {}
+    raw_candidate = review.get("candidate_commit")
+    candidate = str(raw_candidate) if isinstance(raw_candidate, str) and raw_candidate else None
+    raw_result = review.get("result_record")
+    result_record = str(raw_result) if isinstance(raw_result, str) and raw_result else None
+    raw_hash = review.get("result_body_hash")
+    result_body_hash = str(raw_hash) if isinstance(raw_hash, str) and raw_hash else None
     return gates.ReviewState(
         verdict=str(review.get("verdict") or ""),
-        candidate=str(review.get("candidate_commit") or ""),
+        candidate=candidate,
         reviewer=str(review.get("reviewer") or ""),
         model=str(data.get("reviewer_model") or "") or None,
         implementer=str(data.get("implementer_actor") or "") or None,
         implementer_model=str(data.get("implementer_model") or "") or None,
+        result_record=result_record,
+        result_body_hash=result_body_hash,
+        current=current,
+        reasons=tuple(reasons),
     )
 
 

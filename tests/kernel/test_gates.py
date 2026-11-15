@@ -9,6 +9,7 @@ import pytest
 from context_rail.kernel.gates import (
     CheckState,
     GateDecision,
+    ResultState,
     ReviewState,
     evaluate_gate,
 )
@@ -232,3 +233,177 @@ def test_review_without_model_blocks_when_rule_on(policy):
     bare = ReviewState("approve", "c1", "reviewer-1", None)
     again = evaluate_gate(required, "item_done", "login", [fresh()], bare, False, "c1")
     assert again.allowed is False and again.reasons
+
+
+def test_result_required_even_with_all_charter_flags_false(policy) -> None:
+    disabled = replace(
+        policy, gates={**policy.gates, "item_done": Gate(False, False, False, False)}
+    )
+    decision = evaluate_gate(
+        disabled,
+        "item_done",
+        "login",
+        [],
+        None,
+        True,
+        None,
+        result_required=True,
+        result=None,
+    )
+    assert decision.allowed is False
+    assert any("result" in reason for reason in decision.reasons)
+
+    incomplete = ResultState(
+        record="01JRES00000000000000000001",
+        body_hash="a" * 64,
+        current=True,
+        completed=False,
+        reasons=("newest result outcome is 'partial', not 'completed'",),
+    )
+    partial_decision = evaluate_gate(
+        disabled,
+        "item_done",
+        "login",
+        [],
+        None,
+        True,
+        None,
+        result_required=True,
+        result=incomplete,
+    )
+    assert partial_decision.allowed is False
+    assert any("partial" in reason or "completed" in reason for reason in partial_decision.reasons)
+
+    completed = ResultState(
+        record="01JRES00000000000000000001",
+        body_hash="a" * 64,
+        current=True,
+        completed=True,
+        reasons=(),
+    )
+    ok = evaluate_gate(
+        disabled,
+        "item_done",
+        "login",
+        [],
+        None,
+        True,
+        None,
+        result_required=True,
+        result=completed,
+    )
+    assert ok == GateDecision(allowed=True, reasons=())
+
+
+def test_completed_result_does_not_bypass_checks_acceptance_review_or_human(policy) -> None:
+    completed = ResultState(
+        record="01JRES00000000000000000001",
+        body_hash="a" * 64,
+        current=True,
+        completed=True,
+        reasons=(),
+    )
+    # Checks, review, acceptance, human all remain independent
+    decision = evaluate_gate(
+        policy,
+        "release",
+        "login",
+        [],
+        None,
+        False,
+        None,
+        result_required=True,
+        result=completed,
+    )
+    assert decision.allowed is False
+    assert any("checks" in r for r in decision.reasons)
+    assert any("acceptance" in r for r in decision.reasons)
+    assert any("review" in r for r in decision.reasons)
+    assert any("human" in r for r in decision.reasons)
+
+
+def test_commitless_result_backed_review_passes_and_mismatches_block(policy) -> None:
+    completed = ResultState(
+        record="01JRES00000000000000000001",
+        body_hash="a" * 64,
+        current=True,
+        completed=True,
+        reasons=(),
+    )
+    review_only_policy = replace(
+        policy,
+        gates={**policy.gates, "item_done": Gate(False, False, True, False)},
+        reviewer_different_model=False,
+    )
+    good_review = ReviewState(
+        "approve",
+        None,
+        "reviewer-1",
+        None,
+        implementer="implementer-1",
+        result_record="01JRES00000000000000000001",
+        result_body_hash="a" * 64,
+        current=True,
+    )
+    assert (
+        evaluate_gate(
+            review_only_policy,
+            "item_done",
+            "login",
+            [],
+            good_review,
+            False,
+            None,
+            result_required=True,
+            result=completed,
+        ).allowed
+        is True
+    )
+
+    wrong_result = replace(good_review, result_record="01JRES00000000000000000002")
+    assert (
+        evaluate_gate(
+            review_only_policy,
+            "item_done",
+            "login",
+            [],
+            wrong_result,
+            False,
+            None,
+            result_required=True,
+            result=completed,
+        ).allowed
+        is False
+    )
+
+    wrong_hash = replace(good_review, result_body_hash="b" * 64)
+    assert (
+        evaluate_gate(
+            review_only_policy,
+            "item_done",
+            "login",
+            [],
+            wrong_hash,
+            False,
+            None,
+            result_required=True,
+            result=completed,
+        ).allowed
+        is False
+    )
+
+    non_current = replace(good_review, current=False, reasons=("review body altered",))
+    blocked = evaluate_gate(
+        review_only_policy,
+        "item_done",
+        "login",
+        [],
+        non_current,
+        False,
+        None,
+        result_required=True,
+        result=completed,
+    )
+    assert blocked.allowed is False
+    assert any("altered" in r for r in blocked.reasons)
+

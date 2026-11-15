@@ -26,6 +26,7 @@ from context_rail.model.roles import is_name
 __all__ = [
     "ARTIFACT_KEYS",
     "RESULT_ADOPTION_KIND",
+    "RESULT_ADOPTION_KEYS",
     "RESULT_ADOPTION_SCHEMA",
     "RESULT_BODY_MAX_BYTES",
     "RESULT_KEYS",
@@ -47,6 +48,7 @@ __all__ = [
     "normalize_result_body",
     "parse_artifact_spec",
     "parse_result",
+    "parse_result_adoption",
     "parse_results",
     "parse_review",
     "parse_workflow_results",
@@ -60,6 +62,8 @@ __all__ = [
 RESULT_BODY_MAX_BYTES = 262144
 RESULT_KIND = "result.recorded"
 RESULT_ADOPTION_KIND = "results.adopted"
+RESULT_ADOPTION_KEYS = ("schema", "pack", "workflows", "historical_done")
+RESULT_ADOPTION_ENTRY_KEYS = ("item", "workflow", "item_digest", "work_cycle")
 RESULT_SCHEMA = 1
 RESULT_ADOPTION_SCHEMA = 1
 REVIEW_SCHEMA = 1
@@ -700,4 +704,63 @@ def parse_review(payload: Mapping[str, Any]) -> dict[str, Any]:
         integer(data["profile_version"], "review.profile_version", positive=True)
 
     return dict(data)
+
+
+def parse_result_adoption(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate one ``results.adopted`` activation and historical snapshot payload."""
+    data = mapping(
+        dict(payload) if isinstance(payload, Mapping) else payload, "results_adopted"
+    )
+    schema = schema_version(data, RESULT_ADOPTION_SCHEMA, "results_adopted")
+    no_unknown(data, RESULT_ADOPTION_KEYS, "results_adopted")
+    require(data, RESULT_ADOPTION_KEYS, "results_adopted")
+
+    pack_name = string(data["pack"], "results_adopted.pack")
+    raw_workflows = string_list(data["workflows"], "results_adopted.workflows")
+    if len(set(raw_workflows)) != len(raw_workflows):
+        refuse("results_adopted.workflows must not repeat workflow names")
+
+    raw_done = data["historical_done"]
+    if not isinstance(raw_done, list):
+        refuse("results_adopted.historical_done must be a list")
+
+    entries: list[dict[str, Any]] = []
+    seen_items: set[tuple[str, str]] = set()
+    workflow_set = set(raw_workflows)
+    for index, entry in enumerate(raw_done):
+        what = f"results_adopted.historical_done[{index}]"
+        item_map = mapping(entry, what)
+        no_unknown(item_map, RESULT_ADOPTION_ENTRY_KEYS, what)
+        require(item_map, ("item", "workflow", "item_digest"), what)
+        slug = string(item_map["item"], f"{what}.item")
+        if SLUG_RE.fullmatch(slug) is None:
+            refuse(f"{what}.item {slug!r} must be a valid slug")
+        wf = string(item_map["workflow"], f"{what}.workflow")
+        if wf not in workflow_set:
+            refuse(f"{what}.workflow {wf!r} must be listed in results_adopted.workflows")
+        if (slug, wf) in seen_items:
+            refuse(f"{what} repeats item {slug!r} for workflow {wf!r}")
+        seen_items.add((slug, wf))
+        digest = _sha256(item_map["item_digest"], f"{what}.item_digest")
+        raw_cycle = item_map.get("work_cycle")
+        cycle: str | None = None
+        if raw_cycle is not None:
+            cycle = string(raw_cycle, f"{what}.work_cycle")
+            if _ULID_RE.fullmatch(cycle) is None:
+                refuse(f"{what}.work_cycle must be a 26-character ULID or null")
+        entries.append(
+            {
+                "item": slug,
+                "workflow": wf,
+                "item_digest": digest,
+                "work_cycle": cycle,
+            }
+        )
+
+    return {
+        "schema": schema,
+        "pack": pack_name,
+        "workflows": list(raw_workflows),
+        "historical_done": entries,
+    }
 

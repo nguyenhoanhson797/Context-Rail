@@ -65,3 +65,27 @@ def test_direct_commit_of_a_seat_kind_without_the_flag_is_refused(
         listed = invoke("seat list", {}, store=role_store.store, actor=None)
     assert is_ok(listed), listed
     assert "forged" not in {row["seat"] for row in listed["value"]["seats"]}
+
+
+def test_direct_commit_of_results_adopted_without_reserved_flag_is_refused(
+    role_store: SimpleNamespace,
+) -> None:
+    manifest = load_manifest(role_store.store)
+    record = {
+        "kind": "results.adopted",
+        "about": [],
+        "data": {
+            "schema": 1,
+            "pack": manifest.pack,
+            "workflows": ["default"],
+            "historical_done": [],
+        },
+    }
+
+    try:
+        commit(role_store.store, manifest, [], record, actor="human")
+    except WriteRefused as refused:
+        assert refused.code == "VALIDATION_FAILED"
+        assert refused.details.get("reason") == "reserved_kind"
+    else:
+        raise AssertionError("a results.adopted record was written without the reserved flag")

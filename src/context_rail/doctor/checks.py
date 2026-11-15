@@ -204,6 +204,8 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
         issues.extend(_gate_issues(context, policy))
         issues.extend(_quality_gate_issues(pack, policy))
         issues.extend(_quality_legacy_issues(rows, pack, policy))
+    elif not policy_issues:
+        issues.extend(_gate_issues(context, None))
     issues.extend(_check_issues(context, ix))
     issues.extend(_review_issues(ix, policy))
     issues.extend(_budget_issues(ix, policy))
@@ -229,14 +231,25 @@ def gate_report(
     """Every closed Item's current gate decision, bounded and read from the index."""
     context = _context(Path(store), manifest, pack, ix)
     policy_issues, policy = _policy(context)
-    if policy is not None:
-        return [_gate_row(context, policy, slug, path) for path, slug in _closed_items(ix)]
-    return []
+    if policy_issues:
+        return []
+    return [_gate_row(context, policy, slug, path) for path, slug in _closed_items(ix)]
 
 
 def _context(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> Any:
     """The read-only slice of a gateway context the doctor's checks need."""
-    return SimpleNamespace(store=Path(store), manifest=manifest, pack=pack, index=ix)
+    from context_rail.model.cache import cached_project
+    from context_rail.model.compiler import _placement
+    from context_rail.model.presentation import load_presentation
+
+    try:
+        presentation = load_presentation(pack.name, Path(store), pack)
+        model = cached_project(pack, presentation, placement=_placement(manifest))
+    except ModelError:
+        model = None
+    return SimpleNamespace(
+        store=Path(store), manifest=manifest, pack=pack, index=ix, model=model
+    )
 
 
 def _protected_moved_issues(context: Any, policy: Any) -> list[dict[str, Any]]:
@@ -966,34 +979,85 @@ def _gate_issues(context: Any, policy: Any) -> list[dict[str, Any]]:
 
 
 def _gate_row(context: Any, policy: Any, slug: str, path: str) -> dict[str, Any]:
-    """One Item's gate decision, read from indexed checks and the newest review."""
-    from context_rail.gateway.handlers.common import (
-        check_gate_state,
-        gate_candidate,
-        review_gate_state,
-    )
-    from context_rail.store import query
-
-    gate = "scope_done" if slug in policy.project.get("scope", ()) else "item_done"
-    review = review_gate_state(query.review_for_item(context.index, slug))
+    """One Item's gate decision, read from indexed checks, review and producer result."""
+    from context_rail.gateway.handlers.proofs import completion_facts
     from context_rail.kernel import gates as gate_rules
 
-    states = [check_gate_state(context, row) for row in query.check_states(context.index, slug)]
+    status_row = context.index.conn.execute(
+        "SELECT status, workflow FROM docs WHERE path = ?",
+        (path,),
+    ).fetchone()
+    status = status_row[0] if status_row is not None else None
+    wf_name = (status_row[1] or "default") if status_row is not None else "default"
+    workflow = context.pack.workflows.get(wf_name)
+    gate_name = workflow.gate_for(status) if workflow is not None and status else None
+    if gate_name is None:
+        gate_name = (
+            "scope_done"
+            if policy is not None and slug in policy.project.get("scope", ())
+            else "item_done"
+        )
+
+    facts = completion_facts(
+        context,
+        slug,
+        status or "",
+        workflow_name=wf_name,
+        assessment=True,
+    )
+
+    if policy is None:
+        if not facts.result_required:
+            return {
+                "item": slug,
+                "path": path,
+                "gate": gate_name,
+                "allowed": True,
+                "reasons": [],
+            }
+        allowed = bool(
+            facts.result is not None
+            and facts.result.record
+            and facts.result.current
+            and facts.result.completed
+        )
+        reasons = (
+            []
+            if allowed
+            else (
+                list(facts.result.reasons)
+                if facts.result is not None and facts.result.reasons
+                else ["no current completed producer result was recorded"]
+            )
+        )
+        return {
+            "item": slug,
+            "path": path,
+            "gate": gate_name,
+            "allowed": allowed,
+            "reasons": reasons,
+        }
+
     decision = gate_rules.evaluate_gate(
         policy,
-        gate,
+        gate_name,
         slug,
-        states,
-        review,
+        facts.checks,
+        facts.review,
         _human_fact(context.index, slug, context.pack),
-        gate_candidate(context.index, slug, review, states),
+        facts.candidate,
+        result_required=facts.result_required,
+        result=facts.result,
     )
+    reasons = list(decision.reasons)
+    if facts.missing:
+        reasons.append("required check(s) are not declared: " + ", ".join(facts.missing))
     return {
         "item": slug,
         "path": path,
-        "gate": gate,
-        "allowed": decision.allowed,
-        "reasons": list(decision.reasons),
+        "gate": gate_name,
+        "allowed": decision.allowed and not facts.missing,
+        "reasons": reasons,
     }
 
 

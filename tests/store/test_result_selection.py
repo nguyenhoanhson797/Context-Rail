@@ -354,7 +354,12 @@ def test_candidate_binding_mismatch_and_later_unbound_result_refused(
     sha_a = "a" * 40
     sha_b = "b" * 40
     write_candidate(
-        store, "01JCAND0000000000000000001", "task-1", sha_a, at="2026-11-15T09:30:00Z"
+        store,
+        "01JCAND0000000000000000001",
+        "task-1",
+        sha_a,
+        actor="implementer",
+        at="2026-11-15T09:30:00Z",
     )
     r_old_a, _, _ = _write_result_record(
         store,
@@ -365,7 +370,13 @@ def test_candidate_binding_mismatch_and_later_unbound_result_refused(
     )
     # Candidate B is recorded later; old result bound to A is stale for B
     write_candidate(
-        store, "01JCAND0000000000000000002", "task-1", sha_b, attempt=2, at="2026-11-15T11:00:00Z"
+        store,
+        "01JCAND0000000000000000002",
+        "task-1",
+        sha_b,
+        actor="implementer",
+        attempt=2,
+        at="2026-11-15T11:00:00Z",
     )
     with _Ctx(store) as ctx:
         stale_for_b = select_result(ctx, "task-1")
@@ -691,10 +702,12 @@ def test_result_cache_delete_edit_and_full_rebuild_from_files(tmp_path: Path) ->
         RESULT_ADOPTION_KIND,
         {
             "schema": 1,
-            "workflow": "sprint",
-            "items": [
+            "pack": "result-test",
+            "workflows": ["sprint"],
+            "historical_done": [
                 {
                     "item": "task-1",
+                    "workflow": "sprint",
                     "item_digest": _item_digest(store, "items/task/task-1.md"),
                     "work_cycle": None,
                 }
@@ -1032,4 +1045,31 @@ def test_stub_ordering_survives_cache_delete_and_rebuild(tmp_path: Path) -> None
     assert after_selected.current is False
     assert after_selected.completed is False
     assert after_selected.record == before_selected.record
+
+
+def test_select_result_refuses_candidate_producer_mismatch(tmp_path: Path) -> None:
+    store = init_result_store(tmp_path)
+    _write_item(store, "task-1")
+    sha = "d" * 40
+    write_candidate(
+        store,
+        "01JCAND0000000000000000099",
+        "task-1",
+        sha,
+        actor="other-dev",
+        at="2026-11-15T09:30:00Z",
+    )
+    _write_result_record(
+        store,
+        record_id="01JRES00000000000000000099",
+        attempt=1,
+        at="2026-11-15T10:00:00Z",
+        actor="implementer",
+        candidate_commit=sha,
+    )
+    with _Ctx(store) as ctx:
+        selected = select_result(ctx, "task-1")
+        assert selected.current is False
+        assert selected.completed is False
+        assert any("producer" in r for r in selected.reasons)
 
