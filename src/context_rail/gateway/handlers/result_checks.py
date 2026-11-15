@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from context_rail.model.cto import RESULT_BINDING_KEYS
+from context_rail.model.cto import RESULT_BINDING_KEYS, Check
 from context_rail.store.results import select_result
 
 if TYPE_CHECKING:
@@ -14,15 +14,41 @@ if TYPE_CHECKING:
 __all__ = ["result_freshness", "run_result_check"]
 
 
-def run_result_check(ctx: Context, row: Mapping[str, Any]) -> dict[str, Any]:
+def run_result_check(
+    ctx: Context, check_or_row: Check | Mapping[str, Any], target: str | None = None
+) -> dict[str, Any]:
     """Verify one ``mode: result`` Check explicitly and return a verdict payload.
 
-    Never resolves git, never launches a process, and never runs automatically
-    when producer results are recorded.
+    Accepts either an indexed check-state mapping ``row`` or a ``Check``
+    definition paired with ``target`` (item slug). Never resolves git, never
+    launches a process, and never runs automatically when producer results are
+    recorded.
     """
     from context_rail.gateway.handlers.checks import _payload
 
-    item = row.get("item")
+    if isinstance(check_or_row, Mapping):
+        row = check_or_row
+        item = target if target is not None else row.get("item")
+    else:
+        item = target if target is not None else check_or_row.item
+        if not item and check_or_row.verifies:
+            item = check_or_row.verifies[0]
+        from context_rail.store import query
+
+        row = {
+            "slug": "",
+            "item": item,
+            "mode": check_or_row.mode,
+            "definition_etag": "",
+        }
+        if isinstance(item, str) and item:
+            matches = [
+                candidate
+                for candidate in query.check_states(ctx.index, item)
+                if candidate.get("mode") == "result"
+            ]
+            if len(matches) == 1:
+                row = matches[0]
     if not isinstance(item, str) or not item:
         return _payload(
             row,

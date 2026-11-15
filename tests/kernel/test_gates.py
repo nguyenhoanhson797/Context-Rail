@@ -407,3 +407,58 @@ def test_commitless_result_backed_review_passes_and_mismatches_block(policy) -> 
     assert blocked.allowed is False
     assert any("altered" in r for r in blocked.reasons)
 
+
+def test_commitless_contract_review_missing_or_reject_does_not_claim_no_candidate_commit(
+    policy,
+) -> None:
+    completed = ResultState(
+        record="01JRES00000000000000000001",
+        body_hash="a" * 64,
+        current=True,
+        completed=True,
+        reasons=(),
+    )
+    review_only_policy = replace(
+        policy,
+        gates={**policy.gates, "item_done": Gate(False, False, True, False)},
+        reviewer_different_model=False,
+    )
+    missing_review = evaluate_gate(
+        review_only_policy,
+        "item_done",
+        "login",
+        [],
+        None,
+        False,
+        None,
+        result_required=True,
+        result=completed,
+    )
+    assert missing_review.allowed is False
+    assert "no candidate commit was supplied" not in missing_review.reasons
+    assert any("review" in r for r in missing_review.reasons)
+
+    commitless_reject = ReviewState(
+        "reject",
+        None,
+        "reviewer-1",
+        None,
+        implementer="implementer-1",
+        result_record="01JRES00000000000000000001",
+        result_body_hash="a" * 64,
+        current=True,
+    )
+    rejected = evaluate_gate(
+        review_only_policy,
+        "item_done",
+        "login",
+        [],
+        commitless_reject,
+        False,
+        None,
+        result_required=True,
+        result=completed,
+    )
+    assert rejected.allowed is False
+    assert "no candidate commit was supplied" not in rejected.reasons
+

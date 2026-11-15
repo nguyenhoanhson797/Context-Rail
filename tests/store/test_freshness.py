@@ -288,3 +288,174 @@ def test_sha256_repository_inputs_are_fresh(tmp_path: Path) -> None:
     verdict = _verdict(snapshot, ["src/a.py"])
     assert len(verdict["input_blobs"]["src/a.py"]) == 64
     assert _freshness(root, snapshot, verdict, _check(["src/a.py"])) == "fresh"
+
+
+def test_result_backed_review_check_freshness_without_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import yaml
+    from helpers import (
+        DEFAULT_PRODUCER_SECTIONS,
+        DEFAULT_REVIEW_SECTIONS,
+        init_result_store,
+        record_result_for_test,
+        result_body,
+    )
+
+    from context_rail.core.result import is_ok
+    from context_rail.gateway.gateway import Context, invoke
+    from context_rail.gateway.handlers.checks import freshness_of
+    from context_rail.model.manifest import load_manifest
+    from context_rail.model.pack import load_pack
+    from context_rail.runner import git as runner_git
+    from context_rail.runner import run as runner_run
+    from context_rail.store import query
+
+    store = init_result_store(tmp_path / "proj")
+    added = invoke("add", {"preset": "task", "title": "Reviewed task"}, store=store, actor="cto")
+    assert is_ok(added), added
+    task = str(added["value"]["slug"])
+
+    produced = record_result_for_test(store, task, actor="implementer", outcome="completed")
+    notes = tmp_path / "review.md"
+    notes.write_text(result_body(DEFAULT_REVIEW_SECTIONS), encoding="utf-8", newline="\n")
+    rev = invoke(
+        "review",
+        {"item": task, "verdict": "approve", "notes_file": str(notes)},
+        store=store,
+        actor="reviewer",
+    )
+    assert is_ok(rev), rev
+    review_id = str(rev["value"]["record"])
+    check_slug = str(rev["value"]["checks_verified"][0])
+
+    def _check_freshness() -> str:
+        manifest = load_manifest(store)
+        pack = load_pack(manifest.pack, store)
+        ctx = Context(store=store, manifest=manifest, pack=pack, actor="cto")
+        try:
+            row = query.check_state(ctx.index, check_slug)
+            return freshness_of(ctx, row)
+        finally:
+            ctx.close()
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise AssertionError("freshness reads must not run git or subprocesses")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(subprocess, "Popen", boom)
+    monkeypatch.setattr(subprocess, "check_output", boom)
+    monkeypatch.setattr(runner_git, "rev_parse_head", boom)
+    monkeypatch.setattr(runner_run, "run", boom)
+
+    assert _check_freshness() == "fresh"
+
+    # 1. Editing producer result file makes review-mode check stale
+    res_path = store / produced["path"]
+    orig_res = res_path.read_bytes()
+    res_path.write_text(
+        res_path.read_text(encoding="utf-8") + "\nTampered.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert _check_freshness() == "stale"
+    res_path.write_bytes(orig_res)
+    assert _check_freshness() == "fresh"
+
+    # 2. Removing producer result file makes review-mode check stale
+    res_path.unlink()
+    assert _check_freshness() == "stale"
+    res_path.write_bytes(orig_res)
+    assert _check_freshness() == "fresh"
+
+    # 3. Editing review file makes review-mode check stale
+    rev_path = next((store / "records" / "assessments").rglob(f"{review_id}.md"))
+    orig_rev = rev_path.read_bytes()
+    rev_path.write_text(
+        rev_path.read_text(encoding="utf-8") + "\nTampered review.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert _check_freshness() == "stale"
+    rev_path.unlink()
+    assert _check_freshness() == "stale"
+    rev_path.write_bytes(orig_rev)
+    assert _check_freshness() == "fresh"
+
+    # 4. Recording a newer partial (or completed) result supersedes the old review -> stale
+    partial = record_result_for_test(store, task, actor="implementer", outcome="partial")
+    assert _check_freshness() == "stale"
+    (store / partial["path"]).unlink()
+    assert _check_freshness() == "fresh"
+
+    # 5. Recording a newer review supersedes the verdict -> stale until re-verified
+    rev2 = invoke(
+        "review",
+        {"item": task, "verdict": "reject", "notes_file": str(notes)},
+        store=store,
+        actor="reviewer",
+    )
+    assert is_ok(rev2), rev2
+    # Reject review failed verification -> stale
+    assert _check_freshness() == "stale"
+
+    # Re-approve so review-mode check is fresh again
+    rev3 = invoke(
+        "review",
+        {"item": task, "verdict": "approve", "notes_file": str(notes)},
+        store=store,
+        actor="reviewer",
+    )
+    assert is_ok(rev3), rev3
+    assert _check_freshness() == "fresh"
+
+    # 6. Changing Check definition etag makes it stale
+    check_path = store / "checks" / f"{check_slug}.md"
+    if not check_path.is_file():
+        check_path = next((store / "checks").rglob(f"{check_slug}.md"))
+    orig_check = check_path.read_bytes()
+    check_path.write_text(
+        orig_check.decode("utf-8").replace("acceptance: false", "acceptance: true"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert _check_freshness() == "stale"
+    check_path.write_bytes(orig_check)
+    assert _check_freshness() == "fresh"
+
+    # 7. Editing item content invalidates producer result -> review check becomes stale
+    item_path = store / "items" / "task" / f"{task}.md"
+    orig_item = item_path.read_bytes()
+    item_path.write_text(
+        orig_item.decode("utf-8") + "\nNew scope.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert _check_freshness() == "stale"
+    item_path.write_bytes(orig_item)
+    assert _check_freshness() == "fresh"
+
+    # 8. Contract drift makes review check stale
+    pack_path = store / "packs" / "result-test" / "pack.yaml"
+    orig_pack = pack_path.read_bytes()
+    pack_doc = yaml.safe_load(orig_pack.decode("utf-8"))
+    pack_doc["results"]["produce"]["sections"] = [*DEFAULT_PRODUCER_SECTIONS, "Risks"]
+    pack_path.write_text(yaml.safe_dump(pack_doc, sort_keys=False), encoding="utf-8", newline="\n")
+    assert _check_freshness() == "stale"
+    pack_path.write_bytes(orig_pack)
+    assert _check_freshness() == "fresh"
+
+    # 9. Reopening the item (finished -> unfinished) changes work_cycle -> stale
+    pack_doc = yaml.safe_load(orig_pack.decode("utf-8"))
+    pack_doc["workflows"]["sprint"]["transitions"]["done"] = ["todo"]
+    pack_path.write_text(yaml.safe_dump(pack_doc, sort_keys=False), encoding="utf-8", newline="\n")
+    assert is_ok(invoke("approve", {"target": "charter", "confirm": "APPROVE charter", "confirmer": "Val"}, store=store, actor="human"))
+    shown = invoke("show", {"slug": task}, store=store)
+    assert is_ok(invoke("move", {"slug": task, "status": "doing", "expect": shown["value"]["doc"]["etag"]}, store=store, actor="cto"))
+    shown = invoke("show", {"slug": task}, store=store)
+    assert is_ok(invoke("move", {"slug": task, "status": "done", "expect": shown["value"]["doc"]["etag"]}, store=store, actor="cto"))
+    assert _check_freshness() == "fresh"
+    shown = invoke("show", {"slug": task}, store=store)
+    assert is_ok(invoke("move", {"slug": task, "status": "todo", "expect": shown["value"]["doc"]["etag"]}, store=store, actor="cto"))
+    assert _check_freshness() == "stale"
+

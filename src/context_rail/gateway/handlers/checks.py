@@ -344,6 +344,10 @@ def freshness_of(
         return store_freshness(ctx, row)
     if row.get("mode") == "result":
         return result_freshness(ctx, row)
+    if row.get("mode") == "review":
+        review_state = _review_freshness(ctx, row)
+        if review_state is not None:
+            return review_state
     verdict: dict[str, Any] | None = None
     if row.get("verdict") is not None:
         verdict = {
@@ -377,6 +381,87 @@ def freshness_of(
         if untracked is not None:
             return untracked
     return state
+
+
+def _review_freshness(ctx: Context, row: Mapping[str, Any]) -> str | None:
+    """File-only freshness for contract/result-backed ``mode: review`` Checks.
+
+    Returns ``None`` only for commit-only legacy reviews in contractless
+    workflows so they retain git/non-git legacy freshness handling.
+    """
+    from context_rail.gateway.handlers.proofs import verify_contract_review
+    from context_rail.kernel import gates
+    from context_rail.store.results import select_result
+
+    item = row.get("item")
+    if not isinstance(item, str) or not item:
+        return None
+    item_row = ctx.index.conn.execute(
+        "SELECT workflow FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 LIMIT 1",
+        (item,),
+    ).fetchone()
+    wf_name = (item_row[0] or "default") if item_row is not None else "default"
+    compiled_results = getattr(ctx, "model", None)
+    results_map = getattr(compiled_results, "results", {}) if compiled_results is not None else {}
+    compiled_protocol = (results_map or {}).get(wf_name)
+    contract_enabled = compiled_protocol is not None
+
+    evidence = [str(v) for v in (row.get("evidence") or ()) if isinstance(v, str) and v]
+    review_id = evidence[0] if evidence else None
+    bound_review = query.review_by_record(ctx.index, review_id) if review_id else None
+    latest_review = query.review_for_item(ctx.index, item)
+    carries_result = (
+        bound_review is not None and bound_review.get("result_record") is not None
+    ) or (
+        latest_review is not None and latest_review.get("result_record") is not None
+    )
+    if not contract_enabled and not carries_result:
+        return None
+
+    if row.get("verdict") is None:
+        return "missing"
+    if row.get("passed") is not True or row.get("check_etag") != row.get("definition_etag"):
+        return "stale"
+
+    # Legacy JSON reviews in adopted historical items retain legacy commit-only freshness.
+    if (
+        bound_review is not None
+        and isinstance(bound_review.get("path"), str)
+        and bound_review["path"].lower().endswith(".json")
+        and not (bound_review.get("data") or {}).get("review_contract_digest")
+    ):
+        return None
+
+    if review_id is None or bound_review is None or latest_review is None:
+        return "stale"
+    if bound_review["record_id"] != latest_review["record_id"]:
+        return "stale"
+    if latest_review.get("verdict") != "approve":
+        return "stale"
+    if compiled_protocol is None:
+        return "stale"
+
+    latest_cand = query.latest_candidate(ctx.index, item)
+    latest_cand_commit = str(latest_cand["commit"]) if latest_cand is not None else None
+    selection = select_result(ctx, item, candidate_commit=latest_cand_commit)
+    if not selection.current or not selection.completed or selection.binding is None:
+        return "stale"
+    result_state = gates.ResultState(
+        record=selection.record["record_id"] if selection.record is not None else None,
+        body_hash=selection.binding.body_hash,
+        current=selection.current,
+        completed=selection.completed,
+        reasons=selection.reasons,
+    )
+    current, _reasons = verify_contract_review(
+        ctx,
+        bound_review,
+        item=item,
+        review_artifact=compiled_protocol.review,
+        latest_candidate=latest_cand_commit,
+        result_state=result_state,
+    )
+    return "fresh" if current else "stale"
 
 
 _MAX_UNTRACKED_DIRS = 10_000

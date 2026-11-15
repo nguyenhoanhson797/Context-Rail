@@ -26,7 +26,7 @@ from context_rail.store.results import historical_result_exempt, select_result
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["CompletionFacts", "completion_facts"]
+__all__ = ["CompletionFacts", "completion_facts", "verify_contract_review"]
 
 
 @dataclass(frozen=True)
@@ -102,8 +102,14 @@ def completion_facts(
     review_row = query.review_for_item(ctx.index, item)
     review_state: gates.ReviewState | None = None
     if review_row is not None:
-        if contract_enabled:
-            rev_current, rev_reasons = _verify_contract_review(
+        is_legacy_json = (
+            exempt
+            and isinstance(review_row.get("path"), str)
+            and review_row["path"].lower().endswith(".json")
+            and not (review_row.get("data") or {}).get("review_contract_digest")
+        )
+        if contract_enabled and not is_legacy_json:
+            rev_current, rev_reasons = verify_contract_review(
                 ctx,
                 review_row,
                 item=item,
@@ -117,7 +123,7 @@ def completion_facts(
         else:
             review_state = review_gate_state(review_row)
 
-    if contract_enabled:
+    if contract_enabled and not exempt:
         candidate = latest_cand_commit
     else:
         candidate = gate_candidate(ctx.index, item, review_state, list(states))
@@ -134,7 +140,7 @@ def completion_facts(
     )
 
 
-def _verify_contract_review(
+def verify_contract_review(
     ctx: Context,
     review_row: dict[str, Any],
     *,

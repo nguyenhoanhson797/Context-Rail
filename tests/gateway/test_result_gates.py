@@ -489,9 +489,24 @@ def test_adoption_exemption_scope_reservation_and_parity(tmp_path: Path) -> None
         store=store,
         actor="human",
     )
-    if is_ok(forged_add):
-        # If add treated kind as plain frontmatter, ensure no results.adopted record was created
-        pass
+    assert is_ok(forged_add) or forged_add["error"]["code"] == "VALIDATION_FAILED"
+    ix = query.Index.open(store, pack)
+    try:
+        ix.sync()
+        forged_id = forged_add["value"]["record"] if is_ok(forged_add) else None
+        if forged_id is not None:
+            forged_row = ix.conn.execute(
+                "SELECT 1 FROM result_activations WHERE record_id = ?", (forged_id,)
+            ).fetchone()
+            assert forged_row is None
+        assert query.result_activated_workflows(ix, doc["name"]) == {
+            "default",
+            "sprint",
+            "bugfix",
+        }
+        assert query.result_adoption_for(ix, "nonexistent", "sprint") is None
+    finally:
+        ix.close()
     with pytest.raises(WriteRefused) as excinfo:
         commit(
             store,
@@ -695,4 +710,125 @@ def test_commitless_review_and_stale_review_integrity_and_missing_quality_rule(
     stale_after_cand = _move(store_git, t_git, "done", actor="cto")
     assert refusal(stale_after_cand)[0] == "BUSINESS_RULE_VIOLATED"
     assert produced["record"] is not None
+
+
+def test_adopted_historical_done_with_legacy_json_review_passes_assessment(
+    tmp_path: Path,
+) -> None:
+    from helpers import write_candidate, write_review_verdict
+
+    doc = result_pack_document()
+    legacy_doc = result_pack_document()
+    legacy_doc.pop("results", None)
+    legacy_doc["workflows"]["bugfix"].pop("results", None)
+    legacy_doc["workflows"]["sprint"]["transitions"]["done"] = ["todo"]
+    store = init_pack_store(tmp_path / "proj", legacy_doc, approve=False)
+
+    _write_charter(store)
+    charter_path = store / "charter.md"
+    charter_path.write_text(
+        charter_path.read_text(encoding="utf-8").replace(
+            "require_review: false", "require_review: true"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert is_ok(invoke("reindex", {}, store=store, actor="human"))
+    assert is_ok(approve_picture(store, actor="human"))
+
+    done_task = _add_item(store, "task", "Historical reviewed")
+    sha = "c" * 40
+    write_candidate(
+        store,
+        "01JCAND0000000000000000010",
+        done_task,
+        sha,
+        actor="implementer",
+        at="2026-11-14T10:00:00Z",
+    )
+    write_review_verdict(
+        store,
+        "01JREV00000000000000000010",
+        done_task,
+        sha,
+        verdict="approve",
+        reviewer="reviewer",
+        at="2026-11-14T10:10:00Z",
+    )
+    # Mark item done under legacy policy with legacy review
+    item_file = store / "items" / "task" / f"{done_task}.md"
+    item_file.write_text(
+        item_file.read_text(encoding="utf-8").replace("status: todo", "status: done"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert is_ok(invoke("reindex", {}, store=store, actor="human"))
+
+    # Now enable result contracts and approve whole picture
+    doc["workflows"]["sprint"]["transitions"]["done"] = ["todo"]
+    pack_path = store / "packs" / doc["name"] / "pack.yaml"
+    pack_path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8", newline="\n")
+    templates = store / "packs" / doc["name"] / "templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    for preset_name, sections in (
+        ("finding", DEFAULT_PRODUCER_SECTIONS),
+        ("assessment", DEFAULT_REVIEW_SECTIONS),
+    ):
+        (templates / f"{preset_name}.md").write_text(
+            "# {title}\n\n" + "\n".join(f"## {s}\n" for s in sections),
+            encoding="utf-8",
+            newline="\n",
+        )
+    manifest_path = store / "rail.yaml"
+    manifest_data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    manifest_data["presets"]["finding"] = "records/findings/{field:workflow_name}/{about.slug}/{id}.md"
+    manifest_data["presets"]["assessment"] = "records/assessments/{field:workflow_name}/{about.slug}/{id}.md"
+    manifest_path.write_text(yaml.safe_dump(manifest_data, sort_keys=False), encoding="utf-8", newline="\n")
+    assert is_ok(invoke("reindex", {}, store=store, actor="human"))
+    assert is_ok(approve_picture(store, actor="human"))
+
+    manifest = load_manifest(store)
+    pack = load_pack(manifest.pack, store)
+    ix = query.Index.open(store, pack)
+    try:
+        ix.sync()
+        report = gate_report(store, manifest, pack, ix)
+        entry = next(r for r in report if r["item"] == done_task)
+        assert entry["allowed"] is True, entry
+        codes = {i["code"] for i in run_doctor(store, manifest, pack, ix)["issues"]}
+        assert "gate_bypassed" not in codes
+    finally:
+        ix.close()
+
+    # Editing the adopted item breaks the exemption
+    orig_item = item_file.read_bytes()
+    item_file.write_text(
+        orig_item.decode("utf-8") + "\nEdited prose.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    ix = query.Index.open(store, pack)
+    try:
+        ix.sync()
+        codes = {i["code"] for i in run_doctor(store, manifest, pack, ix)["issues"]}
+        assert "gate_bypassed" in codes
+    finally:
+        ix.close()
+
+    # Restoring prose -> passes again; reopening -> fails assessment
+    item_file.write_bytes(orig_item)
+    assert is_ok(invoke("reindex", {}, store=store, actor="human"))
+    assert is_ok(_move(store, done_task, "todo", actor="cto"))
+    item_file.write_text(
+        item_file.read_text(encoding="utf-8").replace("status: todo", "status: done"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    ix = query.Index.open(store, pack)
+    try:
+        ix.sync()
+        codes = {i["code"] for i in run_doctor(store, manifest, pack, ix)["issues"]}
+        assert "gate_bypassed" in codes
+    finally:
+        ix.close()
 

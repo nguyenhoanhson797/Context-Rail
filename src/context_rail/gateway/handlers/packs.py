@@ -344,7 +344,7 @@ def pack_use(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
 
     ops = []
-    changes: list[dict[str, str]] = []
+    changes: list[dict[str, str | None]] = []
     for row in items:
         current_data = (store / row["path"]).read_bytes()
         current_etag = etag(current_data)

@@ -97,14 +97,9 @@ def evaluate_gate(
     reasons: list[str] = []
     if result_required:
         reasons.extend(_result_reasons(result))
-    has_result_backed_review = (
-        result_required
-        and review is not None
-        and review.result_record is not None
-    )
     if not candidate and (
         any(check.requires_candidate for check in selected)
-        or (rule.require_review and not has_result_backed_review)
+        or (rule.require_review and not result_required)
     ):
         reasons.append("no candidate commit was supplied")
     if gate == "scope_done" and target not in policy.project.get("scope", ()):

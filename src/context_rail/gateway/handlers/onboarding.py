@@ -513,8 +513,12 @@ def _planned_result_adoption(
     """Build a ``results.adopted`` snapshot record on first pack/whole-picture contract approval.
 
     File-scoped approvals (``manifest``, ``checks``, single protected docs, or
-    narrow ``workflow:<name>`` without whole-picture/pack coverage) never
-    activate adoption. Already-activated workflows are never re-snapshotted.
+    a ``workflow:<name>`` approval whose covered files exclude the pack policy)
+    never activate adoption. A ``workflow:<name>`` approval activates only that
+    named workflow when its covered files include the pack policy; pack and
+    whole-picture (``charter`` / ``constitution``) approvals activate all
+    contract-enabled workflows. Already-activated workflows are never
+    re-snapshotted.
     """
     from context_rail.store import query
 
