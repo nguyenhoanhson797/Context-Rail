@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -235,6 +236,7 @@ _SCHEMA = (
         record_id TEXT NOT NULL,
         item TEXT,
         at TEXT,
+        order_at TEXT,
         actor TEXT,
         outcome TEXT,
         candidate_commit TEXT,
@@ -247,7 +249,7 @@ _SCHEMA = (
         data_json TEXT NOT NULL
     )
     """,
-    "CREATE INDEX results_item_at ON results(item, at DESC, record_id DESC)",
+    "CREATE INDEX results_item_at ON results(item, order_at DESC, record_id DESC)",
     """
     CREATE TABLE result_adoptions(
         path TEXT NOT NULL,
@@ -394,6 +396,7 @@ _PROJECTION_COLUMNS = {
         "record_id",
         "item",
         "at",
+        "order_at",
         "actor",
         "outcome",
         "candidate_commit",
@@ -458,6 +461,13 @@ _PROJECTION_COLUMNS = {
     ),
 }
 
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+_CROCKFORD_VAL = {ch: idx for idx, ch in enumerate(_CROCKFORD)}
+_ULID_SCAN_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
+_RAW_ITEM_LINE_RE = re.compile(r"^[ \t]*item:[ \t]*['\"]?([a-z0-9][a-z0-9-]*)['\"]?[ \t]*$", re.M)
+_RAW_ABOUT_LINE_RE = re.compile(r"^[ \t]*about:[ \t]*\[?[ \t]*['\"]?([a-z0-9][a-z0-9-]*)['\"]?", re.M)
+_RAW_KIND_RESULT_RE = re.compile(r"^[ \t]*kind:[ \t]*['\"]?result\.recorded['\"]?[ \t]*$", re.M)
+_RAW_KIND_OTHER_RE = re.compile(r"^[ \t]*kind:[ \t]*['\"]?([a-z0-9_.]+)['\"]?[ \t]*$", re.M)
 _VERDICT_KIND = "check.verdict"
 _REPORT_KIND = "report.filed"
 _APPROVAL_KIND = "approval.recorded"
@@ -556,6 +566,7 @@ class Index:
         self.pack = pack
         self.conn = conn
         self.busy_timeout_ms = busy_timeout_ms
+        self._producer_patterns = _producer_placement_patterns(self.store, self.pack)
 
     @classmethod
     def open(
@@ -803,7 +814,7 @@ class Index:
                 projected = _projection(doc)
             except ModelError as exc:
                 problems.append(INVALID_PAYLOAD)
-                projected = _invalid_diagnostic_projection(doc, exc.message)
+                projected = _invalid_diagnostic_projection(doc, exc.message, mtime_ns)
         values = (
             doc.slug,
             doc.path,
@@ -834,7 +845,9 @@ class Index:
         else:
             self._clear(conn, doc.path, rowid)
         if broken:
-            stub = _broken_result_stub(doc)
+            stub = _broken_result_stub(
+                doc, data, mtime_ns, self._producer_patterns
+            )
             if stub is not None:
                 self._write_projection(conn, stub)
             return
@@ -1090,6 +1103,81 @@ def _review_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[s
     return [("reviews", row)]
 
 
+def _ulid_iso(record_id: str) -> str | None:
+    """Decode the millisecond timestamp encoded in a Crockford ULID into UTC ISO-8601."""
+    if not isinstance(record_id, str) or _ULID_SCAN_RE.fullmatch(record_id) is None:
+        return None
+    ms = 0
+    for ch in record_id[:10]:
+        ms = (ms << 5) | _CROCKFORD_VAL[ch]
+    return datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _order_at(envelope_at: str | None, record_id: str, mtime_ns: int | None = None) -> str | None:
+    """Authoritative ordering key: envelope ``at`` when valid, else ULID timestamp, else file mtime."""
+    if envelope_at is not None:
+        return envelope_at
+    decoded = _ulid_iso(record_id)
+    if decoded is not None:
+        return decoded
+    if mtime_ns is not None:
+        return datetime.fromtimestamp(mtime_ns / 1_000_000_000.0, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    return None
+
+
+def _producer_placement_patterns(
+    store: Path, pack: Pack
+) -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """Compiled regexes for every workflow's producer artifact placement, when available."""
+    if pack.results is None:
+        return ()
+    try:
+        from context_rail.model.compiler import _placement, compile_results
+        from context_rail.model.manifest import load_manifest
+
+        manifest_path = Path(store) / "rail.yaml"
+        if not manifest_path.is_file():
+            return ()
+        compiled = compile_results(pack, _placement(load_manifest(store)))
+    except (ModelError, OSError, ValueError):
+        return ()
+
+    patterns: list[tuple[str, re.Pattern[str]]] = []
+    for _wf, entry in sorted(compiled.items()):
+        template = entry.produce.placement
+        if not template:
+            continue
+        regex_text = _placement_to_regex(template)
+        if regex_text is not None:
+            patterns.append((template, re.compile(regex_text)))
+    return tuple(patterns)
+
+
+def _placement_to_regex(template: str) -> str | None:
+    parts = ["^"]
+    index = 0
+    while index < len(template):
+        if template[index] != "{":
+            parts.append(re.escape(template[index]))
+            index += 1
+            continue
+        end = template.find("}", index + 1)
+        if end < 0:
+            return None
+        token = template[index + 1 : end]
+        if token == "id":
+            parts.append(r"(?P<id>[^/]+)")
+        elif token.startswith("about."):
+            parts.append(r"(?P<about>[^/]+)")
+        else:
+            parts.append(r"[^/]+")
+        index = end + 1
+    parts.append("$")
+    return "".join(parts)
+
+
 def _result_rows(
     doc: Doc, record_id: str, data: dict[str, Any]
 ) -> list[tuple[str, tuple[Any, ...]]]:
@@ -1108,6 +1196,7 @@ def _result_rows(
         record_id,
         parsed.item,
         envelope_at,
+        envelope_at,
         parsed.actor,
         parsed.outcome,
         parsed.candidate_commit,
@@ -1123,7 +1212,7 @@ def _result_rows(
 
 
 def _invalid_diagnostic_projection(
-    doc: Doc, reason: str
+    doc: Doc, reason: str, mtime_ns: int | None = None
 ) -> list[tuple[str, tuple[Any, ...]]]:
     """Keep identity-resolvable invalid ``result.recorded`` rows so newest bad evidence stays visible."""
     if doc.primitive != "record" or doc.fields.get("kind") != RESULT_KIND:
@@ -1140,6 +1229,7 @@ def _invalid_diagnostic_projection(
     if item is None:
         return []
     envelope_at = _at(doc)
+    order_at = _order_at(envelope_at, record_id, mtime_ns)
     actor = doc.fields.get("actor")
     if not isinstance(actor, str) or not actor:
         raw_actor = data.get("actor")
@@ -1168,6 +1258,7 @@ def _invalid_diagnostic_projection(
                 record_id,
                 item,
                 envelope_at,
+                order_at,
                 actor,
                 outcome,
                 candidate_commit,
@@ -1183,16 +1274,52 @@ def _invalid_diagnostic_projection(
     ]
 
 
-def _broken_result_stub(doc: Doc) -> list[tuple[str, tuple[Any, ...]]] | None:
-    """Preserve a broken stub when a result file's path identifies an item."""
-    if "records/" not in doc.path and not doc.path.startswith("records/"):
+def _broken_result_stub(
+    doc: Doc,
+    raw_bytes: bytes,
+    mtime_ns: int,
+    producer_patterns: tuple[tuple[str, re.Pattern[str]], ...],
+) -> list[tuple[str, tuple[Any, ...]]] | None:
+    """Preserve a broken stub only when the file belongs to the producer result channel."""
+    if not doc.path.startswith("records/") or not doc.path.lower().endswith(".md"):
         return None
-    parts = doc.path.split("/")
-    if not doc.path.endswith(".md") or len(parts) < 4:
-        return None
-    # Layout convention for result records: records/<folder>/<workflow>/<item>/<id>.md
-    item = parts[-2]
     record_id = doc.slug
+    if _ULID_SCAN_RE.fullmatch(record_id) is None:
+        return None
+
+    head = raw_bytes[:4096].decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    kind_match = _RAW_KIND_OTHER_RE.search(head)
+    if kind_match is not None and kind_match.group(1) != RESULT_KIND:
+        # Explicitly marked as another record kind (e.g. review.verdict): never enter results.
+        return None
+    has_result_kind = _RAW_KIND_RESULT_RE.search(head) is not None
+
+    matched_pattern = False
+    matched_item: str | None = None
+    for _template, pattern in producer_patterns:
+        hit = pattern.match(doc.path)
+        if hit is not None:
+            matched_pattern = True
+            matched_item = hit.groupdict().get("about")
+            break
+
+    if not producer_patterns and not has_result_kind:
+        return None
+    if producer_patterns and not matched_pattern and not has_result_kind:
+        return None
+
+    item = matched_item
+    if item is None:
+        about_hit = _RAW_ABOUT_LINE_RE.search(head)
+        if about_hit is not None:
+            item = about_hit.group(1)
+    if item is None:
+        item_hit = _RAW_ITEM_LINE_RE.search(head)
+        if item_hit is not None:
+            item = item_hit.group(1)
+    if not item:
+        return None
+
     reason = ", ".join(doc.problems) if doc.problems else PARSE_ERROR
     return [
         (
@@ -1202,6 +1329,7 @@ def _broken_result_stub(doc: Doc) -> list[tuple[str, tuple[Any, ...]]] | None:
                 record_id,
                 item,
                 None,
+                _order_at(None, record_id, mtime_ns),
                 None,
                 None,
                 None,

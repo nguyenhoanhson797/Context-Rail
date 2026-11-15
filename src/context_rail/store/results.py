@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from context_rail.core.util import canonical_iso
 from context_rail.kernel.lifecycle import category_of
 from context_rail.model.errors import ModelError
 from context_rail.model.primitives import FINISHED_CATEGORIES
@@ -235,6 +236,10 @@ def select_result(
         reasons.append(
             f"result is bound to candidate commit {bound_commit!r}, not current candidate {latest_commit!r}"
         )
+    if latest_commit is None and candidate_commit is None and bound_commit is not None:
+        reasons.append(
+            f"result names candidate commit {bound_commit!r}, which does not exist for {item!r}"
+        )
 
     current = not reasons
     outcome = payload.outcome if payload is not None else selected.get("outcome")
@@ -331,8 +336,8 @@ def _verify_selected_file(
     envelope_actor = front.get("actor")
     envelope_at = front.get("at")
     about = doc.relations.get("about", ())
-    if not isinstance(envelope_at, str) or not envelope_at.strip():
-        problems.append("result record envelope is missing 'at'")
+    if not isinstance(envelope_at, str) or canonical_iso(envelope_at) is None:
+        problems.append("result record envelope is missing or has an invalid 'at'")
 
     raw_data = front.get("data")
     if not isinstance(raw_data, dict):

@@ -13,6 +13,7 @@ import pytest
 import yaml
 
 from context_rail.core.util import dump_frontmatter, new_ulid, sha256_hex
+from datetime import datetime, timezone
 from context_rail.model.errors import ModelError
 from context_rail.model.pack import load_pack
 from context_rail.model.results import (
@@ -741,6 +742,11 @@ def test_result_cache_delete_edit_and_full_rebuild_from_files(tmp_path: Path) ->
         assert adopt_row["item_digest"] == _item_digest(store, "items/task/task-1.md")
 
 
+def _ulid_at(iso_utc: str) -> str:
+    ms = int(datetime.fromisoformat(iso_utc.replace("Z", "+00:00")).timestamp() * 1000)
+    return new_ulid(ms=ms)
+
+
 def test_select_result_never_runs_git_or_checks_or_hashes_source_trees(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -761,3 +767,269 @@ def test_select_result_never_runs_git_or_checks_or_hashes_source_trees(
         selected = select_result(ctx, "task-1")
         assert selected.current is True
         assert selected.completed is True
+
+
+def test_newer_broken_frontmatter_result_fails_closed_after_completed(
+    tmp_path: Path,
+) -> None:
+    store = init_result_store(tmp_path)
+    _write_item(store, "task-1")
+    old_id = _ulid_at("2026-11-15T10:00:00Z")
+    _write_result_record(
+        store,
+        record_id=old_id,
+        attempt=1,
+        at="2026-11-15T10:00:00Z",
+        outcome="completed",
+    )
+    bad_id = _ulid_at("2026-11-15T11:00:00Z")
+    bad_path = store / "records" / "findings" / "sprint" / "task-1" / f"{bad_id}.md"
+    bad_path.parent.mkdir(parents=True, exist_ok=True)
+    bad_path.write_text(
+        "---\nkind: result.recorded\nabout: [task-1\n---\n## Summary\nBroken YAML.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with _Ctx(store) as ctx:
+        rows = query.results_for_item(ctx.index, "task-1")
+        assert [r["record_id"] for r in rows] == [bad_id, old_id]
+        assert rows[0]["at"] is None
+        assert rows[0]["valid"] is False
+        selected = select_result(ctx, "task-1")
+        assert selected.record is not None
+        assert selected.record["record_id"] == bad_id
+        assert selected.current is False
+        assert selected.completed is False
+        assert any("parse_error" in r or "broken" in r or "problem" in r for r in selected.reasons)
+
+
+def test_newer_missing_or_invalid_envelope_at_fails_closed(tmp_path: Path) -> None:
+    for mode in ("missing_at", "invalid_at"):
+        sub = tmp_path / mode
+        store = init_result_store(sub)
+        _write_item(store, "task-1")
+        old_id = _ulid_at("2026-11-15T10:00:00Z")
+        _write_result_record(
+            store,
+            record_id=old_id,
+            attempt=1,
+            at="2026-11-15T10:00:00Z",
+            outcome="completed",
+        )
+        bad_id = _ulid_at("2026-11-15T11:00:00Z")
+        front_overrides: dict[str, Any] = (
+            {"at": None} if mode == "missing_at" else {"at": "not-an-iso-timestamp"}
+        )
+        _write_result_record(
+            store,
+            record_id=bad_id,
+            attempt=2,
+            at="2026-11-15T11:00:00Z",
+            front_overrides=front_overrides,
+        )
+        with _Ctx(store) as ctx:
+            rows = query.results_for_item(ctx.index, "task-1")
+            assert [r["record_id"] for r in rows] == [bad_id, old_id], mode
+            assert rows[0]["at"] is None, mode
+            selected = select_result(ctx, "task-1")
+            assert selected.record is not None
+            assert selected.record["record_id"] == bad_id, mode
+            assert selected.current is False, mode
+            assert selected.completed is False, mode
+            assert selected.reasons, mode
+
+
+def test_older_broken_result_does_not_hide_newer_completed_result(
+    tmp_path: Path,
+) -> None:
+    store = init_result_store(tmp_path)
+    _write_item(store, "task-1")
+    old_bad_id = _ulid_at("2026-11-15T09:00:00Z")
+    bad_path = store / "records" / "findings" / "sprint" / "task-1" / f"{old_bad_id}.md"
+    bad_path.parent.mkdir(parents=True, exist_ok=True)
+    bad_path.write_text(
+        "---\nkind: result.recorded\nabout: [task-1\n---\n## Summary\nOld broken.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    newer_id = _ulid_at("2026-11-15T11:00:00Z")
+    _write_result_record(
+        store,
+        record_id=newer_id,
+        attempt=2,
+        at="2026-11-15T11:00:00Z",
+        outcome="completed",
+    )
+
+    with _Ctx(store) as ctx:
+        rows = query.results_for_item(ctx.index, "task-1")
+        assert [r["record_id"] for r in rows] == [newer_id, old_bad_id]
+        selected = select_result(ctx, "task-1")
+        assert selected.record is not None
+        assert selected.record["record_id"] == newer_id
+        assert selected.current is True
+        assert selected.completed is True
+
+
+def test_broken_reviewer_markdown_never_enters_producer_results(
+    tmp_path: Path,
+) -> None:
+    store = init_result_store(tmp_path)
+    _write_item(store, "task-1")
+    prod_id = _ulid_at("2026-11-15T10:00:00Z")
+    _write_result_record(
+        store,
+        record_id=prod_id,
+        attempt=1,
+        at="2026-11-15T10:00:00Z",
+        outcome="completed",
+    )
+    rev_id = _ulid_at("2026-11-15T12:00:00Z")
+    rev_path = store / "records" / "assessments" / "sprint" / "task-1" / f"{rev_id}.md"
+    rev_path.parent.mkdir(parents=True, exist_ok=True)
+    rev_path.write_text(
+        "---\nkind: review.verdict\nabout: [task-1\n---\n## Summary\nBroken review.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with _Ctx(store) as ctx:
+        assert query.result_count(ctx.index, "task-1") == 1
+        assert [r["record_id"] for r in query.results_for_item(ctx.index, "task-1")] == [prod_id]
+        selected = select_result(ctx, "task-1")
+        assert selected.current is True
+        assert selected.completed is True
+        assert selected.record["record_id"] == prod_id
+
+
+def test_broken_and_valid_results_at_shallow_allowed_placement_depth(
+    tmp_path: Path,
+) -> None:
+    store = init_result_store(tmp_path)
+    manifest_path = store / "rail.yaml"
+    manifest_data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    manifest_data["presets"]["finding"] = "records/findings/{id}.md"
+    manifest_path.write_text(
+        yaml.safe_dump(manifest_data, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+    _write_item(store, "task-1")
+    with _Ctx(store) as ctx:
+        compiled = ctx.model.results["sprint"].produce
+        sections = compiled.sections
+        digest_contract = compiled.digest
+
+    good_id = _ulid_at("2026-11-15T10:00:00Z")
+    text_body = result_body(sections)
+    data_good = {
+        "schema": RESULT_SCHEMA,
+        "item": "task-1",
+        "attempt": 1,
+        "actor": "implementer",
+        "at": "2026-11-15T10:00:00Z",
+        "outcome": "completed",
+        "candidate_commit": None,
+        "body_hash": result_body_hash(text_body),
+        "item_digest": _item_digest(store, "items/task/task-1.md"),
+        "work_cycle": None,
+        "contract_digest": digest_contract,
+    }
+    front_good = {
+        "primitive": "record",
+        "preset": "finding",
+        "title": "Shallow result",
+        "tags": ["result"],
+        "id": good_id,
+        "kind": RESULT_KIND,
+        "at": "2026-11-15T10:00:00Z",
+        "actor": "implementer",
+        "about": ["task-1"],
+        "data": data_good,
+        "workflow_name": "sprint",
+    }
+    front_good["digest"] = record_digest(front_good)
+    shallow_good = store / "records" / "findings" / f"{good_id}.md"
+    shallow_good.parent.mkdir(parents=True, exist_ok=True)
+    shallow_good.write_text(
+        "---\n" + dump_frontmatter(front_good) + "---\n" + text_body,
+        encoding="utf-8",
+        newline="\n",
+    )
+    with _Ctx(store) as ctx:
+        selected = select_result(ctx, "task-1")
+        assert selected.current is True
+        assert selected.completed is True
+        assert selected.record["record_id"] == good_id
+
+    # A broken producer result at that shallower placement is also caught as a stub
+    bad_id = _ulid_at("2026-11-15T11:00:00Z")
+    shallow_bad = store / "records" / "findings" / f"{bad_id}.md"
+    shallow_bad.write_text(
+        "---\nkind: result.recorded\nabout: [task-1\nitem: task-1\n---\n## Summary\nBroken.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    with _Ctx(store) as ctx:
+        rows = query.results_for_item(ctx.index, "task-1")
+        assert [r["record_id"] for r in rows] == [bad_id, good_id]
+        selected = select_result(ctx, "task-1")
+        assert selected.record["record_id"] == bad_id
+        assert selected.current is False
+        assert selected.completed is False
+
+
+def test_result_with_nonexistent_candidate_commit_is_not_current(
+    tmp_path: Path,
+) -> None:
+    store = init_result_store(tmp_path)
+    _write_item(store, "task-1")
+    rid = _ulid_at("2026-11-15T10:00:00Z")
+    _write_result_record(
+        store,
+        record_id=rid,
+        attempt=1,
+        at="2026-11-15T10:00:00Z",
+        candidate_commit="c" * 40,
+    )
+    with _Ctx(store) as ctx:
+        selected = select_result(ctx, "task-1")
+        assert selected.current is False
+        assert selected.completed is False
+        assert any("candidate" in r for r in selected.reasons)
+
+
+def test_stub_ordering_survives_cache_delete_and_rebuild(tmp_path: Path) -> None:
+    store = init_result_store(tmp_path)
+    _write_item(store, "task-1")
+    old_id = _ulid_at("2026-11-15T10:00:00Z")
+    _write_result_record(
+        store,
+        record_id=old_id,
+        attempt=1,
+        at="2026-11-15T10:00:00Z",
+        outcome="completed",
+    )
+    bad_id = _ulid_at("2026-11-15T11:00:00Z")
+    bad_path = store / "records" / "findings" / "sprint" / "task-1" / f"{bad_id}.md"
+    bad_path.parent.mkdir(parents=True, exist_ok=True)
+    bad_path.write_text(
+        "---\nkind: result.recorded\nabout: [task-1\n---\n## Summary\nBroken.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with _Ctx(store) as ctx:
+        before_rows = query.results_for_item(ctx.index, "task-1")
+        before_selected = select_result(ctx, "task-1")
+
+    index_path(store).unlink()
+    with _Ctx(store) as ctx:
+        after_rows = query.results_for_item(ctx.index, "task-1")
+        after_selected = select_result(ctx, "task-1")
+
+    assert [r["record_id"] for r in before_rows] == [bad_id, old_id]
+    assert after_rows == before_rows
+    assert after_selected.current is False
+    assert after_selected.completed is False
+    assert after_selected.record == before_selected.record
+

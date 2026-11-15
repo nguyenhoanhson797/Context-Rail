@@ -749,7 +749,7 @@ _RESULT_SELECT = (
     "body_hash, item_digest, work_cycle, contract_digest, valid, problem, data_json "
     "FROM results"
 )
-_RESULT_ORDER = "ORDER BY at DESC, record_id DESC"
+_RESULT_ORDER = "ORDER BY order_at DESC, record_id DESC"
 
 
 def result_by_record(ix: Index, record_id: str) -> dict[str, Any] | None:
