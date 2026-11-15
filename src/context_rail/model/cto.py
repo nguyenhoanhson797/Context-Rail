@@ -157,7 +157,7 @@ REMOVED_PROFILE_KEYS = (
 )
 PROFILE_BUDGET_KEYS = ("max_chars", "max_docs")
 
-WORKER_METHODS = ("find", "show", "cto brief", "brief", "ledger", "report")
+WORKER_METHODS = ("find", "show", "cto brief", "brief", "ledger", "result", "report")
 #: Every method a CTO profile may use; nested ticketing is not one of them.
 CTO_METHODS = WORKER_METHODS + (
     "do",

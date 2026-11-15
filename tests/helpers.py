@@ -915,6 +915,57 @@ def init_result_store(tmp_path: Path, *, approve: bool = True) -> Path:
     return init_pack_store(tmp_path, document, layout=layout, approve=approve)
 
 
+def record_result_for_test(
+    store: Path,
+    item: str,
+    *,
+    actor: str = "implementer",
+    outcome: str = "completed",
+    commit: str | None = None,
+    key: str | None = None,
+) -> dict[str, Any]:
+    """Record a workflow-shaped producer result via a temporary body outside ``store``."""
+    import tempfile
+
+    from context_rail.gateway.gateway import Context, invoke
+    from context_rail.model.manifest import load_manifest
+    from context_rail.model.pack import load_pack
+
+    manifest = load_manifest(store)
+    pack = load_pack(manifest.pack, store)
+    ctx = Context(store=Path(store), manifest=manifest, pack=pack, actor=actor)
+    try:
+        row = ctx.index.conn.execute(
+            "SELECT workflow FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 LIMIT 1",
+            (item,),
+        ).fetchone()
+        workflow = row[0] if row is not None and row[0] else "default"
+        compiled = (getattr(ctx.model, "results", {}) or {}).get(workflow)
+        sections = (
+            compiled.produce.sections
+            if compiled is not None
+            else DEFAULT_PRODUCER_SECTIONS
+        )
+    finally:
+        ctx.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        body_path = Path(tmpdir) / "result-body.md"
+        body_path.write_text(result_body(sections), encoding="utf-8", newline="\n")
+        args: dict[str, Any] = {
+            "item": item,
+            "body_file": str(body_path),
+            "outcome": outcome,
+        }
+        if commit is not None:
+            args["commit"] = commit
+        if key is not None:
+            args["key"] = key
+        response = invoke("result", args, store=store, actor=actor)
+        assert response["ok"] is True, response
+        return response["value"]
+
+
 def init_pack_store(
     tmp_path: Path,
     document: dict[str, Any],

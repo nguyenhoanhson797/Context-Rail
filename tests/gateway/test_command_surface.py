@@ -236,3 +236,17 @@ def test_doctor_repair_is_a_write_tool() -> None:
     tool = next(t for t in TOOLS if t.name == "doctor repair")
     assert tool.permission == "write"
     assert canonical_tool("ops repair") == "doctor repair"
+
+
+def test_loop_result_alias_and_schema_flags() -> None:
+    assert canonical_tool("loop result") == "result"
+    tool = next(t for t in TOOLS if t.name == "result")
+    assert tool.permission == "write"
+    assert tool.daemon is False
+    names = {param.name for param in tool.params}
+    assert names == {"item", "body_file", "commit", "outcome", "set", "model", "harness", "key"}
+    assert "path" not in names and "title" not in names
+    body_param = next(p for p in tool.params if p.name == "body_file")
+    assert body_param.path is True
+    surface = {t.name: t for t in SURFACE_TOOLS}
+    assert "loop result" in surface and surface["loop result"].hidden is False

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 __all__ = ["starter_roles"]
 
 _CODE_READ = {"read": ["**"], "write": []}
-_LEAD_PARTS = ["title", "status", "next", "blockers", "waits"]
+_LEAD_PARTS = ["title", "status", "next", "blockers", "waits", "results"]
 _LEVEL_PARTS = [
     "title",
     "status",
@@ -31,10 +31,11 @@ _LEVEL_PARTS = [
     "acceptance",
     "blockers",
     "candidates",
+    "results",
     "records",
 ]
-_IMPLEMENTER_PARTS = ["title", "body", "acceptance", "code_area", "records"]
-_REVIEWER_PARTS = ["title", "acceptance", "diff", "evidence", "code_area"]
+_IMPLEMENTER_PARTS = ["title", "body", "acceptance", "code_area", "results", "records"]
+_REVIEWER_PARTS = ["title", "acceptance", "diff", "results", "evidence", "code_area"]
 
 
 def starter_roles(pack: Pack) -> dict[str, Any]:
@@ -91,6 +92,7 @@ def _lead(
             "relocate": True,
             "check": items,
             "verify": items,
+            "result": items,
             "report": leaves,
             "triage": leaves,
             "execution": leaves,
@@ -125,6 +127,7 @@ def _level_lead(
             "rename": leaves,
             "check": leaves,
             "verify": leaves,
+            "result": [preset, *leaves],
             "report": leaves,
             "triage": leaves,
             "execution": leaves,
@@ -157,7 +160,7 @@ def _implementer(leaves: list[str], notes: list[str]) -> dict[str, Any]:
             "write": ["anchor"],
             "code": {"read": ["**"], "write": ["**"]},
         },
-        "can": {"candidate": leaves, "report": leaves},
+        "can": {"result": leaves, "candidate": leaves, "report": leaves},
         "sees": {
             "up": 1,
             "relations": ["depends_on"],

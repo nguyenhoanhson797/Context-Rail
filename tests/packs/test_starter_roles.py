@@ -80,7 +80,13 @@ def test_starter_roles_parse_for_every_shipped_pack(name: str, tmp_path: Path) -
     assert list(roles) == expected
     assert roles["lead"].anchor.kind == "project"
     assert not {"dispatch", "merge", "tick"} & set(roles["lead"].can.methods)
-    assert set(roles["implementer"].can.methods) == {"candidate", "report"}
+    assert set(roles["implementer"].can.methods) == {"result", "candidate", "report"}
+    assert "results" in roles["lead"].sees.parts
+    assert "results" in roles["implementer"].sees.parts
+    assert "results" in roles["reviewer"].sees.parts
+    for preset in _levels(pack):
+        assert "results" in roles[f"{preset}-lead"].sees.parts
+        assert set(roles[f"{preset}-lead"].can.methods["result"]) == {preset, *roles[f"{preset}-lead"].can.methods["add"]}
     assert set(roles["lead"].can.methods["grant"]) == set(expected) - {"lead"}
     assert set(roles["lead"].can.methods["actions"]) == set(pack.actions)
     assert roles["implementer"].workspace == "write"

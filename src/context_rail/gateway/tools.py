@@ -210,6 +210,22 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.briefs:brief",
     ),
     Tool(
+        name="result",
+        summary="Record one workflow-shaped Markdown result for an Item.",
+        permission="write",
+        params=(
+            Param("item", "str", required=True, positional=True, help="the Item the result is about"),
+            Param("body_file", "str", required=True, help="Markdown body file outside the store", path=True),
+            Param("commit", "str", help="recorded candidate commit for code work: a sha, a branch or HEAD"),
+            Param("outcome", "str", default="completed", help="completed, partial, blocked or failed"),
+            Param("set", "str", repeat=True, help="artifact metadata field as KEY=VALUE"),
+            Param("model", "str", help="the model that produced it (free text)"),
+            Param("harness", "str", help="the tool that produced it (free text)"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.results:record_result",
+    ),
+    Tool(
         name="candidate",
         summary="Record a commit any tool produced for an Item, with its changed files and usage.",
         permission="write",
