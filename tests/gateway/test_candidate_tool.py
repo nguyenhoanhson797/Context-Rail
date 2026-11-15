@@ -65,6 +65,55 @@ def test_candidate_records_commit_base_and_files(leaf_item: SimpleNamespace) -> 
     assert [entry["id"] for entry in stored] == [value["record"]]
     assert stored[0]["actor"] == "dev"
     assert stored[0]["data"]["item"] == leaf_item.slug
+    assert "VALUE = 2" in stored[0]["data"]["diff"]
+    assert stored[0]["data"]["diff_truncated"] is False
+
+
+def test_candidate_empty_diff_and_6k_truncation_snapshots(leaf_item: SimpleNamespace) -> None:
+    tip = head(leaf_item.root)
+    empty = invoke(
+        "candidate",
+        {"item": leaf_item.slug, "commit": tip, "base": tip},
+        store=leaf_item.store,
+        actor="dev",
+    )
+    assert is_ok(empty), empty
+    empty_data = records_of(leaf_item.store, "candidate.recorded")[0]["data"]
+    assert empty_data["diff"] == ""
+    assert empty_data["diff_truncated"] is False
+
+    big = "".join(f"LINE_{n} = {n}\n" for n in range(1500))
+    commit_file(leaf_item.root, "src/big.py", big)
+    truncated = record(leaf_item)
+    assert is_ok(truncated), truncated
+    trunc_data = [
+        r["data"]
+        for r in records_of(leaf_item.store, "candidate.recorded")
+        if r["id"] == truncated["value"]["record"]
+    ][0]
+    assert len(trunc_data["diff"]) == 6000
+    assert trunc_data["diff_truncated"] is True
+
+
+def test_candidate_does_not_capture_diff_when_code_reach_refuses(
+    seated: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from context_rail.runner import git as runner_git
+
+    restrict_code_write(seated.store, ["src/**"])
+    start_repo(seated)
+    (seated.root / "docs" / "x.md").write_text("changed\n", encoding="utf-8")
+    run_git(seated.root, "add", "docs/x.md")
+    run_git(seated.root, "commit", "-m", "out of reach")
+
+    def boom(*args: object, **kwargs: object) -> Any:
+        raise AssertionError("diff_text must not run before reach checks pass")
+
+    monkeypatch.setattr(runner_git, "diff_text", boom)
+    result = as_seat(
+        seated.store, seated.seat, "candidate", {"item": seated.task, "commit": "HEAD"}
+    )
+    assert refusal(result) == ("BUSINESS_RULE_VIOLATED", "code_reach")
 
 
 def test_candidate_matches_short_sha_and_branch_name(leaf_item: SimpleNamespace) -> None:

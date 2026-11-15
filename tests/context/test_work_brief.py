@@ -195,3 +195,77 @@ def test_cli_alias_prints_the_brief(leaf_item: SimpleNamespace) -> None:
 
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "## recording" in proc.stdout
+
+
+def test_brief_reads_never_invoke_git_subprocess_or_hash_source_tree(
+    leaf_item: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+    from context_rail.runner import git as runner_git
+    from context_rail.store import location as store_location
+
+    recorded = candidate(leaf_item)
+
+    def boom(*args: object, **kwargs: object) -> Any:
+        raise AssertionError("read path must not invoke git, subprocess, or tree hashing")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(runner_git, "diff_text", boom)
+    monkeypatch.setattr(runner_git, "resolve_commit", boom)
+    monkeypatch.setattr(runner_git, "rev_parse_head", boom)
+    monkeypatch.setattr(runner_git, "ls_files", boom)
+    monkeypatch.setattr(store_location, "head_sha", boom, raising=False)
+
+    def guarded_read(self: Path, *args: object, **kwargs: object) -> Any:
+        resolved = self.resolve()
+        store_resolved = leaf_item.store.resolve()
+        if resolved != store_resolved and not resolved.is_relative_to(store_resolved):
+            if ".git" not in resolved.parts:
+                raise AssertionError(f"brief must not read source tree file {resolved}")
+        return real_read_bytes(self, *args, **kwargs)
+
+    real_read_bytes = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", guarded_read)
+
+    worker = brief(leaf_item)
+    assert is_ok(worker), worker
+
+    reviewer = brief(leaf_item, role="reviewer")
+    assert is_ok(reviewer), reviewer
+    assert reviewer["value"]["candidate"] == recorded["record"]
+    assert "VALUE = 2" in reviewer["value"]["sections"]["diff"]
+
+    explicit = brief(leaf_item, role="reviewer", commit=recorded["commit"][:8])
+    assert is_ok(explicit), explicit
+    assert explicit["value"]["candidate"] == recorded["record"]
+
+
+def test_legacy_candidate_without_snapshot_reports_explicit_unavailable_notice(
+    leaf_item: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+    from context_rail.runner import git as runner_git
+    from helpers import write_candidate
+
+    sha = commit_file(leaf_item.root, "src/app.py", "VALUE = 99\n")
+    write_candidate(
+        leaf_item.store,
+        "01J0LDN0SNAPSHOT0000000001",
+        leaf_item.slug,
+        sha,
+        base=sha,
+        files_changed=["src/app.py"],
+    )
+
+    def boom(*args: object, **kwargs: object) -> Any:
+        raise AssertionError("brief must not fall back to live git diff")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(runner_git, "diff_text", boom)
+
+    reviewer = brief(leaf_item, role="reviewer")
+    assert is_ok(reviewer), reviewer
+    diff_text = reviewer["value"]["sections"]["diff"]
+    assert "unavailable" in diff_text.lower()
+    assert f"git diff {sha[:12]} {sha[:12]}" in diff_text
+    assert "VALUE = 99" not in diff_text

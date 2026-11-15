@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from context_rail.context import budget as budget_module
+from context_rail.context import results as result_context_mod
 from context_rail.context.role_brief import RoleGuide, role_guide, role_tiers
 from context_rail.kernel import budgets, structure
 from context_rail.store import query
@@ -635,6 +636,22 @@ def _brief_sections(
         f"{'passed' if row['passed'] else 'unproven'}, freshness {row['freshness']}"
         for row in checks
     )
+    results_declared = (
+        context.role_mode
+        and context.identity.role is not None
+        and "results" in context.identity.role.sees.parts
+    ) or bool(getattr(context.model, "results", None))
+    result_summary_rows: list[dict[str, Any]] = []
+    if results_declared:
+        visible_slugs = [item.slug for item in items]
+        result_summary_rows = result_context_mod.result_summaries(
+            context, visible_slugs, limit=limit
+        )
+        available.extend(
+            f"result {row['item']} {row['record_id']} — {row['outcome']}"
+            + (f" ({row['path']})" if row.get("path") else "")
+            for row in result_summary_rows
+        )
     quality_section.entries.extend(available[:limit])
     omitted["quality"] = (
         max(len(available) - limit, 0)

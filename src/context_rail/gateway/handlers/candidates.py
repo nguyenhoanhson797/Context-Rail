@@ -23,6 +23,7 @@ from context_rail.kernel import structure
 from context_rail.model.candidate import (
     CANDIDATE_KIND,
     CANDIDATE_SCHEMA,
+    DIFF_TEXT_CAP,
     FILES_CAP,
     UNKNOWN_USAGE,
     parse_candidate,
@@ -105,12 +106,16 @@ def _record(
                     },
                 )
 
+    diff_snapshot, diff_truncated = git.diff_text(root, base, commit, DIFF_TEXT_CAP)
+
     payload: dict[str, Any] = {
         "schema": CANDIDATE_SCHEMA,
         "item": slug,
         "commit": commit,
         "base": base,
         "files_changed": names[:FILES_CAP],
+        "diff": diff_snapshot,
+        "diff_truncated": diff_truncated,
         "attempt": query.candidate_count(ctx.index, slug) + 1,
         "actor": actor,
         "at": now_iso(),

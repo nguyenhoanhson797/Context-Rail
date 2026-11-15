@@ -46,7 +46,7 @@ def test_brief_contains_only_declared_parts(role_store: SimpleNamespace) -> None
     brief = as_seat(role_store.store, "impl-1", "cto brief", {})
 
     assert is_ok(brief), brief
-    declared = {"title", "body", "acceptance", "code_area", "records"}
+    declared = {"title", "body", "acceptance", "code_area", "results", "records"}
     assert set(brief["value"]["parts"]) <= declared
     assert "- diff" not in brief["value"]["text"]
     assert "- evidence" not in brief["value"]["text"]

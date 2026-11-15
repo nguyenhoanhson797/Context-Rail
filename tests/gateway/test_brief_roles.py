@@ -119,6 +119,91 @@ def test_a_reviewer_seat_without_a_candidate_is_refused(
     assert refusal(result) == ("INVALID_STATE", "no_candidate")
 
 
+def test_a_reviewer_seat_with_commitless_result_reads_result_brief_without_git(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import subprocess
+    from context_rail.runner import git as runner_git
+    from helpers import DEFAULT_PRODUCER_SECTIONS, DEFAULT_REVIEW_SECTIONS, init_pack_store, result_body, result_pack_document
+
+    doc = result_pack_document()
+    doc["presets"]["phase"] = {"primitive": "item", "tags": ["phase"], "container": True}
+    doc["operating"] = {
+        "version": 2,
+        "unit": "task",
+        "hierarchy": [{"preset": "phase", "required": True}],
+        "roles": {
+            "lead": {
+                "anchor": "project",
+                "reach": {"read": ["project"], "write": ["project"], "code": {"read": ["**"], "write": []}},
+                "can": {"add": ["phase", "task"], "grant": ["implementer", "reviewer"]},
+                "sees": {"up": 0, "down": 1, "parts": ["title", "status", "results"]},
+            },
+            "implementer": {
+                "anchor": {"item": ["task"]},
+                "reach": {"read": ["anchor", {"up": 1}], "write": ["anchor"], "code": {"read": ["**"], "write": ["**"]}},
+                "can": {"result": ["task"], "candidate": ["task"]},
+                "sees": {"up": 1, "parts": ["title", "body", "results"]},
+            },
+            "reviewer": {
+                "anchor": {"item": ["task"]},
+                "reach": {"read": ["anchor", {"up": 1}], "write": ["anchor"], "code": {"read": ["**"], "write": []}},
+                "independent_of": ["produce"],
+                "can": {"review": ["task"]},
+                "sees": {"up": 1, "parts": ["title", "diff", "results", "evidence"]},
+            },
+        },
+    }
+    project = tmp_path / "proj"
+    templates = project / "context-rail" / "packs" / doc["name"] / "templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    for preset_name, sections in (
+        ("finding", DEFAULT_PRODUCER_SECTIONS),
+        ("assessment", DEFAULT_REVIEW_SECTIONS),
+    ):
+        (templates / f"{preset_name}.md").write_text(
+            "# {title}\n\n" + "\n".join(f"## {s}\n" for s in sections),
+            encoding="utf-8",
+            newline="\n",
+        )
+    store = init_pack_store(
+        project,
+        doc,
+        layout={
+            "finding": "records/findings/{field:workflow_name}/{about.slug}/{id}.md",
+            "assessment": "records/assessments/{field:workflow_name}/{about.slug}/{id}.md",
+        },
+        approve=False,
+    )
+    from helpers import _write_charter, approve_picture
+
+    _write_charter(store)
+    with as_human():
+        invoke("reindex", {}, store=store, actor=None)
+        assert is_ok(approve_picture(store, actor=None))
+        phase = invoke("add", {"preset": "phase", "title": "P1"}, store=store, actor=None)["value"]["slug"]
+        task = invoke("add", {"preset": "task", "title": "T1", "rel": [f"part_of={phase}"]}, store=store, actor=None)["value"]["slug"]
+        assert is_ok(invoke("seat grant", {"seat": "impl-1", "role": "implementer", "anchor": task}, store=store, actor=None))
+        assert is_ok(invoke("seat grant", {"seat": "rev-1", "role": "reviewer", "anchor": task}, store=store, actor=None))
+
+    body_path = tmp_path / "res.md"
+    body_path.write_text(result_body(DEFAULT_PRODUCER_SECTIONS), encoding="utf-8", newline="\n")
+    produced = as_seat(store, "impl-1", "result", {"item": task, "body_file": str(body_path)})
+    assert is_ok(produced), produced
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise AssertionError("commitless reviewer brief must not run git")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(runner_git, "resolve_commit", boom)
+    monkeypatch.setattr(runner_git, "diff_text", boom)
+
+    result = as_seat(store, "rev-1", "brief", {"item": task})
+    assert is_ok(result), result
+    assert produced["value"]["record"] in result["value"]["text"]
+    assert produced["value"]["path"] in result["value"]["text"]
+
+
 def test_an_item_outside_the_seats_reach_is_refused(
     seated: SimpleNamespace, role_store: SimpleNamespace
 ) -> None:

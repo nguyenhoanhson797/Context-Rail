@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from context_rail.context import results as result_context_mod
 from context_rail.context.work_brief import (
     DEFAULT_CHARS,
     NAME_MODE_ROLES,
     build_work_brief,
     reviews_work,
 )
-from context_rail.gateway.handlers.common import checkout, read_refusal
-from context_rail.runner import git
+from context_rail.gateway.handlers.common import read_refusal
 from context_rail.store import query
 from context_rail.store.write import WriteRefused
 
@@ -40,7 +40,16 @@ def brief(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     if refusal is not None:
         raise refusal
     role = _role(ctx, args.get("role"))
-    candidate = _candidate(ctx, item, args.get("commit")) if reviews_work(ctx, role) else None
+    compiled = result_context_mod.compiled_results_for_item(ctx, item)
+    reviewing = reviews_work(ctx, role)
+    candidate: dict[str, Any] | None = None
+    result_info: dict[str, Any] | None = None
+    if reviewing:
+        candidate, result_info = _review_target(
+            ctx, item, args.get("commit"), contract_enabled=compiled is not None
+        )
+    elif compiled is not None:
+        result_info = result_context_mod.result_context(ctx, item, include_body=False)
     return build_work_brief(
         ctx,
         item=item,
@@ -48,6 +57,7 @@ def brief(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         commit=args.get("commit"),
         max_chars=limit,
         candidate=candidate,
+        result_info=result_info,
         granted_by=ctx.identity.name,
     )
 
@@ -114,22 +124,74 @@ def _role(ctx: Context, requested: Any) -> str:
     return role
 
 
-def _candidate(ctx: Context, item: str, rev: Any) -> dict[str, Any]:
+def _review_target(
+    ctx: Context, item: str, rev: Any, *, contract_enabled: bool
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    candidate: dict[str, Any] | None
     if rev is None:
-        found = query.latest_candidate(ctx.index, item)
+        candidate = query.latest_candidate(ctx.index, item)
     else:
-        root, _git_dir = checkout(ctx, action="reading a candidate")
-        sha = git.resolve_commit(root, str(rev))
-        if sha is None:
+        needle = str(rev).strip()
+        candidate = _indexed_candidate(ctx, item, needle)
+        if candidate is None:
+            if not contract_enabled:
+                raise WriteRefused(
+                    "INVALID_STATE",
+                    f"no candidate is recorded for {item!r}; the implementer records one with "
+                    f"`rail loop candidate {item} --commit <sha>`",
+                    {"reason": "no_candidate", "item": item},
+                )
             raise WriteRefused(
-                "VALIDATION_FAILED", f"{rev!r} names no commit", {"param": "commit"}
+                "VALIDATION_FAILED", f"{rev!r} names no recorded candidate commit", {"param": "commit"}
             )
-        found = query.candidate_for_commit(ctx.index, item, sha)
-    if found is None:
+
+    if not contract_enabled:
+        if candidate is None:
+            raise WriteRefused(
+                "INVALID_STATE",
+                f"no candidate is recorded for {item!r}; the implementer records one with "
+                f"`rail loop candidate {item} --commit <sha>`",
+                {"reason": "no_candidate", "item": item},
+            )
+        return candidate, None
+
+    result_info = result_context_mod.result_context(
+        ctx,
+        item,
+        include_body=True,
+        candidate_commit=candidate["commit"] if candidate is not None else None,
+    )
+    if candidate is None and result_info.get("selected") is None:
         raise WriteRefused(
             "INVALID_STATE",
-            f"no candidate is recorded for {item!r}; the implementer records one with "
-            f"`rail loop candidate {item} --commit <sha>`",
-            {"reason": "no_candidate", "item": item},
+            f"no result or candidate is recorded for {item!r}; record a result with "
+            f"`rail loop result {item} --body-file <file>`",
+            {"reason": "no_result_or_candidate", "item": item},
         )
-    return found
+    return candidate, result_info
+
+
+def _indexed_candidate(ctx: Context, item: str, needle: str) -> dict[str, Any] | None:
+    if not needle or needle.startswith("-") or any(ch.isspace() for ch in needle):
+        raise WriteRefused(
+            "VALIDATION_FAILED", f"{needle!r} names no commit", {"param": "commit"}
+        )
+    if len(needle) == 40:
+        return query.candidate_for_commit(ctx.index, item, needle)
+    candidates = query.candidates_for(ctx.index, item, limit=100)
+    matches = [
+        row
+        for row in candidates
+        if row["commit"] == needle
+        or (len(needle) >= 4 and row["commit"].startswith(needle))
+    ]
+    if not matches:
+        return None
+    unique_shas = sorted({row["commit"] for row in matches})
+    if len(unique_shas) > 1:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"commit prefix {needle!r} matches multiple recorded candidates for {item!r}",
+            {"param": "commit", "value": needle, "matches": unique_shas},
+        )
+    return query.candidate_for_commit(ctx.index, item, unique_shas[0])

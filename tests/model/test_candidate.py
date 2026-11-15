@@ -8,6 +8,7 @@ import pytest
 
 from context_rail.model.candidate import (
     CANDIDATE_KIND,
+    DIFF_TEXT_CAP,
     FILES_CAP,
     parse_candidate,
     parse_usage_map,
@@ -47,6 +48,8 @@ def test_parse_candidate_accepts_minimal_payload() -> None:
     assert candidate.attempt == 1
     assert candidate.actor == "dev"
     assert candidate.files_truncated is False
+    assert candidate.diff is None
+    assert candidate.diff_truncated is False
     assert candidate.usage == {}
     assert candidate.skills == ()
     assert candidate.seat is None and candidate.model is None
@@ -57,6 +60,8 @@ def test_parse_candidate_accepts_every_optional_field() -> None:
     candidate = parse_candidate(
         _payload(
             files_truncated=True,
+            diff="diff --git a/app.py b/app.py\n+x = 1\n",
+            diff_truncated=True,
             seat="impl-1",
             seat_role="implementer",
             profile="implementer",
@@ -70,6 +75,8 @@ def test_parse_candidate_accepts_every_optional_field() -> None:
     )
 
     assert candidate.files_truncated is True
+    assert candidate.diff == "diff --git a/app.py b/app.py\n+x = 1\n"
+    assert candidate.diff_truncated is True
     assert candidate.seat == "impl-1" and candidate.seat_role == "implementer"
     assert candidate.profile == "implementer" and candidate.profile_version == 3
     assert candidate.skills == ({"identity": "skills/review", "version": 2, "etag": "abc"},)
@@ -141,3 +148,22 @@ def test_parse_usage_map_refuses_bad_key_negative_and_too_many() -> None:
 def test_parse_usage_map_refuses_values_that_are_not_counts(value: object) -> None:
     with pytest.raises(ModelError):
         parse_usage_map({"input_tokens": value}, "usage")
+
+
+def test_parse_candidate_validates_diff_snapshot_bounds_and_types() -> None:
+    empty = parse_candidate(_payload(diff="", diff_truncated=False))
+    assert empty.diff == ""
+    assert empty.diff_truncated is False
+
+    exact = parse_candidate(_payload(diff="d" * DIFF_TEXT_CAP, diff_truncated=True))
+    assert len(exact.diff or "") == DIFF_TEXT_CAP
+    assert exact.diff_truncated is True
+
+    with pytest.raises(ModelError, match="6000"):
+        parse_candidate(_payload(diff="d" * (DIFF_TEXT_CAP + 1)))
+
+    with pytest.raises(ModelError, match="string"):
+        parse_candidate(_payload(diff=123))
+
+    with pytest.raises(ModelError, match="true or false"):
+        parse_candidate(_payload(diff_truncated="yes"))

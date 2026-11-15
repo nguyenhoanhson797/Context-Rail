@@ -32,6 +32,7 @@ __all__ = [
     "CANDIDATE_KEYS",
     "CANDIDATE_KIND",
     "CANDIDATE_SCHEMA",
+    "DIFF_TEXT_CAP",
     "FILES_CAP",
     "TEXT_CAP",
     "UNKNOWN_USAGE",
@@ -45,6 +46,7 @@ __all__ = [
 
 CANDIDATE_KIND = "candidate.recorded"
 CANDIDATE_SCHEMA = 1
+DIFF_TEXT_CAP = 6000
 FILES_CAP = 500
 TEXT_CAP = 200
 USAGE_MAX_KEYS = 32
@@ -60,6 +62,8 @@ CANDIDATE_KEYS = (
     "base",
     "files_changed",
     "files_truncated",
+    "diff",
+    "diff_truncated",
     "attempt",
     "actor",
     "seat",
@@ -90,6 +94,8 @@ class Candidate:
     actor: str
     at: str
     files_truncated: bool = False
+    diff: str | None = None
+    diff_truncated: bool = False
     seat: str | None = None
     seat_role: str | None = None
     profile: str | None = None
@@ -125,6 +131,8 @@ def parse_candidate(payload: dict[str, Any]) -> Candidate:
         actor=string(data["actor"], "candidate.actor"),
         at=at,
         files_truncated=boolean(data.get("files_truncated", False), "candidate.files_truncated"),
+        diff=_optional_diff(data.get("diff")),
+        diff_truncated=boolean(data.get("diff_truncated", False), "candidate.diff_truncated"),
         seat=_optional_text(data.get("seat"), "candidate.seat"),
         seat_role=_optional_text(data.get("seat_role"), "candidate.seat_role"),
         profile=_optional_text(data.get("profile"), "candidate.profile"),
@@ -205,6 +213,16 @@ def _optional_text(raw: Any, what: str) -> str | None:
     if len(text) > TEXT_CAP:
         refuse(f"{what} is limited to {TEXT_CAP} characters")
     return text
+
+
+def _optional_diff(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        refuse("candidate.diff must be a string")
+    if len(raw) > DIFF_TEXT_CAP:
+        refuse(f"candidate.diff is limited to {DIFF_TEXT_CAP} characters")
+    return raw
 
 
 def _optional_positive(raw: Any, what: str) -> int | None:

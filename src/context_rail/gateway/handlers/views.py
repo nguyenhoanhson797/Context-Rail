@@ -111,12 +111,37 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 for rel, slugs in (shown.get(side) or {}).items()
             }
     if doc["primitive"] == "item":
+        from context_rail.context import results as result_context_mod
         from context_rail.context import surface
 
         try:
             shown["card"] = surface.card(ctx, doc["slug"])
         except surface.SurfaceError:
             pass
+        compiled_res = result_context_mod.compiled_results_for_item(ctx, doc["slug"])
+        res_info = result_context_mod.result_context(ctx, doc["slug"], include_body=False)
+        if compiled_res is not None or res_info.get("selected") is not None:
+            shown["results"] = {
+                "selected": res_info.get("selected"),
+                "current": res_info.get("current"),
+                "completed": res_info.get("completed"),
+                "reasons": list(res_info.get("reasons") or ()),
+                "review": res_info.get("review"),
+                "history": res_info.get("history") or [],
+                "history_omitted": res_info.get("history_omitted", 0),
+                "contract": (
+                    None
+                    if compiled_res is None
+                    else {
+                        "produce": result_context_mod.compiled_artifact_dict(
+                            compiled_res.produce
+                        ),
+                        "review": result_context_mod.compiled_artifact_dict(
+                            compiled_res.review
+                        ),
+                    }
+                ),
+            }
         shown["checks"] = [
             {
                 "id": row.get("slug"),

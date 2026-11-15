@@ -12,7 +12,7 @@ import json
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from context_rail.context import recipes
+from context_rail.context import recipes, results as result_context_mod
 from context_rail.context.reach import ReachError, resolve_reach
 from context_rail.context.role_brief import role_guide, role_tiers
 from context_rail.core.util import now_iso
@@ -31,6 +31,7 @@ _EXTRA_ONLY = ("diff", "evidence", "code_area")
 _BODY_CHARS = 200
 _CANDIDATES = 3
 _RECORDS = 3
+_PINNED_LINE_PREFIXES = ("result:", "binding:", "latest review:", "read:")
 
 
 def seat_brief(
@@ -57,7 +58,7 @@ def seat_brief(
     if max_chars is not None:
         budget = min(budget, max_chars)
     documents = documents[:entries]
-    lines = _lines(context, documents, role, extra_parts, seat)
+    lines = _lines(context, documents, role, extra_parts, seat, budget)
     active = [part for part in role.sees.parts if lines.get(part)]
     header_line = f"# Seat {seat.seat} on {seat.anchor}"
     if with_role:
@@ -200,6 +201,7 @@ def _lines(
     role: Role,
     extra_parts: Mapping[str, str] | None,
     seat: LiveSeat,
+    budget: int = 8000,
 ) -> dict[str, list[str]]:
     lines: dict[str, list[str]] = {part: [] for part in role.sees.parts}
     extras = extra_parts or {}
@@ -238,7 +240,61 @@ def _lines(
             )
             if line:
                 lines[part].append(line)
+    if "results" in lines:
+        lines["results"] = _result_lines(
+            context,
+            documents,
+            role,
+            seat,
+            extras=extras,
+            budget=budget,
+        )
     return lines
+
+
+def _result_lines(
+    context: Context,
+    documents: list[str],
+    role: Role,
+    seat: LiveSeat,
+    *,
+    extras: Mapping[str, str],
+    budget: int,
+) -> list[str]:
+    if extras.get("results"):
+        return [f"- results: {line}" for line in extras["results"].splitlines() if line.strip()]
+    item_only = role.anchor.kind == "item"
+    reviewing = "review" in role.can.methods or "diff" in role.sees.parts or "evidence" in role.sees.parts
+    if item_only and reviewing:
+        rc = result_context_mod.result_context(
+            context,
+            seat.anchor,
+            include_body=True,
+            body_chars=min(result_context_mod.RESULT_BODY_BRIEF_CHARS, max(budget // 2, 120)),
+        )
+        if rc.get("selected") is None and not rc.get("contract_enabled"):
+            return []
+        fixed, prose = result_context_mod.render_result_details(
+            rc, max_body_chars=max(budget // 2, 120)
+        )
+        out = [line for line in fixed.splitlines() if line.strip()]
+        if prose:
+            out.append(prose)
+        return out
+    summaries = result_context_mod.result_summaries(context, documents)
+    if not summaries:
+        if item_only:
+            compiled = result_context_mod.compiled_results_for_item(context, seat.anchor)
+            if compiled is not None:
+                return [
+                    line
+                    for line in result_context_mod.render_worker_contract(
+                        compiled.produce, seat.anchor
+                    ).splitlines()
+                    if line.strip()
+                ]
+        return []
+    return [f"- result: {line}" for line in result_context_mod.render_result_summaries(summaries)]
 
 
 def _line(
@@ -390,11 +446,29 @@ def _fit(
         if not fitted:
             return text[:budget], trimmed, dropped, fitted, False
         last = fitted[-1]
+        if last == "results":
+            non_results = [part for part in fitted if part != "results"]
+            if non_results:
+                last = non_results[-1]
         removed = trimmed.get(last, 0)
         if removed < len(lines[last]):
+            if last == "results":
+                entry_idx = len(lines[last]) - 1 - removed
+                entry_text = lines[last][entry_idx]
+                if entry_text.startswith(_PINNED_LINE_PREFIXES):
+                    non_results = [part for part in fitted if part != "results"]
+                    if non_results:
+                        other = non_results[-1]
+                        other_removed = trimmed.get(other, 0)
+                        if other_removed < len(lines[other]):
+                            trimmed[other] = other_removed + 1
+                            continue
+                        fitted.remove(other)
+                        dropped.append(other)
+                        continue
             trimmed[last] = removed + 1
             continue
-        fitted.pop()
+        fitted.remove(last)
         dropped.append(last)
 
 

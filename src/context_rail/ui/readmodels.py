@@ -38,6 +38,7 @@ def read(context: Any, view: str) -> dict[str, Any]:
 
 def _next(context: Any) -> dict[str, Any]:
     from context_rail.context import operating
+    from context_rail.gateway.handlers.proofs import completion_facts
 
     model = getattr(context, "model", None)
     if model is None:
@@ -53,8 +54,10 @@ def _next(context: Any) -> dict[str, Any]:
             "code": error.code,
             "candidates": error.details.get("candidates", []),
         }
-    queue = [
-        {
+    queue = []
+    results_map = getattr(model, "results", {}) or {}
+    for item in view.items:
+        entry: dict[str, Any] = {
             "id": item.slug,
             "title": item.title,
             "workflow": item.workflow,
@@ -64,8 +67,25 @@ def _next(context: Any) -> dict[str, Any]:
             "actions": list(item.actions),
             "why": item.why,
         }
-        for item in view.items
-    ]
+        if item.workflow in results_map:
+            wf = context.pack.workflows.get(item.workflow)
+            targets = sorted(wf.transitions.get(item.status, ())) if wf is not None else []
+            target_state = targets[0] if targets else item.status
+            facts = completion_facts(
+                context,
+                item.slug,
+                target_state,
+                workflow_name=item.workflow,
+                assessment=True,
+            )
+            entry["result"] = {
+                "required": facts.result_required,
+                "record": None if facts.result is None else facts.result.record,
+                "current": False if facts.result is None else facts.result.current,
+                "completed": False if facts.result is None else facts.result.completed,
+                "reasons": [] if facts.result is None else list(facts.result.reasons),
+            }
+        queue.append(entry)
     return {
         "status": "ok",
         "queue": queue,

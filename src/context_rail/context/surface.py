@@ -12,6 +12,7 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from context_rail.context import results as result_context_mod
 from context_rail.kernel.lifecycle import category_of
 from context_rail.model.roles import workflow_statuses
 from context_rail.store import query
@@ -78,11 +79,13 @@ def catalog(
                 {"slug": item},
             )
         names = [preset.name]
+    compiled_model = _compiled(context)
+    compiled_results = getattr(compiled_model, "results", {}) or {}
     entries: list[dict[str, Any]] = []
     used = 0
     for name in names:
         preset = pack.presets[name]
-        entry = {
+        entry: dict[str, Any] = {
             "name": preset.name,
             "primitive": preset.primitive,
             "use_when": _use_when(preset),
@@ -90,6 +93,9 @@ def catalog(
             "container": preset.container,
             "states": list(workflow_statuses(pack.workflow(preset.workflow))),
         }
+        wf_results = compiled_results.get(preset.workflow)
+        if wf_results is not None and preset.primitive == "item":
+            entry["results"] = _surface_results_summary(wf_results)
         size = len(json.dumps(entry, sort_keys=True))
         if used + size > limit and entries:
             break
@@ -127,6 +133,10 @@ def card(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
         "proof": proof,
         "command": _command(doc["slug"], next_states),
     }
+    compiled_model = _compiled(context)
+    wf_results = (getattr(compiled_model, "results", {}) or {}).get(workflow.name)
+    if wf_results is not None:
+        payload["results"] = _surface_results_summary(wf_results)
     payload.update(_operating_card(context, preset.name, doc["slug"]))
     return _bounded(payload, limit)
 
@@ -136,6 +146,8 @@ def explain(
 ) -> dict[str, Any]:
     """The full definition of one preset or workflow."""
     pack = context.pack
+    compiled_model = _compiled(context)
+    compiled_results = getattr(compiled_model, "results", {}) or {}
     preset = pack.presets.get(name)
     if preset is not None:
         workflow = pack.workflow(preset.workflow)
@@ -151,6 +163,9 @@ def explain(
             "defaults": dict(preset.defaults),
             "states": list(workflow_statuses(workflow)),
         }
+        wf_results = compiled_results.get(workflow.name)
+        if wf_results is not None and preset.primitive == "item":
+            payload["results"] = _surface_results_full(wf_results)
         payload.update(_operating_note(context, preset.name))
         return _bounded(payload, limit)
     workflow = pack.workflows.get(name)
@@ -201,6 +216,10 @@ def explain_workflow(
             for status, rule in workflow.quality.items()
         },
     }
+    compiled_model = _compiled(context)
+    wf_results = (getattr(compiled_model, "results", {}) or {}).get(workflow.name)
+    if wf_results is not None:
+        payload["results"] = _surface_results_full(wf_results)
     payload.update(_operating_note(context, name))
     return _bounded(payload, limit)
 
@@ -251,6 +270,7 @@ def render_workflows(context: Any, *, limit: int = 2000) -> str:
 def why(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
     """The missing proof for one item, or the reach of one file or symbol."""
     from context_rail.context import code_targets, recipes
+    from context_rail.gateway.handlers.proofs import completion_facts
     from context_rail.kernel import structure
 
     if code_targets.looks_like_code_target(slug):
@@ -261,7 +281,15 @@ def why(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
     blocked = structure.blocked(
         recipes.item_rows(context.index, context.pack)
     ).get(view["slug"])
-    return {
+    target_state = (view.get("next") or [view["state"]])[0]
+    facts = completion_facts(
+        context,
+        view["slug"],
+        target_state,
+        workflow_name=view["workflow"],
+        assessment=True,
+    )
+    payload: dict[str, Any] = {
         "slug": view["slug"],
         "workflow": view["workflow"],
         "state": view["state"],
@@ -271,6 +299,15 @@ def why(context: Any, slug: str, *, limit: int = CARD_CHARS) -> dict[str, Any]:
         "blocked": blocked,
         "command": None if blocked else view["command"],
     }
+    if facts.result_required or facts.result is not None:
+        payload["result"] = {
+            "required": facts.result_required,
+            "record": None if facts.result is None else facts.result.record,
+            "current": False if facts.result is None else facts.result.current,
+            "completed": False if facts.result is None else facts.result.completed,
+            "reasons": [] if facts.result is None else list(facts.result.reasons),
+        }
+    return payload
 
 
 def verbs(context: Any) -> dict[str, Any]:
@@ -418,6 +455,30 @@ def _use_when(preset: Any) -> str:
     if preset.primitive == "item":
         return f"file or work on a {preset.name}"
     return f"record a {preset.name}"
+
+
+def _surface_results_summary(wf_results: Any) -> dict[str, Any]:
+    return {
+        "produce": {
+            "preset": wf_results.produce.preset,
+            "sections": list(wf_results.produce.sections),
+            "required": list(wf_results.produce.required),
+            "defaults": dict(wf_results.produce.defaults),
+        },
+        "review": {
+            "preset": wf_results.review.preset,
+            "sections": list(wf_results.review.sections),
+            "required": list(wf_results.review.required),
+            "defaults": dict(wf_results.review.defaults),
+        },
+    }
+
+
+def _surface_results_full(wf_results: Any) -> dict[str, Any]:
+    return {
+        "produce": result_context_mod.compiled_artifact_dict(wf_results.produce),
+        "review": result_context_mod.compiled_artifact_dict(wf_results.review),
+    }
 
 
 def _bounded(payload: dict[str, Any], limit: int) -> dict[str, Any]:

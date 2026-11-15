@@ -320,7 +320,12 @@ def build(context: Any) -> dict[str, Any]:
         "updated": _now(),
     }
 
-    return {
+    results_map = {
+        wf_name: compiled.as_dict()
+        for wf_name, compiled in sorted((getattr(model, "results", {}) or {}).items())
+    }
+
+    payload: dict[str, Any] = {
         "snapshot_version": 1,
         "schema": 4,
         "pack": pack.name,
@@ -351,6 +356,9 @@ def build(context: Any) -> dict[str, Any]:
         "claims": [],
         "counts": counts,
     }
+    if results_map:
+        payload["results"] = results_map
+    return payload
 
 
 _QUEUE_CAP = 200
