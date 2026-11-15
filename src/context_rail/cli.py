@@ -35,6 +35,7 @@ from context_rail.gateway.tools import (
 __all__ = ["main"]
 
 _SEAT_SLUG = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+SESSION_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _COMMAND_HEADS = frozenset(
     {tool.name.split()[0] for tool in TOOLS}
     | {alias.split()[0] for alias in ALIASES}
@@ -81,6 +82,13 @@ def _parser() -> argparse.ArgumentParser:
             "acting actor (default: RAIL_ACTOR; a terminal is the human, "
             "anything else only reads; human-only tools need an explicit human)"
         ),
+    )
+    parser.add_argument(
+        "--session-env",
+        dest="session_env",
+        default=None,
+        metavar="NAME",
+        help="read the session token from environment variable NAME instead of RAIL_SESSION",
     )
     parser.add_argument(
         "--no-daemon",
@@ -184,8 +192,8 @@ def _flag(param: Param) -> str:
 
 def _option_sets() -> tuple[frozenset[str], frozenset[str]]:
     """Every option string, and the subset of them that consumes a value."""
-    everything = {"-h", "--help", "--store", "--actor"}
-    valued = {"--store", "--actor"}
+    everything = {"-h", "--help", "--store", "--actor", "--session-env"}
+    valued = {"--store", "--actor", "--session-env"}
     for tool in TOOLS:
         for param in tool.params:
             if param.positional:
@@ -263,12 +271,12 @@ def _command_index(argv: list[str]) -> int | None:
         if token == "--no-daemon":
             index += 1
             continue
-        if token in ("--store", "--actor"):
+        if token in ("--store", "--actor", "--session-env"):
             if index + 1 >= len(argv):
                 return None
             index += 2
             continue
-        if token.startswith("--store=") or token.startswith("--actor="):
+        if token.startswith(("--store=", "--actor=", "--session-env=")):
             index += 1
             continue
         if token.startswith("-"):
@@ -352,8 +360,11 @@ def main(argv: list[str] | None = None) -> int:
         return int(exc.code or 0)
     if namespace.no_daemon:
         os.environ["RAIL_NO_DAEMON"] = "1"
-    reserved = {"store", "actor", "group", "_tool", "no_daemon"}
+    reserved = {"store", "actor", "session_env", "group", "_tool", "no_daemon"}
     tool = getattr(namespace, "_tool", None)
+    refusal = session_env_refusal(namespace.session_env)
+    if refusal is not None:
+        return _finish(tool or "", refusal)
     if tool is None:
         _emit(
             {
@@ -406,7 +417,7 @@ def _direct_invoke(
     with caller_identity(
         namespace.actor,
         os.environ.get("RAIL_ACTOR"),
-        session=caller_session(),
+        session=caller_session(namespace.session_env),
         tty=_terminal(),
         lens=lens,
     ):
@@ -429,7 +440,8 @@ def _fast_path(
     """
     if namespace.no_daemon or os.environ.get("RAIL_NO_DAEMON") or declared is None:
         return None
-    if _terminal() and caller_session() is None:
+    session = caller_session(namespace.session_env)
+    if _terminal() and session is None:
         # A real terminal proves the human only in this process, never over the
         # socket; a human call therefore runs direct instead of through a daemon.
         return None
@@ -447,7 +459,7 @@ def _fast_path(
         actor=namespace.actor,
         actor_env=(os.environ.get("RAIL_ACTOR") or "").strip() or None,
         read_only=declared.permission == "read",
-        session=caller_session(),
+        session=session,
         tty=_terminal(),
         lens=lens,
     )
@@ -456,9 +468,31 @@ def _fast_path(
     return served
 
 
-def caller_session() -> str | None:
-    """The session token this call carries, from the CLI's environment."""
-    return (os.environ.get("RAIL_SESSION") or "").strip() or None
+def session_env_refusal(env_name: str | None) -> dict[str, Any] | None:
+    """Refuse an invalid or unset ``--session-env`` variable name."""
+    if env_name is None:
+        return None
+    from context_rail.core.result import fail
+
+    if SESSION_ENV_NAME.fullmatch(env_name) is None:
+        return fail(
+            "VALIDATION_FAILED",
+            f"session env variable {env_name!r} must match ^[A-Z_][A-Z0-9_]*$",
+            {"reason": "session_env_invalid", "env": env_name},
+        )
+    if not (os.environ.get(env_name) or "").strip():
+        return fail(
+            "VALIDATION_FAILED",
+            f"session env variable {env_name!r} is unset or empty",
+            {"reason": "session_env_unset", "env": env_name},
+        )
+    return None
+
+
+def caller_session(env_name: str | None = None) -> str | None:
+    """The session token this call carries, from ``env_name`` or ``RAIL_SESSION``."""
+    target = "RAIL_SESSION" if env_name is None else env_name
+    return (os.environ.get(target) or "").strip() or None
 
 
 def _terminal() -> bool:

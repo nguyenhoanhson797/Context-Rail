@@ -16,7 +16,7 @@ __all__ = ["rail_commands", "unknown_rail_commands"]
 _COMMAND = re.compile(r"`(rail [^`]+)`")
 _PLACEHOLDER = re.compile(r"\s*<[^>]+>")
 _BY_NAME = {tool.name: tool for tool in tool_table.TOOLS}
-_VALUE_GLOBAL_FLAGS = frozenset({"--store", "--actor"})
+_VALUE_GLOBAL_FLAGS = frozenset({"--store", "--actor", "--session-env"})
 _BARE_GLOBAL_FLAGS = frozenset({"--help", "-h", "--version", "--no-daemon"})
 
 
@@ -50,7 +50,7 @@ def _strip_global_options(tokens: list[str]) -> tuple[list[str], bool]:
                 return [], True
             index += 2
             continue
-        if token.startswith(("--store=", "--actor=")):
+        if token.startswith(("--store=", "--actor=", "--session-env=")):
             saw_flag = True
             index += 1
             continue

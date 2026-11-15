@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from context_rail.gateway.execution import EXPLICIT_ACTOR, SERVING
+from context_rail.gateway.execution import EXPLICIT_ACTOR, SERVING, caller_session
 from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:  # imported lazily by the gateway only when mcp serve runs
@@ -21,5 +21,5 @@ def serve(ctx: Context, args: dict[str, Any], actor: str) -> None:
         )
     from context_rail.gateway.mcp_server import run_stdio
 
-    run_stdio(ctx.store, EXPLICIT_ACTOR.get())
+    run_stdio(ctx.store, EXPLICIT_ACTOR.get(), session=caller_session())
     return None

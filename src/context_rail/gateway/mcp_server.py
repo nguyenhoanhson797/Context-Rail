@@ -157,10 +157,12 @@ def _environment_session() -> str | None:
     return token.strip() if isinstance(token, str) and token.strip() else None
 
 
-def run_stdio(store: Path | None, actor: str | None) -> None:
+def run_stdio(
+    store: Path | None, actor: str | None, session: str | None = None
+) -> None:
     """Serve one stdio connection until its input closes."""
     explicit = actor if actor is not None else EXPLICIT_ACTOR.get()
-    server = build_server(store=store, actor=explicit)
+    server = build_server(store=store, actor=explicit, session=session)
 
     async def serve() -> None:
         async with stdio_server() as (read_stream, write_stream):
