@@ -86,6 +86,7 @@ Pick a template when you start with `rail init --pack <name>`:
 | `scrum` | Teams that work in sprints | goal → scope → sprint → story → task |
 | `waterfall` | Projects with distinct phases | planned → designing → building → testing → done |
 | `video` | Video and content production | scene → shot, each shot: storyboard → generating → review → approved → published |
+| `portfolio` | Several projects coordinated from one master store | component → slice (intake → planned → delegated → integrating → verified → released), gated by child store checks |
 
 Want your own words or steps? Copy a template and make it yours with
 `rail ops pack create --name <name> --from basic`. Renaming things never needs
@@ -417,6 +418,32 @@ session is never human. The generated roles are a starting point; edit them in
 the draft before the human approves the new pack. The human's first project seat
 can then be granted; after that, a lead may grant only the roles its own
 `can.grant` lists and only inside its write reach.
+
+## Several projects
+
+When several repositories need to land together, run one master store with the
+`portfolio` pack (`rail init --pack portfolio`) and keep each child project in
+its own repo and `context-rail/` store. The master store tracks cross-project
+`component`, `slice`, `release`, and `contract` notes, while each child keeps
+its own pack, workflow, and history — whether the child repos are git submodules
+inside the master checkout or sibling folders next to it, and whether or not a
+child uses roles.
+
+The human grants each project's CTO a `component-cto` seat anchored on its
+`component`. That seat plans and moves its own slices up to `integrating`,
+declares and runs `store` checks bound to the child's committed items, and files
+reports; `portfolio-lead` verifies slices through `item_done` and ships each
+`release` through `release`.
+
+Give each store its own session variable with `--session-env NAME` so a child
+CTO keeps its child token in `RAIL_SESSION` and its master token in a named
+variable such as `RAIL_SESSION_PORTFOLIO`:
+
+```powershell
+$env:RAIL_SESSION = (rail --store child/context-rail seat open cto-1 --print-env | ConvertFrom-Json).value.token
+$env:RAIL_SESSION_PORTFOLIO = (rail --store master/context-rail seat open auth-cto --print-env | ConvertFrom-Json).value.token
+rail --store ../master/context-rail --session-env RAIL_SESSION_PORTFOLIO next
+```
 
 ## For engineers
 

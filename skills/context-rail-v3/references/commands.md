@@ -1,10 +1,15 @@
 # Command reference
 
-Global options, before the command: `--store PATH`, `--actor NAME`.
+Global options, before the command: `[--store PATH] [--actor NAME] [--session-env NAME] [--no-daemon]`.
 `rail --version` prints the package version.
 Human-only tools (`approve`, `ops migrate`, `ops pack use`) need an explicitly
 named human: `--actor human` or `RAIL_ACTOR=human`. A role-mode store refuses
 `--actor`: open a seat session instead.
+`--session-env NAME` (`^[A-Z_][A-Z0-9_]*$`) reads the session token for that call
+(and pins `rail --session-env NAME serve mcp`) from `NAME` instead of
+`RAIL_SESSION`; if the name is malformed (`session_env_invalid`) or that variable
+is unset or empty (`session_env_unset`), the call refuses with `VALIDATION_FAILED`
+rather than falling back to `RAIL_SESSION`.
 Every command accepts `--key` for idempotency where it writes.
 Exit codes: `0` success, `1` refusal, `2` infrastructure failure.
 
@@ -111,6 +116,15 @@ rail loop triage [--limit N] [--report ID] [--acknowledge]
 rail loop execution <target> --action NAME --state running|succeeded|failed|cancelled
                     [--output FILE]... [--error WHY]
 rail gate [--warnings-as-errors]
+```
+
+`rail check declare` accepts JSON specs with `mode`: `cmd`, `exists`,
+`evidence`, `review`, `human`, or `store`. A `store` check proves a committed
+item's category in another store (a submodule or sibling repo):
+
+```json
+{"schema": 1, "mode": "store", "acceptance": false, "verifies": ["<slice>"],
+ "store": "<rel-path>", "item": "<child-slug>", "category": "done"}
 ```
 
 ## Gates and approvals

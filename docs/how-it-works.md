@@ -56,7 +56,7 @@ reads what it produced, so the CLI, MCP, UI and every agent see one answer.
 |---|---|
 | **Files are the truth** | SQLite is a cache under the git dir (or `.rail-local/` outside git); deleting it only costs a rebuild. Records are append-only and never rewritten. |
 | **Paths are derived, never chosen** | You pass `--rel part_of=sprint-3`; the placement template renders the path. `rail change repath --dry-run` shows every implied move before you apply it. |
-| **Quality belongs to the workflow** | A status can name a charter gate and the checks it selects. A missing or stale check refuses the move and names the command that produces it. |
+| **Quality belongs to the workflow** | A status can name a charter gate and the checks it selects. A missing or stale check refuses the move and names the command that produces it. Check modes cover commands (`cmd`), files (`exists`), supplied proof (`evidence`), candidate `review`, `human` sign-off, and `store` checks that prove a child store's committed item category without writing the child store or running git on reads (freshness checks the child's committed `HEAD` and item etag). |
 | **Approval is data** | `approve` is human-only. Change the semantics (transition, placement, operating block) and the store reports `approval_mismatch` until a human reapproves. |
 | **Agents get a narrow surface** | They never parse `pack.yaml`; they ask `rail types`, `rail next`, `rail read show`, `rail why`, `rail explain`, and run declared verbs with `rail do`. |
 | **Your tool does the work** | The rail hands out a brief and records the candidate commit, the check and the review. Your tool runs its own sub-agents in its own git worktrees and you merge in git; `gate` never runs Checks. |
@@ -107,20 +107,21 @@ parts:
 ### The same five parts, other domains
 
 ```text
-video   scene ──▶ shot ──▶ storyboard ──▶ generating ──▶ review ──▶ approved ──▶ published
+video      scene ──▶ shot ──▶ storyboard ──▶ generating ──▶ review ──▶ approved ──▶ published
 waterfall  phase ──▶ deliverable   (planned → designing → building → testing → done)
-flow    epic ──▶ story           (backlog → ready → building → review → shipped)
-basic   goal ──▶ task            (todo → doing → done)
+flow       epic ──▶ story           (backlog → ready → building → review → shipped)
+basic      goal ──▶ task            (todo → doing → done)
+portfolio  component ──▶ slice     (intake → planned → delegated → integrating → verified → released)
 ```
 
-| | scrum | waterfall | video | flow | basic |
-|---|---|---|---|---|---|
-| Container | sprint (required) | phase (required) | scene (required) | epic (optional) | goal (optional) |
-| Unit | story | deliverable | shot | story | task |
-| Focus | active sprint | active phase | active scene | continuous | continuous |
-| Queue | story·task·bug | deliverable·task·bug | shot | story·task·bug | task·bug |
-| Progress | done / sprint | done / phase | `approved` / scene | done / epic | done / goal |
-| Gate | `item_done` (bugfix adds `repro-check`+`acceptance`) | `item_done` | `item_done` | `item_done` (default) | `item_done` (default) |
+| | scrum | waterfall | video | flow | basic | portfolio |
+|---|---|---|---|---|---|---|
+| Container | sprint (required) | phase (required) | scene (required) | epic (optional) | goal (optional) | component (required) |
+| Unit | story | deliverable | shot | story | task | slice |
+| Focus | active sprint | active phase | active scene | continuous | continuous | none (concurrent) |
+| Queue | story·task·bug | deliverable·task·bug | shot | story·task·bug | task·bug | slice·release |
+| Progress | done / sprint | done / phase | `approved` / scene | done / epic | done / goal | done / component |
+| Gate | `item_done` (bugfix adds `repro-check`+`acceptance`) | `item_done` | `item_done` | `item_done` (default) | `item_done` (default) | `item_done` + `release` (`store` checks) |
 
 Every move into a done-category status needs the charter's `item_done` gate
 (or `scope_done` for a scope entry), whether or not the workflow names it.
@@ -323,7 +324,7 @@ rail --actor human ops migrate --source <old> --dir <project>
 | `src/context_rail/store/` | the only write path + SQLite cache |
 | `src/context_rail/gateway/` | tool table, permissions, envelope |
 | `src/context_rail/model/` | compiler, placement, operating model |
-| `src/context_rail/packs/` | `basic`, `flow`, `scrum`, `waterfall`, `video` |
+| `src/context_rail/packs/` | `basic`, `flow`, `scrum`, `waterfall`, `video`, `portfolio` |
 | `web/` | React shell; built into `ui/static` and served by `rail serve ui` |
 | `docs/agent-onboarding/` | portable onboarding kit for any harness |
 | `skills/` | operator skills (`context-rail-v3*`) for agent skill directories |

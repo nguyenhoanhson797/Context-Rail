@@ -31,13 +31,14 @@ binary.
 | `scrum` | sprints | `todo → ready → doing → review → done` | `backlog`, `epic`, `sprint`, `story` |
 | `waterfall` | phase gates | `planned → designing → building → testing → done` | `requirement`, `phase`, `deliverable` |
 | `video` | scenes and shots | `draft → storyboard → generating → review → approved → published` | `scene`, `shot`, `asset`, `review` |
+| `portfolio` | cross-project coordination | `slice`: `intake → planned → delegated → integrating → verified → released`; `release`: `planned → releasing → released` | `component`, `slice`, `release`, `contract` |
 
 Every pack also declares `blocked` and `dropped`; the table lists the flow the
-team sees. All four also declare the shared base presets: `goal`, `scope`, `task`, `bug`,
+team sees. Every built-in pack also declares the shared base presets: `goal`, `scope`, `task`, `bug`,
 `risk`, `question`, `note`, `convention`, `code`, `decision`, `event`, `check`,
 `charter`, `vision`, `wont`, `skill`, `cto`, `profile` and `fix`.
 
-- All four keep a `code` note preset for hand-written intent that the code graph cannot
+- All code packs keep a `code` note preset for hand-written intent that the code graph cannot
   see (runtime coupling, configuration, why a module exists). Nobody has to write
   one: the code graph derives files, symbols and callers from git, and the
   implementer never writes the store. The source path lives in `source_path`
@@ -286,6 +287,42 @@ explicit `container` on every item preset, per-workflow quality rules and six
 declarative verbs. `rail ops pack validate --name scrum-ba` reports it valid, and
 `rail types` / `rail explain story` / `rail explain accept-po` show it to an
 agent without opening the YAML.
+
+## Multi-project portfolio
+
+The built-in `portfolio` pack coordinates several project repositories from one
+master `context-rail/` store without merging their stores:
+
+- **Master pack shape.** `component` is the container (with a required `store`
+  field pointing to the child store), `slice` is the unit (`intake → planned →
+  delegated → integrating → verified → released`), `release` coordinates
+  cross-project landings (`planned → releasing → released`), and `contract`
+  captures shared interface notes. `focus.resolve` is `none` because multiple
+  components run concurrently.
+- **Roles.** `component-cto` is anchored on its own `component`, plans and moves
+  slices up to `integrating`, declares and runs `store` checks against its
+  child store, and files reports. `portfolio-lead` signs off `verified` through
+  `item_done` and ships `release` items through `release`.
+- **Child store checks.** A `store` check (`mode: "store"`, `store`, `item`,
+  `category`) verifies that a committed item in the child store is in the
+  declared category (typically `done`), binding the verdict to the child repo's
+  committed `HEAD` and the child item's etag. It works both for git submodules
+  inside the master checkout and for sibling repos under the master worktree's
+  parent folder.
+- **Per-store session variables.** Pass `--session-env NAME` (such as
+  `--session-env RAIL_SESSION_PORTFOLIO`) before the command when calling the
+  master store from a child CTO session so the child's `RAIL_SESSION` token and
+  the master's token stay separate.
+- **Child-side skill note.** Add a short `skill` note to each child store with
+  `rail change add skill` and render it with `rail ops adapters render` so the
+  child CTO knows the master store path, its `component` slug, and
+  `--session-env RAIL_SESSION_PORTFOLIO`:
+
+  ```text
+  Master store: ../master/context-rail
+  Component: auth
+  Session flag: --session-env RAIL_SESSION_PORTFOLIO
+  ```
 
 ## Create, validate, switch
 
