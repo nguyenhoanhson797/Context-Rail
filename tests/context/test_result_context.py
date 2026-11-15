@@ -455,12 +455,28 @@ def test_tiny_budget_preserves_full_result_pointer_without_slicing(tmp_path: Pat
     assert is_ok(produced), produced
     rec = produced["value"]
 
-    pointer_len = len(
+    pointer = (
         f"result: {rec['record']} | path: {rec['path']} | producer: impl-a | "
         f"outcome: completed | status: current, commitless | "
         f"read: rail read show {rec['record']} --path {rec['path']}"
     )
-    budget = pointer_len + 80
+    exact_min_budget = len(f"## result\n{pointer}")
+    brief_exact = as_seat(
+        store, "rev-a", "brief", {"item": items["t_a"], "max_chars": exact_min_budget}
+    )
+    assert is_ok(brief_exact), brief_exact
+    exact_text = brief_exact["value"]["text"]
+    assert len(exact_text) == exact_min_budget
+    assert exact_text == f"## result\n{pointer}"
+
+    brief_under = as_seat(
+        store, "rev-a", "brief", {"item": items["t_a"], "max_chars": exact_min_budget - 1}
+    )
+    assert is_ok(brief_under), brief_under
+    assert brief_under["value"]["text"] == ""
+    assert len(brief_under["value"]["text"]) <= exact_min_budget - 1
+
+    budget = len(pointer) + 80
     brief = as_seat(store, "rev-a", "brief", {"item": items["t_a"], "max_chars": budget})
     assert is_ok(brief), brief
     text = brief["value"]["text"]

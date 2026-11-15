@@ -57,6 +57,7 @@ def _next(context: Any) -> dict[str, Any]:
     results_map = getattr(model, "results", {}) or {}
     contract_slugs = [item.slug for item in view.items if item.workflow in results_map]
     summaries_by_item: dict[str, dict[str, Any]] = {}
+    latest_cand_commits: dict[str, str] = {}
     exempt_items: set[str] = set()
     if contract_slugs:
         for summary in result_context_mod.result_summaries(
@@ -65,6 +66,9 @@ def _next(context: Any) -> dict[str, Any]:
             slug = summary.get("item")
             if isinstance(slug, str) and slug not in summaries_by_item:
                 summaries_by_item[slug] = summary
+        latest_cand_commits = _batched_latest_candidate_commits(
+            context, list(summaries_by_item)
+        )
         missing_result_slugs = [
             slug for slug in contract_slugs if slug not in summaries_by_item
         ]
@@ -106,20 +110,38 @@ def _next(context: Any) -> dict[str, Any]:
                 else:
                     valid = bool(summary.get("valid", False))
                     outcome = summary.get("outcome")
-                    completed = valid and outcome == "completed"
                     reasons: list[str] = []
                     if not valid:
                         reasons.append(
                             str(summary.get("problem") or "result record payload is invalid")
                         )
-                    elif not completed:
+                    expected_digest = results_map[item.workflow].produce.digest
+                    if summary.get("contract_digest") != expected_digest:
+                        reasons.append(
+                            "compiled result artifact contract changed since this result was recorded"
+                        )
+                    latest_commit = latest_cand_commits.get(item.slug)
+                    bound_commit = summary.get("candidate_commit")
+                    if latest_commit is not None and bound_commit != latest_commit:
+                        reasons.append(
+                            f"result is bound to candidate commit {bound_commit!r}, "
+                            f"not current candidate {latest_commit!r}"
+                        )
+                    elif latest_commit is None and bound_commit is not None:
+                        reasons.append(
+                            f"result names candidate commit {bound_commit!r}, "
+                            f"which does not exist for {item.slug!r}"
+                        )
+                    current = not reasons
+                    completed = current and outcome == "completed"
+                    if current and not completed:
                         reasons.append(
                             f"newest result outcome is {outcome!r}, not 'completed'"
                         )
                     entry["result"] = {
                         "required": True,
                         "record": summary.get("record_id"),
-                        "current": valid,
+                        "current": current,
                         "completed": completed,
                         "reasons": reasons,
                     }
@@ -131,6 +153,25 @@ def _next(context: Any) -> dict[str, Any]:
         "focus": view.focus.as_dict(),
         "scope": view.scope,
     }
+
+
+def _batched_latest_candidate_commits(context: Any, slugs: list[str]) -> dict[str, str]:
+    """Latest recorded candidate commit per item slug using batched SQL only."""
+    if not slugs:
+        return {}
+    latest: dict[str, str] = {}
+    for start in range(0, len(slugs), 200):
+        chunk = slugs[start : start + 200]
+        marks = ",".join("?" for _ in chunk)
+        rows = context.index.conn.execute(
+            "SELECT item, commit_sha FROM candidates "
+            f"WHERE item IN ({marks}) ORDER BY at DESC, record_id DESC",
+            chunk,
+        ).fetchall()
+        for item_slug, commit_sha in rows:
+            if item_slug not in latest and isinstance(commit_sha, str):
+                latest[item_slug] = commit_sha
+    return latest
 
 
 def _batched_historical_exempt(context: Any, slugs: list[str]) -> set[str]:

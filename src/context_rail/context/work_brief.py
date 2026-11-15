@@ -252,7 +252,9 @@ def _fit(sections: Mapping[str, str], budget: int) -> tuple[dict[str, str], dict
     floor = min(_FLOOR, budget)
 
     def size() -> int:
-        return sum(len(name) + len(text) + 5 for name, text in fitted.items()) + 2 * len(fitted)
+        if not fitted:
+            return 0
+        return sum(len(f"## {name}\n{text}") for name, text in fitted.items()) + 2 * (len(fitted) - 1)
 
     for name in _TRIM_ORDER:
         over = size() - budget
@@ -276,7 +278,7 @@ def _fit(sections: Mapping[str, str], budget: int) -> tuple[dict[str, str], dict
     while size() > budget and order:
         name = order.pop(0)
         if name == "result" and len(order) > 0:
-            # Prefer dropping non-pinned sections before dropping the visible result identity/pointer.
+            # Drop every non-result section before touching the result pointer.
             non_result = [candidate for candidate in order if candidate != "result"]
             if non_result:
                 order.remove(non_result[0])
@@ -291,7 +293,7 @@ def _fit(sections: Mapping[str, str], budget: int) -> tuple[dict[str, str], dict
                 ),
                 "",
             )
-            if pointer and len(pointer) + 12 <= budget:
+            if pointer:
                 fitted["result"] = pointer
                 omitted["result"] = max(
                     omitted.get("result", 0), len(sections["result"]) - len(pointer)
