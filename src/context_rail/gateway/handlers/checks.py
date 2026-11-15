@@ -32,7 +32,7 @@ from context_rail.gateway.handlers.store_check import (
 )
 from context_rail.kernel.rights import review_separation
 from context_rail.model.cto import Check, parse_check, parse_verdict
-from context_rail.model.fields import glob_regex
+from context_rail.model.fields import SLUG_RE, glob_regex
 from context_rail.model.manifest import render_path
 from context_rail.model.pack import Preset
 from context_rail.runner import git as git_runner
@@ -81,7 +81,6 @@ EVIDENCE_MODES = ("evidence", "human")
 #: Modes an Item-wide verification leaves out: a human verdict is the human's,
 #: and a review proves one exact candidate the review command produced.
 ITEM_WIDE_SKIP = ("human", "review")
-_SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 _RECORD_ID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 _EXECUTABLE_MODES = ("cmd", "exists", "evidence", "review", "store")
 
@@ -879,7 +878,7 @@ def _declared_response(store: Path, result: Mapping[str, Any]) -> dict[str, Any]
 
 def _check_slug(value: Any) -> str:
     text = _trimmed(value)
-    if text is None or not _SLUG.match(text):
+    if text is None or not SLUG_RE.match(text):
         raise WriteRefused(
             "VALIDATION_FAILED", f"{value!r} is not a check slug", {"slug": value}
         )

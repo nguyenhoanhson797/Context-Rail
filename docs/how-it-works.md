@@ -186,7 +186,7 @@ switch with `rail ops pack use` (human-only).
 ## Commands you will actually use
 
 Every command answers with one JSON envelope on stdout (progress on stderr)
-and exits `0` / `1` / `2`. Global flags: `rail --store <path> --actor <who> <command>`.
+and exits `0` / `1` / `2`. Global flags: `rail --store <path> --actor <who> --session-env <name> <command>`.
 `rail` and `ctx-rail` are the same entry point; `rail` examples also run as
 `python -m context_rail`.
 

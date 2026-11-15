@@ -5,7 +5,6 @@ A payload the engine cannot read exactly is refused.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from importlib import resources
 from typing import Any
@@ -14,6 +13,7 @@ from context_rail.core.util import load_yaml
 from context_rail.model.candidate import parse_budget_caps
 from context_rail.model.errors import ModelError
 from context_rail.model.fields import (
+    SLUG_RE,
     boolean,
     finite_number,
     integer,
@@ -105,7 +105,6 @@ MODE_ONLY_KEYS: dict[str, frozenset[str]] = {
 }
 #: The closed binding a store verdict carries: the proof of one child item's category.
 STORE_BINDING_KEYS = ("path", "item", "doc", "commit", "etag", "category")
-_SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 LEGACY_KEYS = (
     "source_path",
     "line",
@@ -393,7 +392,7 @@ def _store_path(raw: Any, what: str) -> str:
 
 def _slug(raw: Any, what: str) -> str:
     text = string(raw, what)
-    if _SLUG.match(text) is None:
+    if SLUG_RE.match(text) is None:
         refuse(f"{what} must be an item slug, not {text!r}")
     return text
 
@@ -405,12 +404,18 @@ def _category(raw: Any, what: str) -> str:
     return text
 
 
-def _store_binding(raw: Any) -> dict[str, str]:
+def _store_binding(raw: Any, *, passed: bool) -> dict[str, str]:
     data = mapping(raw, "verdict.store")
     no_unknown(data, STORE_BINDING_KEYS, "verdict.store")
     require(data, STORE_BINDING_KEYS, "verdict.store")
     binding = {key: string(data[key], f"verdict.store.{key}") for key in STORE_BINDING_KEYS}
     _store_path(binding["path"], "verdict.store.path")
+    _slug(binding["item"], "verdict.store.item")
+    if binding["doc"] == "-":
+        if passed:
+            refuse("a passing store verdict must name a relative doc path")
+    else:
+        relative_path(binding["doc"], "verdict.store.doc")
     _category(binding["category"], "verdict.store.category")
     return binding
 
@@ -455,11 +460,12 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
         if runner_digest is not None or exit_code is not None:
             refuse(f"mode {mode!r} carries no runner digest or exit code")
 
+    passed = boolean(payload["passed"], "verdict.passed")
     binding: dict[str, str] | None = None
     if mode == "store":
         if "store" not in payload:
             refuse("a store verdict needs its store binding")
-        binding = _store_binding(payload["store"])
+        binding = _store_binding(payload["store"], passed=passed)
     elif "store" in payload:
         refuse(f"mode {mode!r} carries no store binding")
 
@@ -467,7 +473,7 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
         schema=schema,
         check=string(payload["check"], "verdict.check"),
         check_etag=string(payload["check_etag"], "verdict.check_etag"),
-        passed=boolean(payload["passed"], "verdict.passed"),
+        passed=passed,
         mode=mode,
         input_blobs=dict(blobs),
         input_globs=globs,

@@ -12,6 +12,7 @@ from portfolio_helpers import _answers_file, commit_all, make_child_repo
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
+from context_rail.store.doc import etag as doc_etag
 
 MASTER_ENV_NAME = "RAIL_SESSION_PORTFOLIO"
 
@@ -58,6 +59,32 @@ def _show_etag(
     prefix = ("--session-env", session_env) if session_env else ()
     shown = _cli_ok(cwd, *prefix, "read", "show", slug, store=store, env=env)
     return shown["doc"]["etag"]
+
+
+def _write_store_spec(
+    path: Path,
+    *,
+    store: str,
+    item: str,
+    verifies: str,
+    acceptance: bool = False,
+    category: str = "done",
+) -> Path:
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "store",
+                "acceptance": acceptance,
+                "verifies": [verifies],
+                "store": store,
+                "item": item,
+                "category": category,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def _init_portfolio_master(tmp_path: Path) -> tuple[Path, Path]:
@@ -125,7 +152,6 @@ def test_two_project_portfolio_from_plan_to_release(tmp_path: Path) -> None:
         actor="human",
     )
     assert is_ok(created_roles), created_roles
-    from context_rail.store.doc import etag as doc_etag
 
     used_roles = invoke(
         "pack use",
@@ -467,35 +493,17 @@ def test_two_project_portfolio_from_plan_to_release(tmp_path: Path) -> None:
     commit_all(web_root, "finish web login-form")
 
     # 3. Each component CTO declares a store check, runs check run <slice>, moves slice -> integrating, and files a report.
-    auth_spec = tmp_path / "auth-store-check.json"
-    auth_spec.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "mode": "store",
-                "acceptance": False,
-                "verifies": [auth_slice],
-                "store": "projects/auth/context-rail",
-                "item": auth_upstream.item,
-                "category": "done",
-            }
-        ),
-        encoding="utf-8",
+    auth_spec = _write_store_spec(
+        tmp_path / "auth-store-check.json",
+        store="projects/auth/context-rail",
+        item=auth_upstream.item,
+        verifies=auth_slice,
     )
-    web_spec = tmp_path / "web-store-check.json"
-    web_spec.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "mode": "store",
-                "acceptance": False,
-                "verifies": [web_slice],
-                "store": "../web/context-rail",
-                "item": web_story,
-                "category": "done",
-            }
-        ),
-        encoding="utf-8",
+    web_spec = _write_store_spec(
+        tmp_path / "web-store-check.json",
+        store="../web/context-rail",
+        item=web_story,
+        verifies=web_slice,
     )
 
     for env_map, slc, check_slug, spec_path in (
@@ -641,35 +649,17 @@ def test_two_project_portfolio_from_plan_to_release(tmp_path: Path) -> None:
         store=master_store,
         env=lead_env,
     )
-    release_auth_spec = tmp_path / "release-auth-check.json"
-    release_auth_spec.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "mode": "store",
-                "acceptance": False,
-                "verifies": [release_slug],
-                "store": "projects/auth/context-rail",
-                "item": auth_upstream.item,
-                "category": "done",
-            }
-        ),
-        encoding="utf-8",
+    release_auth_spec = _write_store_spec(
+        tmp_path / "release-auth-check.json",
+        store="projects/auth/context-rail",
+        item=auth_upstream.item,
+        verifies=release_slug,
     )
-    release_web_spec = tmp_path / "release-web-check.json"
-    release_web_spec.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "mode": "store",
-                "acceptance": False,
-                "verifies": [release_slug],
-                "store": "../web/context-rail",
-                "item": web_story,
-                "category": "done",
-            }
-        ),
-        encoding="utf-8",
+    release_web_spec = _write_store_spec(
+        tmp_path / "release-web-check.json",
+        store="../web/context-rail",
+        item=web_story,
+        verifies=release_slug,
     )
     for rel_check_slug, rel_spec in (
         ("release-1-auth", release_auth_spec),

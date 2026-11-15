@@ -84,12 +84,8 @@ def test_init_creates_a_role_mode_store(tmp_path: Path) -> None:
     assert lead_skill["value"]["doc"]["preset"] == "skill"
     assert is_ok(seats), seats
     assert is_ok(doctor), doctor
-    role_issues = [
-        issue
-        for issue in doctor["value"]["issues"]
-        if issue["code"] == "role_skill_missing"
-    ]
-    assert role_issues == []
+    issue_codes = {issue["code"] for issue in doctor["value"]["issues"]}
+    assert not (issue_codes & {"role_skill_missing", "profile_skill_missing", "profile_invalid"})
 
 
 def test_component_requires_its_store_field(tmp_path: Path) -> None:

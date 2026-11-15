@@ -196,6 +196,35 @@ def test_store_verdict_binding_refuses_an_unknown_category() -> None:
     assert excinfo.value.code == "VALIDATION_FAILED"
 
 
+@pytest.mark.parametrize("doc", ["../outside.md", "/etc/passwd"])
+def test_store_verdict_binding_refuses_escaping_doc_path(doc: str) -> None:
+    with pytest.raises(ModelError) as excinfo:
+        parse_verdict(_store_verdict(store=_binding(doc=doc)))
+    assert excinfo.value.code == "VALIDATION_FAILED"
+
+
+def test_store_verdict_binding_refuses_sentinel_doc_when_passed() -> None:
+    with pytest.raises(ModelError) as excinfo:
+        parse_verdict(_store_verdict(passed=True, store=_binding(doc="-")))
+    assert excinfo.value.code == "VALIDATION_FAILED"
+    assert "relative doc path" in excinfo.value.message
+
+
+def test_store_verdict_binding_accepts_sentinel_doc_when_failed() -> None:
+    verdict = parse_verdict(
+        _store_verdict(passed=False, store=_binding(doc="-", commit="-", etag="-"))
+    )
+    assert verdict.passed is False
+    assert verdict.store is not None
+    assert verdict.store["doc"] == "-"
+
+
+def test_store_verdict_binding_refuses_invalid_item_slug() -> None:
+    with pytest.raises(ModelError) as excinfo:
+        parse_verdict(_store_verdict(store=_binding(item="Not A Slug")))
+    assert excinfo.value.code == "VALIDATION_FAILED"
+
+
 @pytest.mark.parametrize("mode", ["cmd", "exists", "evidence", "review", "human"])
 def test_other_verdicts_refuse_a_binding(mode: str) -> None:
     fields = _store_verdict(mode=mode, store=_binding())

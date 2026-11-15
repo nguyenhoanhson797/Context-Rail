@@ -21,6 +21,7 @@ from context_rail.model.primitives import (
 )
 
 __all__ = [
+    "SLUG_RE",
     "boolean",
     "finite_number",
     "glob_regex",
@@ -38,6 +39,7 @@ __all__ = [
     "string_list",
 ]
 
+SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 _DRIVE = re.compile(r"^[A-Za-z]:")
 _GLOB_CHARS = frozenset("*?[")
 

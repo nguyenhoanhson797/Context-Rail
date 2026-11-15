@@ -23,7 +23,10 @@ from helpers import (
 from portfolio_helpers import _answers_file, commit_all, make_child_repo, make_master_repo
 
 from context_rail.core.result import is_ok
-from context_rail.gateway.gateway import invoke
+from context_rail.gateway.gateway import Context, invoke
+from context_rail.gateway.handlers.store_check import store_freshness
+from context_rail.model.manifest import load_manifest
+from context_rail.model.pack import load_pack
 from context_rail.runner import git as git_runner
 from context_rail.store.doc import etag
 
@@ -625,3 +628,77 @@ def test_store_checks_never_write_the_child_store(tmp_path: Path) -> None:
     assert verified["value"]["passed"] is True
 
     assert tree_bytes(child.store) == before
+
+
+def test_store_freshness_returns_unknown_for_escaping_verdict_doc(tmp_path: Path) -> None:
+    require_git_identity()
+    master = make_master_repo(tmp_path)
+    child = make_child_repo(tmp_path, "auth")
+    _move_child_item(child, "done")
+    child_head = commit_all(child.root, "finish token-v2")
+    (tmp_path / "outside.md").write_text("secret\n", encoding="utf-8")
+
+    manifest = load_manifest(master.store)
+    pack = load_pack(manifest.pack, master.store)
+    ctx = Context(store=master.store, manifest=manifest, pack=pack, actor="cto")
+    row = {
+        "verdict": "01J00000000000000000000001",
+        "passed": True,
+        "check_etag": "sha256:check",
+        "definition_etag": "sha256:check",
+        "store_binding": {
+            "path": "../auth/context-rail",
+            "item": child.item,
+            "doc": "../outside.md",
+            "commit": child_head,
+            "etag": etag((tmp_path / "outside.md").read_bytes()),
+            "category": "done",
+        },
+    }
+    assert store_freshness(ctx, row) == "unknown"
+
+
+def test_verify_fails_closed_for_unborn_child_head(tmp_path: Path) -> None:
+    require_git_identity()
+    master = make_master_repo(tmp_path)
+    child_root = tmp_path / "unborn-child"
+    child_root.mkdir(parents=True, exist_ok=True)
+    answers = _answers_file(child_root, "basic")
+    created = invoke(
+        "init",
+        {
+            "dir": str(child_root),
+            "pack": "basic",
+            "answers_file": str(answers),
+            "confirm": "APPROVE charter",
+        },
+        actor="human",
+    )
+    answers.unlink()
+    assert is_ok(created), created
+    child_store = Path(created["value"]["store"])
+    assert is_ok(approve_picture(child_store, actor="human"))
+    added = invoke(
+        "add",
+        {"preset": "task", "title": "Token V2"},
+        store=child_store,
+        actor="cto",
+    )
+    assert is_ok(added), added
+    run_git(child_root, "init", "-b", "main")
+
+    assert is_ok(
+        _declare_store_check(
+            master.store,
+            tmp_path,
+            "unborn-proof",
+            "../unborn-child/context-rail",
+            item=added["value"]["slug"],
+            target=master.slice,
+        )
+    )
+    verified = invoke("verify", {"target": "unborn-proof"}, store=master.store, actor="cto")
+
+    assert is_ok(verified), verified
+    assert verified["value"]["passed"] is False
+    assert "no committed HEAD" in (verified["value"]["reason"] or "")

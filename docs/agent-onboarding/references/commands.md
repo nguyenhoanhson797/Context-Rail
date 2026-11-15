@@ -14,7 +14,7 @@ server.
 ## Global contract
 
 ```text
-rail [--store PATH] [--actor NAME] [--no-daemon] <command> [flags]
+rail [--store PATH] [--actor NAME] [--session-env NAME] [--no-daemon] <command> [flags]
 rail --version
 ```
 
@@ -26,6 +26,9 @@ rail --version
   explicitly named human (`--actor human` or `RAIL_ACTOR=human`). A store whose
   pack declares roles refuses `--actor`: the session token is the identity
   there.
+- `--session-env NAME` reads the call's session token from environment variable
+  `NAME` instead of `RAIL_SESSION`; invalid variable names or unset/empty
+  values are refused without falling back.
 - `--no-daemon` (or `RAIL_NO_DAEMON=1`) bypasses the loopback RPC daemon.
   `RAIL_DAEMON_TIMEOUT_MS` tunes the wait (default 2000 ms) and
   `RAIL_DAEMON_IDLE_S` the idle time before it exits (default 600 s).
@@ -170,10 +173,11 @@ rail loop execution <target> --action NAME --state running|succeeded|failed|canc
                     [--output FILE]... [--error WHY] [--key KEY]
 ```
 
-`check run` on an item runs every executable check it declares. A `human` check
-needs `--verdict` and the typed phrase. The rail never launches an agent: your
-tool does the work with its own sub-agents, then records the commit with
-`loop candidate`. You merge in git yourself.
+`check run` on an item runs every executable check it declares, including
+`store` checks verified against committed items in child stores. A `human`
+check needs `--verdict` and the typed phrase. The rail never launches an
+agent: your tool does the work with its own sub-agents, then records the commit
+with `loop candidate`. You merge in git yourself.
 
 ## Operations
 

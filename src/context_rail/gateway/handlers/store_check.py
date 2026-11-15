@@ -13,6 +13,7 @@ from context_rail.model.pack import load_pack
 from context_rail.runner import git as git_runner
 from context_rail.store.doc import etag
 from context_rail.store.index import Index
+from context_rail.store.location import PathEscape, confine
 from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:
@@ -68,11 +69,12 @@ def store_payload(ctx: Context, row: Mapping[str, Any]) -> dict[str, Any]:
 
     child = resolve_child_store(ctx, declared)
     master_located = _master_worktree(ctx.store)
-    master_commit = (
-        git_runner.rev_parse_head(master_located[1], master_located[1])
-        if master_located is not None
-        else None
-    )
+    master_commit = head_sha(ctx.store)
+    if master_commit is None and master_located is not None:
+        try:
+            master_commit = git_runner.rev_parse_head(master_located[1], master_located[1])
+        except WriteRefused:
+            master_commit = None
 
     def fail_verdict(
         reason: str,
@@ -125,7 +127,13 @@ def store_payload(ctx: Context, row: Mapping[str, Any]) -> dict[str, Any]:
     doc_path = child / rel_doc
     if not doc_path.is_file():
         return fail_verdict(f"child item {item!r} at {rel_doc!r} is missing", doc=rel_doc)
-    doc_etag = etag(doc_path.read_bytes())
+    try:
+        doc_etag = etag(doc_path.read_bytes())
+    except OSError as error:
+        return fail_verdict(
+            f"child item {item!r} at {rel_doc!r} could not be read: {error}",
+            doc=rel_doc,
+        )
 
     child_located = _master_worktree(child)
     if child_located is None:
@@ -135,7 +143,18 @@ def store_payload(ctx: Context, row: Mapping[str, Any]) -> dict[str, Any]:
             doc_etag=doc_etag,
         )
     child_root = child_located[1].resolve()
-    commit = head_sha(child) or git_runner.rev_parse_head(child_root, child_root)
+    commit = head_sha(child)
+    if commit is None:
+        try:
+            commit = git_runner.rev_parse_head(child_root, child_root)
+        except WriteRefused:
+            commit = None
+    if commit is None:
+        return fail_verdict(
+            "child store has no committed HEAD",
+            doc=rel_doc,
+            doc_etag=doc_etag,
+        )
     try:
         repo_rel = doc_path.resolve().relative_to(child_root).as_posix()
     except ValueError:
@@ -230,12 +249,12 @@ def store_freshness(ctx: Context, row: Mapping[str, Any]) -> str:
     current_head = head_sha(child)
     if current_head is None:
         return "unknown"
-    doc_path = child / str(rel_doc)
     try:
+        doc_path = confine(child, str(rel_doc))
         if not doc_path.is_file():
             return "unknown"
         current_etag = etag(doc_path.read_bytes())
-    except OSError:
+    except (PathEscape, OSError):
         return "unknown"
 
     if current_head != recorded_commit or current_etag != recorded_etag:
