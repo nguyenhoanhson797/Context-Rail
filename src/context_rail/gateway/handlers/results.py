@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from context_rail.core.util import now_iso
 from context_rail.gateway.handlers.common import (
     parse_set_values,
     prepare_document_fields,
@@ -226,14 +225,12 @@ def _record(
     attempt = query.result_count(ctx.index, slug) + 1
     item_digest = item_content_digest(ctx.store, item_path)
     cycle = work_cycle(ctx, slug)
-    at = now_iso()
 
     payload: dict[str, Any] = {
         "schema": RESULT_SCHEMA,
         "item": slug,
         "attempt": attempt,
         "actor": actor,
-        "at": at,
         "outcome": outcome,
         "candidate_commit": candidate_commit,
         "body_hash": body_hash,
@@ -381,29 +378,41 @@ def _resolve_candidate_commit(
     if commit_arg is None:
         return None
     needle = commit_arg.strip()
-    candidates = query.candidates_for(ctx.index, item, limit=100)
-    matches = [
-        row
-        for row in candidates
-        if row["commit"] == needle
-        or (len(needle) >= 4 and row["commit"].startswith(needle))
-    ]
-    if not matches:
-        raise WriteRefused(
-            "INVALID_STATE",
-            f"no candidate was recorded for {item!r} matching {needle!r}",
-            {"reason": "no_candidate", "item": item, "commit": needle},
-        )
-    unique_shas = sorted({row["commit"] for row in matches})
-    if len(unique_shas) > 1:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            f"commit prefix {needle!r} matches multiple recorded candidates for {item!r}",
-            {"param": "commit", "value": needle, "matches": unique_shas},
-        )
-    sha = unique_shas[0]
-    candidate = query.candidate_for_commit(ctx.index, item, sha)
-    assert candidate is not None
+    candidate: dict[str, Any] | None = None
+    sha: str
+    if len(needle) == 40:
+        candidate = query.candidate_for_commit(ctx.index, item, needle)
+        if candidate is None:
+            raise WriteRefused(
+                "INVALID_STATE",
+                f"no candidate was recorded for {item!r} matching {needle!r}",
+                {"reason": "no_candidate", "item": item, "commit": needle},
+            )
+        sha = str(candidate["commit"])
+    else:
+        candidates = query.candidates_for(ctx.index, item, limit=100)
+        matches = [
+            row
+            for row in candidates
+            if row["commit"] == needle
+            or (len(needle) >= 4 and row["commit"].startswith(needle))
+        ]
+        if not matches:
+            raise WriteRefused(
+                "INVALID_STATE",
+                f"no candidate was recorded for {item!r} matching {needle!r}",
+                {"reason": "no_candidate", "item": item, "commit": needle},
+            )
+        unique_shas = sorted({row["commit"] for row in matches})
+        if len(unique_shas) > 1:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"commit prefix {needle!r} matches multiple recorded candidates for {item!r}",
+                {"param": "commit", "value": needle, "matches": unique_shas},
+            )
+        sha = unique_shas[0]
+        candidate = query.candidate_for_commit(ctx.index, item, sha)
+        assert candidate is not None
     cand_actor = candidate.get("actor")
     cand_seat = candidate.get("seat")
     if seat is not None:

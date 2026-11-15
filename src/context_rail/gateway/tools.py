@@ -216,7 +216,7 @@ TOOLS: tuple[Tool, ...] = (
         params=(
             Param("item", "str", required=True, positional=True, help="the Item the result is about"),
             Param("body_file", "str", required=True, help="Markdown body file outside the store", path=True),
-            Param("commit", "str", help="recorded candidate commit for code work: a sha, a branch or HEAD"),
+            Param("commit", "str", help="recorded candidate commit SHA or unambiguous prefix for code work"),
             Param("outcome", "str", default="completed", help="completed, partial, blocked or failed"),
             Param("set", "str", repeat=True, help="artifact metadata field as KEY=VALUE"),
             Param("model", "str", help="the model that produced it (free text)"),

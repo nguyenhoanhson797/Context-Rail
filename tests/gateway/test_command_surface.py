@@ -248,5 +248,7 @@ def test_loop_result_alias_and_schema_flags() -> None:
     assert "path" not in names and "title" not in names
     body_param = next(p for p in tool.params if p.name == "body_file")
     assert body_param.path is True
+    commit_param = next(p for p in tool.params if p.name == "commit")
+    assert "prefix" in commit_param.help.lower() and "head" not in commit_param.help.lower()
     surface = {t.name: t for t in SURFACE_TOOLS}
     assert "loop result" in surface and surface["loop result"].hidden is False

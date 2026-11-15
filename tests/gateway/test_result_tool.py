@@ -248,6 +248,13 @@ def test_body_input_and_metadata_refusals_leave_store_unchanged(tmp_path: Path) 
         tmp_path / "oversize.md",
         result_body(DEFAULT_PRODUCER_SECTIONS, values={"Summary": "x" * (RESULT_BODY_MAX_BYTES + 1)}),
     )
+    bom_crlf_raw_over = tmp_path / "bom_crlf_over.md"
+    crlf_base = result_body(DEFAULT_PRODUCER_SECTIONS).replace("\n", "\r\n").encode("utf-8")
+    pad_len = (RESULT_BODY_MAX_BYTES + 3) - 3 - len(crlf_base)
+    assert pad_len > 0
+    bom_crlf_bytes = b"\xef\xbb\xbf" + crlf_base + (b"x" * pad_len)
+    assert len(bom_crlf_bytes) == RESULT_BODY_MAX_BYTES + 3
+    bom_crlf_raw_over.write_bytes(bom_crlf_bytes)
     inside_store = _write_body(store / "notes" / "inside.md", result_body(DEFAULT_PRODUCER_SECTIONS))
 
     before_tree = _store_files(store)
@@ -258,6 +265,7 @@ def test_body_input_and_metadata_refusals_leave_store_unchanged(tmp_path: Path) 
         ({"item": task, "body_file": str(blank_body), "set": ["channel=research"]}, "VALIDATION_FAILED"),
         ({"item": task, "body_file": str(empty_sec), "set": ["channel=research"]}, "VALIDATION_FAILED"),
         ({"item": task, "body_file": str(oversize_body), "set": ["channel=research"]}, "VALIDATION_FAILED"),
+        ({"item": task, "body_file": str(bom_crlf_raw_over), "set": ["channel=research"]}, "VALIDATION_FAILED"),
         ({"item": task, "body_file": str(inside_store), "set": ["channel=research"]}, "FORBIDDEN"),
         ({"item": task, "body_file": str(good_body), "outcome": "bogus", "set": ["channel=research"]}, "VALIDATION_FAILED"),
         ({"item": task, "body_file": str(good_body), "set": ["channel=research", "channel=code"]}, "VALIDATION_FAILED"),
@@ -403,6 +411,13 @@ def test_same_timestamp_attempts_have_distinct_ulids_and_deterministic_current(
     assert is_ok(first) and is_ok(second)
     assert first["value"]["record"] != second["value"]["record"]
     assert second["value"]["attempt"] == 2
+
+    front1, _ = _read_result_file(store, first["value"]["path"])
+    front2, _ = _read_result_file(store, second["value"]["path"])
+    assert "at" not in front1["data"]
+    assert "at" not in front2["data"]
+    assert front1["at"] == "2026-11-15T12:00:00Z"
+    assert front2["at"] == "2026-11-15T12:00:00Z"
 
     ctx = _context(store)
     try:
@@ -643,6 +658,89 @@ def test_role_validation_and_readable_but_unwritable_seat_refusal(tmp_path: Path
 
     allowed = as_seat(store, "obs-1", "result", {"item": t1, "body_file": str(body_path)})
     assert is_ok(allowed), allowed
+
+    with as_human():
+        b1 = invoke("add", {"preset": "bug", "title": "Bug 1", "rel": [f"part_of={p1}"]}, store=store, actor=None)["value"]["slug"]
+        assert is_ok(invoke("seat grant", {"seat": "pl-1", "role": "phase-lead", "anchor": p1}, store=store, actor=None))
+
+    preset_denied = as_seat(store, "pl-1", "result", {"item": b1, "body_file": str(body_path)})
+    assert refusal(preset_denied) == ("PERMISSION_DENIED", "preset_not_in_can_result")
+
+
+def test_seat_commit_binding_enforces_same_producer_seat(tmp_path: Path) -> None:
+    require_git_identity()
+    doc = result_pack_document()
+    doc["operating"] = {
+        "version": 2,
+        "unit": "task",
+        "hierarchy": [{"preset": "phase", "required": True}],
+        "roles": {
+            "lead": {
+                "anchor": "project",
+                "reach": {"read": ["project"], "write": ["project"], "code": {"read": ["**"], "write": []}},
+                "can": {"add": ["phase", "task"], "result": ["phase", "task"], "grant": ["implementer"]},
+            },
+            "implementer": {
+                "anchor": {"item": ["task"]},
+                "reach": {"read": ["anchor", {"up": 1}], "write": ["anchor"], "code": {"read": ["**"], "write": ["**"]}},
+                "can": {"result": ["task"], "candidate": ["task"]},
+            },
+        },
+    }
+    proj = tmp_path / "seat_repo"
+    proj.mkdir()
+    run_git(proj, "init", "-b", "main")
+    templates = proj / "context-rail" / "packs" / doc["name"] / "templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    for preset_name, sections in (
+        ("finding", DEFAULT_PRODUCER_SECTIONS),
+        ("assessment", ("Summary", "Findings", "Evidence", "Verdict")),
+    ):
+        (templates / f"{preset_name}.md").write_text(
+            "# {title}\n\n" + "\n".join(f"## {s}\n" for s in sections),
+            encoding="utf-8",
+            newline="\n",
+        )
+    store = init_pack_store(
+        proj,
+        doc,
+        layout={
+            "finding": "records/findings/{field:workflow_name}/{about.slug}/{id}.md",
+            "assessment": "records/assessments/{field:workflow_name}/{about.slug}/{id}.md",
+        },
+        approve=False,
+    )
+    from helpers import _write_charter
+    from helpers import approve_picture as _approve_pic
+
+    _write_charter(store)
+    with as_human():
+        invoke("reindex", {}, store=store, actor=None)
+        assert is_ok(_approve_pic(store, actor=None))
+    (proj / "app.py").write_text("x = 1\n", encoding="utf-8", newline="\n")
+    run_git(proj, "add", "app.py")
+    run_git(proj, "commit", "-m", "base")
+
+    with as_human():
+        p1 = invoke("add", {"preset": "phase", "title": "Phase 1"}, store=store, actor=None)["value"]["slug"]
+        t1 = invoke("add", {"preset": "task", "title": "Task 1", "rel": [f"part_of={p1}"]}, store=store, actor=None)["value"]["slug"]
+        assert is_ok(invoke("seat grant", {"seat": "impl-1", "role": "implementer", "anchor": t1}, store=store, actor=None))
+        assert is_ok(invoke("seat grant", {"seat": "impl-2", "role": "implementer", "anchor": t1}, store=store, actor=None))
+
+    (proj / "app.py").write_text("x = 2\n", encoding="utf-8", newline="\n")
+    run_git(proj, "add", "app.py")
+    run_git(proj, "commit", "-m", "seat work")
+    sha = run_git(proj, "rev-parse", "HEAD").stdout.strip()
+
+    assert is_ok(as_seat(store, "impl-1", "candidate", {"item": t1, "commit": sha}))
+
+    body_path = _write_body(tmp_path / "seat_res.md", result_body(DEFAULT_PRODUCER_SECTIONS))
+    other_seat = as_seat(store, "impl-2", "result", {"item": t1, "body_file": str(body_path), "commit": sha})
+    assert refusal(other_seat) == ("PERMISSION_DENIED", "producer_mismatch")
+
+    same_seat = as_seat(store, "impl-1", "result", {"item": t1, "body_file": str(body_path), "commit": sha})
+    assert is_ok(same_seat), same_seat
+    assert same_seat["value"]["candidate_commit"] == sha
 
 
 def test_record_result_for_test_helper_uses_external_body_and_gateway(tmp_path: Path) -> None:
