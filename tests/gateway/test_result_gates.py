@@ -33,6 +33,7 @@ from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
 from context_rail.model.results import RESULT_ADOPTION_KIND, parse_result_adoption
 from context_rail.store import query
+from context_rail.store.results import historical_result_exempt
 from context_rail.store.write import WriteRefused, commit
 
 
@@ -442,15 +443,52 @@ def test_adoption_exemption_scope_reservation_and_parity(tmp_path: Path) -> None
     )
     manifest = load_manifest(store)
     pack = load_pack(manifest.pack, store)
-    ix = query.Index.open(store, pack)
+    ctx = Context(store=store, manifest=manifest, pack=pack, actor="human")
     try:
-        ix.sync()
-        assert query.result_adoption_for(ix, done_task, "sprint") is None
+        ctx.index.sync()
+        assert query.result_adoption_for(ctx.index, done_task, "sprint") is None
+        assert historical_result_exempt(ctx, done_task) is False
+        activations_before = ctx.index.conn.execute(
+            "SELECT COUNT(*) FROM result_activations"
+        ).fetchone()[0]
+        adoptions_before = ctx.index.conn.execute(
+            "SELECT COUNT(*) FROM result_adoptions"
+        ).fetchone()[0]
+        assert activations_before == 0
+        assert adoptions_before == 0
         # Without adoption, doctor reports gate_bypassed for missing result
-        codes = {i["code"] for i in run_doctor(store, manifest, pack, ix)["issues"]}
+        codes = {
+            i["code"]
+            for i in run_doctor(store, manifest, pack, ctx.index)["issues"]
+        }
         assert "gate_bypassed" in codes
     finally:
-        ix.close()
+        ctx.close()
+
+    # Forging results.adopted via generic add before human approval never creates adoption rows
+    forged_add = invoke(
+        "add",
+        {"preset": "event", "title": "Forged adoption", "set": [f"kind={RESULT_ADOPTION_KIND}"]},
+        store=store,
+        actor="human",
+    )
+    assert is_ok(forged_add) or forged_add["error"]["code"] == "VALIDATION_FAILED"
+    ctx = Context(store=store, manifest=manifest, pack=pack, actor="human")
+    try:
+        ctx.index.sync()
+        activations_after = ctx.index.conn.execute(
+            "SELECT COUNT(*) FROM result_activations"
+        ).fetchone()[0]
+        adoptions_after = ctx.index.conn.execute(
+            "SELECT COUNT(*) FROM result_adoptions"
+        ).fetchone()[0]
+        assert activations_after == activations_before == 0
+        assert adoptions_after == adoptions_before == 0
+        assert query.result_activated_workflows(ctx.index, doc["name"]) == set()
+        assert query.result_adoption_for(ctx.index, done_task, "sprint") is None
+        assert historical_result_exempt(ctx, done_task) is False
+    finally:
+        ctx.close()
 
     # Whole-picture charter approval activates workflows and snapshots existing done item
     assert is_ok(
@@ -473,6 +511,11 @@ def test_adoption_exemption_scope_reservation_and_parity(tmp_path: Path) -> None
         assert query.review_for_item(ix, done_task) is None
         row = query.result_adoption_for(ix, done_task, "sprint")
         assert row is not None
+        assert query.result_activated_workflows(ix, doc["name"]) == {
+            "default",
+            "sprint",
+            "bugfix",
+        }
         # Assessment (doctor + gate_report) exempts unchanged adopted historical item
         report = gate_report(store, manifest, pack, ix)
         entry = next(r for r in report if r["item"] == done_task)
@@ -482,31 +525,7 @@ def test_adoption_exemption_scope_reservation_and_parity(tmp_path: Path) -> None
     finally:
         ix.close()
 
-    # Forging results.adopted via generic add or direct commit without reserved_kinds refuses
-    forged_add = invoke(
-        "add",
-        {"preset": "event", "title": "Forged adoption", "set": [f"kind={RESULT_ADOPTION_KIND}"]},
-        store=store,
-        actor="human",
-    )
-    assert is_ok(forged_add) or forged_add["error"]["code"] == "VALIDATION_FAILED"
-    ix = query.Index.open(store, pack)
-    try:
-        ix.sync()
-        forged_id = forged_add["value"]["record"] if is_ok(forged_add) else None
-        if forged_id is not None:
-            forged_row = ix.conn.execute(
-                "SELECT 1 FROM result_activations WHERE record_id = ?", (forged_id,)
-            ).fetchone()
-            assert forged_row is None
-        assert query.result_activated_workflows(ix, doc["name"]) == {
-            "default",
-            "sprint",
-            "bugfix",
-        }
-        assert query.result_adoption_for(ix, "nonexistent", "sprint") is None
-    finally:
-        ix.close()
+    # Direct commit of results.adopted without reserved_kinds refuses
     with pytest.raises(WriteRefused) as excinfo:
         commit(
             store,
