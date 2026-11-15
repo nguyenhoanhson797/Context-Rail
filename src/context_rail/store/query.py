@@ -1183,13 +1183,20 @@ def review_by_record(ix: Index, record_id: str) -> dict[str, Any] | None:
     """The review a record id names, or None."""
     record_id = _text(record_id, "record")
     row = ix.conn.execute(
-        "SELECT item, candidate_commit, verdict FROM reviews WHERE record_id = ?",
+        "SELECT item, candidate_commit, result_record, verdict, path FROM reviews WHERE record_id = ?",
         (record_id,),
     ).fetchone()
     if row is None:
         return None
-    item, commit, verdict = row
-    return {"record_id": record_id, "item": item, "commit": commit, "verdict": verdict}
+    item, commit, result_record, verdict, path = row
+    return {
+        "record_id": record_id,
+        "item": item,
+        "commit": commit,
+        "result_record": result_record,
+        "verdict": verdict,
+        "path": path,
+    }
 
 
 def rejected_reviews(

@@ -252,3 +252,28 @@ def test_loop_result_alias_and_schema_flags() -> None:
     assert "prefix" in commit_param.help.lower() and "head" not in commit_param.help.lower()
     surface = {t.name: t for t in SURFACE_TOOLS}
     assert "loop result" in surface and surface["loop result"].hidden is False
+
+
+def test_loop_review_alias_and_optional_commit_flags() -> None:
+    assert canonical_tool("loop review") == "review"
+    tool = next(t for t in TOOLS if t.name == "review")
+    assert tool.permission == "write"
+    assert tool.daemon is False
+    assert tool.handler == "context_rail.gateway.handlers.reviews:record_review"
+    params = {param.name: param for param in tool.params}
+    assert set(params) == {
+        "item",
+        "commit",
+        "result",
+        "verdict",
+        "notes_file",
+        "set",
+        "model",
+        "harness",
+        "key",
+    }
+    assert params["commit"].required is False
+    assert params["result"].required is False
+    assert params["notes_file"].path is True
+    assert params["set"].repeat is True
+

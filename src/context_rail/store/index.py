@@ -41,6 +41,7 @@ from context_rail.model.results import (
     RESULT_ADOPTION_KIND,
     RESULT_KIND,
     parse_result,
+    parse_review,
 )
 from context_rail.model.seats import SEAT_GRANTED, SEAT_KINDS, SEAT_REVOKED, parse_seat_event
 from context_rail.store.doc import (
@@ -63,7 +64,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 11
+INDEX_SCHEMA = 12
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -194,9 +195,6 @@ _SCHEMA = (
     "CREATE INDEX reports_fingerprint_at ON reports(fingerprint, at)",
     "CREATE INDEX reports_run ON reports(run_id)",
     "CREATE INDEX reports_candidate ON reports(candidate_id)",
-    # The digest and the brief read human waits by class on every call, so the
-    # scan stays a seek no matter how many reports the store holds.
-    *_SEEK_INDEXES,
     """
     CREATE TABLE triaged_reports(
         report_id TEXT NOT NULL,
@@ -226,7 +224,12 @@ _SCHEMA = (
         result_body_hash TEXT,
         reviewer TEXT,
         verdict TEXT,
-        data_json TEXT NOT NULL
+        data_json TEXT NOT NULL,
+        CHECK (
+            candidate_commit IS NOT NULL
+            OR result_record IS NOT NULL
+            OR (verdict = 'reject' AND json_extract(data_json, '$.review_contract_digest') IS NOT NULL)
+        )
     )
     """,
     "CREATE INDEX reviews_item_result ON reviews(item, result_record)",
@@ -502,27 +505,6 @@ _APPROVAL_KEYS = (
     "diff_omitted",
 )
 _APPROVAL_REQUIRED = ("target", "protected_hashes", "confirmer", "confirmation")
-_REVIEW_KEYS = (
-    "schema",
-    "item",
-    "implementation_run",
-    "implementer_actor",
-    "reviewer_actor",
-    "implementer_model",
-    "reviewer_model",
-    "candidate_commit",
-    "result_record",
-    "result_body_hash",
-    "verdict",
-    "findings",
-    "evidence",
-    "profile_version",
-    "candidate_record",
-    "notes",
-    "harness",
-)
-_REVIEW_REQUIRED = ("schema", "item", "reviewer_actor", "verdict")
-_REVIEW_VERDICTS = ("approve", "reject")
 
 
 _COLUMNS = (
@@ -1061,43 +1043,17 @@ def _approval_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple
 
 
 def _review_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[str, tuple[Any, ...]]]:
-    payload = _strict(data, _REVIEW_KEYS, "review", _REVIEW_REQUIRED)
-    item = string(payload["item"], "review.item")
-    run_id = _optional_text(payload.get("implementation_run"), "review.implementation_run")
-    for name in (
-        "implementer_actor",
-        "implementer_model",
-        "reviewer_model",
-        "candidate_record",
-        "notes",
-        "harness",
-    ):
-        _optional_text(payload.get(name), f"review.{name}")
-    reviewer = string(payload["reviewer_actor"], "review.reviewer_actor")
-    raw_commit = payload.get("candidate_commit")
-    candidate = None if raw_commit is None else string(raw_commit, "review.candidate_commit")
-    result_record = _optional_text(payload.get("result_record"), "review.result_record")
-    result_body_hash = _optional_text(payload.get("result_body_hash"), "review.result_body_hash")
-    if candidate is None and result_record is None:
-        refuse("review needs candidate_commit or result_record")
-    verdict = string(payload["verdict"], "review.verdict")
-    if verdict not in _REVIEW_VERDICTS:
-        refuse("review.verdict must be approve or reject")
-    for name in ("findings", "evidence"):
-        if payload.get(name) is not None:
-            string_list(payload[name], f"review.{name}", allow_empty=True)
-    if payload.get("profile_version") is not None:
-        integer(payload["profile_version"], "review.profile_version", positive=True)
+    payload = parse_review(data)
     row = (
         doc.path,
         record_id,
-        item,
-        run_id,
-        candidate,
-        result_record,
-        result_body_hash,
-        reviewer,
-        verdict,
+        payload["item"],
+        payload.get("implementation_run"),
+        payload.get("candidate_commit"),
+        payload.get("result_record"),
+        payload.get("result_body_hash"),
+        payload["reviewer_actor"],
+        payload["verdict"],
         _json(data),
     )
     return [("reviews", row)]

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from context_rail.core.util import canonical_iso, sha256_hex
-from context_rail.model.candidate import TEXT_CAP, parse_candidate
+from context_rail.model.candidate import TEXT_CAP
 from context_rail.model.fields import (
     SLUG_RE,
     integer,
@@ -33,6 +33,10 @@ __all__ = [
     "RESULT_OUTCOMES",
     "RESULT_PAYLOAD_KEYS",
     "RESULT_SCHEMA",
+    "REVIEW_KEYS",
+    "REVIEW_REQUIRED",
+    "REVIEW_SCHEMA",
+    "REVIEW_VERDICTS",
     "ArtifactSpec",
     "ResultBinding",
     "ResultPayload",
@@ -44,6 +48,7 @@ __all__ = [
     "parse_artifact_spec",
     "parse_result",
     "parse_results",
+    "parse_review",
     "parse_workflow_results",
     "result_body_hash",
     "result_protocol_as_dict",
@@ -57,6 +62,34 @@ RESULT_KIND = "result.recorded"
 RESULT_ADOPTION_KIND = "results.adopted"
 RESULT_SCHEMA = 1
 RESULT_ADOPTION_SCHEMA = 1
+REVIEW_SCHEMA = 1
+REVIEW_VERDICTS = ("approve", "reject")
+REVIEW_KEYS = (
+    "schema",
+    "item",
+    "implementation_run",
+    "implementer_actor",
+    "implementer_seat",
+    "implementer_profile",
+    "reviewer_actor",
+    "reviewer_seat",
+    "reviewer_profile",
+    "implementer_model",
+    "reviewer_model",
+    "candidate_commit",
+    "result_record",
+    "result_body_hash",
+    "body_hash",
+    "review_contract_digest",
+    "verdict",
+    "findings",
+    "evidence",
+    "profile_version",
+    "candidate_record",
+    "notes",
+    "harness",
+)
+REVIEW_REQUIRED = ("schema", "item", "reviewer_actor", "verdict")
 RESULT_OUTCOMES = ("completed", "partial", "blocked", "failed")
 RESULT_PAYLOAD_KEYS = (
     "schema",
@@ -579,3 +612,92 @@ def _skill_pins(raw: Any) -> tuple[dict[str, Any], ...]:
             }
         )
     return tuple(pins)
+
+
+def parse_review(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate one ``review.verdict`` payload, covering legacy and Markdown result reviews."""
+    data = mapping(dict(payload) if isinstance(payload, Mapping) else payload, "review")
+    schema_version(data, REVIEW_SCHEMA, "review")
+    no_unknown(data, REVIEW_KEYS, "review")
+    require(data, REVIEW_REQUIRED, "review")
+
+    string(data["item"], "review.item")
+    if data.get("implementation_run") is not None:
+        string(data["implementation_run"], "review.implementation_run")
+    for name in (
+        "implementer_actor",
+        "implementer_seat",
+        "implementer_profile",
+        "reviewer_seat",
+        "reviewer_profile",
+        "implementer_model",
+        "reviewer_model",
+        "candidate_record",
+        "notes",
+        "harness",
+    ):
+        if data.get(name) is not None:
+            string(data[name], f"review.{name}")
+    string(data["reviewer_actor"], "review.reviewer_actor")
+
+    raw_commit = data.get("candidate_commit")
+    candidate_commit = (
+        None if raw_commit is None else string(raw_commit, "review.candidate_commit")
+    )
+
+    raw_res = data.get("result_record")
+    result_record: str | None = None
+    if raw_res is not None:
+        result_record = string(raw_res, "review.result_record")
+        if _ULID_RE.fullmatch(result_record) is None:
+            refuse("review.result_record must be a 26-character ULID")
+
+    raw_res_hash = data.get("result_body_hash")
+    result_body_hash_val = (
+        None
+        if raw_res_hash is None
+        else _sha256(raw_res_hash, "review.result_body_hash")
+    )
+
+    if (result_record is None) != (result_body_hash_val is None):
+        refuse("review.result_record and review.result_body_hash must appear together")
+
+    raw_body_hash = data.get("body_hash")
+    body_hash_val = (
+        None if raw_body_hash is None else _sha256(raw_body_hash, "review.body_hash")
+    )
+
+    raw_contract = data.get("review_contract_digest")
+    contract_digest_val = (
+        None
+        if raw_contract is None
+        else _sha256(raw_contract, "review.review_contract_digest")
+    )
+
+    if (body_hash_val is None) != (contract_digest_val is None):
+        refuse(
+            "review.body_hash and review.review_contract_digest must appear together"
+        )
+
+    verdict = string(data["verdict"], "review.verdict")
+    if verdict not in REVIEW_VERDICTS:
+        refuse("review.verdict must be approve or reject")
+
+    is_contract_review = contract_digest_val is not None
+    if is_contract_review:
+        if candidate_commit is not None and _FULL_SHA1_RE.fullmatch(candidate_commit) is None:
+            refuse("review.candidate_commit must be a 40-character lowercase hex sha")
+        if verdict == "approve" and result_record is None:
+            refuse("contract-enabled approval review requires result_record")
+    else:
+        if candidate_commit is None and result_record is None:
+            refuse("review needs candidate_commit or result_record")
+
+    for name in ("findings", "evidence"):
+        if data.get(name) is not None:
+            string_list(data[name], f"review.{name}", allow_empty=True)
+    if data.get("profile_version") is not None:
+        integer(data["profile_version"], "review.profile_version", positive=True)
+
+    return dict(data)
+

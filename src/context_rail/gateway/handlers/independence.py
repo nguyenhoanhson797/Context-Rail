@@ -59,6 +59,21 @@ def _prior_names(ctx: Context, item: str, kind: str) -> set[str]:
             profile = json.loads(data_json).get("profile")
             if isinstance(profile, str) and profile:
                 found.add(profile)
+        for actor, data_json in conn.execute(
+            "SELECT actor, data_json FROM results WHERE item = ?", (item,)
+        ):
+            try:
+                data = json.loads(data_json)
+            except (TypeError, ValueError):
+                data = {}
+            seat = data.get("seat") if isinstance(data, dict) else None
+            if isinstance(seat, str) and seat:
+                found.add(seat)
+            elif isinstance(actor, str) and actor:
+                found.add(actor)
+            profile = data.get("profile") if isinstance(data, dict) else None
+            if isinstance(profile, str) and profile:
+                found.add(profile)
     elif kind == "review":
         found.update(
             reviewer

@@ -89,8 +89,8 @@ def truth_files(store: Path) -> dict[Path, bytes]:
     }
 
 
-def test_index_schema_eleven_keeps_the_base_tables_and_fts():
-    assert INDEX_SCHEMA == 11
+def test_index_schema_twelve_keeps_the_base_tables_and_fts():
+    assert INDEX_SCHEMA == 12
 
 
 def test_open_creates_the_typed_tables(store_factory):
@@ -103,9 +103,9 @@ def test_open_creates_the_typed_tables(store_factory):
             index.conn.execute(
                 "SELECT value FROM meta WHERE key = 'schema'"
             ).fetchone()[0]
-            == "11"
+            == "12"
         )
-        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert index.conn.execute("PRAGMA user_version").fetchone()[0] == 12
         assert not {"runs", "run_skills", "run_evaluations", "run_attempts"} & names
 
 
