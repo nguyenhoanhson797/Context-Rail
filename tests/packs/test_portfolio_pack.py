@@ -444,8 +444,8 @@ def test_the_lead_verifies_through_item_done(tmp_path: Path) -> None:
     blocked = _as_seat(
         store,
         "lead-1",
-        "move",
-        {"slug": slc, "status": "verified", "expect": _etag(store, slc)},
+        "do",
+        {"action": "verify-slice", "item": slc, "etag": _etag(store, slc)},
     )
     assert not is_ok(blocked)
     assert blocked["error"]["code"] == "BUSINESS_RULE_VIOLATED"
@@ -478,8 +478,41 @@ def test_the_lead_verifies_through_item_done(tmp_path: Path) -> None:
     verified = _as_seat(
         store,
         "lead-1",
-        "move",
-        {"slug": slc, "status": "verified", "expect": _etag(store, slc)},
+        "do",
+        {"action": "verify-slice", "item": slc, "etag": _etag(store, slc)},
     )
     assert is_ok(verified), verified
-    assert verified["value"]["status"] == "verified"
+    assert verified["value"]["result"]["status"] == "verified"
+
+    added_release = _as_seat(
+        store,
+        "lead-1",
+        "add",
+        {"preset": "release", "title": "Release 1", "rel": [f"depends_on={slc}"]},
+    )
+    assert is_ok(added_release), added_release
+    release = added_release["value"]["slug"]
+    releasing = _as_seat(
+        store,
+        "lead-1",
+        "move",
+        {"slug": release, "status": "releasing", "expect": _etag(store, release)},
+    )
+    assert is_ok(releasing), releasing
+    assert is_ok(
+        _as_seat(
+            store,
+            "lead-1",
+            "check",
+            {"slug": "release-1-store", "target": release, "spec_file": str(spec), "expect": "absent"},
+        )
+    )
+    assert is_ok(_as_seat(store, "lead-1", "verify", {"target": release}))
+    shipped = _as_seat(
+        store,
+        "lead-1",
+        "do",
+        {"action": "ship-release", "item": release, "etag": _etag(store, release)},
+    )
+    assert is_ok(shipped), shipped
+    assert shipped["value"]["result"]["status"] == "released"

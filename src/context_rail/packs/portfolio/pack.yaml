@@ -197,14 +197,12 @@ actions:
     from: [integrating]
     tool: change move
     args: {slug: "{item}", status: verified, expect: "{etag}"}
-    requires: {check: store}
     use_when: "every store check on the slice passed and the lead verifies it"
   ship-release:
     "on": release
     from: [releasing]
     tool: change move
     args: {slug: "{item}", status: released, expect: "{etag}"}
-    requires: {review: false}
     use_when: "all slices for the release are verified and the release gate passes"
   triage-report:
     "on": "*"
