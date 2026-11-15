@@ -269,3 +269,106 @@ def test_legacy_candidate_without_snapshot_reports_explicit_unavailable_notice(
     assert "unavailable" in diff_text.lower()
     assert f"git diff {sha[:12]} {sha[:12]}" in diff_text
     assert "VALUE = 99" not in diff_text
+
+
+def test_reviewer_brief_redacts_candidate_diff_outside_code_read_reach(
+    tmp_path: Path,
+) -> None:
+    from helpers import (
+        DEFAULT_PRODUCER_SECTIONS,
+        DEFAULT_REVIEW_SECTIONS,
+        _write_charter,
+        approve_picture,
+        as_human,
+        as_seat,
+        init_pack_store,
+        require_git_identity,
+        result_body,
+        result_pack_document,
+    )
+
+    require_git_identity()
+    doc = result_pack_document()
+    doc["presets"]["phase"] = {"primitive": "item", "tags": ["phase"], "container": True}
+    doc["operating"] = {
+        "version": 2,
+        "unit": "task",
+        "hierarchy": [{"preset": "phase", "required": True}],
+        "roles": {
+            "lead": {
+                "anchor": "project",
+                "reach": {"read": ["project"], "write": ["project"], "code": {"read": ["**"], "write": []}},
+                "can": {"add": ["phase", "task"], "grant": ["implementer", "reviewer"]},
+                "sees": {"up": 0, "down": 1, "parts": ["title", "status", "results"]},
+            },
+            "implementer": {
+                "anchor": {"item": ["task"]},
+                "reach": {"read": ["anchor", {"up": 1}], "write": ["anchor"], "code": {"read": ["**"], "write": ["**"]}},
+                "can": {"result": ["task"], "candidate": ["task"]},
+                "sees": {"up": 1, "parts": ["title", "body", "results"]},
+            },
+            "reviewer": {
+                "anchor": {"item": ["task"]},
+                "reach": {"read": ["anchor", {"up": 1}], "write": ["anchor"], "code": {"read": ["docs/**"], "write": []}},
+                "independent_of": ["produce"],
+                "can": {"review": ["task"]},
+                "sees": {"up": 1, "parts": ["title", "diff", "results", "evidence"]},
+            },
+        },
+    }
+    project = tmp_path / "proj"
+    templates = project / "context-rail" / "packs" / doc["name"] / "templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    for preset_name, sections in (
+        ("finding", DEFAULT_PRODUCER_SECTIONS),
+        ("assessment", DEFAULT_REVIEW_SECTIONS),
+    ):
+        (templates / f"{preset_name}.md").write_text(
+            "# {title}\n\n" + "\n".join(f"## {s}\n" for s in sections),
+            encoding="utf-8",
+            newline="\n",
+        )
+    store = init_pack_store(
+        project,
+        doc,
+        layout={
+            "finding": "records/findings/{field:workflow_name}/{about.slug}/{id}.md",
+            "assessment": "records/assessments/{field:workflow_name}/{about.slug}/{id}.md",
+        },
+        approve=False,
+    )
+    _write_charter(store)
+    with as_human():
+        invoke("reindex", {}, store=store, actor=None)
+        assert is_ok(approve_picture(store, actor=None))
+        phase = invoke("add", {"preset": "phase", "title": "P1"}, store=store, actor=None)["value"]["slug"]
+        task = invoke("add", {"preset": "task", "title": "T1", "rel": [f"part_of={phase}"]}, store=store, actor=None)["value"]["slug"]
+        assert is_ok(invoke("seat grant", {"seat": "impl-1", "role": "implementer", "anchor": task}, store=store, actor=None))
+        assert is_ok(invoke("seat grant", {"seat": "rev-1", "role": "reviewer", "anchor": task}, store=store, actor=None))
+
+    (project / "src").mkdir(parents=True, exist_ok=True)
+    (project / "src" / "secret.py").write_text("SECRET_KEY = 'old'\n", encoding="utf-8", newline="\n")
+    run_git(project, "init", "-b", "main")
+    run_git(project, "add", "-A")
+    run_git(project, "commit", "-m", "base")
+    (project / "src" / "secret.py").write_text("SECRET_KEY = 'top-secret-token'\n", encoding="utf-8", newline="\n")
+    run_git(project, "add", "src/secret.py")
+    run_git(project, "commit", "-m", "secret change")
+
+    cand = as_seat(store, "impl-1", "candidate", {"item": task, "commit": "HEAD"})
+    assert is_ok(cand), cand
+    body_path = tmp_path / "res.md"
+    body_path.write_text(result_body(DEFAULT_PRODUCER_SECTIONS), encoding="utf-8", newline="\n")
+    res = as_seat(
+        store,
+        "impl-1",
+        "result",
+        {"item": task, "body_file": str(body_path), "commit": cand["value"]["commit"]},
+    )
+    assert is_ok(res), res
+
+    brief_res = as_seat(store, "rev-1", "brief", {"item": task})
+    assert is_ok(brief_res), brief_res
+    diff_section = brief_res["value"]["sections"]["diff"]
+    assert "diff hidden" in diff_section
+    assert "top-secret-token" not in brief_res["value"]["text"]

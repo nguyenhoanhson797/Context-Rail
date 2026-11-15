@@ -12,7 +12,8 @@ import json
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from context_rail.context import recipes, results as result_context_mod
+from context_rail.context import recipes
+from context_rail.context import results as result_context_mod
 from context_rail.context.reach import ReachError, resolve_reach
 from context_rail.context.role_brief import role_guide, role_tiers
 from context_rail.core.util import now_iso
@@ -31,7 +32,6 @@ _EXTRA_ONLY = ("diff", "evidence", "code_area")
 _BODY_CHARS = 200
 _CANDIDATES = 3
 _RECORDS = 3
-_PINNED_LINE_PREFIXES = ("result:", "binding:", "latest review:", "read:")
 
 
 def seat_brief(
@@ -282,17 +282,24 @@ def _result_lines(
             out.append(prose)
         return out
     summaries = result_context_mod.result_summaries(context, documents)
+    if item_only:
+        out: list[str] = []
+        compiled = result_context_mod.compiled_results_for_item(context, seat.anchor)
+        if compiled is not None:
+            out.extend(
+                line
+                for line in result_context_mod.render_worker_contract(
+                    compiled.produce, seat.anchor
+                ).splitlines()
+                if line.strip()
+            )
+        if summaries:
+            out.extend(
+                f"- result: {line}"
+                for line in result_context_mod.render_result_summaries(summaries)
+            )
+        return out
     if not summaries:
-        if item_only:
-            compiled = result_context_mod.compiled_results_for_item(context, seat.anchor)
-            if compiled is not None:
-                return [
-                    line
-                    for line in result_context_mod.render_worker_contract(
-                        compiled.produce, seat.anchor
-                    ).splitlines()
-                    if line.strip()
-                ]
         return []
     return [f"- result: {line}" for line in result_context_mod.render_result_summaries(summaries)]
 
@@ -396,11 +403,22 @@ def _fit_heads(
     lines: Mapping[str, list[str]],
     budget: int,
 ) -> tuple[str, dict[str, int], list[str], list[str]]:
+    first_fit: tuple[str, dict[str, int], list[str], list[str], bool] | None = None
     for head in heads:
         result = _fit(head, parts, lines, budget, keep_header=True)
         if result[4]:
-            return result[:4]
-    return _fit(heads[-1], parts, lines, budget, keep_header=False)[:4]
+            if "results" not in parts or (
+                "results" in result[3] and "result:" in result[0]
+            ):
+                return result[:4]
+            if first_fit is None:
+                first_fit = result
+    fallback = _fit(heads[-1], parts, lines, budget, keep_header=False)
+    if fallback[4] and "results" in fallback[3] and "result:" in fallback[0]:
+        return fallback[:4]
+    if first_fit is not None:
+        return first_fit[:4]
+    return fallback[:4]
 
 
 def _fit(
@@ -412,18 +430,27 @@ def _fit(
     keep_header: bool = True,
 ) -> tuple[str, dict[str, int], list[str], list[str], bool]:
     """Trim the last part's entries, then drop whole parts, until the text fits."""
+    lines = {part: list(entries) for part, entries in lines.items()}
     fitted = list(parts)
     trimmed: dict[str, int] = {}
+    popped_counts: dict[str, int] = {}
     dropped: list[str] = []
 
     def omitted() -> str:
         bits = [f"{part} (dropped)" for part in dropped]
-        bits.extend(
-            f"{part} ({count} trimmed)" for part, count in trimmed.items() if count
-        )
+        all_trimmed = set(trimmed) | set(popped_counts)
+        for part in fitted:
+            count = trimmed.get(part, 0) + popped_counts.get(part, 0)
+            if count:
+                bits.append(f"{part} ({count} trimmed)")
+        for part in sorted(all_trimmed):
+            if part not in fitted and part not in dropped:
+                count = trimmed.get(part, 0) + popped_counts.get(part, 0)
+                if count:
+                    bits.append(f"{part} ({count} trimmed)")
         return "omitted: " + ", ".join(bits) if bits else ""
 
-    def render() -> str:
+    def render(*, include_header: bool = keep_header) -> str:
         chunks: list[str] = []
         for part in fitted:
             keep = lines[part][: len(lines[part]) - trimmed.get(part, 0)]
@@ -431,41 +458,74 @@ def _fit(
                 chunks.append("\n".join(keep))
         if not chunks:
             tail = omitted()
-            if not keep_header:
+            if not include_header:
                 return tail
             return header + ("\n\n" + tail if tail else "")
-        chunks.insert(0, header)
+        if include_header:
+            chunks.insert(0, header)
         body = "\n".join(chunks)
         tail = omitted()
         return body + ("\n\n" + tail if tail else "")
 
+    def reported_trimmed() -> dict[str, int]:
+        out = dict(trimmed)
+        for part, count in popped_counts.items():
+            out[part] = out.get(part, 0) + count
+        return {k: v for k, v in out.items() if v}
+
     while True:
         text = render()
         if len(text) <= budget:
-            return text, trimmed, dropped, fitted, True
+            return text, reported_trimmed(), dropped, fitted, True
         if not fitted:
-            return text[:budget], trimmed, dropped, fitted, False
-        last = fitted[-1]
-        if last == "results":
-            non_results = [part for part in fitted if part != "results"]
-            if non_results:
-                last = non_results[-1]
+            return text[:budget], reported_trimmed(), dropped, fitted, False
+        non_results = [part for part in fitted if part != "results"]
+        if non_results:
+            last = non_results[-1]
+        else:
+            last = fitted[-1]
         removed = trimmed.get(last, 0)
         if removed < len(lines[last]):
             if last == "results":
-                entry_idx = len(lines[last]) - 1 - removed
-                entry_text = lines[last][entry_idx]
-                if entry_text.startswith(_PINNED_LINE_PREFIXES):
-                    non_results = [part for part in fitted if part != "results"]
-                    if non_results:
-                        other = non_results[-1]
-                        other_removed = trimmed.get(other, 0)
-                        if other_removed < len(lines[other]):
-                            trimmed[other] = other_removed + 1
-                            continue
-                        fitted.remove(other)
-                        dropped.append(other)
-                        continue
+                active_end = len(lines[last]) - removed
+                non_pinned_indices = [
+                    i
+                    for i in range(active_end)
+                    if not lines[last][i].startswith(
+                        result_context_mod.PINNED_RESULT_PREFIXES
+                    )
+                ]
+                if non_pinned_indices:
+                    lines[last].pop(non_pinned_indices[-1])
+                    popped_counts[last] = popped_counts.get(last, 0) + 1
+                    continue
+                # All remaining lines in results are pinned; drop secondary pinned lines
+                # (binding, latest review) before dropping the primary "result:" pointer line.
+                non_primary = [
+                    i
+                    for i in range(active_end)
+                    if not lines[last][i].startswith("result:")
+                ]
+                if non_primary:
+                    lines[last].pop(non_primary[-1])
+                    popped_counts[last] = popped_counts.get(last, 0) + 1
+                    continue
+                # Only the primary "result:" pointer line remains: check if it fits
+                # without header/omitted footer before dropping it.
+                if not keep_header:
+                    no_head = render(include_header=False)
+                    if len(no_head) <= budget:
+                        return no_head, reported_trimmed(), dropped, fitted, True
+                    primary = next(
+                        (
+                            line
+                            for line in lines[last][:active_end]
+                            if line.startswith("result:")
+                        ),
+                        "",
+                    )
+                    if primary and len(primary) <= budget:
+                        return primary, reported_trimmed(), dropped, ["results"], True
             trimmed[last] = removed + 1
             continue
         fitted.remove(last)

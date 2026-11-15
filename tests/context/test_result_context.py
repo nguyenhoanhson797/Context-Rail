@@ -351,7 +351,9 @@ def test_trimmed_reviewer_brief_keeps_identity_and_read_pointer_and_honest_clipp
         assert rec["path"] in sb["text"]
 
 
-def test_surface_and_ui_expose_compiled_artifacts_and_completion_facts(tmp_path: Path) -> None:
+def test_surface_and_ui_expose_compiled_artifacts_and_completion_facts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     store = init_result_store(tmp_path / "proj")
     task = _add_item(store, "task", "Surface task")
     bug = _add_item(store, "bug", "Surface bug")
@@ -404,3 +406,95 @@ def test_surface_and_ui_expose_compiled_artifacts_and_completion_facts(tmp_path:
         assert why_after["result"]["record"] == produced["record"]
         shown_after = invoke("show", {"slug": task}, store=store, actor="cto")
         assert shown_after["value"]["results"]["selected"]["record_id"] == produced["record"]
+
+        # Readmodels `_next` must use batched SQL summaries without opening per-item disk files.
+        def no_disk_reads(self: Path, *args: object, **kwargs: object) -> bytes:
+            raise AssertionError(f"readmodels._next must not read disk file {self}")
+
+        monkeypatch.setattr(Path, "read_bytes", no_disk_reads)
+        next_batched = readmodels.read(ctx, "next")
+        assert next_batched["status"] == "ok"
+        task_q_after = next(item for item in next_batched["queue"] if item["id"] == task)
+        assert task_q_after["result"]["required"] is True
+        assert task_q_after["result"]["record"] == produced["record"]
+        assert task_q_after["result"]["completed"] is True
+
+
+def test_worker_seat_brief_keeps_contract_after_partial_result(tmp_path: Path) -> None:
+    store, items = _init_role_result_store(tmp_path)
+    partial_body = _write_file(
+        tmp_path / "partial.md",
+        result_body(DEFAULT_PRODUCER_SECTIONS, values={"Summary": "Attempt 1 partial"}),
+    )
+    partial = as_seat(
+        store,
+        "impl-a",
+        "result",
+        {"item": items["t_a"], "body_file": str(partial_body), "outcome": "partial"},
+    )
+    assert is_ok(partial), partial
+
+    brief = as_seat(store, "impl-a", "cto brief", {})
+    assert is_ok(brief), brief
+    text = brief["value"]["text"]
+    for heading in DEFAULT_PRODUCER_SECTIONS:
+        assert heading in text
+    assert "rail loop result" in text
+    assert partial["value"]["record"] in text
+    assert "partial" in text
+
+
+def test_tiny_budget_preserves_full_result_pointer_without_slicing(tmp_path: Path) -> None:
+    store, items = _init_role_result_store(tmp_path)
+    huge_text = "EVIDENCE_LINE " * 4000
+    body = _write_file(
+        tmp_path / "huge2.md",
+        result_body(DEFAULT_PRODUCER_SECTIONS, values={"Evidence": huge_text}),
+    )
+    produced = as_seat(store, "impl-a", "result", {"item": items["t_a"], "body_file": str(body)})
+    assert is_ok(produced), produced
+    rec = produced["value"]
+
+    pointer_len = len(
+        f"result: {rec['record']} | path: {rec['path']} | producer: impl-a | "
+        f"outcome: completed | status: current, commitless | "
+        f"read: rail read show {rec['record']} --path {rec['path']}"
+    )
+    budget = pointer_len + 80
+    brief = as_seat(store, "rev-a", "brief", {"item": items["t_a"], "max_chars": budget})
+    assert is_ok(brief), brief
+    text = brief["value"]["text"]
+    assert len(text) <= budget
+    assert rec["record"] in text
+    assert rec["path"] in text
+    assert f"rail read show {rec['record']} --path {rec['path']}" in text
+
+    sb = as_seat(store, "rev-a", "cto brief", {"max_chars": budget})
+    assert is_ok(sb), sb
+    assert len(sb["value"]["text"]) <= budget
+    assert rec["record"] in sb["value"]["text"]
+    assert rec["path"] in sb["value"]["text"]
+
+
+def test_history_omitted_does_not_leak_restricted_records(tmp_path: Path) -> None:
+    store, items = _init_role_result_store(tmp_path)
+    for idx in range(2):
+        body = _write_file(
+            tmp_path / f"r{idx}.md",
+            result_body(DEFAULT_PRODUCER_SECTIONS, values={"Summary": f"Entry {idx}"}),
+        )
+        res = as_seat(store, "impl-a", "result", {"item": items["t_a"], "body_file": str(body)})
+        assert is_ok(res), res
+
+    pack_path = store / "packs" / load_manifest(store).pack / "pack.yaml"
+    pack_doc = yaml.safe_load(pack_path.read_text(encoding="utf-8"))
+    pack_doc["operating"]["roles"]["phase-lead"]["reach"]["read"].append(
+        {"path": "records/other/**"}
+    )
+    pack_path.write_text(yaml.safe_dump(pack_doc, sort_keys=False), encoding="utf-8", newline="\n")
+
+    with _open_ctx(store, seat="pl-a") as ctx_a:
+        ctx = result_ctx.result_context(ctx_a, items["t_a"], include_body=False)
+        assert ctx["selected"] is None
+        assert ctx["history"] == []
+        assert ctx["history_omitted"] == 0

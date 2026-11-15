@@ -38,7 +38,7 @@ def read(context: Any, view: str) -> dict[str, Any]:
 
 def _next(context: Any) -> dict[str, Any]:
     from context_rail.context import operating
-    from context_rail.gateway.handlers.proofs import completion_facts
+    from context_rail.context import results as result_context_mod
 
     model = getattr(context, "model", None)
     if model is None:
@@ -54,8 +54,23 @@ def _next(context: Any) -> dict[str, Any]:
             "code": error.code,
             "candidates": error.details.get("candidates", []),
         }
-    queue = []
     results_map = getattr(model, "results", {}) or {}
+    contract_slugs = [item.slug for item in view.items if item.workflow in results_map]
+    summaries_by_item: dict[str, dict[str, Any]] = {}
+    exempt_items: set[str] = set()
+    if contract_slugs:
+        for summary in result_context_mod.result_summaries(
+            context, contract_slugs, limit=len(contract_slugs)
+        ):
+            slug = summary.get("item")
+            if isinstance(slug, str) and slug not in summaries_by_item:
+                summaries_by_item[slug] = summary
+        missing_result_slugs = [
+            slug for slug in contract_slugs if slug not in summaries_by_item
+        ]
+        exempt_items = _batched_historical_exempt(context, missing_result_slugs)
+
+    queue = []
     for item in view.items:
         entry: dict[str, Any] = {
             "id": item.slug,
@@ -68,23 +83,46 @@ def _next(context: Any) -> dict[str, Any]:
             "why": item.why,
         }
         if item.workflow in results_map:
-            wf = context.pack.workflows.get(item.workflow)
-            targets = sorted(wf.transitions.get(item.status, ())) if wf is not None else []
-            target_state = targets[0] if targets else item.status
-            facts = completion_facts(
-                context,
-                item.slug,
-                target_state,
-                workflow_name=item.workflow,
-                assessment=True,
-            )
-            entry["result"] = {
-                "required": facts.result_required,
-                "record": None if facts.result is None else facts.result.record,
-                "current": False if facts.result is None else facts.result.current,
-                "completed": False if facts.result is None else facts.result.completed,
-                "reasons": [] if facts.result is None else list(facts.result.reasons),
-            }
+            if item.slug in exempt_items:
+                entry["result"] = {
+                    "required": False,
+                    "record": None,
+                    "current": False,
+                    "completed": False,
+                    "reasons": [],
+                }
+            else:
+                summary = summaries_by_item.get(item.slug)
+                if summary is None:
+                    entry["result"] = {
+                        "required": True,
+                        "record": None,
+                        "current": False,
+                        "completed": False,
+                        "reasons": [
+                            f"no producer result has been recorded for {item.slug!r}"
+                        ],
+                    }
+                else:
+                    valid = bool(summary.get("valid", False))
+                    outcome = summary.get("outcome")
+                    completed = valid and outcome == "completed"
+                    reasons: list[str] = []
+                    if not valid:
+                        reasons.append(
+                            str(summary.get("problem") or "result record payload is invalid")
+                        )
+                    elif not completed:
+                        reasons.append(
+                            f"newest result outcome is {outcome!r}, not 'completed'"
+                        )
+                    entry["result"] = {
+                        "required": True,
+                        "record": summary.get("record_id"),
+                        "current": valid,
+                        "completed": completed,
+                        "reasons": reasons,
+                    }
         queue.append(entry)
     return {
         "status": "ok",
@@ -93,6 +131,47 @@ def _next(context: Any) -> dict[str, Any]:
         "focus": view.focus.as_dict(),
         "scope": view.scope,
     }
+
+
+def _batched_historical_exempt(context: Any, slugs: list[str]) -> set[str]:
+    """Check historical adoption exemptions using only indexed SQL rows (no disk reads)."""
+    if not slugs:
+        return set()
+    pack_name = getattr(context.pack, "name", None)
+    if not isinstance(pack_name, str) or not pack_name:
+        return set()
+    activated = query.result_activated_workflows(context.index, pack_name)
+    if not activated:
+        return set()
+    exempt: set[str] = set()
+    for start in range(0, len(slugs), 200):
+        chunk = slugs[start : start + 200]
+        marks = ",".join("?" for _ in chunk)
+        rows = context.index.conn.execute(
+            "SELECT slug, workflow, category, digest FROM docs "
+            f"WHERE slug IN ({marks}) AND primitive = 'item' AND broken = 0",
+            chunk,
+        ).fetchall()
+        done_by_slug: dict[str, tuple[str, str | None]] = {}
+        for slug, workflow, category, digest in rows:
+            wf = workflow or "default"
+            if category == "done" and wf in activated and isinstance(digest, str):
+                done_by_slug[slug] = (wf, digest)
+        if not done_by_slug:
+            continue
+        adoptions = context.index.conn.execute(
+            "SELECT item, workflow, item_digest FROM result_adoptions "
+            f"WHERE pack = ? AND item IN ({','.join('?' for _ in done_by_slug)}) "
+            "ORDER BY at ASC, record_id ASC",
+            [pack_name, *done_by_slug],
+        ).fetchall()
+        adopted_digest: dict[tuple[str, str], str] = {}
+        for item_slug, wf, item_digest in adoptions:
+            adopted_digest.setdefault((item_slug, wf), item_digest)
+        for slug, (wf, digest) in done_by_slug.items():
+            if adopted_digest.get((slug, wf)) == digest:
+                exempt.add(slug)
+    return exempt
 
 
 def _scope_items(context: Any) -> list[dict[str, Any]]:

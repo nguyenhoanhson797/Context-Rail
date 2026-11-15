@@ -11,7 +11,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from context_rail.context import code_area, recipes, results as result_context_mod, surface
+from context_rail.context import code_area, recipes, surface
+from context_rail.context import results as result_context_mod
 from context_rail.context.budget import item_budget
 from context_rail.context.role_brief import acting, render_role, role_guide
 from context_rail.context.seat_brief import seat_brief_for
@@ -75,7 +76,6 @@ _TRIM_ORDER = (
     "recording",
     "objective",
 )
-_PINNED_LINE_PREFIXES = ("result:", "binding:", "latest review:", "read:")
 _WORKER_METHODS = (
     "find",
     "show",
@@ -259,52 +259,59 @@ def _fit(sections: Mapping[str, str], budget: int) -> tuple[dict[str, str], dict
         if over <= 0:
             break
         text = fitted.get(name)
-        if text is None or len(text) <= floor:
+        if text is None:
             continue
         if name == "result":
             trimmed_result = _trim_result_section(text, over, floor)
             if trimmed_result is not None and len(trimmed_result) < len(text):
                 omitted[name] = len(text) - len(trimmed_result)
                 fitted[name] = trimmed_result
-                continue
+            continue
+        if len(text) <= floor:
+            continue
         keep = max(floor, len(text) - over - 1)
         fitted[name] = text[:keep].rstrip() + "…"
         omitted[name] = len(text) - keep
     order = [name for name in _TRIM_ORDER if name in fitted]
     while size() > budget and order:
         name = order.pop(0)
-        if name == "result" and any(size() > budget for _ in (1,)) and len(order) > 0:
+        if name == "result" and len(order) > 0:
             # Prefer dropping non-pinned sections before dropping the visible result identity/pointer.
             non_result = [candidate for candidate in order if candidate != "result"]
             if non_result:
                 order.remove(non_result[0])
                 order.insert(0, "result")
                 name = non_result[0]
+        if name == "result":
+            pointer = next(
+                (
+                    line
+                    for line in fitted["result"].splitlines()
+                    if line.startswith("result:")
+                ),
+                "",
+            )
+            if pointer and len(pointer) + 12 <= budget:
+                fitted["result"] = pointer
+                omitted["result"] = max(
+                    omitted.get("result", 0), len(sections["result"]) - len(pointer)
+                )
+                if size() <= budget:
+                    break
         del fitted[name]
         omitted[name] = len(sections[name])
-    if size() > budget and "result" in fitted:
-        # Last-resort fit inside tiny caller budgets while keeping the primary pointer line intact.
-        lines = fitted["result"].splitlines()
-        pointer = next((line for line in lines if line.startswith("result:")), "")
-        if pointer and len(pointer) + 12 <= budget:
-            for other in list(fitted):
-                if other != "result":
-                    omitted[other] = len(sections[other])
-                    del fitted[other]
-            if pointer != fitted["result"]:
-                omitted["result"] = max(omitted.get("result", 0), len(sections["result"]) - len(pointer))
-                fitted["result"] = pointer
     return fitted, omitted
 
 
 def _trim_result_section(text: str, over: int, floor: int) -> str | None:
     """Clip result body prose while preserving exact identity and read-pointer lines."""
     lines = text.splitlines()
-    pinned = [line for line in lines if line.startswith(_PINNED_LINE_PREFIXES)]
+    pinned_prefixes = result_context_mod.PINNED_RESULT_PREFIXES
+    pinned = [line for line in lines if line.startswith(pinned_prefixes)]
     if not pinned:
         return None
     pinned_block = "\n".join(pinned)
-    prose_lines = [line for line in lines if not line.startswith(_PINNED_LINE_PREFIXES)]
+    prose_lines = [line for line in lines if not line.startswith(pinned_prefixes)]
     prose = "\n".join(prose_lines).strip()
     if not prose:
         return pinned_block if len(pinned_block) < len(text) else None

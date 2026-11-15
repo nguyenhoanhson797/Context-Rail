@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from context_rail.model.compiler import CompiledArtifact, CompiledResults
 
 __all__ = [
+    "PINNED_RESULT_PREFIXES",
     "RESULT_BODY_BRIEF_CHARS",
     "RESULT_HISTORY_LIMIT",
     "RESULT_SUMMARY_LIMIT",
@@ -36,6 +37,7 @@ __all__ = [
     "result_summaries",
 ]
 
+PINNED_RESULT_PREFIXES = ("result:", "binding:", "latest review:")
 RESULT_BODY_BRIEF_CHARS = 4000
 RESULT_HISTORY_LIMIT = 5
 RESULT_SUMMARY_LIMIT = 20
@@ -63,9 +65,8 @@ def result_in_reach(
     item: str,
     *,
     result_path: str | None = None,
-    result_preset: str | None = None,
 ) -> bool:
-    """Result visibility follows the item's reach plus any result path restrictions."""
+    """Result visibility follows item reach plus any explicit ``records/`` path restrictions."""
     if not item_in_reach(ctx, item):
         return False
     reach = getattr(ctx, "reach", None)
@@ -73,20 +74,14 @@ def result_in_reach(
         return True
     if result_path is None:
         return True
-    if reach.read_prefixes:
-        # When explicit path prefixes are active, ensure item-readable seats are not
-        # restricted by unrelated non-result prefixes unless path explicitly targets records.
-        from context_rail.kernel.reach import under_prefix
-
-        if any(under_prefix(prefix, result_path) for prefix in reach.read_prefixes):
-            return True
-        if any(prefix.startswith("records/") for prefix in reach.read_prefixes):
-            return False
-    if result_preset is not None and reach.read_presets:
-        # Global preset reach for artifact presets never overrides item reach (checked above),
-        # and lack of artifact preset in read_presets does not hide an in-reach item's result.
+    record_prefixes = tuple(
+        prefix for prefix in reach.read_prefixes if prefix.startswith("records/")
+    )
+    if not record_prefixes:
         return True
-    return True
+    from context_rail.kernel.reach import under_prefix
+
+    return any(under_prefix(prefix, result_path) for prefix in record_prefixes)
 
 
 def compiled_results_for_item(
@@ -151,16 +146,20 @@ def result_context(
         }
 
     contract_enabled = compiled is not None
-    history_rows = query.results_for_item(
-        ctx.index, item, limit=max(1, min(history_limit + 1, 100))
-    )
+    all_rows = query.results_for_item(ctx.index, item, limit=100)
     total_count = query.result_count(ctx.index, item)
-    visible_history = [
-        _summary_from_row(row)
-        for row in history_rows[:history_limit]
+    reachable_rows = [
+        row
+        for row in all_rows
         if result_in_reach(ctx, item, result_path=row.get("path"))
     ]
-    history_omitted = max(total_count - len(visible_history), 0)
+    visible_history = [
+        _summary_from_row(row) for row in reachable_rows[:history_limit]
+    ]
+    if total_count > len(all_rows) and len(reachable_rows) == len(all_rows):
+        history_omitted = max(total_count - len(visible_history), 0)
+    else:
+        history_omitted = max(len(reachable_rows) - len(visible_history), 0)
 
     if contract_enabled:
         selection = select_result(
@@ -175,7 +174,7 @@ def result_context(
         completed = selection.completed
         reasons = selection.reasons
     else:
-        sel_row = history_rows[0] if history_rows else None
+        sel_row = reachable_rows[0] if reachable_rows else None
         binding = None
         current = sel_row is not None and bool(sel_row.get("valid", False))
         completed = current and sel_row.get("outcome") == "completed"
@@ -198,7 +197,7 @@ def result_context(
             "body_omitted_chars": 0,
             "body_clipped": False,
             "history": [],
-            "history_omitted": total_count,
+            "history_omitted": 0,
             "omitted_outside_reach": 1,
         }
 
