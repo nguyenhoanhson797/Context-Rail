@@ -481,6 +481,17 @@ def _resolve_artifact_placement(
             "VALIDATION_FAILED",
             f"presets.{preset_name} placement {raw!r} must include {{id}} for record artifacts",
         )
+    disallowed = tuple(
+        token.raw
+        for token in used
+        if token.kind in {"slug", "item", "part_of", "verifies"}
+    )
+    if disallowed:
+        raise ModelError(
+            "VALIDATION_FAILED",
+            f"presets.{preset_name} placement {raw!r} uses disallowed token(s) for record artifacts: "
+            + ", ".join(f"{{{name}}}" for name in disallowed),
+        )
     first = raw.split("/", 1)[0]
     if first != "records":
         raise ModelError(

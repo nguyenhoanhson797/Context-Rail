@@ -483,6 +483,11 @@ def test_compile_results_refuses_bad_and_missing_placements(tmp_path: Path) -> N
         "records/" + ("x" * 78) + "_{id}/{id}.md",
         "records/{slug}.md",
         "records/{about.slug}/{slug}.md",
+        "records/findings/{id}-{slug}.md",
+        "records/findings/{id}-{title}.md",
+        "records/findings/{item.slug}/{id}.md",
+        "records/findings/{part_of.slug}/{id}.md",
+        "records/findings/{verifies.slug}/{id}.md",
     ],
 )
 def test_compile_results_refuses_unsafe_tokenized_or_non_record_placements(
