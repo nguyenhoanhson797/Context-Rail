@@ -203,6 +203,18 @@ def test_public_docs_and_skills_document_result_records_and_limits() -> None:
     assert "rail loop brief|candidate|result|review|report" in agents_md
     assert "never launches an agent" in agents_md
 
+    # Engine-graph HTML guide includes loop result in #loop and matches len(TOOLS).
+    from context_rail.gateway.tools import TOOLS
+
+    engine_graph = _read("docs/context-rail-v3-engine-graph.html")
+    loop_start = engine_graph.index('<section class="section" id="loop">')
+    loop_end = engine_graph.index("</section>", loop_start)
+    loop_section = engine_graph[loop_start:loop_end]
+    assert "loop result" in loop_section
+    assert "research/discovery" in loop_section.lower()
+    assert f"{len(TOOLS)} tools" in engine_graph
+    assert f"{len(TOOLS)}-tool tuple" in engine_graph
+
     # Every public skill keeps valid frontmatter with description <= 1024 chars.
     for path in sorted((_ROOT / "skills").rglob("SKILL.md")):
         raw = path.read_text(encoding="utf-8")

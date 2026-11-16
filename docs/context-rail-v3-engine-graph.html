@@ -1112,6 +1112,20 @@
           <div class="mcell cat-blocked"><span class="status-chip">blocked</span></div>
           <div class="mcell cat-done"><span class="status-chip">done</span></div>
           <div class="mcell cat-dropped"><span class="status-chip">dropped</span></div>
+
+          <div class="mcell mrow">video</div>
+          <div class="mcell cat-not_started"><span class="status-chip">draft</span><span class="status-chip">ready</span></div>
+          <div class="mcell cat-active"><span class="status-chip">storyboard</span><span class="status-chip">generating</span><span class="status-chip">doing</span><span class="status-chip">review</span></div>
+          <div class="mcell cat-blocked"><span class="status-chip">blocked</span></div>
+          <div class="mcell cat-done"><span class="status-chip">approved</span><span class="status-chip">published</span><span class="status-chip">done</span></div>
+          <div class="mcell cat-dropped"><span class="status-chip">dropped</span></div>
+
+          <div class="mcell mrow">portfolio</div>
+          <div class="mcell cat-not_started"><span class="status-chip">proposed</span><span class="status-chip">intake</span><span class="status-chip">planned</span></div>
+          <div class="mcell cat-active"><span class="status-chip">running</span><span class="status-chip">delegated</span><span class="status-chip">integrating</span><span class="status-chip">releasing</span></div>
+          <div class="mcell cat-blocked"><span class="status-chip">blocked</span></div>
+          <div class="mcell cat-done"><span class="status-chip">verified</span><span class="status-chip">released</span><span class="status-chip">retired</span></div>
+          <div class="mcell cat-dropped"><span class="status-chip">dropped</span></div>
         </div>
       </div>
 
@@ -1182,20 +1196,21 @@
       <div class="section-head">
         <div>
           <p class="kicker">06 · the agent loop</p>
-          <h2>Six steps, one record loop.</h2>
+          <h2>One record loop, two recording paths.</h2>
         </div>
         <p class="section-lede">
-          <b>Brief → work → candidate → check → review → move.</b> The rail never launches an agent.
-          Any coding tool does the work in its own way, with its own sub-agents, and the rail holds
-          the work order, the proof and the record. Everything between runs inside the charter's
-          rights, gates and budgets.
+          <b>Research/discovery:</b> <code>brief → work → result → check → review → move</code>.
+          <b>Code:</b> <code>brief → work → candidate → result --commit → check → review → move</code>.
+          The rail never launches an agent. Any coding tool does the work in its own way, with its
+          own sub-agents, and the rail holds the work order, the Markdown result, the proof and the
+          record inside the charter's rights, gates and budgets.
         </p>
       </div>
 
       <div class="card loop-graph">
         <svg viewBox="0 0 1120 560" role="img" aria-labelledby="loop-title loop-desc">
-          <title id="loop-title">The six-step record loop</title>
-          <desc id="loop-desc">Brief, work in your own tool, record the candidate, run the checks, review the candidate and move the item form a continuous loop. Brief is a read surface; check, review and move are gated on fresh proof.</desc>
+          <title id="loop-title">The agent record loop with loop result</title>
+          <desc id="loop-desc">Brief, work in your own tool, record a candidate commit for code work and a Markdown result with rail loop result (commitless for research/discovery, or with --commit for code), run the checks, review the result or commit and move the item form a continuous loop. Brief is a read surface; check, review and move are gated on fresh proof.</desc>
           <defs>
             <marker id="arrowLoop" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
               <path d="M0 0 L10 4 L0 8 z" fill="#64748b"/>
@@ -1211,11 +1226,11 @@
           <path class="loop-edge" d="M387 351 C365 315 365 245 387 209"/>
           <path class="loop-edge" d="M467 172 C486 152 490 132 500 109"/>
 
-          <text class="loop-center-title" x="560" y="242" text-anchor="middle">one loop</text>
-          <text class="loop-center-sub" x="560" y="268" text-anchor="middle">brief → work → candidate</text>
-          <text class="loop-center-sub" x="560" y="286" text-anchor="middle">check → review → move</text>
-          <text class="loop-center-small" x="560" y="310" text-anchor="middle">the rail keeps the order,</text>
-          <text class="loop-center-small" x="560" y="326" text-anchor="middle">the proof and the record</text>
+          <text class="loop-center-title" x="560" y="236" text-anchor="middle">one loop</text>
+          <text class="loop-center-sub" x="560" y="262" text-anchor="middle">research: brief → work → result → check → review → move</text>
+          <text class="loop-center-sub" x="560" y="280" text-anchor="middle">code: brief → work → candidate → result --commit → check → review → move</text>
+          <text class="loop-center-small" x="560" y="306" text-anchor="middle">the rail keeps the order,</text>
+          <text class="loop-center-small" x="560" y="322" text-anchor="middle">the result, the proof and the record</text>
 
           <g class="node step--read" aria-label="Brief">
             <rect x="480" y="51" width="160" height="58" rx="14"/>
@@ -1227,10 +1242,10 @@
             <text class="step-title" x="733" y="175" text-anchor="middle"><tspan class="step-no">02 </tspan>Work</text>
             <text class="step-sub" x="733" y="194" text-anchor="middle">your tool, own agents</text>
           </g>
-          <g class="node step--report" aria-label="Record the candidate">
-            <rect x="653" y="351" width="160" height="58" rx="14"/>
-            <text class="step-title" x="733" y="375" text-anchor="middle"><tspan class="step-no">03 </tspan>Candidate</text>
-            <text class="step-sub" x="733" y="394" text-anchor="middle">one commit, recorded</text>
+          <g class="node step--report" aria-label="Record candidate or result">
+            <rect x="643" y="351" width="180" height="58" rx="14"/>
+            <text class="step-title" x="733" y="375" text-anchor="middle"><tspan class="step-no">03 </tspan>Candidate / Result</text>
+            <text class="step-sub" x="733" y="394" text-anchor="middle">loop result [candidate]</text>
           </g>
           <g class="node step--gate" aria-label="Check">
             <rect x="480" y="451" width="160" height="58" rx="14"/>
@@ -1261,19 +1276,20 @@
         <table class="loop-table">
           <thead><tr><th>Step</th><th>Command</th><th>What it gives you</th></tr></thead>
           <tbody>
-            <tr><td class="rel-name">01 Brief</td><td><code>rail loop brief &lt;item&gt; --role implementer</code></td><td>The work order: objective, selected scope, conventions, constraints, selected files, checks, allowed rail methods, code area and the workflow breadcrumb. Read only; <code>--max_chars N</code> takes 100 to 32000.</td></tr>
+            <tr><td class="rel-name">01 Brief</td><td><code>rail loop brief &lt;item&gt; --role implementer</code></td><td>The work order: objective, selected scope, conventions, constraints, selected files, checks, allowed rail methods, code area, workflow breadcrumb and declared result contract. Read only; <code>--max_chars N</code> takes 100 to 32000.</td></tr>
             <tr><td class="rel-name">02 Work</td><td><em>any coding tool</em></td><td>The agent works in its own checkout with its own sub-agents. The engine has no process executor, so the rail starts nothing and watches nothing.</td></tr>
-            <tr><td class="rel-name">03 Candidate</td><td><code>rail loop candidate &lt;item&gt; --commit &lt;sha&gt;</code></td><td>An immutable Record of the commit that will be judged, with its base, profile and free-text model, harness, usage and duration.</td></tr>
+            <tr><td class="rel-name">03a Candidate (code)</td><td><code>rail loop candidate &lt;item&gt; --commit &lt;sha&gt;</code></td><td>For code work: an immutable Record of the commit that will be judged, with its base, profile and free-text model, harness, usage and duration.</td></tr>
+            <tr><td class="rel-name">03b Result</td><td><code>rail loop result &lt;item&gt; --body-file &lt;file&gt; [--commit &lt;sha&gt;]</code></td><td>Workflow-shaped Markdown result artifact (<code>--commit</code> omitted for commitless research/discovery; bound to the candidate SHA for code).</td></tr>
             <tr><td class="rel-name">04 Check</td><td><code>rail check declare</code> · <code>rail check run &lt;check-or-item&gt;</code></td><td>The proof. A pass is <code>fresh</code> only while its definition and inputs still match; <code>stale</code> is not a pass, and <code>missing</code> and <code>unknown</code> stay distinct.</td></tr>
-            <tr><td class="rel-name">05 Review</td><td><code>rail loop review &lt;item&gt; --commit &lt;sha&gt; --verdict approve|reject</code></td><td>A different actor judges one commit. The done gate prefers the item's latest candidate, so a review of an older commit is stale.</td></tr>
-            <tr><td class="rel-name">06 Move</td><td><code>rail change move &lt;item&gt; &lt;status&gt;</code></td><td>The gate reads the latest candidate and its review. <code>rail loop report</code> and <code>rail loop triage</code> feed the human view, and <code>rail read digest</code> summarises.</td></tr>
+            <tr><td class="rel-name">05 Review</td><td><code>rail loop review &lt;item&gt; [--commit &lt;sha&gt;] [--result &lt;id&gt;] --verdict approve|reject --notes-file &lt;file&gt;</code></td><td>A different actor judges the current result or candidate commit. The done gate prefers the item's latest candidate and current result, so an older review is stale.</td></tr>
+            <tr><td class="rel-name">06 Move</td><td><code>rail change move &lt;item&gt; &lt;status&gt;</code></td><td>The gate reads the latest candidate, current completed result and review. <code>rail loop report</code> and <code>rail loop triage</code> feed the human view, and <code>rail read digest</code> summarises.</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="branch">
-        <article class="card"><h3>A review of older work is stale</h3><p>The gate binds its proofs to the item's latest recorded candidate, so an approval cannot outlive the commit it judged. Record a newer candidate and the earlier verdict simply stops counting, with nothing to clean up.</p></article>
-        <article class="card"><h3>A failed attempt is reported, not repeated</h3><p>The rail holds no automatic second try and no escalation ladder. The agent tries again in its own tool, or a human reads the report: the candidate, its usage and its evidence stay in the store either way.</p></article>
+        <article class="card"><h3>A review of older work is stale</h3><p>The gate binds its proofs to the item's latest recorded candidate and current result, so an approval cannot outlive the work it judged. Record a newer candidate or result and the earlier verdict simply stops counting, with nothing to clean up.</p></article>
+        <article class="card"><h3>A failed attempt is reported, not repeated</h3><p>The rail holds no automatic second try and no escalation ladder. The agent tries again in its own tool, or a human reads the report: the candidate, its result, its usage and its evidence stay in the store either way.</p></article>
       </div>
     </div>
   </section>
@@ -1383,18 +1399,19 @@ rail overview</code></pre>
         <article class="step cto">
           <div class="dot">10</div>
           <div class="body card">
-            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Record the candidate</h3></div>
-            <pre class="cmd"><code>rail loop candidate write-the-write-path --commit &lt;sha&gt; --key day-1-b</code></pre>
-            <p>An immutable Record of the commit that will be judged, with its base, profile and free-text harness, model, usage and duration. The agent made it in its own tool; the rail only records it.</p>
+            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Record the candidate and result</h3></div>
+            <pre class="cmd"><code>rail loop candidate write-the-write-path --commit &lt;sha&gt; --key day-1-b
+rail loop result write-the-write-path --body-file result.md --commit &lt;sha&gt; --key day-1-r</code></pre>
+            <p>For code work, record the commit with <code>loop candidate</code> and then record the Markdown result bound to that commit (for commitless research/discovery, omit <code>--commit</code>). The agent did the work in its own tool; the rail only records it.</p>
           </div>
         </article>
 
         <article class="step cto">
           <div class="dot">11</div>
           <div class="body card">
-            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Review the candidate</h3></div>
-            <pre class="cmd"><code>rail loop review write-the-write-path --commit &lt;sha&gt; --verdict approve --key day-1-c</code></pre>
-            <p>Must be a different actor from the implementer; the charter may also require a different model. The verdict binds to one commit, and the done gate prefers the item's latest candidate.</p>
+            <div class="body-head"><span class="badge badge--cto">CTO</span><h3>Review the result</h3></div>
+            <pre class="cmd"><code>rail loop review write-the-write-path --commit &lt;sha&gt; --verdict approve --notes-file review.md --key day-1-c</code></pre>
+            <p>Must be a different actor from the implementer; the charter may also require a different model. The verdict binds to the current result (and commit when applicable), and the done gate prefers the item's latest candidate and current result.</p>
           </div>
         </article>
 

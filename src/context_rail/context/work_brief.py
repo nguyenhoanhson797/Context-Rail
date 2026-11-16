@@ -143,7 +143,13 @@ def build_work_brief(
         "workflow": _workflow(ctx, item),
         "selected scope": ", ".join(_parents(ctx, item)) or "(none)",
         "conventions": _conventions(reviewing),
-        "constraints": _constraints(ctx, item, pack_role, reviewing),
+        "constraints": _constraints(
+            ctx,
+            item,
+            pack_role,
+            reviewing,
+            result_required=compiled_results is not None,
+        ),
         "selected files": _selected_files(globs, candidate, reviewing),
         "checks": _check_lines(checks),
         "allowed rail methods": _methods(pack_role, guide.profile),
@@ -363,7 +369,12 @@ def _conventions(reviewing: bool) -> str:
 
 
 def _constraints(
-    ctx: Context, item: str, role: Role | None, reviewing: bool
+    ctx: Context,
+    item: str,
+    role: Role | None,
+    reviewing: bool,
+    *,
+    result_required: bool = False,
 ) -> str:
     lines: list[str] = []
     state = item_budget(ctx.index, ctx.policy, item)
@@ -389,21 +400,25 @@ def _constraints(
             lines.append(f"Workspace: {role.workspace}.")
     policy = ctx.policy
     if policy is not None and policy.gates:
-        needed = _gate_needs(policy)
+        needed = _gate_needs(policy, result_required=result_required)
         if needed:
             lines.append("Done needs: " + ", ".join(needed) + ".")
     return "\n".join(lines) or "(none)"
 
 
-def _gate_needs(policy: Any) -> list[str]:
+def _gate_needs(policy: Any, *, result_required: bool = False) -> list[str]:
     needed: list[str] = []
     gate = policy.gates.get("item_done")
     if gate is None:
         return needed
     if getattr(gate, "require_checks", False):
         needed.append("passing Checks")
+    if result_required:
+        needed.append("a current completed result")
     if getattr(gate, "require_review", False):
-        needed.append("a separated review of the final commit")
+        needed.append(
+            "a separated review" if result_required else "a separated review of the final commit"
+        )
     if getattr(gate, "require_human", False):
         needed.append("a human sign-off")
     return needed

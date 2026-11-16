@@ -83,6 +83,7 @@ def test_brief_names_the_checks_and_the_objective(leaf_item: SimpleNamespace) ->
 
     assert leaf_item.slug in value["sections"]["objective"] or value["sections"]["objective"]
     assert value["sections"]["checks"] != "(none declared)"
+    assert "a current completed result" in value["sections"]["constraints"]
 
 
 def test_reviewer_brief_carries_the_diff_of_the_latest_candidate(
