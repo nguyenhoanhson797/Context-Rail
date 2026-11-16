@@ -290,7 +290,7 @@ def resolve_focus(
     model: ProjectModel,
     *,
     into: str | None = None,
-    preset_rows: dict[str, list[ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[ItemRow]] | None = None,
 ) -> FocusResolution:
     """Resolve the focus, refusing an ambiguity instead of picking one."""
     policy = model.operating.focus
@@ -362,26 +362,23 @@ def resolve_hierarchy(
     ctx: Context,
     model: ProjectModel,
     *,
-    preset_rows: dict[str, list[ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[ItemRow]] | None = None,
 ) -> tuple[Group, ...]:
     """Every declared hierarchy level, its containers and their order key."""
     groups: list[Group] = []
     reach = ctx.reach
     for level in model.operating.hierarchy:
-        with_seq = level.order is None
-        rows = _rows(ctx, (level.preset,), with_seq=with_seq)
-        rows.sort(key=lambda row: _order_key(row, level.order))
-        if preset_rows is not None:
-            preset_rows[level.preset] = rows
+        rows = _cached_rows(ctx, level.preset, with_seq=True, preset_rows=preset_rows)
+        ordered = sorted(rows, key=lambda row: _order_key(row, level.order))
         outside = 0
         if reach is not None and not reach.read_all:
-            outside = _count(ctx, (level.preset,)) - len(rows)
+            outside = _count(ctx, (level.preset,)) - len(ordered)
         groups.append(
             Group(
                 preset=level.preset,
                 label=label(model, level.preset, plural=True),
                 order=level.order,
-                items=tuple(rows),
+                items=tuple(ordered),
                 outside_reach=outside,
             )
         )
@@ -399,7 +396,7 @@ def resolve_queue(
     all_items: Sequence[Any] | None = None,
     held_map: Mapping[str, str] | None = None,
     parents: dict[str, tuple[str, ...]] | None = None,
-    preset_rows: dict[str, list[ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[ItemRow]] | None = None,
 ) -> QueueView:
     """The operating queue: presets, eligibility, focus priority, stable order."""
     focus = resolve_focus(ctx, model, into=into, preset_rows=preset_rows)
@@ -411,16 +408,10 @@ def resolve_queue(
             for preset in sorted(ctx.pack.presets)
             if ctx.pack.presets[preset].primitive == "item"
         )
-    if (
-        preset_rows is not None
-        and len(presets) == 1
-        and presets[0] in preset_rows
-    ):
-        rows = preset_rows[presets[0]]
+    if len(presets) == 1:
+        rows = _cached_rows(ctx, presets[0], with_seq=False, preset_rows=preset_rows)
     else:
         rows = _rows(ctx, presets, with_seq=False)
-        if preset_rows is not None and len(presets) == 1:
-            preset_rows[presets[0]] = rows
     if parents is None:
         parents = _parents(ctx)
     grouped = _group_order(ctx, model, preset_rows=preset_rows)
@@ -597,20 +588,16 @@ def resolve_progress(
     group: str | None = None,
     *,
     parents: dict[str, tuple[str, ...]] | None = None,
-    preset_rows: dict[str, list[ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[ItemRow]] | None = None,
 ) -> ProgressView:
     """Workflow progress over ``progress.of``, grouped along the hierarchy."""
     policy = model.operating.progress
-    if (
-        preset_rows is not None
-        and len(policy.of) == 1
-        and policy.of[0] in preset_rows
-    ):
-        rows = preset_rows[policy.of[0]]
+    if len(policy.of) == 1:
+        rows = _cached_rows(
+            ctx, policy.of[0], with_seq=False, preset_rows=preset_rows
+        )
     else:
         rows = _rows(ctx, policy.of, with_seq=False)
-        if preset_rows is not None and len(policy.of) == 1:
-            preset_rows[policy.of[0]] = rows
     counts: dict[str, int] = {}
     complete = 0
     complete_cache: dict[tuple[str, str], bool] = {}
@@ -626,14 +613,11 @@ def resolve_progress(
     group_preset = group or policy.group
     children: list[dict[str, Any]] = []
     if group_preset is not None:
-        if preset_rows is not None and group_preset in preset_rows:
-            containers = preset_rows[group_preset]
-        else:
-            order_field = _group_order_field(model, group_preset)
-            containers = _rows(ctx, (group_preset,), with_seq=order_field is None)
-            containers.sort(key=lambda row: _order_key(row, order_field))
-            if preset_rows is not None:
-                preset_rows[group_preset] = containers
+        order_field = _group_order_field(model, group_preset)
+        containers = sorted(
+            _cached_rows(ctx, group_preset, with_seq=True, preset_rows=preset_rows),
+            key=lambda row: _order_key(row, order_field),
+        )
         if parents is None:
             parents = _parents(ctx)
         members: dict[str, list[ItemRow]] = {row.slug: [] for row in containers}
@@ -718,15 +702,12 @@ def _candidates(
     ctx: Context,
     model: ProjectModel,
     *,
-    preset_rows: dict[str, list[ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[ItemRow]] | None = None,
 ) -> list[ItemRow]:
     policy = model.operating.focus
     if policy is None:
         return []
-    if preset_rows is not None and policy.preset in preset_rows:
-        rows = preset_rows[policy.preset]
-    else:
-        rows = _rows(ctx, (policy.preset,), with_seq=policy.order is None)
+    rows = _cached_rows(ctx, policy.preset, with_seq=True, preset_rows=preset_rows)
     return sorted(
         (row for row in rows if row.category == policy.category),
         key=lambda row: _order_key(row, policy.order),
@@ -737,24 +718,41 @@ def _group_order(
     ctx: Context,
     model: ProjectModel,
     *,
-    preset_rows: dict[str, list[ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[ItemRow]] | None = None,
 ) -> dict[str, int]:
     order: dict[str, int] = {}
     position = 0
     for level in model.operating.hierarchy:
-        if preset_rows is not None and level.preset in preset_rows:
-            rows = preset_rows[level.preset]
-        else:
-            rows = sorted(
-                _rows(ctx, (level.preset,), with_seq=level.order is None),
-                key=lambda item: _order_key(item, level.order),
-            )
-            if preset_rows is not None:
-                preset_rows[level.preset] = rows
+        rows = sorted(
+            _cached_rows(ctx, level.preset, with_seq=True, preset_rows=preset_rows),
+            key=lambda item: _order_key(item, level.order),
+        )
         for row in rows:
             order[row.slug] = position
             position += 1
     return order
+
+
+def _cached_rows(
+    ctx: Context,
+    preset: str,
+    *,
+    with_seq: bool,
+    preset_rows: dict[tuple[str, bool], list[ItemRow]] | None,
+) -> list[ItemRow]:
+    if preset_rows is None:
+        return _rows(ctx, (preset,), with_seq=with_seq)
+    key = (preset, with_seq)
+    cached = preset_rows.get(key)
+    if cached is not None:
+        return cached
+    if not with_seq:
+        with_seq_rows = preset_rows.get((preset, True))
+        if with_seq_rows is not None:
+            return with_seq_rows
+    rows = _rows(ctx, (preset,), with_seq=with_seq)
+    preset_rows[key] = rows
+    return rows
 
 
 def _group_order_field(model: ProjectModel, preset: str) -> str | None:
@@ -801,9 +799,11 @@ def _ancestors(slug: str, parents: dict[str, tuple[str, ...]]) -> list[str]:
         return []
     found: set[str] = set()
     ordered: list[str] = []
+    for nxt in direct:
+        if nxt not in found:
+            found.add(nxt)
+            ordered.append(nxt)
     idx = 0
-    ordered.extend(direct)
-    found.update(direct)
     while idx < len(ordered):
         current = ordered[idx]
         idx += 1

@@ -228,7 +228,7 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     ]
     model = ctx.model
     unit = operating.resolve_unit(ctx, model)
-    preset_rows: dict[str, list[operating.ItemRow]] = {}
+    preset_rows: dict[tuple[str, bool], list[operating.ItemRow]] = {}
     parents = operating._parents(ctx)
     groups, groups_omitted = _groups(ctx, model, preset_rows=preset_rows)
     focus = _focus(ctx, model, preset_rows=preset_rows)
@@ -284,7 +284,7 @@ def _focus(
     ctx: Context,
     model: Any,
     *,
-    preset_rows: dict[str, list[operating.ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[operating.ItemRow]] | None = None,
 ) -> dict[str, Any]:
     try:
         return operating.resolve_focus(ctx, model, preset_rows=preset_rows).as_dict()
@@ -305,7 +305,7 @@ def _queue(
     all_items: Any = None,
     held_map: Any = None,
     parents: Any = None,
-    preset_rows: dict[str, list[operating.ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[operating.ItemRow]] | None = None,
 ) -> dict[str, Any]:
     try:
         view = operating.resolve_queue(
@@ -337,7 +337,7 @@ def _groups(
     ctx: Context,
     model: Any,
     *,
-    preset_rows: dict[str, list[operating.ItemRow]] | None = None,
+    preset_rows: dict[tuple[str, bool], list[operating.ItemRow]] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     groups = operating.resolve_hierarchy(ctx, model, preset_rows=preset_rows)
     shown: list[dict[str, Any]] = []

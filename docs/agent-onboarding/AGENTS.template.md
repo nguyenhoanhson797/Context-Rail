@@ -178,7 +178,7 @@ rail serve daemon --stop        # the CLI starts its warm daemon itself; this en
 ```
 
 MCP keeps the canonical tool names (`status`, `next`, `show`, `add`, `move`,
-`candidate`, `review`, `brief`, …), not the grouped CLI aliases. The serving actor
+`candidate`, `result`, `review`, `brief`, …), not the grouped CLI aliases. The serving actor
 is `--actor`, then `RAIL_ACTOR`, then `cto`; launch with `--actor human` when a
 session must perform a human-only tool.
 
@@ -192,7 +192,7 @@ one is installed:
 - `context-rail-v3-workflows` — custom types, statuses, transitions, BA/PO
 - `context-rail-v3-pack-authoring` — create or change a pack
 - `context-rail-v3-surface` — work from the compiled surface only
-- `context-rail-v3-loop` — brief, candidate, review, report
+- `context-rail-v3-loop` — brief, candidate, result, review, report
 - `context-rail-v3-ops` — doctor, reindex, recover, ship
 
 If no skill is installed, `rail --help`, `rail types`, `rail model`, `rail

@@ -248,3 +248,68 @@ def test_the_unit_and_hierarchy_follow_the_pack(
         operating_waterfall_store.phase,
         operating_waterfall_store.next_phase,
     ]
+
+
+def test_containers_with_equal_order_field_preserve_creation_sequence_in_same_second(
+    tmp_path: Path,
+) -> None:
+    store = init_store(tmp_path / "video", "video")
+    # Alphabetical slugs ("alpha" < "zeta") intentionally invert creation order ("zeta" first),
+    # and the second record-id / rowid intentionally differs from alphabetical order:
+    # create "alpha" first or rewrite rowid/doc.created vs slug so rowid fallback (1, rowid)
+    # disagrees with doc.created ULID (0, record_slug) when with_seq=False!
+    first = _add(store, "scene", "Alpha", set=["sequence=1"])
+    second = _add(store, "scene", "Zeta", set=["sequence=1"])
+    first_doc = invoke("show", {"slug": first}, store=store, actor="cto")["value"]["doc"]
+    second_doc = invoke("show", {"slug": second}, store=store, actor="cto")["value"]["doc"]
+    for doc_path in (first_doc["path"], second_doc["path"]):
+        full = store / doc_path
+        text = full.read_text(encoding="utf-8")
+        lines = [
+            "created: '2026-10-28T00:00:00Z'" if line.startswith("created:") else line
+            for line in text.splitlines()
+        ]
+        full.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    # Force "zeta" to have an earlier doc.created record slug than "alpha",
+    # so true creation-sequence order is [second ("zeta"), first ("alpha")],
+    # whereas with_seq=False falls back to (1, rowid) where "alpha" < "zeta".
+    ctx_init = _context(store, "video")
+    try:
+        rows = ctx_init.index.conn.execute(
+            "SELECT r.dst, d.path FROM relations r JOIN docs d ON d.path = r.src_path "
+            "JOIN fields f ON f.path = d.path AND f.key = 'kind' "
+            "WHERE r.rel = 'about' AND f.value_json = '\"doc.created\"' AND r.dst IN (?, ?)",
+            (first, second),
+        ).fetchall()
+        rec_by_slug = dict(rows)
+    finally:
+        ctx_init.close()
+    first_rec = store / rec_by_slug[first]
+    second_rec = store / rec_by_slug[second]
+    import json
+
+    for rec_path, prefix in ((first_rec, "01ZZ"), (second_rec, "01AA")):
+        payload = json.loads(rec_path.read_text(encoding="utf-8"))
+        payload["id"] = prefix + payload["id"][4:]
+        rec_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+        rec_path.rename(rec_path.with_name(f"{payload['id']}.json"))
+    assert is_ok(invoke("reindex", {}, store=store, actor="human"))
+
+    from context_rail.context.operating import resolve_progress
+    from context_rail.model.compiler import compile_project
+
+    pack = load_pack("video", store)
+    model = compile_project(pack, pack.operating)
+    ctx = _context(store, "video")
+    preset_rows: dict[Any, list[Any]] = {}
+
+    groups = resolve_hierarchy(ctx, model, preset_rows=preset_rows)
+    progress = resolve_progress(ctx, model, preset_rows=preset_rows)
+    status = invoke("status", {}, store=store, actor="cto")
+    assert is_ok(status), status
+
+    assert [row.slug for row in groups[0].items] == [second, first]
+    assert [child["slug"] for child in progress.children] == [second, first]
+    assert [row["slug"] for row in status["value"]["groups"][0]["items"]] == [second, first]
+    assert [row["slug"] for row in status["value"]["progress"]["children"]] == [second, first]
+
