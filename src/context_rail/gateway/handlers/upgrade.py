@@ -68,7 +68,12 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         if plan is not None:
             summary["shipped"] = plan.report()
         touched = plan.touched() if plan is not None else []
-        summary["next"] = _next(ctx, [*changed, *touched])
+        needs_reapprove = bool(
+            plan is not None and (plan.placements_added or plan.repair_hints)
+        )
+        summary["next"] = _next(
+            ctx, [*changed, *touched], force_reapprove=needs_reapprove
+        )
         return summary
     if changes:
         ops = [Op(change.rel, change.after, etag(change.before)) for change in changes]
@@ -153,11 +158,13 @@ def _write_shipped(
     return plan
 
 
-def _next(ctx: Context, changed: list[str]) -> list[str]:
-    if not changed:
+def _next(
+    ctx: Context, changed: list[str], *, force_reapprove: bool = False
+) -> list[str]:
+    if not changed and not force_reapprove:
         return []
-    steps = ["rail ops adapters render"]
-    if _approval_changed(ctx):
+    steps = ["rail ops adapters render"] if changed else []
+    if force_reapprove or _approval_changed(ctx):
         steps.insert(
             0,
             "rail approve charter --confirmer <name> --confirm "

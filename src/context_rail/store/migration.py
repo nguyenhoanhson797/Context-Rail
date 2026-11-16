@@ -16,7 +16,7 @@ from context_rail.model.compiler import compile_results
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest, render_path
 from context_rail.model.placement import is_structural, tokens_used
-from context_rail.model.pack import Pack, Preset
+from context_rail.model.pack import Pack, Preset, effective_results_for
 from context_rail.model.results import (
     RESULT_ADOPTION_KIND,
     RESULT_ADOPTION_SCHEMA,
@@ -31,6 +31,7 @@ __all__ = [
     "MigrationPlan",
     "MigrationRecord",
     "migration_adoption_record",
+    "migration_needs_graph",
     "plan_migration",
 ]
 
@@ -93,6 +94,41 @@ class MigrationPlan:
     counts: dict[str, int] = field(default_factory=dict)
 
 
+def _result_artifact_presets(pack: Pack) -> frozenset[str]:
+    names: set[str] = set()
+    if pack.results is not None:
+        names.update((pack.results.produce.preset, pack.results.review.preset))
+    for wf_name in pack.workflows:
+        protocol = effective_results_for(pack, wf_name)
+        if protocol is not None:
+            names.add(protocol.produce.preset)
+            names.add(protocol.review.preset)
+    return frozenset(names)
+
+
+def migration_needs_graph(manifest: Manifest, pack: Pack) -> bool:
+    """Whether ``manifest`` requires a work graph for documents or records migration writes."""
+    if any(
+        primitive in (*_DOCUMENT_PRIMITIVES, "record")
+        and any(is_structural(token) for token in tokens_used(template))
+        for primitive, template in manifest.placement.items()
+    ):
+        return True
+    artifact_presets = _result_artifact_presets(pack)
+    for preset_name, template in manifest.preset_placement.items():
+        if preset_name in artifact_presets:
+            continue
+        if preset_name == "event" or preset_name in (f"kind:{RESULT_ADOPTION_KIND}", "kind:migration.completed"):
+            if any(is_structural(token) for token in tokens_used(template)):
+                return True
+            continue
+        preset = pack.presets.get(preset_name)
+        if preset is not None and preset.primitive in _DOCUMENT_PRIMITIVES:
+            if any(is_structural(token) for token in tokens_used(template)):
+                return True
+    return False
+
+
 def plan_migration(
     legacy: LegacyStore,
     *,
@@ -101,27 +137,12 @@ def plan_migration(
     at: str,
 ) -> MigrationPlan:
     """Map every legacy document and event into v3 bytes."""
-    for primitive, template in manifest.placement.items():
-        if primitive in _DOCUMENT_PRIMITIVES and any(
-            is_structural(token) for token in tokens_used(template)
-        ):
-            raise ModelError(
-                "VALIDATION_FAILED",
-                "migration cannot build a legacy store's work graph; "
-                "use a placement without structural tokens",
-            )
-    for preset_name, template in manifest.preset_placement.items():
-        preset = pack.presets.get(preset_name)
-        if (
-            preset is not None
-            and preset.primitive in _DOCUMENT_PRIMITIVES
-            and any(is_structural(token) for token in tokens_used(template))
-        ):
-            raise ModelError(
-                "VALIDATION_FAILED",
-                "migration cannot build a legacy store's work graph; "
-                "use a placement without structural tokens",
-            )
+    if migration_needs_graph(manifest, pack):
+        raise ModelError(
+            "VALIDATION_FAILED",
+            "migration cannot build a legacy store's work graph; "
+            "use a placement without structural tokens",
+        )
     warnings: list[str] = list(legacy.warnings)
     slugs = _slugs(legacy.documents)
     documents: list[MigrationDocument] = []

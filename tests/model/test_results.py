@@ -16,7 +16,6 @@ from context_rail.model.compiler import (
     compile_project,
     compile_results,
     load_project,
-    semantic_digest,
     semantic_payload,
 )
 from context_rail.model.errors import ModelError
@@ -41,7 +40,6 @@ from context_rail.model.results import (
 from helpers import (
     compiled_model,
     copy_pack_templates,
-    init_pack_store,
     init_result_store,
     init_store,
     nested_pack_document,
@@ -408,6 +406,13 @@ def test_compile_results_refuses_bad_and_missing_placements(tmp_path: Path) -> N
         compile_results(pack, {"placement": {"record": "records/{yyyy}-{mm}/{id}.json"}, "presets": {}})
     assert missing_err.value.code == "VALIDATION_FAILED"
     assert "upgrade" in missing_err.value.message.lower() or "repair" in missing_err.value.message.lower()
+
+    # Missing explicit preset placement must NOT fall back to a .md default placement.record
+    with pytest.raises(ModelError) as md_fallback_err:
+        compile_results(pack, {"placement": {"record": "records/{yyyy}-{mm}/{id}.md"}, "presets": {}})
+    assert md_fallback_err.value.code == "VALIDATION_FAILED"
+    assert "upgrade" in md_fallback_err.value.message.lower()
+    assert "presets.finding" in md_fallback_err.value.message
 
     # Non-Markdown placement (default JSON record fallback or .json preset)
     with pytest.raises(ModelError) as json_err:

@@ -13,7 +13,10 @@ from helpers import (
 )
 
 from context_rail.gateway.gateway import invoke
+from context_rail.model.manifest import initial_manifest
+from context_rail.model.pack import load_pack
 from context_rail.store.doc import etag
+from context_rail.store.migration import migration_needs_graph
 
 
 def _switch(store: Path, name: str, mapping: list[str], key: str | None = None) -> dict:
@@ -191,3 +194,116 @@ def test_a_status_outside_the_target_workflow_refuses(tmp_path: Path) -> None:
     assert refused["ok"] is False, refused
     assert refused["error"]["code"] == "VALIDATION_FAILED"
     assert ["workflow_status", "a-task"] in refused["error"]["details"]["problems"]
+
+
+@pytest.mark.parametrize(
+    "pack_name",
+    ["basic", "flow", "scrum", "waterfall", "video", "portfolio"],
+)
+def test_migration_succeeds_across_all_six_shipped_layouts_for_v1_and_v2(
+    pack_name: str,
+    legacy_v1_store: Path,
+    legacy_v2_store: Path,
+    tmp_path: Path,
+) -> None:
+    pack = load_pack(pack_name, tmp_path / "none")
+    manifest, _ = initial_manifest(pack_name, tmp_path / "none")
+    assert migration_needs_graph(manifest, pack) is False
+
+    for label, source in (("v1", legacy_v1_store), ("v2", legacy_v2_store)):
+        dry_dir = tmp_path / f"{pack_name}-{label}-dry"
+        dry = invoke(
+            "migrate",
+            {
+                "source": str(source),
+                "dir": str(dry_dir),
+                "pack": pack_name,
+                "dry_run": True,
+            },
+            actor="human",
+        )
+        assert dry["ok"] is True, dry
+        assert dry["value"]["pack"] == pack_name
+        assert dry["value"]["written"] == []
+        assert not dry_dir.exists()
+
+        target_dir = tmp_path / f"{pack_name}-{label}-real"
+        real = invoke(
+            "migrate",
+            {
+                "source": str(source),
+                "dir": str(target_dir),
+                "pack": pack_name,
+            },
+            actor="human",
+        )
+        assert real["ok"] is True, real
+        store = target_dir / "context-rail"
+        assert (store / "rail.yaml").is_file()
+        if label == "v2":
+            assert (store / "records/2026-01/01JLEGACYEVENT00000000001.json").is_file()
+            assert (store / "records/2026-01/01JLEGACYEVENT00000000002.json").is_file()
+        if pack_name == "portfolio":
+            from context_rail.gateway.execution import human_channel
+
+            with human_channel():
+                report = invoke("doctor", {}, store=store)
+        else:
+            report = invoke("doctor", {}, store=store, actor="human")
+        assert report["ok"] is True, report
+        codes = {issue["code"] for issue in report["value"]["issues"]}
+        assert "parse_error" not in codes
+        assert "record_tampered" not in codes
+        assert "gate_bypassed" not in codes
+
+
+def test_migration_needs_graph_refuses_structural_protocol_record_but_ignores_unused_result_artifacts(
+    tmp_path: Path,
+) -> None:
+    pack = load_pack("basic", tmp_path / "none")
+    manifest, data = initial_manifest("basic", tmp_path / "none")
+    assert migration_needs_graph(manifest, pack) is False
+
+    # Structural event placement (e.g. {kind} token, which is structural) must be refused.
+    event_data = {
+        **data,
+        "presets": {**data["presets"], "event": "records/{kind}/{id}.json"},
+    }
+    from context_rail.model.manifest import manifest_from_mapping
+
+    event_manifest = manifest_from_mapping(event_data, tmp_path / "none")
+    assert migration_needs_graph(event_manifest, pack) is True
+
+    # Structural placement.record (used by migration.completed / protocol records) must be refused.
+    rec_data = {
+        **data,
+        "placement": {**data["placement"], "record": "records/{kind}/{id}.json"},
+    }
+    rec_manifest = manifest_from_mapping(rec_data, tmp_path / "none")
+    assert migration_needs_graph(rec_manifest, pack) is True
+
+    # Structural item/note placements (both primitive and non-artifact preset) must be refused.
+    item_data = {
+        **data,
+        "placement": {**data["placement"], "item": "items/{part_of.slug}/{slug}.md"},
+    }
+    assert migration_needs_graph(manifest_from_mapping(item_data, tmp_path / "none"), pack) is True
+    note_data = {
+        **data,
+        "presets": {**data["presets"], "vision": "project/{part_of.slug}/{slug}.md"},
+    }
+    assert migration_needs_graph(manifest_from_mapping(note_data, tmp_path / "none"), pack) is True
+
+    # Unused declared result/review artifact placements with {about.slug} must NOT trigger refusal.
+    assert migration_needs_graph(manifest, pack) is False
+    # Even a custom workflow-only result preset with {about.slug} is ignored by migration.
+    wf_only = {
+        **data,
+        "presets": {
+            **data["presets"],
+            "result": "records/results/{field:workflow_name}/{about.slug}/{id}.md",
+            "review-result": "records/result-reviews/{field:workflow_name}/{about.slug}/{id}.md",
+        },
+    }
+    assert migration_needs_graph(manifest_from_mapping(wf_only, tmp_path / "none"), pack) is False
+

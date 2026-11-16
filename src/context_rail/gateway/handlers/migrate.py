@@ -18,7 +18,11 @@ from context_rail.model.pack import load_pack
 from context_rail.model.results import RESULT_ADOPTION_KIND
 from context_rail.store.legacy import read_legacy
 from context_rail.store.location import confine
-from context_rail.store.migration import migration_adoption_record, plan_migration
+from context_rail.store.migration import (
+    migration_adoption_record,
+    migration_needs_graph,
+    plan_migration,
+)
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
 
 if TYPE_CHECKING:  # the gateway imports this module only when migrate is invoked
@@ -61,6 +65,13 @@ def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, 
     pack = load_pack(pack_name, target)
     legacy = read_legacy(source)
     manifest, manifest_data = initial_manifest(pack.name, target)
+    if migration_needs_graph(manifest, pack):
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "migration cannot build a legacy store's work graph; "
+            "use a placement without structural tokens",
+            {"pack": pack.name},
+        )
     plan = plan_migration(
         legacy, pack=pack, manifest=manifest, at=now_iso()
     )

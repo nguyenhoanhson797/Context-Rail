@@ -34,7 +34,6 @@ from context_rail.model.presentation import (
 )
 from context_rail.model.results import (
     ArtifactSpec,
-    ResultProtocol,
     result_protocol_as_dict,
     workflow_results_as_dict,
 )
@@ -460,15 +459,12 @@ def _resolve_artifact_placement(
         return ""
     raw = preset_placements.get(preset_name)
     if raw is None:
-        if record_default is not None and record_default.lower().endswith(".md"):
-            raw = record_default
-        else:
-            raise ModelError(
-                "VALIDATION_FAILED",
-                f"manifest has no Markdown placement for result preset {preset_name!r}; "
-                "run `rail ops upgrade` or add presets."
-                f"{preset_name} under records/ ending in .md",
-            )
+        raise ModelError(
+            "VALIDATION_FAILED",
+            f"manifest has no Markdown placement for result preset {preset_name!r}; "
+            "run `rail ops upgrade` or add presets."
+            f"{preset_name} under records/ ending in .md",
+        )
     if not isinstance(raw, str) or not raw:
         raise ModelError(
             "VALIDATION_FAILED",
