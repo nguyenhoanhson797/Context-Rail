@@ -209,16 +209,39 @@ Records preserve the history; notes preserve the meaning.
 
 ## 13. Content or video pipeline
 
-`video` declares scenes, shots, renders, assets and reviews.
+`video` declares scenes, shots, assets and reviews; render attempts are recorded
+as execution records on the shot rather than separate items.
 
 ```bash
 rail init --pack video
 rail change add scene "Opening" --set sequence=1
 rail do start-scene --item opening --etag <etag>
 rail change add shot "Establishing shot" --rel part_of=opening --set model=hero
-rail change add render "Establishing render" --rel about=establishing-shot
+rail loop execution establishing-shot --action render --state running
+rail loop execution establishing-shot --action render --state succeeded --output renders/opening-01.mp4
 rail read show establishing-shot
 ```
 
 The operating model's focus is the active scene; `next` is focus-first and the
 execution screen counts render records separately from workflow completion.
+
+## 14. Multi-project portfolio
+
+Coordinate independent repositories from one `portfolio` store while each child
+repository keeps its own store and pack (`scrum`, `flow`, `basic`, ...). Use
+`--session-env` so an agent working in a child repo can hold both tokens without
+collision.
+
+```bash
+rail init --dir portfolio --pack portfolio
+rail --store portfolio/context-rail seat grant lead-1 --role portfolio-lead --anchor project
+rail --store portfolio/context-rail change add component "Billing API" --set store=../billing/context-rail
+rail --store portfolio/context-rail do start-component --item billing-api --etag <etag>
+rail --store portfolio/context-rail change add slice "Invoice webhook" --rel part_of=billing-api
+rail --store portfolio/context-rail seat grant billing-cto --role component-cto --anchor billing-api
+rail --store portfolio/context-rail seat open billing-cto --print-env   # export as RAIL_SESSION_PORTFOLIO
+rail --store portfolio/context-rail --session-env RAIL_SESSION_PORTFOLIO next
+```
+
+Each slice uses a `store` Check (`mode: "store"`) against the child store's
+committed item category; `portfolio-lead` verifies slices and ships releases.

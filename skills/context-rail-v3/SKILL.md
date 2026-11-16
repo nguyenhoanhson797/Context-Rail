@@ -131,7 +131,7 @@ rail seat close sprint-1
 | Change | `change add\|update\|link\|move\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` |
 | Gate | `approve`, `ops pack use`, `gate` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
 | Loop | `loop brief\|result\|candidate\|review\|report\|triage\|execution` |
-| Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui` |
+| Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui\|daemon` |
 
 Exact flags: `references/commands.md` in this skill.
 

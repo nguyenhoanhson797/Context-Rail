@@ -17,7 +17,7 @@ binary.
 | Statuses | **Yes** | Any names, each mapped to one of the 5 fixed categories |
 | Transitions | **Yes** | Pack `transitions`: allowed `status → [status]` moves |
 | Folder layout | **Yes** | `rail.yaml` `placement` / `presets`, then `rail change repath` |
-| Agent behaviour | **Yes** | Profile documents: prompt, methods, model, tools, skills |
+| Agent behaviour | **Yes** | Profile documents: prompt, recipe, methods, budgets, skills |
 | Evidence gates | **Yes, per project** | Charter: 4 gates × 4 rules |
 | Primitives / relations / categories | **No** | 6 / 8 / 5, fixed by the engine |
 | New automatic rules | **Needs engine code** | E.g. a per-transition evidence precondition |

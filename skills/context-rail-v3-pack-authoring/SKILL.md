@@ -283,8 +283,8 @@ labels:
 screens:
   - {id: board, kind: board, title: Shots, preset: shot, group_by: status}
   - {id: plan, kind: timeline, title: Scenes, preset: scene}
-  - {id: runs, kind: queue, title: Render queue, preset: render}
-  - {id: catalog, kind: catalog, title: Assets, presets: [asset, render]}
+  - {id: execution, kind: execution, title: Progress}
+  - {id: catalog, kind: catalog, title: Assets, preset: asset}
 fields:
   card: [model, duration, status]
   filters: [scene, model, status]

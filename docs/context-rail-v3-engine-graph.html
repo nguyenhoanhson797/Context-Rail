@@ -608,7 +608,7 @@
       <div class="stat"><b>6</b><span>fixed primitives</span></div>
       <div class="stat"><b>8</b><span>named relations</span></div>
       <div class="stat"><b>5</b><span>status categories</span></div>
-      <div class="stat"><b>5</b><span>check modes</span></div>
+      <div class="stat"><b>7</b><span>check modes</span></div>
       <div class="stat"><b>60</b><span>tools · one table</span></div>
       <div class="stat"><b>1</b><span>write path</span></div>
     </div>
@@ -873,7 +873,7 @@
           <span class="num">04 · primitive</span>
           <h3>Check</h3>
           <p class="what">A verifiable condition with a verdict and a freshness state. A Check can target one Item; only a linked, fresh pass gates work.</p>
-          <div class="chips"><span>cmd</span><span>exists</span><span>evidence</span><span>review</span><span>human</span></div>
+          <div class="chips"><span>cmd</span><span>exists</span><span>evidence</span><span>review</span><span>result</span><span>human</span><span>store</span></div>
           <p class="effect"><b>Affects the project by:</b> gating <code>item_done</code> and <code>scope_done</code>, and the <code>merge</code> and <code>release</code> gates a charter may declare. A stale pass is not a pass.</p>
         </article>
 
@@ -994,7 +994,7 @@
             <rect x="850" y="150" width="230" height="80" rx="15"/>
             <text class="n-title" x="965" y="182" text-anchor="middle">Check</text>
             <text class="n-sub" x="965" y="202" text-anchor="middle">cmd · exists · evidence</text>
-            <text class="n-small" x="965" y="220" text-anchor="middle">review · human</text>
+            <text class="n-small" x="965" y="220" text-anchor="middle">review · result · human · store</text>
           </g>
           <g class="node node--record2" data-rel-node="record" aria-label="Record primitive">
             <rect x="800" y="460" width="270" height="86" rx="15"/>
@@ -1373,7 +1373,7 @@ rail change add task "Write the write path" --rel part_of=core-engine</code></pr
             <div class="body-head"><span class="badge badge--any">any actor</span><h3>Declare the proof</h3></div>
             <pre class="cmd"><code>rail check declare write-path --target write-the-write-path --spec-file check.json --expect absent
 rail check run write-the-write-path</code></pre>
-            <p>Pick a mode: <code>cmd</code>, <code>exists</code>, <code>evidence</code>, <code>review</code> or <code>human</code>. A stale pass is not a pass; writing or loosening acceptance Checks is human-only.</p>
+            <p>Pick a mode: <code>cmd</code>, <code>exists</code>, <code>evidence</code>, <code>review</code>, <code>result</code>, <code>human</code> or <code>store</code>. A stale pass is not a pass; writing or loosening acceptance Checks is human-only.</p>
           </div>
         </article>
 
@@ -1546,7 +1546,7 @@ rail gate</code></pre>
         <div class="family">Read</div><div class="tools"><code>read find</code> · <code>read show</code> · <code>read status</code> · <code>overview</code> · <code>read digest</code> · <code>read ledger</code> · <code>types</code> · <code>next</code> · <code>model</code> · <code>explain</code> · <code>why</code> · <code>check list</code> · <code>ops measure versions</code> · <code>ops measure fix</code> · <code>ops pack list</code> · <code>ops pack show</code> · <code>ops pack validate</code></div>
         <div class="family">Gate</div><div class="tools"><code>approve</code> · <code>ops pack use</code> · <code>ops migrate</code> · <code>ops upgrade</code> <span class="mono">(human only)</span></div>
         <div class="family">Loop</div><div class="tools"><code>brief</code> · <code>result</code> · <code>candidate</code> · <code>review</code> · <code>report</code> · <code>triage</code> · <code>execution record</code></div>
-        <div class="family">Operate</div><div class="tools"><code>init</code> · <code>gate</code> · <code>do</code> · <code>ops doctor</code> · <code>ops repair</code> · <code>ops reindex</code> · <code>ops sync</code> · <code>ops adapters render</code> · <code>ops rollback</code> · <code>ops pack create</code> · <code>ops codegraph setup</code> · <code>serve mcp</code> · <code>serve ui</code></div>
+        <div class="family">Operate</div><div class="tools"><code>init</code> · <code>gate</code> · <code>do</code> · <code>ops doctor</code> · <code>ops repair</code> · <code>ops reindex</code> · <code>ops sync</code> · <code>ops adapters render</code> · <code>ops rollback</code> · <code>ops pack create</code> · <code>ops codegraph setup</code> · <code>serve mcp</code> · <code>serve ui</code> · <code>serve daemon</code></div>
         <div class="family">Seat</div><div class="tools"><code>seat grant</code> · <code>seat list</code> · <code>seat show</code> · <code>seat open</code> · <code>seat close</code> · <code>seat revoke</code></div>
       </div>
       <p class="note"><b>60 tools, one table.</b> The CLI, MCP server and UI cannot drift from each other because they are generated from <code>src/context_rail/gateway/tools.py</code>.</p>
@@ -1595,7 +1595,7 @@ rail gate</code></pre>
         kind: "surface",
         title: "CLI",
         blurb: "The thin argparse surface. It imports only the standard library and the tool table at startup; heavier modules load lazily.",
-        points: ["Global options go before the command: rail --store path status.", "Every command prints one JSON envelope and exits 0, 1 or 2.", "Same tools, permissions and envelopes as MCP and the UI."],
+        points: ["Global options go before the command: rail --store path [--actor who | --session-env NAME] read status.", "Every command prints one JSON envelope and exits 0, 1 or 2.", "Same tools, permissions and envelopes as MCP and the UI."],
         meta: "src/context_rail/cli.py"
       },
       mcp: {

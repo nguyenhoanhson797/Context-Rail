@@ -89,3 +89,25 @@ def test_engine_graph_tool_count_matches_the_tool_table() -> None:
     counts = [int(match) for match in re.findall(r"\b(\d+) tools\b", body)]
     assert counts, "engine-graph guide does not state the tool count"
     assert all(count == expected for count in counts), (counts, expected)
+
+
+def test_engine_graph_check_modes_match_the_model() -> None:
+    from context_rail.model.cto import CHECK_MODES
+
+    body = _guide_text(ROOT / "docs" / "context-rail-v3-engine-graph.html")
+    stat = re.search(r"<b>(\d+)</b><span>check modes</span>", body)
+    assert stat is not None, "engine-graph guide does not state check mode count"
+    assert int(stat.group(1)) == len(CHECK_MODES)
+    for mode in CHECK_MODES:
+        assert f"<span>{mode}</span>" in body or f"<code>{mode}</code>" in body, mode
+
+
+def test_guides_name_all_builtin_packs(tmp_path: Path) -> None:
+    from context_rail.store.packs import pack_origins
+
+    packs = sorted(pack_origins(tmp_path))
+    for path in GUIDES:
+        body = _guide_text(path)
+        for pack in packs:
+            assert pack in body, (path.name, pack)
+

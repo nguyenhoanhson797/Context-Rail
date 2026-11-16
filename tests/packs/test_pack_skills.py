@@ -13,6 +13,7 @@ from helpers import init_store
 from context_rail.gateway.handlers.onboarding import agent_ops
 from context_rail.model.cto import (
     REPORT_TARGET_CLASSES,
+    load_engine_skills,
     load_pack_profile,
     load_pack_skills,
     load_skill_sources,
@@ -77,6 +78,11 @@ def test_pack_skill_commands_resolve(pack: str) -> None:
         assert unknown_rail_commands(text) == [], (pack, name)
     for role in ROLES:
         assert unknown_rail_commands(load_pack_profile(pack, role).body) == [], (pack, role)
+
+
+def test_engine_skill_commands_resolve() -> None:
+    for name, text in load_engine_skills().items():
+        assert unknown_rail_commands(text) == [], name
 
 
 @pytest.mark.parametrize("pack", PACKS)

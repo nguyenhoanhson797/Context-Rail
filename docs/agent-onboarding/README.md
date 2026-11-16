@@ -105,7 +105,8 @@ protected picture.
 | `flow` | continuous kanban | work arrives continuously and there is no sprint |
 | `scrum` | sprints | you plan in sprints and want a start/close rhythm |
 | `waterfall` | phase gates | requirements, design, build, test and release are distinct phases |
-| `video` | scenes and shots | production work with renders, assets and reviews |
+| `video` | scenes and shots | production work with shots, render records, assets and reviews |
+| `portfolio` | components and slices | cross-project coordination across child stores with `store` checks |
 
 Every pack also declares the shared base presets (`goal`, `scope`, `task`, `bug`,
 `risk`, `question`, `note`, `decision`, `check`, `charter`, `profile`, …). If
@@ -142,7 +143,8 @@ In role mode:
 - **The session is the identity.** `RAIL_SESSION` carries the token;
   `--actor` is refused. Open a session with `rail seat open <seat> --print-env`; the
   token appears once in the JSON result. Export it as `RAIL_SESSION` for the
-  agent your tool starts.
+  agent your tool starts (or pass `--session-env NAME` before the command when
+  one shell coordinates more than one role-mode store).
 - **Reach is enforced on reads and writes.** A seat sees its anchor's subtree,
   the ancestors and shared notes its role names, and nothing outside it. `find`,
   `status`, `digest`, `ledger`, `show` and `cto brief` report
@@ -182,7 +184,8 @@ The rail is not a task list with extra steps. The same compiled model drives:
 
 An agent never parses `pack.yaml`, `rail.yaml` or the charter to infer the
 workflow. It asks the compiled surface. That is what keeps one agent correct
-across `basic`, `flow`, `scrum`, `waterfall`, `video` and any custom pack.
+across `basic`, `flow`, `scrum`, `waterfall`, `video`, `portfolio` and any
+custom pack.
 
 ## Non-negotiables
 
