@@ -44,6 +44,16 @@ _COMMAND_HEADS = frozenset(
 )
 
 
+def _tools_by_head(tools: tuple[Tool, ...]) -> dict[str, tuple[Tool, ...]]:
+    grouped: dict[str, list[Tool]] = {}
+    for tool in tools:
+        grouped.setdefault(tool.name.partition(" ")[0], []).append(tool)
+    return {head: tuple(entries) for head, entries in grouped.items()}
+
+
+_TOOLS_BY_HEAD: dict[str, tuple[Tool, ...]] = _tools_by_head(SURFACE_TOOLS)
+
+
 class _Parser(argparse.ArgumentParser):
     """Argparse that reports usage errors as one Result envelope."""
 
@@ -56,7 +66,7 @@ class _Parser(argparse.ArgumentParser):
         raise SystemExit(1)
 
 
-def _parser() -> argparse.ArgumentParser:
+def _parser(tools: tuple[Tool, ...] = SURFACE_TOOLS) -> argparse.ArgumentParser:
     parser = _Parser(
         prog="rail",
         description="Context Rail: an agentic project workspace.",
@@ -95,7 +105,7 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="bypass the loopback RPC daemon (as RAIL_NO_DAEMON=1)",
     )
-    _subcommands(parser, SURFACE_TOOLS, required=False)
+    _subcommands(parser, tools, required=False)
     return parser
 
 
@@ -354,8 +364,15 @@ def main(argv: list[str] | None = None) -> int:
                 {"reason": "command_removed", "replacement": _removed_replacement(removed)},
             ),
         )
+    joined = _join_dash_values(args)
+    scoped: tuple[Tool, ...] | None = None
+    if not any(token.startswith(("-h", "--he", "--vers")) for token in joined):
+        idx = _command_index(joined)
+        if idx is not None:
+            scoped = _TOOLS_BY_HEAD.get(joined[idx])
+    parser = _parser(scoped) if scoped else _parser()
     try:
-        namespace = _parser().parse_args(_join_dash_values(args))
+        namespace = parser.parse_args(joined)
     except SystemExit as exc:
         return int(exc.code or 0)
     if namespace.no_daemon:
