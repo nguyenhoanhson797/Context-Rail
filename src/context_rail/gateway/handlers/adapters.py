@@ -53,7 +53,7 @@ def _commands(roles: tuple[str, ...]) -> str:
         "- Code work: commit, `rail loop candidate <item> --commit <sha>`, then `rail loop result <item> --body-file <md> --commit <sha>`.\n"
         "- `rail check run <item>`, separate reviewer `rail loop brief <item> --role <role>` + "
         "`rail loop review <item> --verdict approve|reject --notes-file <md>`, then `rail change move <item> <status>`.\n"
-        "- `rail loop report --item <item> --report-file <json>` logs diagnostics; human-only actions need the printed confirm phrase."
+        "- `rail loop report <item> --report-file <json>` logs diagnostics; human-only actions need the printed confirm phrase."
     )
 
 
