@@ -4,6 +4,14 @@ labels:
   scene: {one: Scene, many: Scenes}
   asset: {one: Asset, many: Assets}
   review: {one: Review, many: Reviews}
+  result: {one: Result, many: Results}
+  review-result: {one: Result Review, many: Result Reviews}
+  scene-result: {one: Scene Result, many: Scene Results}
+  scene-review: {one: Scene Review, many: Scene Reviews}
+  shot-result: {one: Shot Result, many: Shot Results}
+  shot-review: {one: Shot Review, many: Shot Reviews}
+  asset-result: {one: Asset Result, many: Asset Results}
+  asset-review: {one: Asset Review, many: Asset Reviews}
 screens:
   - {id: summary, kind: summary, title: Production}
   - {id: board, kind: board, title: Shots, preset: shot, group_by: status}
@@ -11,7 +19,7 @@ screens:
   - {id: workflow, kind: workflow, title: Workflow}
   - {id: execution, kind: execution, title: Progress}
   - {id: catalog, kind: catalog, title: Assets, preset: asset}
-  - {id: records, kind: records, title: Records}
+  - {id: records, kind: records, title: Records, presets: [result, review-result, scene-result, scene-review, shot-result, shot-review, asset-result, asset-review, decision, review]}
   - {id: pack, kind: pack, title: Pack}
 fields:
   card: [model, duration, status, workflow]

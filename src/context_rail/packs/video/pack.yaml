@@ -38,6 +38,13 @@ workflows:
       review: {queue: false}
     quality:
       approved: {gate: item_done}
+    results:
+      produce:
+        preset: scene-result
+        sections: [Summary, Creative intent, Shot coverage, Continuity, Evidence, Next steps]
+      review:
+        preset: scene-review
+        sections: [Summary, Creative intent, Shot coverage, Continuity, Evidence, Verdict]
   shot:
     initial: draft
     transitions:
@@ -53,6 +60,13 @@ workflows:
       review: {queue: false}
     quality:
       approved: {gate: item_done}
+    results:
+      produce:
+        preset: shot-result
+        sections: [Summary, Creative intent, Outputs and assets, Continuity, Evidence, Next steps]
+      review:
+        preset: shot-review
+        sections: [Summary, Creative intent, Outputs and assets, Continuity, Evidence, Verdict]
   asset:
     initial: draft
     transitions:
@@ -60,6 +74,13 @@ workflows:
       ready: [approved, dropped]
       approved: [ready]
       dropped: [draft]
+    results:
+      produce:
+        preset: asset-result
+        sections: [Summary, Asset outputs, Reuse and rights, Continuity, Evidence, Next steps]
+      review:
+        preset: asset-review
+        sections: [Summary, Asset outputs, Reuse and rights, Continuity, Evidence, Verdict]
 presets:
   goal:       {primitive: item,   tags: [goal], container: true}
   scope:      {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
@@ -76,6 +97,14 @@ presets:
   decision:   {primitive: record, tags: [decision]}
   review:     {primitive: record, tags: [review]}
   event:      {primitive: record, tags: [event]}
+  result:     {primitive: record, tags: [result], required: [workflow_name], template: templates/result.md}
+  review-result: {primitive: record, tags: [review], required: [workflow_name], template: templates/review-result.md}
+  scene-result: {primitive: record, tags: [result], required: [workflow_name], template: templates/scene-result.md}
+  scene-review: {primitive: record, tags: [review], required: [workflow_name], template: templates/scene-review.md}
+  shot-result: {primitive: record, tags: [result], required: [workflow_name], template: templates/shot-result.md}
+  shot-review: {primitive: record, tags: [review], required: [workflow_name], template: templates/shot-review.md}
+  asset-result: {primitive: record, tags: [result], required: [workflow_name], template: templates/asset-result.md}
+  asset-review: {primitive: record, tags: [review], required: [workflow_name], template: templates/asset-review.md}
   check:      {primitive: check,  tags: []}
   charter:    {primitive: policy, tags: [], template: templates/charter.md}
   vision:     {primitive: note,   tags: []}
@@ -85,6 +114,13 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, measurement_min_runs: 10, code_graph: none}
+results:
+  produce:
+    preset: result
+    sections: [Summary, Creative intent, Outputs and assets, Continuity, Evidence, Next steps]
+  review:
+    preset: review-result
+    sections: [Summary, Creative assessment, Output assessment, Continuity, Evidence, Verdict]
 operating:
   version: 1
   unit: shot

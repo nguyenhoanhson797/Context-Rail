@@ -13,7 +13,7 @@ from context_rail.core.result import is_ok
 from context_rail.gateway.execution import caller_identity
 from context_rail.gateway.gateway import invoke
 from context_rail.store.doc import etag
-from helpers import as_human, approve_picture, open_test_session
+from helpers import as_human, approve_picture, open_test_session, record_result_for_test
 
 APPROVE = {
     "target": "charter",
@@ -132,16 +132,25 @@ def test_a_terminal_human_satisfies_a_human_gate(approved_store: Path) -> None:
     assert is_ok(approve_picture(store))
 
     with as_human():
-        for status in ("doing", "done"):
-            shown = invoke("show", {"slug": "t"}, store=store, actor=None)
-            assert is_ok(shown), shown
-            moved = invoke(
-                "move",
-                {"slug": "t", "status": status, "expect": shown["value"]["doc"]["etag"]},
-                store=store,
-                actor=None,
-            )
-            assert is_ok(moved), moved
+        shown = invoke("show", {"slug": "t"}, store=store, actor=None)
+        assert is_ok(shown), shown
+        moved = invoke(
+            "move",
+            {"slug": "t", "status": "doing", "expect": shown["value"]["doc"]["etag"]},
+            store=store,
+            actor=None,
+        )
+        assert is_ok(moved), moved
+        record_result_for_test(store, "t", actor="implementer")
+        shown = invoke("show", {"slug": "t"}, store=store, actor=None)
+        assert is_ok(shown), shown
+        moved = invoke(
+            "move",
+            {"slug": "t", "status": "done", "expect": shown["value"]["doc"]["etag"]},
+            store=store,
+            actor=None,
+        )
+        assert is_ok(moved), moved
 
 
 def _human_done_gate(store: Path) -> dict[str, Any]:

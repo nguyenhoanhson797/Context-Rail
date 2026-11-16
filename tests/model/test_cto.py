@@ -375,6 +375,7 @@ def test_builtin_profiles_load_without_runtime_fields() -> None:
         "brief",
         "ledger",
         "verify",
+        "result",
         "candidate",
         "report",
     )

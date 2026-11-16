@@ -6,6 +6,10 @@ labels:
   bug: {one: Bug, many: Bugs}
   epic: {one: Epic, many: Epics}
   backlog: {one: Product backlog, many: Product backlogs}
+  result: {one: Result, many: Results}
+  review-result: {one: Result Review, many: Result Reviews}
+  bug-result: {one: Bug Result, many: Bug Results}
+  bug-review: {one: Bug Review, many: Bug Reviews}
 screens:
   - {id: summary, kind: summary, title: Summary}
   - {id: board, kind: board, title: Sprint board, preset: story, group_by: status}
@@ -13,7 +17,7 @@ screens:
   - {id: workflow, kind: workflow, title: Workflow}
   - {id: execution, kind: execution, title: Progress}
   - {id: catalog, kind: catalog, title: Backlog, presets: [story, task, bug]}
-  - {id: records, kind: records, title: Records}
+  - {id: records, kind: records, title: Records, presets: [result, review-result, bug-result, bug-review, decision]}
   - {id: pack, kind: pack, title: Pack}
 fields:
   card: [status, workflow, priority]

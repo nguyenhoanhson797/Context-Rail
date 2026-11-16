@@ -13,8 +13,15 @@ import pytest
 from context_rail.core.result import is_ok
 from context_rail.core.util import dump_frontmatter, load_yaml
 from context_rail.gateway.gateway import invoke
+from context_rail.model.manifest import DEFAULT_MANIFEST
 from context_rail.store.doc import record_digest
-from helpers import approve_store, init_pack_store, touch_doc, workflow_pack_document
+from helpers import (
+    approve_store,
+    init_pack_store,
+    record_result_for_test,
+    touch_doc,
+    workflow_pack_document,
+)
 
 pytestmark = pytest.mark.usefixtures("named_human")
 
@@ -120,26 +127,13 @@ def test_init_writes_manifest_folders_and_gitignore(tmp_path):
     assert Path(result["value"]["store"]) == store.resolve()
     manifest = load_yaml((store / "rail.yaml").read_text(encoding="utf-8"))
     assert manifest == {
-        "schema": 3,
+        "schema": DEFAULT_MANIFEST["schema"],
         "pack": "basic",
-        "placement": {
-            "item": "items/{preset}/{slug}.md",
-            "note": "notes/{preset}/{slug}.md",
-            "check": "checks/{slug}.md",
-            "record": "records/{yyyy}-{mm}/{id}.json",
-            "actor": "workspace/profiles/{slug}/profile.md",
-            "policy": "policies/{slug}.md",
-        },
+        "placement": DEFAULT_MANIFEST["placement"],
         "presets": {
-            "decision": "records/decisions/{slug}.md",
-            "charter": "charter.md",
-            "goal": "project/{slug}.md",
-            "vision": "project/{slug}.md",
-            "scope": "project/{slug}.md",
-            "wont": "project/{slug}.md",
-            "skill": "workspace/skills/{slug}.md",
-            "cto": "workspace/cto/profile.md",
-            "profile": "workspace/profiles/{slug}/profile.md",
+            **DEFAULT_MANIFEST["presets"],
+            "result": "records/results/{field:workflow_name}/{about.slug}/{id}.md",
+            "review-result": "records/result-reviews/{field:workflow_name}/{about.slug}/{id}.md",
         },
     }
     for rel in (
@@ -620,10 +614,13 @@ def test_move_records_status_changed(tmp_path):
     assert payload["data"] == {
         "from": "todo",
         "to": "doing",
+        "from_category": "not_started",
+        "to_category": "active",
         "resolution": None,
         "workflow": "default",
     }
 
+    record_result_for_test(store, "login-page")
     before = _files(store, "records")
     second = invoke(
         "move",
@@ -641,6 +638,8 @@ def test_move_records_status_changed(tmp_path):
     assert payload["data"] == {
         "from": "doing",
         "to": "done",
+        "from_category": "active",
+        "to_category": "done",
         "resolution": "mitigated",
         "workflow": "default",
     }
@@ -949,15 +948,23 @@ def test_status_blocked_drops_finished_dependents_and_keeps_blocked_items(tmp_pa
             )
         )
 
-    for status in ("doing", "done"):
-        assert is_ok(
-            invoke(
-                "move",
-                {"slug": "waits", "status": status, "expect": _etag(store, "waits")},
-                store=store,
-                actor="cto",
-            )
+    assert is_ok(
+        invoke(
+            "move",
+            {"slug": "waits", "status": "doing", "expect": _etag(store, "waits")},
+            store=store,
+            actor="cto",
         )
+    )
+    record_result_for_test(store, "waits")
+    assert is_ok(
+        invoke(
+            "move",
+            {"slug": "waits", "status": "done", "expect": _etag(store, "waits")},
+            store=store,
+            actor="cto",
+        )
+    )
     assert is_ok(
         invoke(
             "move",

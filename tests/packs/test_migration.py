@@ -146,7 +146,10 @@ def test_a_workflow_qualified_map_splits_one_source_status(tmp_path: Path) -> No
     switched = _switch(store, "split", ["sprint:todo=doing", "bugfix:todo=fixing"])
 
     assert switched["ok"] is True, switched
-    assert switched["value"]["changes"] == [
+    assert [
+        {k: row[k] for k in ("slug", "from", "to")}
+        for row in switched["value"]["changes"]
+    ] == [
         {"slug": "a-bug", "from": "todo", "to": "fixing"},
         {"slug": "a-task", "from": "todo", "to": "doing"},
     ]

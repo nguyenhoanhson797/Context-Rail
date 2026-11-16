@@ -38,6 +38,13 @@ workflows:
       retired: [running]
       blocked: [running, dropped]
       dropped: [proposed]
+    results:
+      produce:
+        preset: component-result
+        sections: [Summary, Component findings, Contract impact, Maintenance decisions, Evidence, Next steps]
+      review:
+        preset: component-review
+        sections: [Summary, Component findings, Contract impact, Maintenance decisions, Evidence, Verdict]
   slice:
     initial: intake
     transitions:
@@ -53,6 +60,13 @@ workflows:
       integrating: {queue: false}
     quality:
       verified: {gate: item_done}
+    results:
+      produce:
+        preset: slice-result
+        sections: [Summary, Slice findings, Contract impact, Child proof, Integration handoff, Evidence, Next steps]
+      review:
+        preset: slice-review
+        sections: [Summary, Slice findings, Contract impact, Child proof, Integration handoff, Evidence, Verdict]
   release:
     initial: planned
     transitions:
@@ -63,6 +77,13 @@ workflows:
       dropped: [planned]
     quality:
       released: {gate: release}
+    results:
+      produce:
+        preset: release-result
+        sections: [Summary, Release contents, Contract impact, Child proof, Release evidence, Evidence, Next steps]
+      review:
+        preset: release-review
+        sections: [Summary, Release contents, Contract impact, Child proof, Release evidence, Evidence, Verdict]
 presets:
   goal:       {primitive: item,   tags: [goal], container: true}
   scope:      {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
@@ -79,6 +100,14 @@ presets:
   code:       {primitive: note,   tags: [code], fields: {kind: [file, module, class, function, method]}, template: templates/code.md}
   decision:   {primitive: record, tags: [decision]}
   event:      {primitive: record, tags: [event]}
+  result:     {primitive: record, tags: [result], required: [workflow_name], template: templates/result.md}
+  review-result: {primitive: record, tags: [review], required: [workflow_name], template: templates/review-result.md}
+  component-result: {primitive: record, tags: [result], required: [workflow_name], template: templates/component-result.md}
+  component-review: {primitive: record, tags: [review], required: [workflow_name], template: templates/component-review.md}
+  slice-result: {primitive: record, tags: [result], required: [workflow_name], template: templates/slice-result.md}
+  slice-review: {primitive: record, tags: [review], required: [workflow_name], template: templates/slice-review.md}
+  release-result: {primitive: record, tags: [result], required: [workflow_name], template: templates/release-result.md}
+  release-review: {primitive: record, tags: [review], required: [workflow_name], template: templates/release-review.md}
   check:      {primitive: check,  tags: []}
   charter:    {primitive: policy, tags: [], template: templates/charter.md}
   vision:     {primitive: note,   tags: []}
@@ -88,6 +117,13 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false, workflow: slice}
 policy: {stuck_hours: 24, measurement_min_runs: 10, code_graph: none}
+results:
+  produce:
+    preset: result
+    sections: [Summary, Component and slice findings, Contract impact, Child proof, Evidence, Next steps]
+  review:
+    preset: review-result
+    sections: [Summary, Handoff assessment, Contract assessment, Child proof, Evidence, Verdict]
 operating:
   version: 2
   unit: slice
@@ -129,6 +165,7 @@ operating:
         relocate: true
         check: [component, slice, release, task, bug, fix]
         verify: [component, slice, release, task, bug, fix]
+        result: [component, slice, release, task, bug, fix, risk, question]
         report: [component, slice, release, task, bug, fix]
         triage: [component, slice, release, task, bug, fix]
         actions: [start-component, plan-slice, delegate-slice, integrate-slice, verify-slice, ship-release, triage-report]
@@ -136,7 +173,7 @@ operating:
       sees:
         up: 0
         down: 1
-        parts: [title, status, next, blockers, waits]
+        parts: [title, status, next, blockers, waits, results]
         budget: {chars: 12000, docs: 60}
       workspace: none
       skills: [portfolio-lead]
@@ -157,13 +194,14 @@ operating:
         link: [part_of]
         check: [slice]
         verify: [slice]
+        result: [component, slice]
         report: [slice]
         actions: [plan-slice, delegate-slice, integrate-slice]
       sees:
         up: 1
         down: all
         relations: [depends_on]
-        parts: [title, status, next, body, acceptance, blockers, candidates, records]
+        parts: [title, status, next, body, acceptance, blockers, candidates, results, records]
         budget: {chars: 12000, docs: 40}
       workspace: none
       skills: [portfolio-report]

@@ -41,6 +41,7 @@ from context_rail.model.cto import (
     load_pack_profile,
     load_skill_sources,
 )
+from context_rail.model.errors import ModelError
 from context_rail.model.manifest import (
     Manifest,
     initial_manifest,
@@ -49,6 +50,7 @@ from context_rail.model.manifest import (
     render_path,
 )
 from context_rail.model.pack import Pack, canonical_pack_name, load_pack
+from context_rail.model.placement import is_context, parse_template
 from context_rail.model.policy import Charter, parse_answers
 from context_rail.model.results import (
     RESULT_ADOPTION_KIND,
@@ -69,6 +71,7 @@ from context_rail.store.placement import (
     PlacementError,
     PlacementRequest,
     expected_path,
+    template_for,
 )
 from context_rail.store.lock import store_lock
 from context_rail.store.location import confine
@@ -650,11 +653,16 @@ def _picture_path(
     context: Any, primitive: str, preset: str, slug: str
 ) -> str:
     try:
+        template = template_for(context.manifest, primitive, preset)
+        needs_index = any(
+            is_context(token) or token.kind in {"kind", "field"}
+            for token in parse_template(template, "placement")
+        )
         return expected_path(
             PlacementContext(
                 manifest=context.manifest,
                 pack=context.pack,
-                index=context.index if manifest_needs_graph(context.manifest) else None,
+                index=context.index if needs_index else None,
             ),
             PlacementRequest(
                 primitive=primitive,
@@ -663,7 +671,9 @@ def _picture_path(
                 created=now_iso(),
             ),
         )
-    except PlacementError as error:
+    except (ModelError, PlacementError) as error:
+        if isinstance(error, ModelError):
+            raise WriteRefused(error.code, error.message, error.details) from None
         raise WriteRefused(error.write_code, error.message, error.details) from None
 
 
@@ -820,34 +830,37 @@ def _materialise(
     from context_rail.gateway.gateway import Context
 
     context = Context(store=store, manifest=manifest, pack=pack, actor=actor)
-    prepared = _prepare(answers, project_root, solo=solo, context=context)
-    parsed = parse_answers(prepared)
-    if parsed["pack"] != pack.name:
-        raise WriteRefused(
-            "VALIDATION_FAILED",
-            f"the answers name pack {parsed['pack']!r}, not {pack.name!r}",
-            {"key": "pack"},
+    try:
+        prepared = _prepare(answers, project_root, solo=solo, context=context)
+        parsed = parse_answers(prepared)
+        if parsed["pack"] != pack.name:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"the answers name pack {parsed['pack']!r}, not {pack.name!r}",
+                {"key": "pack"},
+            )
+        ops, info = picture_ops(
+            context,
+            parsed,
+            pack_name=pack.name,
+            draft=draft,
+            include_workspace=include_workspace,
         )
-    ops, info = picture_ops(
-        context,
-        parsed,
-        pack_name=pack.name,
-        draft=draft,
-        include_workspace=include_workspace,
-    )
-    _check_supplied_charter(answers, info)
-    if not existing:
-        assert manifest_data is not None
-        ops = [
-            Op(
-                "rail.yaml",
-                yaml.safe_dump(manifest_data, sort_keys=False).encode("utf-8"),
-                ABSENT,
-            ),
-            Op(".gitignore", GITIGNORE, ABSENT),
-            *ops,
-        ]
-    result = commit(store, manifest, ops, info["record"], actor=actor, key=key)
+        _check_supplied_charter(answers, info)
+        if not existing:
+            assert manifest_data is not None
+            ops = [
+                Op(
+                    "rail.yaml",
+                    yaml.safe_dump(manifest_data, sort_keys=False).encode("utf-8"),
+                    ABSENT,
+                ),
+                Op(".gitignore", GITIGNORE, ABSENT),
+                *ops,
+            ]
+        result = commit(store, manifest, ops, info["record"], actor=actor, key=key)
+    finally:
+        context.close()
     for folder in pinned_folders(manifest):
         (store / folder).mkdir(parents=True, exist_ok=True)
     return {

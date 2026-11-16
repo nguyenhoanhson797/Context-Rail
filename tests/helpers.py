@@ -436,12 +436,21 @@ def write_review_verdict(
 
 
 def records_of(store: Path, kind: str) -> list[dict[str, Any]]:
-    """Every JSON Record of ``kind``, oldest path first."""
+    """Every JSON or Markdown Record of ``kind``, oldest path first."""
+    from context_rail.store.doc import record_frontmatter
+
     found: list[dict[str, Any]] = []
-    for path in sorted((Path(store) / "records").rglob("*.json")):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+    for path in sorted((Path(store) / "records").rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix == ".json":
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+        elif path.suffix == ".md":
+            payload = record_frontmatter(path.read_bytes())
+        else:
             continue
         if isinstance(payload, dict) and payload.get("kind") == kind:
             found.append(payload)
@@ -919,7 +928,9 @@ def record_result_for_test(
     store: Path,
     item: str,
     *,
-    actor: str = "implementer",
+    actor: str | None = "implementer",
+    seat: str | None = None,
+    session: str | None = None,
     outcome: str = "completed",
     commit: str | None = None,
     key: str | None = None,
@@ -927,13 +938,14 @@ def record_result_for_test(
     """Record a workflow-shaped producer result via a temporary body outside ``store``."""
     import tempfile
 
+    from context_rail.gateway.execution import caller_identity
     from context_rail.gateway.gateway import Context, invoke
     from context_rail.model.manifest import load_manifest
     from context_rail.model.pack import load_pack
 
     manifest = load_manifest(store)
     pack = load_pack(manifest.pack, store)
-    ctx = Context(store=Path(store), manifest=manifest, pack=pack, actor=actor)
+    ctx = Context(store=Path(store), manifest=manifest, pack=pack, actor=actor or "human")
     try:
         row = ctx.index.conn.execute(
             "SELECT workflow FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 LIMIT 1",
@@ -961,9 +973,51 @@ def record_result_for_test(
             args["commit"] = commit
         if key is not None:
             args["key"] = key
-        response = invoke("result", args, store=store, actor=actor)
+        if session is not None:
+            with caller_identity(None, None, session=session):
+                response = invoke("result", args, store=store)
+        elif seat is not None:
+            response = as_seat(store, seat, "result", args)
+        else:
+            response = invoke("result", args, store=store, actor=actor)
         assert response["ok"] is True, response
         return response["value"]
+
+
+def write_review_notes_for_test(
+    store: Path,
+    item: str,
+    directory: Path,
+    *,
+    filename: str = "review-notes.md",
+) -> Path:
+    """Write a workflow-shaped Markdown review body outside ``store`` for tests."""
+    from context_rail.gateway.gateway import Context
+    from context_rail.model.manifest import load_manifest
+    from context_rail.model.pack import load_pack
+
+    manifest = load_manifest(store)
+    pack = load_pack(manifest.pack, store)
+    ctx = Context(store=Path(store), manifest=manifest, pack=pack, actor="human")
+    try:
+        row = ctx.index.conn.execute(
+            "SELECT workflow FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 LIMIT 1",
+            (item,),
+        ).fetchone()
+        workflow = row[0] if row is not None and row[0] else "default"
+        compiled = (getattr(ctx.model, "results", {}) or {}).get(workflow)
+        sections = (
+            compiled.review.sections
+            if compiled is not None
+            else DEFAULT_REVIEW_SECTIONS
+        )
+    finally:
+        ctx.close()
+
+    notes_path = Path(directory) / filename
+    notes_path.parent.mkdir(parents=True, exist_ok=True)
+    notes_path.write_text(result_body(sections), encoding="utf-8", newline="\n")
+    return notes_path
 
 
 def init_pack_store(
@@ -1483,6 +1537,7 @@ def write_legacy_runtime_files(store: Path) -> None:
     document = yaml.safe_load(text)
     document["policy"]["retries"] = 1
     document["execution"] = {"doing": {"dispatch": False, "merge": True}}
+    document.pop("results", None)
     write_pack(store, "basic", document)
     charter = store / "charter.md"
     lines = charter.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n")

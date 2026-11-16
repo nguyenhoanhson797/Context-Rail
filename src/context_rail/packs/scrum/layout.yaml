@@ -7,6 +7,10 @@ placement:
   policy: "policies/{slug}.md"
 presets:
   decision: "records/decisions/{slug}.md"
+  result: "records/sprint-results/{field:workflow_name}/{about.slug}/{id}.md"
+  review-result: "records/sprint-reviews/{field:workflow_name}/{about.slug}/{id}.md"
+  bug-result: "records/sprint-results/bug-result/{field:workflow_name}/{about.slug}/{id}.md"
+  bug-review: "records/sprint-reviews/bug-review/{field:workflow_name}/{about.slug}/{id}.md"
   charter: "charter.md"
   goal: "project/{slug}.md"
   vision: "project/{slug}.md"

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import approve_picture, approve_store, init_store, run_git
+from helpers import approve_picture, approve_store, init_store, record_result_for_test, run_git
 
 
 def _add(store: Path, preset: str, title: str, rel: list[str] | None = None) -> dict:
@@ -36,6 +36,9 @@ def _declare_proof(store: Path, tmp_path: Path, slug: str) -> None:
     run_git(tmp_path, "init")
     run_git(tmp_path, "add", "-A")
     run_git(tmp_path, "commit", "-m", "picture")
+    (tmp_path / "fix.txt").write_text("fixed\n", encoding="utf-8", newline="\n")
+    run_git(tmp_path, "add", "fix.txt")
+    run_git(tmp_path, "commit", "-m", "fix")
     for name, acceptance in (("repro-check", False), ("acceptance", True)):
         spec = tmp_path / f"{name}.json"
         spec.write_text(
@@ -109,6 +112,19 @@ def test_a_sprint_and_a_bug_run_their_own_workflows(tmp_path: Path) -> None:
         moved = _move(store, bug["slug"], status)
         assert is_ok(moved), moved
     _declare_proof(store, tmp_path, bug["slug"])
+    assert is_ok(invoke("candidate", {"item": bug["slug"], "commit": "HEAD"}, store=store, actor="cto"))
+    record_result_for_test(
+        store,
+        bug["slug"],
+        actor="cto",
+        outcome="completed",
+        commit=invoke(
+            "ledger",
+            {"item": bug["slug"]},
+            store=store,
+            actor="cto",
+        )["value"]["candidates"][0]["commit"],
+    )
     moved = _move(store, bug["slug"], "closed")
     assert is_ok(moved), moved
 
@@ -122,9 +138,12 @@ def test_a_sprint_and_a_bug_run_their_own_workflows(tmp_path: Path) -> None:
     assert refused["error"]["details"]["condition"] == "children"
 
     for status in ("doing", "done"):
+        if status == "done":
+            record_result_for_test(store, task["slug"], actor="cto")
         moved = _move(store, task["slug"], status)
         assert is_ok(moved), moved
 
+    record_result_for_test(store, sprint["slug"], actor="cto")
     closed = invoke(
         "do",
         {"action": "close-sprint", "item": sprint["slug"], "etag": _etag(store, sprint["slug"])},

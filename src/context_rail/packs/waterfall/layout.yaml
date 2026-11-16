@@ -7,6 +7,12 @@ placement:
   policy: "policies/{slug}.md"
 presets:
   decision: "records/decisions/{slug}.md"
+  result: "records/phase-results/{field:workflow_name}/{about.slug}/{id}.md"
+  review-result: "records/phase-reviews/{field:workflow_name}/{about.slug}/{id}.md"
+  phase-result: "records/phase-results/phase-result/{field:workflow_name}/{about.slug}/{id}.md"
+  phase-review: "records/phase-reviews/phase-review/{field:workflow_name}/{about.slug}/{id}.md"
+  delivery-result: "records/phase-results/delivery-result/{field:workflow_name}/{about.slug}/{id}.md"
+  delivery-review: "records/phase-reviews/delivery-review/{field:workflow_name}/{about.slug}/{id}.md"
   charter: "charter.md"
   goal: "project/{slug}.md"
   vision: "project/{slug}.md"

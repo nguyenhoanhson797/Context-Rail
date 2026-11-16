@@ -15,7 +15,7 @@ from context_rail.model.manifest import DEFAULT_MANIFEST, initial_manifest, load
 from context_rail.model.pack import pack_layout
 from helpers import init_store
 
-PACKS = ("basic", "flow", "portfolio", "scrum", "waterfall")
+PACKS = ("basic", "flow", "portfolio", "scrum", "video", "waterfall")
 
 
 def _pack_document(name: str) -> dict:
@@ -59,6 +59,12 @@ def test_builtin_packs_ship_layout_defaults(name: str) -> None:
     layout = pack_layout(name, Path("."))
     assert layout is not None
     assert layout["placement"] == DEFAULT_MANIFEST["placement"]
+    for key in DEFAULT_MANIFEST["presets"]:
+        assert layout["presets"][key] == DEFAULT_MANIFEST["presets"][key]
+    assert "result" not in DEFAULT_MANIFEST["presets"]
+    assert "review-result" not in DEFAULT_MANIFEST["presets"]
+    assert "result" in layout["presets"]
+    assert "review-result" in layout["presets"]
 
 
 def test_init_uses_the_pack_layout_and_pins_its_folders(tmp_path: Path) -> None:
@@ -174,10 +180,10 @@ def test_onboarding_uses_the_pack_layout(
 ) -> None:
     store = tmp_path / "context-rail"
     root = _copy_builtin_pack(store, "basic")
+    layout = yaml.safe_load((root / "layout.yaml").read_text(encoding="utf-8"))
+    layout["placement"]["item"] = "work/{preset}/{slug}.md"
     (root / "layout.yaml").write_text(
-        yaml.safe_dump(
-            {"placement": {"item": "work/{preset}/{slug}.md"}}, sort_keys=False
-        ),
+        yaml.safe_dump(layout, sort_keys=False),
         encoding="utf-8",
     )
 
@@ -202,10 +208,10 @@ def test_migrate_uses_the_pack_layout(
     target_dir = tmp_path / "target"
     store = target_dir / "context-rail"
     root = _copy_builtin_pack(store, "basic")
+    layout = yaml.safe_load((root / "layout.yaml").read_text(encoding="utf-8"))
+    layout["placement"]["item"] = "work/{preset}/{slug}.md"
     (root / "layout.yaml").write_text(
-        yaml.safe_dump(
-            {"placement": {"item": "work/{preset}/{slug}.md"}}, sort_keys=False
-        ),
+        yaml.safe_dump(layout, sort_keys=False),
         encoding="utf-8",
     )
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from context_rail.model.pack import load_pack
-from helpers import approve_store, init_store
+from helpers import approve_store, init_store, record_result_for_test
 
 
 def _etag(store: Path, slug: str) -> str:
@@ -78,6 +78,7 @@ def test_a_basic_task_can_start_and_close(tmp_path: Path) -> None:
     assert is_ok(started), started
     assert started["value"]["result"]["status"] == "doing"
 
+    record_result_for_test(store, "a-task", actor="cto")
     closed = invoke(
         "do",
         {"action": "close", "item": "a-task", "etag": _etag(store, "a-task")},

@@ -7,7 +7,14 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from helpers import approve_picture, as_human, require_git_identity, run_cli, run_git
+from helpers import (
+    approve_picture,
+    as_human,
+    record_result_for_test,
+    require_git_identity,
+    run_cli,
+    run_git,
+)
 from portfolio_helpers import _answers_file, commit_all, make_child_repo
 
 from context_rail.core.result import is_ok
@@ -463,6 +470,8 @@ def test_two_project_portfolio_from_plan_to_release(tmp_path: Path) -> None:
 
     # 2. Each child finishes its own item (`done`) and commits in git.
     for status in ("doing", "done"):
+        if status == "done":
+            record_result_for_test(auth_sub_store, auth_upstream.item, actor="cto")
         _cli_ok(
             auth_sub_root,
             "--actor",
@@ -479,6 +488,8 @@ def test_two_project_portfolio_from_plan_to_release(tmp_path: Path) -> None:
     commit_all(auth_sub_root, "finish auth token-v2 in submodule")
 
     for status in ("doing", "done"):
+        if status == "done":
+            record_result_for_test(web_store, web_story, session=web_lead_token)
         _cli_ok(
             web_root,
             "change",
@@ -613,6 +624,7 @@ def test_two_project_portfolio_from_plan_to_release(tmp_path: Path) -> None:
 
     # 5. portfolio-lead links release depends_on both slices, verifies both slices, and ships release.
     for slc in (auth_slice, web_slice):
+        record_result_for_test(master_store, slc, session=lead_token)
         _cli_ok(
             master_root,
             "change",
@@ -689,6 +701,7 @@ def test_two_project_portfolio_from_plan_to_release(tmp_path: Path) -> None:
     )
     assert rel_ran["passed"] is True, rel_ran
 
+    record_result_for_test(master_store, release_slug, session=lead_token)
     shipped = _cli_ok(
         master_root,
         "do",

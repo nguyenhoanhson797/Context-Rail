@@ -7,6 +7,8 @@ placement:
   policy: "policies/{slug}.md"
 presets:
   decision: "records/decisions/{slug}.md"
+  result: "records/results/{field:workflow_name}/{about.slug}/{id}.md"
+  review-result: "records/result-reviews/{field:workflow_name}/{about.slug}/{id}.md"
   charter: "charter.md"
   goal: "project/{slug}.md"
   vision: "project/{slug}.md"

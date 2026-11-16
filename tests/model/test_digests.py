@@ -128,14 +128,13 @@ def test_an_operating_change_changes_the_semantic_digest(tmp_path: Path) -> None
     assert before.full_digest != after.full_digest
 
 
-#: Recorded before roles existed: a role-less pack must keep its digest, or
-#: every approved store would need approving again.
+#: Pinned semantic digests for shipped packs including their declared result contracts.
 _SHIPPED_DIGESTS = {
-    "basic": "8fd286368299e9c49b6137f4fbad453b6e32377d83626c4e707b5a561c53bf9e",
-    "flow": "3449073235b6a71f77da7e6dd4f553da2905b6630371a9fd2735d04e1da6744a",
-    "scrum": "ae9af38ef820d249c4936e6bb0a0a092495457e9a23c8cbed5fca89b4824beff",
-    "video": "ed597248f93c000abaa196449a9be5caf629d952c12f2aba718f4cb9fe7664bb",
-    "waterfall": "3b3e3a27a7f971210a162e078a9fb275311df4c57c98290eb216a4f0005c7bf5",
+    "basic": "076d046827609ccf79ceed71e3bcc41600a53e1b5545604c79f44065ad614dc7",
+    "flow": "5eccecb3dcce8ac2800c97b366b32a41c368c41ac6456c581d54d560d9be3b58",
+    "scrum": "5986641260bdedbfc7ef3369e9097e92d5fed931ef5336f290e77ec1d4c1a8cb",
+    "video": "65f5e196067b3473e17c3ef2461fba55c810244847a6ba676fdb85bbcbf3484c",
+    "waterfall": "a9556d7ed9b58f7eaa1c355fcba5a30cc2d6c7a1045b93a11d0caa472f6d9588",
 }
 
 _LEAD: dict[str, Any] = {

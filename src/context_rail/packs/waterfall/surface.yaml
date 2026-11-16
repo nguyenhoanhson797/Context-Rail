@@ -6,6 +6,12 @@ labels:
   milestone: {one: Milestone, many: Milestones}
   task: {one: Task, many: Tasks}
   risk: {one: Risk, many: Risks}
+  result: {one: Result, many: Results}
+  review-result: {one: Result Review, many: Result Reviews}
+  phase-result: {one: Phase Result, many: Phase Results}
+  phase-review: {one: Phase Review, many: Phase Reviews}
+  delivery-result: {one: Delivery Result, many: Delivery Results}
+  delivery-review: {one: Delivery Review, many: Delivery Reviews}
 screens:
   - {id: summary, kind: summary, title: Summary}
   - {id: board, kind: board, title: Deliverables, preset: deliverable, group_by: status}
@@ -13,7 +19,7 @@ screens:
   - {id: workflow, kind: workflow, title: Workflow}
   - {id: execution, kind: execution, title: Progress}
   - {id: catalog, kind: catalog, title: Requirements, presets: [requirement, task]}
-  - {id: records, kind: records, title: Records}
+  - {id: records, kind: records, title: Records, presets: [result, review-result, phase-result, phase-review, delivery-result, delivery-review, decision]}
   - {id: pack, kind: pack, title: Pack}
 fields:
   card: [status, workflow]

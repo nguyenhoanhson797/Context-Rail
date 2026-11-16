@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from helpers import approve_picture, as_human, open_test_session, run_git
+from helpers import approve_picture, as_human, open_test_session, record_result_for_test, run_git
 from portfolio_helpers import _answers_file, commit_all, make_child_repo
 
 from context_rail.core.result import is_ok
@@ -273,6 +273,7 @@ def test_a_component_cto_declares_and_runs_a_store_check(tmp_path: Path) -> None
         actor="cto",
     )
     assert is_ok(moved_child), moved_child
+    record_result_for_test(child.store, child.item, actor="cto")
     moved_child = invoke(
         "move",
         {"slug": child.item, "status": "done", "expect": _etag(child.store, child.item)},
@@ -386,6 +387,9 @@ def test_the_component_cto_brief_carries_the_report_skill(tmp_path: Path) -> Non
 
 
 def test_the_lead_verifies_through_item_done(tmp_path: Path) -> None:
+    import tempfile
+    from helpers import result_body
+
     child = make_child_repo(tmp_path, "comp-a")
     moved_child = invoke(
         "move",
@@ -394,6 +398,7 @@ def test_the_lead_verifies_through_item_done(tmp_path: Path) -> None:
         actor="cto",
     )
     assert is_ok(moved_child), moved_child
+    record_result_for_test(child.store, child.item, actor="cto")
     moved_child = invoke(
         "move",
         {"slug": child.item, "status": "done", "expect": _etag(child.store, child.item)},
@@ -470,6 +475,31 @@ def test_the_lead_verifies_through_item_done(tmp_path: Path) -> None:
         )
     )
     assert is_ok(_as_seat(store, "lead-1", "verify", {"target": slc}))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        body_file = Path(tmpdir) / "slice-result.md"
+        body_file.write_text(
+            result_body(
+                (
+                    "Summary",
+                    "Slice findings",
+                    "Contract impact",
+                    "Child proof",
+                    "Integration handoff",
+                    "Evidence",
+                    "Next steps",
+                )
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        assert is_ok(
+            _as_seat(
+                store,
+                "lead-1",
+                "result",
+                {"item": slc, "body_file": str(body_file)},
+            )
+        )
 
     verified = _as_seat(
         store,
@@ -504,6 +534,31 @@ def test_the_lead_verifies_through_item_done(tmp_path: Path) -> None:
         )
     )
     assert is_ok(_as_seat(store, "lead-1", "verify", {"target": release}))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        body_file = Path(tmpdir) / "release-result.md"
+        body_file.write_text(
+            result_body(
+                (
+                    "Summary",
+                    "Release contents",
+                    "Contract impact",
+                    "Child proof",
+                    "Release evidence",
+                    "Evidence",
+                    "Next steps",
+                )
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        assert is_ok(
+            _as_seat(
+                store,
+                "lead-1",
+                "result",
+                {"item": release, "body_file": str(body_file)},
+            )
+        )
     shipped = _as_seat(
         store,
         "lead-1",
@@ -512,3 +567,228 @@ def test_the_lead_verifies_through_item_done(tmp_path: Path) -> None:
     )
     assert is_ok(shipped), shipped
     assert shipped["value"]["result"]["status"] == "released"
+
+
+def test_portfolio_roles_result_reach_and_unchanged_restrictions(
+    tmp_path: Path,
+) -> None:
+    import tempfile
+    from helpers import result_body
+
+    store = _init_portfolio(tmp_path)
+    with as_human():
+        comp_a = invoke(
+            "add",
+            {"preset": "component", "title": "Comp A", "set": ["store=../comp-a/context-rail"]},
+            store=store,
+            actor=None,
+        )["value"]["slug"]
+        comp_b = invoke(
+            "add",
+            {"preset": "component", "title": "Comp B", "set": ["store=../comp-b/context-rail"]},
+            store=store,
+            actor=None,
+        )["value"]["slug"]
+        slice_a = invoke(
+            "add",
+            {"preset": "slice", "title": "Slice A", "rel": [f"part_of={comp_a}"]},
+            store=store,
+            actor=None,
+        )["value"]["slug"]
+        slice_b = invoke(
+            "add",
+            {"preset": "slice", "title": "Slice B", "rel": [f"part_of={comp_b}"]},
+            store=store,
+            actor=None,
+        )["value"]["slug"]
+        release = invoke(
+            "add",
+            {"preset": "release", "title": "Release 1", "rel": [f"depends_on={slice_a}"]},
+            store=store,
+            actor=None,
+        )["value"]["slug"]
+        question = invoke(
+            "add",
+            {"preset": "question", "title": "Open API question"},
+            store=store,
+            actor=None,
+        )["value"]["slug"]
+    assert is_ok(_grant_seat(store, "lead-1", "portfolio-lead", anchor="project"))
+    assert is_ok(_grant_seat(store, "comp-a-cto", "component-cto", anchor=comp_a))
+
+    def _record_as_seat(seat: str, item: str, sections: tuple[str, ...]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            body_file = Path(tmpdir) / "body.md"
+            body_file.write_text(result_body(sections), encoding="utf-8", newline="\n")
+            return _as_seat(
+                store,
+                seat,
+                "result",
+                {"item": item, "body_file": str(body_file)},
+            )
+
+    # component-cto can record results on its own component and slices only
+    assert is_ok(
+        _record_as_seat(
+            "comp-a-cto",
+            comp_a,
+            (
+                "Summary",
+                "Component findings",
+                "Contract impact",
+                "Maintenance decisions",
+                "Evidence",
+                "Next steps",
+            ),
+        )
+    )
+    assert is_ok(
+        _record_as_seat(
+            "comp-a-cto",
+            slice_a,
+            (
+                "Summary",
+                "Slice findings",
+                "Contract impact",
+                "Child proof",
+                "Integration handoff",
+                "Evidence",
+                "Next steps",
+            ),
+        )
+    )
+
+    # component-cto is refused on another component, other component's slice, release, or question
+    for target, sections in (
+        (
+            comp_b,
+            (
+                "Summary",
+                "Component findings",
+                "Contract impact",
+                "Maintenance decisions",
+                "Evidence",
+                "Next steps",
+            ),
+        ),
+        (
+            slice_b,
+            (
+                "Summary",
+                "Slice findings",
+                "Contract impact",
+                "Child proof",
+                "Integration handoff",
+                "Evidence",
+                "Next steps",
+            ),
+        ),
+        (
+            release,
+            (
+                "Summary",
+                "Release contents",
+                "Contract impact",
+                "Child proof",
+                "Release evidence",
+                "Evidence",
+                "Next steps",
+            ),
+        ),
+        (
+            question,
+            (
+                "Summary",
+                "Component and slice findings",
+                "Contract impact",
+                "Child proof",
+                "Evidence",
+                "Next steps",
+            ),
+        ),
+    ):
+        denied = _record_as_seat("comp-a-cto", target, sections)
+        assert not is_ok(denied), (target, denied)
+        assert denied["error"]["code"] == "PERMISSION_DENIED"
+
+    # component-cto still has no close/release/review rights
+    with tempfile.TemporaryDirectory() as tmpdir:
+        notes = Path(tmpdir) / "notes.md"
+        notes.write_text(
+            result_body(("Summary", "Handoff assessment", "Contract assessment", "Child proof", "Evidence", "Verdict")),
+            encoding="utf-8",
+        )
+        denied_review = _as_seat(
+            store,
+            "comp-a-cto",
+            "review",
+            {"item": slice_a, "verdict": "approve", "notes_file": str(notes)},
+        )
+        assert not is_ok(denied_review)
+        assert denied_review["error"]["code"] == "PERMISSION_DENIED"
+
+    # portfolio-lead can record results on component, slice, release, question (within reach)
+    assert is_ok(
+        _record_as_seat(
+            "lead-1",
+            release,
+            (
+                "Summary",
+                "Release contents",
+                "Contract impact",
+                "Child proof",
+                "Release evidence",
+                "Evidence",
+                "Next steps",
+            ),
+        )
+    )
+    assert is_ok(
+        _record_as_seat(
+            "lead-1",
+            question,
+            (
+                "Summary",
+                "Component and slice findings",
+                "Contract impact",
+                "Child proof",
+                "Evidence",
+                "Next steps",
+            ),
+        )
+    )
+
+    # Brief for component-cto does not leak comp-b's result
+    lead_b = _record_as_seat(
+        "lead-1",
+        slice_b,
+        (
+            "Summary",
+            "Slice findings",
+            "Contract impact",
+            "Child proof",
+            "Integration handoff",
+            "Evidence",
+            "Next steps",
+        ),
+    )
+    assert is_ok(lead_b), lead_b
+    brief = _as_seat(store, "comp-a-cto", "brief", {"item": slice_a})
+    assert is_ok(brief), brief
+    assert lead_b["value"]["path"] not in str(brief["value"])
+
+    # portfolio-lead still has no review right
+    with tempfile.TemporaryDirectory() as tmpdir:
+        notes = Path(tmpdir) / "notes.md"
+        notes.write_text(
+            result_body(("Summary", "Handoff assessment", "Contract assessment", "Child proof", "Evidence", "Verdict")),
+            encoding="utf-8",
+        )
+        denied_lead_review = _as_seat(
+            store,
+            "lead-1",
+            "review",
+            {"item": slice_a, "verdict": "approve", "notes_file": str(notes)},
+        )
+        assert not is_ok(denied_lead_review)
+        assert denied_lead_review["error"]["code"] == "PERMISSION_DENIED"

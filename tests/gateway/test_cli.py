@@ -261,10 +261,15 @@ def test_cli_status_excludes_finished_dependents(tmp_path):
         )
         assert added.returncode == 0, added.stdout
 
-    for status in ("doing", "done"):
-        etag = _json(run_cli(tmp_path, "show", "waits"))["value"]["doc"]["etag"]
-        moved = run_cli(tmp_path, "--actor", "cto", "move", "waits", status, "--expect", etag)
-        assert moved.returncode == 0, moved.stdout
+    etag = _json(run_cli(tmp_path, "show", "waits"))["value"]["doc"]["etag"]
+    doing = run_cli(tmp_path, "--actor", "cto", "move", "waits", "doing", "--expect", etag)
+    assert doing.returncode == 0, doing.stdout
+    from helpers import record_result_for_test
+
+    record_result_for_test(tmp_path / "context-rail", "waits")
+    etag = _json(run_cli(tmp_path, "show", "waits"))["value"]["doc"]["etag"]
+    moved = run_cli(tmp_path, "--actor", "cto", "move", "waits", "done", "--expect", etag)
+    assert moved.returncode == 0, moved.stdout
     etag = _json(run_cli(tmp_path, "show", "scrapped"))["value"]["doc"]["etag"]
     dropped = run_cli(
         tmp_path, "--actor", "cto", "move", "scrapped", "dropped", "--expect", etag

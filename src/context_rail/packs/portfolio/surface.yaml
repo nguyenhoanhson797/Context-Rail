@@ -4,6 +4,14 @@ labels:
   slice: {one: Slice, many: Slices}
   release: {one: Release, many: Releases}
   contract: {one: Contract, many: Contracts}
+  result: {one: Result, many: Results}
+  review-result: {one: Result Review, many: Result Reviews}
+  component-result: {one: Component Result, many: Component Results}
+  component-review: {one: Component Review, many: Component Reviews}
+  slice-result: {one: Slice Result, many: Slice Results}
+  slice-review: {one: Slice Review, many: Slice Reviews}
+  release-result: {one: Release Result, many: Release Results}
+  release-review: {one: Release Review, many: Release Reviews}
 screens:
   - {id: summary, kind: summary, title: Portfolio}
   - {id: board, kind: board, title: Slices, preset: slice, group_by: status}
@@ -11,7 +19,7 @@ screens:
   - {id: workflow, kind: workflow, title: Workflow}
   - {id: execution, kind: execution, title: Progress}
   - {id: catalog, kind: catalog, title: Releases, preset: release}
-  - {id: records, kind: records, title: Records}
+  - {id: records, kind: records, title: Records, presets: [result, review-result, component-result, component-review, slice-result, slice-review, release-result, release-review, decision]}
   - {id: pack, kind: pack, title: Pack}
 fields:
   card: [status, workflow, priority]

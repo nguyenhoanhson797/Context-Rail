@@ -15,9 +15,10 @@ from context_rail.gateway.handlers.onboarding import agent_ops
 from context_rail.gateway.identity import name_is_human
 from context_rail.model.manifest import initial_manifest
 from context_rail.model.pack import load_pack
+from context_rail.model.results import RESULT_ADOPTION_KIND
 from context_rail.store.legacy import read_legacy
 from context_rail.store.location import confine
-from context_rail.store.migration import plan_migration
+from context_rail.store.migration import migration_adoption_record, plan_migration
 from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
 
 if TYPE_CHECKING:  # the gateway imports this module only when migrate is invoked
@@ -97,7 +98,19 @@ def migrate(ctx: Context | None, args: dict[str, Any], actor: str) -> dict[str, 
             "warnings": list(plan.warnings),
         },
     }
-    result = commit(target, manifest, ops, record, actor=actor, key=key)
+    adoption = migration_adoption_record(plan, pack=pack, manifest=manifest)
+    extra_records = (adoption,) if adoption is not None else ()
+    reserved_kinds = frozenset({RESULT_ADOPTION_KIND}) if adoption is not None else frozenset()
+    result = commit(
+        target,
+        manifest,
+        ops,
+        record,
+        actor=actor,
+        key=key,
+        extra_records=extra_records,
+        reserved_kinds=reserved_kinds,
+    )
     for folder in pinned_folders(manifest):
         (target / folder).mkdir(parents=True, exist_ok=True)
     summary["written"] = list(result["written"])

@@ -27,6 +27,7 @@ from helpers import (
     result_pack_document,
     run_git,
     tree_bytes,
+    workflow_pack_document,
 )
 
 from context_rail.core.result import is_ok
@@ -192,7 +193,8 @@ def test_unparented_container_blocked_and_partial_items_record_results(tmp_path:
 
 
 def test_contract_less_workflow_refuses_with_adoption_hint(tmp_path: Path) -> None:
-    store = init_store(tmp_path / "legacy")
+    doc = workflow_pack_document("legacy-no-results")
+    store = init_pack_store(tmp_path / "legacy", doc, approve=True)
     task = _add_item(store, "task", "Legacy Task")
     body_path = _write_body(tmp_path / "body.md", result_body(DEFAULT_PRODUCER_SECTIONS))
     before_tree = _store_files(store)

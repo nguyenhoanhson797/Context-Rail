@@ -17,4 +17,7 @@ tags: []
 - Attach every file or URL an attempt produced with `--output <path or URL>`, one flag
   for each.
 - Progress comes from execution records alone. A record shows what ran; it does not
-  approve a take or pass a gate.
+  approve a take, replace a `rail loop result` Markdown record, or pass a gate.
+- Require each assignment to leave a workflow-shaped `rail loop result` Markdown record
+  instead of a chat-only summary, while keeping `rail loop report` as the diagnostic
+  channel.

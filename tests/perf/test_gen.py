@@ -17,7 +17,7 @@ def _documents(store: Path) -> list[str]:
     return sorted(
         path.relative_to(store).as_posix()
         for path in store.rglob("*")
-        if path.is_file()
+        if path.is_file() and not path.relative_to(store).as_posix().startswith("packs/")
     )
 
 

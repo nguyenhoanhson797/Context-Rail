@@ -20,6 +20,7 @@ from context_rail.store.index import Index
 from helpers import (
     approve_picture,
     edited_block_before,
+    record_result_for_test,
     records_of,
     run_cli,
     run_git,
@@ -586,29 +587,39 @@ def test_a_legitimate_human_close_on_a_require_human_charter_is_doctor_clean(
 ) -> None:
     """The doctor reads the store's own Records, so a human close is not a bypass."""
     project, store = _approved(tmp_path, answers, "human-close", git=True)
-    item, candidate = _verified_item(project, store, tmp_path)
     _require_human_charter(store)
-    write_record(
-        store,
-        "01JHUMANREVIEW000000000001",
-        "review.verdict",
-        {
-            "schema": 1,
-            "item": item,
-            "implementation_run": "01JHUMANRUN0000000000001",
-            "implementer_actor": "implementer",
-            "reviewer_actor": "reviewer",
-            "implementer_model": "custom:Deepseek-V4-flash-0",
-            "reviewer_model": "custom:gemini-3.8-flash-LTN-0",
-            "candidate_commit": candidate,
-            "verdict": "approve",
-            "findings": [],
-            "evidence": [],
-            "profile_version": 1,
-        },
-        at="2026-10-28T12:00:00Z",
-        about=(item,),
+    base_head = run_git(project, "rev-parse", "HEAD").stdout.strip()
+    (project / "src" / "app.py").write_text("VALUE = 2\n", encoding="utf-8", newline="\n")
+    run_git(project, "add", "src/app.py")
+    run_git(project, "commit", "-m", "implement login page")
+    item, candidate = _verified_item(project, store, tmp_path)
+    cand = invoke(
+        "candidate",
+        {"item": item, "commit": candidate, "base": base_head, "model": "custom:Deepseek-V4-flash-0"},
+        store=store,
+        actor="implementer",
     )
+    assert is_ok(cand), cand
+    record_result_for_test(store, item, actor="implementer", commit=candidate)
+    notes_file = tmp_path / "human-review.md"
+    notes_file.write_text(
+        "## Summary\nReviewed.\n\n## Findings\nNone.\n\n## Evidence\nCheck passed.\n\n## Verdict\nApproved.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    reviewed = invoke(
+        "review",
+        {
+            "item": item,
+            "commit": candidate,
+            "verdict": "approve",
+            "model": "custom:gemini-3.8-flash-LTN-0",
+            "notes_file": str(notes_file),
+        },
+        store=store,
+        actor="reviewer",
+    )
+    assert is_ok(reviewed), reviewed
     shown = invoke("show", {"slug": item}, store=store, actor="cto")
     started = invoke(
         "move",

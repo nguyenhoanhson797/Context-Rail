@@ -16,7 +16,7 @@ from context_rail.gateway.gateway import invoke
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
 from context_rail.store.index import Index
-from helpers import init_store, write_pack, write_record
+from helpers import init_store, record_result_for_test, write_pack, write_record
 
 OPERATING_CODES = {
     "focus_missing": "warning",
@@ -227,8 +227,10 @@ def test_execution_missing_then_failed_then_succeeded(
 ) -> None:
     store = operating_video_store.store
     shot = operating_video_store.shot
-    for status in ("storyboard", "generating", "review", "approved"):
+    for status in ("storyboard", "generating", "review"):
         _move(store, shot, status)
+    record_result_for_test(store, shot, actor="cto")
+    _move(store, shot, "approved")
 
     missing = _codes(store)
     assert "execution_missing" in missing

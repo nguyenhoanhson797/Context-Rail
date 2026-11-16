@@ -16,6 +16,7 @@ from helpers import (
     copy_pack_templates,
     init_pack_store,
     init_store,
+    record_result_for_test,
     write_pack,
     write_record,
 )
@@ -55,6 +56,7 @@ def test_scrum_progress_counts_story_completion(
 
     before = resolve_progress(ctx, model)
     _move(store, operating_scrum_store.story, "doing")
+    record_result_for_test(store, operating_scrum_store.story, actor="cto")
     _move(store, operating_scrum_store.story, "done")
     after = resolve_progress(ctx, model)
 
@@ -144,8 +146,10 @@ def test_a_mixed_workflow_pack_uses_per_preset_states(tmp_path: Path) -> None:
 
 
 def _approve_video_shot(store: Path, slug: str) -> None:
-    for status in ("storyboard", "generating", "review", "approved"):
+    for status in ("storyboard", "generating", "review"):
         _move(store, slug, status)
+    record_result_for_test(store, slug, actor="cto")
+    _move(store, slug, "approved")
 
 
 def _execution(

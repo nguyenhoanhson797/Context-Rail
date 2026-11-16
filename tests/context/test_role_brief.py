@@ -17,7 +17,7 @@ IMPLEMENTER = "implementer"
 REVIEWER_PROFILE = "workspace/profiles/reviewer/profile.md"
 LEAN_TESTING_NOTE = "workspace/profiles/implementer/skills/lean-testing.md"
 PROFILE_LINE = (
-    "You implement exactly one Item in your own checkout and leave one commit."
+    "You complete exactly one registered Item and leave one workflow-shaped Markdown result"
 )
 
 
@@ -114,11 +114,11 @@ def test_role_mode_brief_without_a_seat_names_the_role(
 
 
 def test_a_tiny_budget_collapses_skills_first(leaf_item: SimpleNamespace) -> None:
-    result = brief(leaf_item, max_chars=600)
+    result = brief(leaf_item, max_chars=1200)
 
     assert is_ok(result), result
     text = result["value"]["text"]
-    assert len(text) <= 600
+    assert len(text) <= 1200
     assert "(read: rail read show" in text
     assert "## objective" in text
     assert "Choose the smallest check that proves the change" not in text
@@ -136,7 +136,7 @@ def test_body_headings_never_collide_with_sections(leaf_item: SimpleNamespace) -
     assert is_ok(result), result
     text = result["value"]["text"]
     headings = tuple(line[3:] for line in text.splitlines() if line.startswith("## "))
-    assert headings == WORK_BRIEF_SECTIONS
+    assert headings == (*WORK_BRIEF_SECTIONS, "result")
     assert "#### Heading" in text
 
 

@@ -128,6 +128,12 @@ def test_triage_doubles_the_weight_of_a_rejected_candidate(
 ) -> None:
     first_tip = record_candidate(leaf_item, "VALUE = 2\n")
     second_tip = record_candidate(leaf_item, "VALUE = 3\n")
+    notes_file = tmp_path / "reject-review.md"
+    notes_file.write_text(
+        "## Summary\nRejected.\n\n## Findings\nFails review.\n\n## Evidence\nCheck.\n\n## Verdict\nReject.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     reviewed = invoke(
         "review",
         {
@@ -135,6 +141,7 @@ def test_triage_doubles_the_weight_of_a_rejected_candidate(
             "commit": second_tip,
             "verdict": "reject",
             "model": "model-b",
+            "notes_file": str(notes_file),
         },
         store=leaf_item.store,
         actor="qa",

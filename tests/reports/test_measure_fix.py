@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from context_rail.gateway.gateway import invoke
-from helpers import approve_store, init_store, records_of, write_record
+from helpers import approve_store, init_store, record_result_for_test, records_of, write_record
 
 FINGERPRINT = "item|sign-in|the button submits|the form reloaded"
 BEFORE = "2026-10-28T12:00:00Z"
@@ -72,6 +72,8 @@ def _close(store: Path, slug: str, *, status: str = "done") -> str:
         )
         assert moved["ok"] is True, moved
         current = invoke("show", {"slug": slug}, store=store, actor="cto")["value"]["doc"]
+    if status == "done":
+        record_result_for_test(store, slug, actor="cto")
     moved = invoke(
         "move",
         {"slug": slug, "status": status, "expect": current["etag"]},

@@ -9,7 +9,7 @@ import pytest
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import init_store
+from helpers import init_store, record_result_for_test
 
 
 def _show(store: Path, slug: str) -> dict:
@@ -24,6 +24,8 @@ def _add(store: Path, preset: str, title: str, **extra: object) -> dict:
 
 
 def _move(store: Path, slug: str, status: str) -> None:
+    if status == "done":
+        record_result_for_test(store, slug, actor="cto")
     etag = _show(store, slug)["doc"]["etag"]
     moved = invoke(
         "move", {"slug": slug, "status": status, "expect": etag}, store=store, actor="cto"

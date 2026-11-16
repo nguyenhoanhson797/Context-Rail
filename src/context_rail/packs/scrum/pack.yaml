@@ -43,6 +43,13 @@ workflows:
       verifying: {queue: false}
     quality:
       closed: {gate: item_done, checks: [repro-check, acceptance]}
+    results:
+      produce:
+        preset: bug-result
+        sections: [Summary, Reproduction, Fix or findings, Evidence, Next steps]
+      review:
+        preset: bug-review
+        sections: [Summary, Reproduction, Fix or findings, Evidence, Verdict]
   scope:
     initial: todo
     transitions:
@@ -73,6 +80,10 @@ presets:
   code:       {primitive: note,   tags: [code], fields: {kind: [file, module, class, function, method]}, template: templates/code.md}
   decision:   {primitive: record, tags: [decision]}
   event:      {primitive: record, tags: [event]}
+  result:     {primitive: record, tags: [result], required: [workflow_name], template: templates/result.md}
+  review-result: {primitive: record, tags: [review], required: [workflow_name], template: templates/review-result.md}
+  bug-result: {primitive: record, tags: [result], required: [workflow_name], template: templates/bug-result.md}
+  bug-review: {primitive: record, tags: [review], required: [workflow_name], template: templates/bug-review.md}
   check:      {primitive: check,  tags: []}
   charter:    {primitive: policy, tags: [], template: templates/charter.md}
   vision:     {primitive: note,   tags: []}
@@ -82,6 +93,13 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false, workflow: bugfix}
 policy: {stuck_hours: 24, measurement_min_runs: 10}
+results:
+  produce:
+    preset: result
+    sections: [Summary, Acceptance findings, Design notes, Evidence, Open issues, Next steps]
+  review:
+    preset: review-result
+    sections: [Summary, Acceptance assessment, Design assessment, Evidence, Open issues, Verdict]
 operating:
   version: 1
   unit: story

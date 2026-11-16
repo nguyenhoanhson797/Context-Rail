@@ -42,6 +42,12 @@ def _local_approved(tmp_path: Path, answers: Path) -> Path:
     """An approved store whose active pack is a store-local v2 pack."""
     store = tmp_path / "context-rail"
     write_pack(store, "basic", _builtin_document())
+    layout_text = resources.files("context_rail").joinpath(
+        "packs", "basic", "layout.yaml"
+    ).read_text(encoding="utf-8")
+    (store / "packs" / "basic" / "layout.yaml").write_text(
+        layout_text, encoding="utf-8", newline="\n"
+    )
     _write_surface(store)
     created = invoke(
         "init",
@@ -129,7 +135,8 @@ def test_reapproving_a_semantic_change_restores_approval(
 def test_a_v1_pack_hashes_exactly_as_it_did_before_operating(tmp_path: Path) -> None:
     document = _builtin_document()
     document["version"] = 1
-    del document["operating"]
+    document.pop("operating", None)
+    document.pop("results", None)
     write_pack(tmp_path, "basic", document)
     pack = load_pack("basic", tmp_path)
 

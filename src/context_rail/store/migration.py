@@ -12,17 +12,25 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from context_rail.core.util import dump_frontmatter, slugify
+from context_rail.model.compiler import compile_results
 from context_rail.model.errors import ModelError
-from context_rail.model.manifest import Manifest, manifest_needs_graph, render_path
+from context_rail.model.manifest import Manifest, render_path
+from context_rail.model.placement import is_structural, tokens_used
 from context_rail.model.pack import Pack, Preset
-from context_rail.model.primitives import RELATIONS
+from context_rail.model.results import (
+    RESULT_ADOPTION_KIND,
+    RESULT_ADOPTION_SCHEMA,
+    parse_result_adoption,
+)
+from context_rail.store.approval import semantic_hash
 from context_rail.store.doc import record_digest
-from context_rail.store.legacy import LEGACY_LINKS, LegacyDocument, LegacyStore
+from context_rail.store.legacy import LegacyDocument, LegacyStore
 
 __all__ = [
     "MigrationDocument",
     "MigrationPlan",
     "MigrationRecord",
+    "migration_adoption_record",
     "plan_migration",
 ]
 
@@ -60,6 +68,10 @@ class MigrationDocument:
     rel: str
     data: bytes
     source: str
+    slug: str = ""
+    primitive: str = ""
+    workflow: str = "default"
+    category: str = ""
 
 
 @dataclass(frozen=True)
@@ -89,12 +101,27 @@ def plan_migration(
     at: str,
 ) -> MigrationPlan:
     """Map every legacy document and event into v3 bytes."""
-    if manifest_needs_graph(manifest):
-        raise ModelError(
-            "VALIDATION_FAILED",
-            "migration cannot build a legacy store's work graph; "
-            "use a placement without structural tokens",
-        )
+    for primitive, template in manifest.placement.items():
+        if primitive in _DOCUMENT_PRIMITIVES and any(
+            is_structural(token) for token in tokens_used(template)
+        ):
+            raise ModelError(
+                "VALIDATION_FAILED",
+                "migration cannot build a legacy store's work graph; "
+                "use a placement without structural tokens",
+            )
+    for preset_name, template in manifest.preset_placement.items():
+        preset = pack.presets.get(preset_name)
+        if (
+            preset is not None
+            and preset.primitive in _DOCUMENT_PRIMITIVES
+            and any(is_structural(token) for token in tokens_used(template))
+        ):
+            raise ModelError(
+                "VALIDATION_FAILED",
+                "migration cannot build a legacy store's work graph; "
+                "use a placement without structural tokens",
+            )
     warnings: list[str] = list(legacy.warnings)
     slugs = _slugs(legacy.documents)
     documents: list[MigrationDocument] = []
@@ -105,7 +132,19 @@ def plan_migration(
         rel = render_path(
             manifest, primitive=preset.primitive, preset=preset.name, slug=slug
         )
-        documents.append(MigrationDocument(rel=rel, data=_compose(front, document.body), source=document.source))
+        status = front.get("status")
+        category = pack.statuses.get(status, "") if isinstance(status, str) else ""
+        documents.append(
+            MigrationDocument(
+                rel=rel,
+                data=_compose(front, document.body),
+                source=document.source,
+                slug=slug,
+                primitive=preset.primitive,
+                workflow=preset.workflow or "default",
+                category=category,
+            )
+        )
     records: list[MigrationRecord] = []
     for event in legacy.events:
         record = _record(event, at, slugs, warnings)
@@ -247,6 +286,51 @@ def _about(subject: str, slugs: dict[str, str]) -> str:
     tail = subject.split(":", 1)[-1] if subject else ""
     mapped = _target_slug(tail, slugs) if tail else None
     return mapped or tail or subject
+
+
+def migration_adoption_record(
+    plan: MigrationPlan,
+    *,
+    pack: Pack,
+    manifest: Manifest,
+) -> dict[str, Any] | None:
+    """Build a ``results.adopted`` snapshot for legacy done items when contracts apply."""
+    compiled = compile_results(
+        pack,
+        {
+            "placement": dict(manifest.placement),
+            "presets": dict(manifest.preset_placement),
+        },
+    )
+    if not compiled:
+        return None
+    workflows = sorted(compiled)
+    historical_done = [
+        {
+            "item": doc.slug,
+            "workflow": doc.workflow or "default",
+            "item_digest": semantic_hash(doc.data, format="markdown"),
+            "work_cycle": None,
+        }
+        for doc in plan.documents
+        if doc.primitive == "item"
+        and doc.category == "done"
+        and (doc.workflow or "default") in compiled
+    ]
+    payload = parse_result_adoption(
+        {
+            "schema": RESULT_ADOPTION_SCHEMA,
+            "pack": pack.name,
+            "workflows": workflows,
+            "historical_done": historical_done,
+        }
+    )
+    return {
+        "preset": "event",
+        "kind": RESULT_ADOPTION_KIND,
+        "about": sorted({entry["item"] for entry in historical_done}),
+        "data": payload,
+    }
 
 
 def _safe_id(value: str) -> bool:

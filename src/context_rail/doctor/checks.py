@@ -567,7 +567,7 @@ def _metadata_issues(
         return []
     values = fields.get(row.path, {})
     if row.primitive == "record" and isinstance(values.get("data"), dict):
-        values = values["data"]
+        values = {**values["data"], **values}
     record = row.primitive == "record"
     missing_code = "record_metadata_missing" if record else "required_field_missing"
     invalid_code = "record_metadata_invalid" if record else "required_field_invalid"

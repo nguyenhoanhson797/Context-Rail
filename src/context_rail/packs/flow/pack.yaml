@@ -27,6 +27,8 @@ presets:
   code:       {primitive: note,   tags: [code], fields: {kind: [file, module, class, function, method]}, template: templates/code.md}
   decision:   {primitive: record, tags: [decision]}
   event:      {primitive: record, tags: [event]}
+  result:     {primitive: record, tags: [result], required: [workflow_name], template: templates/result.md}
+  review-result: {primitive: record, tags: [review], required: [workflow_name], template: templates/review-result.md}
   check:      {primitive: check,  tags: []}
   charter:    {primitive: policy, tags: [], template: templates/charter.md}
   vision:     {primitive: note,   tags: []}
@@ -36,6 +38,13 @@ presets:
   profile:    {primitive: actor,  tags: []}
   fix:        {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, measurement_min_runs: 10}
+results:
+  produce:
+    preset: result
+    sections: [Summary, Outcome, Findings, Evidence, Delivery risks, Next steps]
+  review:
+    preset: review-result
+    sections: [Summary, Outcome assessment, Findings, Evidence, Delivery risks, Verdict]
 operating:
   version: 1
   unit: story

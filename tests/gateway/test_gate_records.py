@@ -7,7 +7,14 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from helpers import records_of, refusal, run_git, write_record
+from helpers import (
+    record_result_for_test,
+    records_of,
+    refusal,
+    run_git,
+    write_record,
+    write_review_notes_for_test,
+)
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
@@ -38,6 +45,7 @@ def candidate(leaf_item: SimpleNamespace, *, actor: str = "dev", **args: Any) ->
         actor=actor,
     )
     assert is_ok(recorded), recorded
+    record_result_for_test(leaf_item.store, leaf_item.slug, actor=actor, commit=tip)
     return tip
 
 
@@ -79,16 +87,20 @@ def test_move_done_binds_gate_to_latest_candidate(leaf_item: SimpleNamespace) ->
     assert "no review was recorded" in details["reasons"]
 
 
-def test_move_done_opens_after_an_approving_review(leaf_item: SimpleNamespace) -> None:
-    candidate(leaf_item, model="model-a")
+def test_move_done_opens_after_an_approving_review(
+    leaf_item: SimpleNamespace, tmp_path: Path
+) -> None:
+    tip = candidate(leaf_item, model="model-a")
     run_checks(leaf_item)
+    notes = write_review_notes_for_test(leaf_item.store, leaf_item.slug, tmp_path)
     reviewed = invoke(
         "review",
         {
             "item": leaf_item.slug,
-            "commit": "HEAD",
+            "commit": tip,
             "verdict": "approve",
             "model": "model-b",
+            "notes_file": str(notes),
         },
         store=leaf_item.store,
         actor="qa",
@@ -103,13 +115,20 @@ def test_move_done_opens_after_an_approving_review(leaf_item: SimpleNamespace) -
 
 
 def test_move_done_refused_when_a_newer_candidate_supersedes_the_approval(
-    leaf_item: SimpleNamespace,
+    leaf_item: SimpleNamespace, tmp_path: Path
 ) -> None:
     approved = candidate(leaf_item, model="model-a")
     run_checks(leaf_item)
+    notes = write_review_notes_for_test(leaf_item.store, leaf_item.slug, tmp_path)
     reviewed = invoke(
         "review",
-        {"item": leaf_item.slug, "commit": "HEAD", "verdict": "approve", "model": "model-b"},
+        {
+            "item": leaf_item.slug,
+            "commit": approved,
+            "verdict": "approve",
+            "model": "model-b",
+            "notes_file": str(notes),
+        },
         store=leaf_item.store,
         actor="qa",
     )
@@ -133,12 +152,21 @@ def test_move_done_refused_when_a_newer_candidate_supersedes_the_approval(
     assert any(approved in reason and "not" in reason for reason in reasons), reasons
 
 
-def test_move_done_refused_after_a_rejecting_review(leaf_item: SimpleNamespace) -> None:
-    candidate(leaf_item, model="model-a")
+def test_move_done_refused_after_a_rejecting_review(
+    leaf_item: SimpleNamespace, tmp_path: Path
+) -> None:
+    tip = candidate(leaf_item, model="model-a")
     run_checks(leaf_item)
+    notes = write_review_notes_for_test(leaf_item.store, leaf_item.slug, tmp_path)
     reviewed = invoke(
         "review",
-        {"item": leaf_item.slug, "commit": "HEAD", "verdict": "reject", "model": "model-b"},
+        {
+            "item": leaf_item.slug,
+            "commit": tip,
+            "verdict": "reject",
+            "model": "model-b",
+            "notes_file": str(notes),
+        },
         store=leaf_item.store,
         actor="qa",
     )
@@ -152,13 +180,19 @@ def test_move_done_refused_after_a_rejecting_review(leaf_item: SimpleNamespace) 
 
 @pytest.mark.parametrize("picture_answers", ["model-optional"], indirect=True)
 def test_a_review_without_models_opens_the_gate_when_the_rule_is_off(
-    leaf_item: SimpleNamespace,
+    leaf_item: SimpleNamespace, tmp_path: Path
 ) -> None:
-    candidate(leaf_item)
+    tip = candidate(leaf_item)
     run_checks(leaf_item)
+    notes = write_review_notes_for_test(leaf_item.store, leaf_item.slug, tmp_path)
     reviewed = invoke(
         "review",
-        {"item": leaf_item.slug, "commit": "HEAD", "verdict": "approve"},
+        {
+            "item": leaf_item.slug,
+            "commit": tip,
+            "verdict": "approve",
+            "notes_file": str(notes),
+        },
         store=leaf_item.store,
         actor="qa",
     )

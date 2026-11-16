@@ -712,6 +712,8 @@ def load_pack_skills(pack: str) -> dict[str, str]:
     """Every skill Note a built-in pack ships, keyed by its directory name."""
     canonical = canonical_pack_name(pack)
     root = resources.files("context_rail").joinpath("packs", canonical, "skills")
+    if not root.is_dir():
+        return {}
     return _skills_under(root, f"packs/{canonical}/skills")
 
 

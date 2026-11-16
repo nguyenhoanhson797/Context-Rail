@@ -14,6 +14,7 @@ from helpers import (
     as_human,
     item_etag,
     latest_record,
+    record_result_for_test,
     refusal,
     require_git_identity,
     run_git,
@@ -95,6 +96,7 @@ def _move_child_item(child: Any, status: str) -> None:
             actor="cto",
         )
         assert is_ok(moved), moved
+        record_result_for_test(child.store, child.item, actor="cto")
     current_etag = item_etag(child)
     moved = invoke(
         "move",
@@ -451,6 +453,7 @@ def test_verify_ignores_the_child_role_reach(tmp_path: Path) -> None:
             store=child.store,
         )
         assert is_ok(moved1), moved1
+        record_result_for_test(child.store, child.item, actor=None)
         e2 = invoke("show", {"slug": child.item}, store=child.store)["value"]["doc"]["etag"]
         moved2 = invoke(
             "move",

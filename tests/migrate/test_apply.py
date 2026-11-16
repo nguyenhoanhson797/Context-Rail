@@ -128,3 +128,35 @@ def test_a_migrated_store_is_doctor_clean_and_searchable(
     assert found["ok"] is True, found
     slugs = {item["slug"] for item in found["value"]["items"]}
     assert {"login", "req-1"} <= slugs
+
+
+def test_migrated_historical_done_items_stay_exempt_until_modified(
+    legacy_v2_store: Path, tmp_path: Path
+) -> None:
+    target_dir = tmp_path / "exempt"
+    assert invoke(
+        "migrate",
+        {"source": str(legacy_v2_store), "dir": str(target_dir)},
+        actor="human",
+    )["ok"] is True
+    store = target_dir / "context-rail"
+
+    report = invoke("doctor", {}, store=store, actor="human")
+    assert report["ok"] is True, report
+    codes = {issue["code"] for issue in report["value"]["issues"]}
+    assert "gate_bypassed" not in codes
+
+    # No fabricated producer results exist for imported done items.
+    records = record_inventory(store)
+    assert not any(rel.startswith("records/results/") for rel, _ in records.values())
+
+    # Editing an imported done item invalidates its historical adoption snapshot.
+    sc01 = store / "project" / "sc-01.md"
+    sc01.write_text(sc01.read_text(encoding="utf-8") + "\nEdited post-migration.\n", encoding="utf-8")
+    edited_report = invoke("doctor", {}, store=store, actor="human")
+    assert edited_report["ok"] is True, edited_report
+    assert any(
+        issue["code"] == "gate_bypassed" and issue["path"] == "project/sc-01.md"
+        for issue in edited_report["value"]["issues"]
+    )
+

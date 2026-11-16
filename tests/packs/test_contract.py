@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib import resources
+from importlib import resources
 from pathlib import Path
 
 import yaml
@@ -70,6 +71,23 @@ def test_pack_validate_accepts_a_named_workflow(tmp_path: Path) -> None:
     }
     write_pack(store, "twoways", document)
     copy_pack_templates(store, "twoways")
+    for tpl in ("result", "review-result"):
+        src = (
+            resources.files("context_rail")
+            .joinpath("packs", "basic", "templates", f"{tpl}.md")
+            .read_text(encoding="utf-8")
+        )
+        (store / "packs" / "twoways" / "templates" / f"{tpl}.md").write_text(
+            src, encoding="utf-8", newline="\n"
+        )
+    layout_src = (
+        resources.files("context_rail")
+        .joinpath("packs", "basic", "layout.yaml")
+        .read_text(encoding="utf-8")
+    )
+    (store / "packs" / "twoways" / "layout.yaml").write_text(
+        layout_src, encoding="utf-8", newline="\n"
+    )
 
     result = invoke("pack validate", {"name": "twoways"}, store=store, actor="human")
 

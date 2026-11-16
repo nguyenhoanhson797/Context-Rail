@@ -12,12 +12,15 @@ from helpers import (
     as_human,
     as_seat,
     edit_roles,
+    record_result_for_test,
     records_of,
     refusal,
+    require_git_identity,
     run_cli,
     run_git,
     touch_doc,
     write_record,
+    write_review_notes_for_test,
 )
 from perf.gen import make_store
 
@@ -55,6 +58,7 @@ def candidate(
         actor=actor,
     )
     assert is_ok(recorded), recorded
+    record_result_for_test(leaf_item.store, leaf_item.slug, actor=actor, commit=tip)
     return tip
 
 
@@ -63,11 +67,15 @@ def review(
 ) -> dict[str, Any]:
     arguments = {
         "item": leaf_item.slug,
-        "commit": "HEAD",
         "verdict": "approve",
         "model": "model-b",
         **args,
     }
+    if "notes_file" not in arguments:
+        notes = write_review_notes_for_test(
+            leaf_item.store, leaf_item.slug, leaf_item.root.parent
+        )
+        arguments["notes_file"] = str(notes)
     return invoke("review", arguments, store=leaf_item.store, actor=actor)
 
 
@@ -76,17 +84,108 @@ def test_review_requires_recorded_candidate(leaf_item: SimpleNamespace) -> None:
 
     result = review(leaf_item)
 
-    assert refusal(result) == ("INVALID_STATE", "no_candidate")
-    assert "rail loop candidate" in result["error"]["message"]
+    assert refusal(result) == ("INVALID_STATE", "no_result")
     assert records_of(leaf_item.store, "review.verdict") == []
 
 
-def test_review_accepts_short_sha_and_branch_name(leaf_item: SimpleNamespace) -> None:
+def test_legacy_review_requires_recorded_candidate(tmp_path: Path) -> None:
+    from helpers import _write_charter, approve_picture, init_pack_store, nested_pack_document
+
+    require_git_identity()
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "src").mkdir()
+    (project / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    run_git(project, "init", "-b", "main")
+    run_git(project, "add", "-A")
+    run_git(project, "commit", "-m", "init")
+
+    doc = nested_pack_document("legacy-review")
+    store = init_pack_store(project, doc, approve=False)
+    _write_charter(store)
+    assert is_ok(invoke("reindex", {}, store=store, actor="human"))
+    assert is_ok(approve_picture(store, actor="human"))
+    phase = invoke("add", {"preset": "phase", "title": "P1"}, store=store, actor="cto")["value"]["slug"]
+    task = invoke(
+        "add",
+        {"preset": "task", "title": "T1", "rel": [f"part_of={phase}"]},
+        store=store,
+        actor="cto",
+    )["value"]["slug"]
+    commit_file(project, "VALUE = 2\n")
+
+    result = invoke(
+        "review",
+        {"item": task, "commit": "HEAD", "verdict": "approve", "model": "model-b"},
+        store=store,
+        actor="qa",
+    )
+
+    assert refusal(result) == ("INVALID_STATE", "no_candidate")
+    assert "rail loop candidate" in result["error"]["message"]
+    assert records_of(store, "review.verdict") == []
+
+
+def test_review_accepts_short_sha_and_latest_commit(leaf_item: SimpleNamespace) -> None:
     run_git(leaf_item.root, "checkout", "-b", "work")
     tip = candidate(leaf_item, model="model-a")
 
     by_short = review(leaf_item, commit=tip[:8])
-    by_branch = review(leaf_item, commit="work")
+    by_latest = review(leaf_item)
+
+    assert is_ok(by_short), by_short
+    assert is_ok(by_latest), by_latest
+    assert by_short["value"]["commit"] == tip
+    assert by_latest["value"]["commit"] == tip
+
+
+def test_legacy_review_accepts_short_sha_and_branch_name(tmp_path: Path) -> None:
+    from helpers import _write_charter, approve_picture, init_pack_store, nested_pack_document
+
+    require_git_identity()
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "src").mkdir()
+    (project / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    run_git(project, "init", "-b", "main")
+    run_git(project, "add", "-A")
+    run_git(project, "commit", "-m", "init")
+
+    doc = nested_pack_document("legacy-branch")
+    store = init_pack_store(project, doc, approve=False)
+    _write_charter(store)
+    assert is_ok(invoke("reindex", {}, store=store, actor="human"))
+    assert is_ok(approve_picture(store, actor="human"))
+    phase = invoke("add", {"preset": "phase", "title": "P1"}, store=store, actor="cto")["value"]["slug"]
+    task = invoke(
+        "add",
+        {"preset": "task", "title": "T1", "rel": [f"part_of={phase}"]},
+        store=store,
+        actor="cto",
+    )["value"]["slug"]
+    run_git(project, "checkout", "-b", "work")
+    tip = commit_file(project, "VALUE = 2\n")
+    assert is_ok(
+        invoke(
+            "candidate",
+            {"item": task, "commit": tip, "model": "model-a"},
+            store=store,
+            actor="dev",
+        )
+    )
+
+    by_short = invoke(
+        "review",
+        {"item": task, "commit": tip[:8], "verdict": "approve", "model": "model-b"},
+        store=store,
+        actor="qa",
+    )
+    by_branch = invoke(
+        "review",
+        {"item": task, "commit": "work", "verdict": "approve", "model": "model-b"},
+        store=store,
+        actor="qa",
+    )
 
     assert is_ok(by_short), by_short
     assert is_ok(by_branch), by_branch
@@ -131,7 +230,10 @@ def test_review_approve_records_verdict_bound_to_candidate(
 def test_review_reject_records_verdict(leaf_item: SimpleNamespace, tmp_path: Path) -> None:
     candidate(leaf_item, model="model-a")
     notes = tmp_path / "notes.md"
-    notes.write_text("The loop never ends.\n", encoding="utf-8")
+    notes.write_text(
+        "## Summary\nRejected.\n\n## Findings\nThe loop never ends.\n\n## Evidence\nReviewed diff.\n\n## Verdict\nReject.\n",
+        encoding="utf-8",
+    )
 
     result = review(leaf_item, verdict="reject", notes_file=str(notes))
 
@@ -139,7 +241,8 @@ def test_review_reject_records_verdict(leaf_item: SimpleNamespace, tmp_path: Pat
     assert result["value"]["verdict"] == "reject"
     [stored] = records_of(leaf_item.store, "review.verdict")
     assert stored["data"]["verdict"] == "reject"
-    assert stored["data"]["notes"] == "The loop never ends.\n"
+    doc_path = leaf_item.store / result["value"]["path"]
+    assert "The loop never ends." in doc_path.read_text(encoding="utf-8")
 
 
 def test_review_by_candidate_actor_refused(leaf_item: SimpleNamespace) -> None:
@@ -152,14 +255,16 @@ def test_review_by_candidate_actor_refused(leaf_item: SimpleNamespace) -> None:
 
 
 def test_review_model_rule_on(leaf_item: SimpleNamespace) -> None:
-    candidate(leaf_item, model="model-a")
     candidate_without_model = candidate(leaf_item, "VALUE = 3\n")
+    latest = candidate(leaf_item, model="model-a")
 
-    no_models = review(leaf_item, commit=candidate_without_model, model=None)
-    reviewer_missing = review(leaf_item, commit="HEAD~1", model=None)
-    candidate_missing = review(leaf_item, commit=candidate_without_model)
-    same_model = review(leaf_item, commit="HEAD~1", model="model-a")
-    different = review(leaf_item, commit="HEAD~1", model="model-b")
+    no_models = review(
+        leaf_item, commit=candidate_without_model, verdict="reject", model=None
+    )
+    candidate_missing = review(leaf_item, commit=candidate_without_model, verdict="reject")
+    reviewer_missing = review(leaf_item, commit=latest, model=None)
+    same_model = review(leaf_item, commit=latest, model="model-a")
+    different = review(leaf_item, commit=latest, model="model-b")
 
     assert refusal(no_models) == ("PERMISSION_DENIED", "model_required")
     assert refusal(reviewer_missing) == ("PERMISSION_DENIED", "model_required")
@@ -310,7 +415,10 @@ def test_review_key_replays(leaf_item: SimpleNamespace) -> None:
 
 
 def test_review_cli_alias_and_flags(leaf_item: SimpleNamespace) -> None:
-    candidate(leaf_item, model="model-a")
+    tip = candidate(leaf_item, model="model-a")
+    notes = write_review_notes_for_test(
+        leaf_item.store, leaf_item.slug, leaf_item.root.parent
+    )
 
     proc = run_cli(
         leaf_item.root,
@@ -320,11 +428,13 @@ def test_review_cli_alias_and_flags(leaf_item: SimpleNamespace) -> None:
         "review",
         leaf_item.slug,
         "--commit",
-        "HEAD",
+        tip,
         "--verdict",
         "approve",
         "--model",
         "model-b",
+        "--notes-file",
+        str(notes),
         store=leaf_item.store,
     )
 
@@ -432,17 +542,32 @@ def seat_candidate(seated: SimpleNamespace, **args: Any) -> str:
         {"item": seated.task, "commit": tip, "model": "model-a", **args},
     )
     assert is_ok(result), result
+    record_result_for_test(
+        seated.store,
+        seated.task,
+        seat="impl-1",
+        commit=tip,
+    )
     return tip
 
 
-def test_review_in_role_mode_records_seat_names(seated: SimpleNamespace) -> None:
+def test_review_in_role_mode_records_seat_names(
+    seated: SimpleNamespace, tmp_path: Path
+) -> None:
     tip = seat_candidate(seated)
+    notes = write_review_notes_for_test(seated.store, seated.task, tmp_path)
 
     result = as_seat(
         seated.store,
         "rev-1",
         "review",
-        {"item": seated.task, "commit": tip, "verdict": "approve", "model": "model-b"},
+        {
+            "item": seated.task,
+            "commit": tip,
+            "verdict": "approve",
+            "model": "model-b",
+            "notes_file": str(notes),
+        },
     )
 
     assert is_ok(result), result
@@ -452,21 +577,32 @@ def test_review_in_role_mode_records_seat_names(seated: SimpleNamespace) -> None
     assert stored["data"]["implementer_actor"] == "impl-1"
 
 
-def test_review_is_not_in_an_implementers_role(seated: SimpleNamespace) -> None:
+def test_review_is_not_in_an_implementers_role(
+    seated: SimpleNamespace, tmp_path: Path
+) -> None:
     tip = seat_candidate(seated)
+    notes = write_review_notes_for_test(seated.store, seated.task, tmp_path)
 
     result = as_seat(
         seated.store,
         "impl-1",
         "review",
-        {"item": seated.task, "commit": tip, "verdict": "approve", "model": "model-b"},
+        {
+            "item": seated.task,
+            "commit": tip,
+            "verdict": "approve",
+            "model": "model-b",
+            "notes_file": str(notes),
+        },
     )
 
     assert refusal(result)[0] == "PERMISSION_DENIED"
     assert result["error"]["details"]["reason"] == "method_not_in_role"
 
 
-def test_review_independence_by_profile_refused(seated: SimpleNamespace) -> None:
+def test_review_independence_by_profile_refused(
+    seated: SimpleNamespace, tmp_path: Path
+) -> None:
     tip = seat_candidate(seated, profile="reviewer")
     write_record(
         seated.store,
@@ -476,29 +612,45 @@ def test_review_independence_by_profile_refused(seated: SimpleNamespace) -> None
         at="2026-11-10T10:09:00Z",
         actor=seated.lead,
     )
+    notes = write_review_notes_for_test(seated.store, seated.task, tmp_path)
 
     result = as_seat(
         seated.store,
         "rev-2",
         "review",
-        {"item": seated.task, "commit": tip, "verdict": "approve", "model": "model-b"},
+        {
+            "item": seated.task,
+            "commit": tip,
+            "verdict": "approve",
+            "model": "model-b",
+            "notes_file": str(notes),
+        },
     )
 
     assert refusal(result) == ("PERMISSION_DENIED", "independence_violation")
     assert records_of(seated.store, "review.verdict") == []
 
-def test_review_needs_the_preset_in_can_review(seated: SimpleNamespace) -> None:
+def test_review_needs_the_preset_in_can_review(
+    seated: SimpleNamespace, tmp_path: Path
+) -> None:
     def narrow(roles: dict[str, Any]) -> None:
         roles["reviewer"]["can"]["review"] = ["sprint"]
 
     edit_roles(seated.store, narrow)
     tip = seat_candidate(seated)
+    notes = write_review_notes_for_test(seated.store, seated.task, tmp_path)
 
     result = as_seat(
         seated.store,
         "rev-1",
         "review",
-        {"item": seated.task, "commit": tip, "verdict": "approve", "model": "model-b"},
+        {
+            "item": seated.task,
+            "commit": tip,
+            "verdict": "approve",
+            "model": "model-b",
+            "notes_file": str(notes),
+        },
     )
 
     assert refusal(result) == ("PERMISSION_DENIED", "preset_not_in_can_review")

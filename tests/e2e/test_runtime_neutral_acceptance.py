@@ -13,9 +13,11 @@ from helpers import (
     as_human,
     as_seat,
     open_test_session,
+    record_result_for_test,
     records_of,
     refusal,
     restrict_code_write,
+    result_body,
     run_git,
     start_repo,
     write_record,
@@ -72,6 +74,7 @@ def test_name_mode_item_reaches_done_without_any_agent(
     assert is_ok(candidate), candidate
     assert candidate["value"]["commit"] == tip
 
+    prod_res = record_result_for_test(store, leaf_item.slug, actor="dev", commit=tip)
     verified = invoke(
         "verify",
         {"target": leaf_item.slug, "worktree": str(worktree)},
@@ -87,9 +90,22 @@ def test_name_mode_item_reaches_done_without_any_agent(
     assert is_ok(review_brief), review_brief
     assert review_brief["value"]["role"] == "reviewer"
 
+    rev_notes = tmp_path / "review-notes.md"
+    rev_notes.write_text(
+        result_body(["Summary", "Findings", "Evidence", "Verdict"]),
+        encoding="utf-8",
+        newline="\n",
+    )
     reviewed = invoke(
         "review",
-        {"item": leaf_item.slug, "commit": "work", "verdict": "approve", "model": "model-b"},
+        {
+            "item": leaf_item.slug,
+            "commit": tip,
+            "verdict": "approve",
+            "model": "model-b",
+            "result": prod_res["record"],
+            "notes_file": str(rev_notes),
+        },
         store=store,
         actor="qa",
     )
@@ -101,7 +117,33 @@ def test_name_mode_item_reaches_done_without_any_agent(
     assert any("stale" in reason for reason in stale["error"]["details"]["reasons"])
 
     run_git(leaf_item.root, "merge", "--ff-only", "work")
-    rechecked = invoke("verify", {"target": leaf_item.slug}, store=store, actor="cto")
+    prod_res2 = record_result_for_test(store, leaf_item.slug, actor="dev", commit=tip)
+    rev_notes2 = tmp_path / "review-notes-2.md"
+    rev_notes2.write_text(
+        result_body(["Summary", "Findings", "Evidence", "Verdict"]),
+        encoding="utf-8",
+        newline="\n",
+    )
+    reviewed2 = invoke(
+        "review",
+        {
+            "item": leaf_item.slug,
+            "commit": tip,
+            "verdict": "approve",
+            "model": "model-b",
+            "result": prod_res2["record"],
+            "notes_file": str(rev_notes2),
+        },
+        store=store,
+        actor="qa",
+    )
+    assert is_ok(reviewed2), reviewed2
+    rechecked = invoke(
+        "verify",
+        {"target": leaf_item.slug, "worktree": str(worktree)},
+        store=store,
+        actor="cto",
+    )
     assert is_ok(rechecked), rechecked
     finished = move(leaf_item, "done")
     assert is_ok(finished), finished
@@ -163,7 +205,7 @@ def grant(seated: SimpleNamespace, seat: str, role: str, lead: str) -> None:
 
 
 def test_role_mode_item_reaches_done_with_seats(
-    seated: SimpleNamespace, role_store: SimpleNamespace
+    seated: SimpleNamespace, role_store: SimpleNamespace, tmp_path: Path
 ) -> None:
     start_repo(seated)
     grant(seated, "rev-1", "reviewer", role_store.lead)
@@ -179,12 +221,37 @@ def test_role_mode_item_reaches_done_with_seats(
         {"item": seated.task, "commit": "HEAD", "model": "model-a"},
     )
     assert is_ok(candidate), candidate
+    prod_res = record_result_for_test(
+        seated.store, seated.task, seat=seated.seat, commit=candidate["value"]["commit"]
+    )
+    rev_notes = tmp_path / "seat-review.md"
+    rev_notes.write_text(
+        result_body(
+            [
+                "Summary",
+                "Acceptance assessment",
+                "Design assessment",
+                "Evidence",
+                "Open issues",
+                "Verdict",
+            ]
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
 
     own_review = as_seat(
         seated.store,
         seated.seat,
         "review",
-        {"item": seated.task, "commit": "HEAD", "verdict": "approve", "model": "model-b"},
+        {
+            "item": seated.task,
+            "commit": candidate["value"]["commit"],
+            "verdict": "approve",
+            "model": "model-b",
+            "result": prod_res["record"],
+            "notes_file": str(rev_notes),
+        },
     )
     assert refusal(own_review) == ("PERMISSION_DENIED", "method_not_in_role")
 
@@ -192,7 +259,14 @@ def test_role_mode_item_reaches_done_with_seats(
         seated.store,
         "rev-1",
         "review",
-        {"item": seated.task, "commit": "HEAD", "verdict": "approve", "model": "model-b"},
+        {
+            "item": seated.task,
+            "commit": candidate["value"]["commit"],
+            "verdict": "approve",
+            "model": "model-b",
+            "result": prod_res["record"],
+            "notes_file": str(rev_notes),
+        },
     )
     assert is_ok(reviewed), reviewed
     assert [r["data"]["reviewer_actor"] for r in records_of(seated.store, "review.verdict")] == [

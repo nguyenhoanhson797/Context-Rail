@@ -60,9 +60,9 @@ def test_implementer_brief_has_every_section_in_order(leaf_item: SimpleNamespace
     value = result["value"]
     assert value["role"] == "implementer"
     assert value["candidate"] is None
-    assert tuple(value["sections"]) == WORK_BRIEF_SECTIONS
+    assert tuple(value["sections"]) == (*WORK_BRIEF_SECTIONS, "result")
     headings = [line[3:] for line in value["text"].splitlines() if line.startswith("## ")]
-    assert tuple(headings) == WORK_BRIEF_SECTIONS
+    assert tuple(headings) == (*WORK_BRIEF_SECTIONS, "result")
     assert value["estimated_tokens"] > 0
     recording = value["sections"]["recording"]
     for command in (
@@ -114,7 +114,7 @@ def test_reviewer_diff_is_bounded_and_says_so(leaf_item: SimpleNamespace) -> Non
 def test_reviewer_without_a_candidate_is_refused(leaf_item: SimpleNamespace) -> None:
     result = brief(leaf_item, role="reviewer")
 
-    assert refusal(result) == ("INVALID_STATE", "no_candidate")
+    assert refusal(result) == ("INVALID_STATE", "no_result_or_candidate")
 
 
 def test_reviewer_can_name_the_candidate_commit(leaf_item: SimpleNamespace) -> None:

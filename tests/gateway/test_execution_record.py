@@ -12,6 +12,7 @@ from context_rail.model.cto import load_pack_profile
 from context_rail.model.pack import load_pack
 from context_rail.store import query
 from context_rail.store.index import Index
+from helpers import record_result_for_test
 
 
 def _etag(store: Path, slug: str) -> str:
@@ -29,8 +30,10 @@ def _move(store: Path, slug: str, status: str) -> None:
 
 
 def _approved_shot(video: SimpleNamespace) -> str:
-    for status in ("storyboard", "generating", "review", "approved"):
+    for status in ("storyboard", "generating", "review"):
         _move(video.store, video.shot, status)
+    record_result_for_test(video.store, video.shot)
+    _move(video.store, video.shot, "approved")
     return video.shot
 
 

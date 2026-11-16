@@ -48,7 +48,7 @@ def test_a_seat_reads_the_brief_of_its_own_role(seated: SimpleNamespace) -> None
     assert is_ok(result), result
     value = result["value"]
     assert value["role"] == "implementer"
-    assert tuple(value["sections"]) == WORK_BRIEF_SECTIONS
+    assert tuple(value["sections"]) == (*WORK_BRIEF_SECTIONS, "result")
     assert "rail loop candidate" in value["sections"]["recording"]
 
 
@@ -108,13 +108,69 @@ def test_a_reviewer_seat_reads_the_diff_of_the_candidate(
     assert "VALUE = 2" in value["sections"]["diff"]
 
 
-def test_a_reviewer_seat_without_a_candidate_is_refused(
+def test_a_reviewer_seat_without_a_candidate_or_result_is_refused(
     seated: SimpleNamespace, role_store: SimpleNamespace
 ) -> None:
     start_repo(seated)
     grant_reviewer(seated, role_store.lead)
 
     result = as_seat(seated.store, "rev-1", "brief", {"item": seated.task})
+
+    assert refusal(result) == ("INVALID_STATE", "no_result_or_candidate")
+
+
+def test_a_reviewer_seat_without_a_candidate_is_refused_in_contractless_pack(
+    tmp_path: Path,
+) -> None:
+    from helpers import _write_charter, approve_picture, init_pack_store, nested_pack_document
+
+    doc = nested_pack_document("legacy-roles")
+    doc["version"] = 2
+    doc["presets"]["task"]["workflow"] = "sprint"
+    doc["workflows"] = {
+        "sprint": {
+            "initial": "todo",
+            "transitions": {"todo": ["doing"], "doing": ["done"], "done": []},
+        }
+    }
+    doc["statuses"] = {"todo": "not_started", "doing": "active", "done": "done"}
+    doc["operating"] = {
+        "version": 2,
+        "unit": "task",
+        "hierarchy": [{"preset": "phase", "required": True}],
+        "roles": {
+            "lead": {
+                "anchor": "project",
+                "reach": {"read": ["project"], "write": ["project"], "code": {"read": ["**"], "write": []}},
+                "can": {"add": ["phase", "task"], "grant": ["implementer", "reviewer"]},
+                "sees": {"up": 0, "down": 1, "parts": ["title", "status"]},
+            },
+            "implementer": {
+                "anchor": {"item": ["task"]},
+                "reach": {"read": ["anchor", {"up": 1}], "write": ["anchor"], "code": {"read": ["**"], "write": ["**"]}},
+                "can": {"candidate": ["task"]},
+                "sees": {"up": 1, "parts": ["title", "body"]},
+            },
+            "reviewer": {
+                "anchor": {"item": ["task"]},
+                "reach": {"read": ["anchor", {"up": 1}], "write": ["anchor"], "code": {"read": ["**"], "write": []}},
+                "independent_of": ["produce"],
+                "can": {"review": ["task"]},
+                "sees": {"up": 1, "parts": ["title", "diff", "evidence"]},
+            },
+        },
+    }
+    project = tmp_path / "proj"
+    store = init_pack_store(project, doc, approve=False)
+    _write_charter(store)
+    with as_human():
+        invoke("reindex", {}, store=store, actor=None)
+        assert is_ok(approve_picture(store, actor=None))
+        phase = invoke("add", {"preset": "phase", "title": "P1"}, store=store, actor=None)["value"]["slug"]
+        task = invoke("add", {"preset": "task", "title": "T1", "rel": [f"part_of={phase}"]}, store=store, actor=None)["value"]["slug"]
+        assert is_ok(invoke("seat grant", {"seat": "rev-1", "role": "reviewer", "anchor": task}, store=store, actor=None))
+
+    result = as_seat(store, "rev-1", "brief", {"item": task})
 
     assert refusal(result) == ("INVALID_STATE", "no_candidate")
 

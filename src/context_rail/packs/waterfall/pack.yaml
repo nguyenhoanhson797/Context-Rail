@@ -23,6 +23,13 @@ workflows:
       dropped: [planned]
     quality:
       done: {gate: item_done}
+    results:
+      produce:
+        preset: phase-result
+        sections: [Summary, Stage findings, Deliverables, Stage exit evidence, Open risks, Evidence, Next steps]
+      review:
+        preset: phase-review
+        sections: [Summary, Stage findings, Deliverables, Stage exit evidence, Open risks, Evidence, Verdict]
   delivery:
     initial: planned
     transitions:
@@ -35,6 +42,13 @@ workflows:
       dropped: [planned]
     quality:
       done: {gate: item_done}
+    results:
+      produce:
+        preset: delivery-result
+        sections: [Summary, Deliverables, Acceptance findings, Handoff, Evidence, Next steps]
+      review:
+        preset: delivery-review
+        sections: [Summary, Deliverables, Acceptance findings, Handoff, Evidence, Verdict]
 presets:
   goal:        {primitive: item,   tags: [goal], container: true}
   scope:       {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
@@ -51,6 +65,12 @@ presets:
   code:        {primitive: note,   tags: [code], fields: {kind: [file, module, class, function, method]}, template: templates/code.md}
   decision:    {primitive: record, tags: [decision]}
   event:       {primitive: record, tags: [event]}
+  result:      {primitive: record, tags: [result], required: [workflow_name], template: templates/result.md}
+  review-result: {primitive: record, tags: [review], required: [workflow_name], template: templates/review-result.md}
+  phase-result:  {primitive: record, tags: [result], required: [workflow_name], template: templates/phase-result.md}
+  phase-review:  {primitive: record, tags: [review], required: [workflow_name], template: templates/phase-review.md}
+  delivery-result: {primitive: record, tags: [result], required: [workflow_name], template: templates/delivery-result.md}
+  delivery-review: {primitive: record, tags: [review], required: [workflow_name], template: templates/delivery-review.md}
   check:       {primitive: check,  tags: []}
   charter:     {primitive: policy, tags: [], template: templates/charter.md}
   vision:      {primitive: note,   tags: []}
@@ -60,6 +80,13 @@ presets:
   profile:     {primitive: actor,  tags: []}
   fix:         {primitive: item,   tags: [], container: false}
 policy: {stuck_hours: 24, measurement_min_runs: 10}
+results:
+  produce:
+    preset: result
+    sections: [Summary, Stage findings, Deliverables, Evidence, Open risks, Next steps]
+  review:
+    preset: review-result
+    sections: [Summary, Stage assessment, Deliverable assessment, Evidence, Open risks, Verdict]
 operating:
   version: 1
   unit: deliverable

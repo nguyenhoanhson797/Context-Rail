@@ -125,6 +125,8 @@ def test_builtin_basic_pack_matches_pinned_values(tmp_path: Path) -> None:
         ),
         "decision": ("record", ("decision",), {}),
         "event": ("record", ("event",), {}),
+        "result": ("record", ("result",), {}),
+        "review-result": ("record", ("review",), {}),
         "check": ("check", (), {}),
         "charter": ("policy", (), {}),
         "vision": ("note", (), {}),

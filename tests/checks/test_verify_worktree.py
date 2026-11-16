@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from helpers import records_of, refusal, run_git
+from helpers import record_result_for_test, records_of, refusal, result_body, run_git
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
@@ -91,7 +91,7 @@ def test_verify_accepts_worktree_path_spelled_differently(
 
 
 def test_done_refused_until_candidate_content_is_in_checkout(
-    leaf_item: SimpleNamespace, worktree: Path
+    leaf_item: SimpleNamespace, worktree: Path, tmp_path: Path
 ) -> None:
     store = leaf_item.store
     tip = head(worktree)
@@ -103,9 +103,22 @@ def test_done_refused_until_candidate_content_is_in_checkout(
     )
     assert is_ok(recorded), recorded
     assert is_ok(verify(leaf_item, worktree))
+    record_result_for_test(store, leaf_item.slug, actor="dev", commit=tip)
+    notes_file = tmp_path / "review.md"
+    notes_file.write_text(
+        result_body(("Summary", "Findings", "Evidence", "Verdict")),
+        encoding="utf-8",
+        newline="\n",
+    )
     reviewed = invoke(
         "review",
-        {"item": leaf_item.slug, "commit": tip, "verdict": "approve", "model": "model-b"},
+        {
+            "item": leaf_item.slug,
+            "commit": tip,
+            "verdict": "approve",
+            "model": "model-b",
+            "notes_file": str(notes_file),
+        },
         store=store,
         actor="qa",
     )
