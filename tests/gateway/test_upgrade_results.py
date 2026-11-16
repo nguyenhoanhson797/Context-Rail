@@ -67,13 +67,8 @@ def test_upgrade_dry_run_and_confirm_adopt_missing_result_artifacts_for_shipped_
     approved_store: Path,
 ) -> None:
     _strip_shipped_result_layout_and_copy_old_pack(approved_store)
-    # The store starts approved with the full layout; stripping the result
-    # placements simulates an older manifest before result artifacts were added
-    # (so before upgrade, approval already mismatches the original charter, and
-    # after upgrade, rail.yaml matches the original approved snapshot? No: let's
-    # assert rail.yaml now holds the shipped result placements, and verify on a
-    # local pack store that started without result placements that upgrade leaves
-    # approval mismatched until human reapproves).
+    # Stripping result placements simulates a pre-artifact manifest so upgrade
+    # restores the shipped presets and prompts for charter reapproval.
     before = tree_bytes(approved_store)
 
     dry = _upgrade(approved_store, dry_run=True)
@@ -190,6 +185,28 @@ def test_upgrade_reports_incompatible_custom_placement_with_repair_hint_without_
         },
         approve=True,
     )
+    # Baseline upgrade settles any initial charter normalization before testing hint-only parity.
+    assert is_ok(_upgrade(store, confirm=PHRASE))
+    assert is_ok(approve_picture(store, actor="human"))
+
+    # Missing/invalid template yields repair_hints with zero file writes.
+    bad_tpl = store / "packs/badplace/templates/finding.md"
+    bad_tpl.write_text("# {title}\n\n## CustomOnly\n", encoding="utf-8", newline="\n")
+
+    dry_hint_only = _upgrade(store, dry_run=True)
+    assert is_ok(dry_hint_only), dry_hint_only
+    assert dry_hint_only["value"]["changed"] == []
+    assert dry_hint_only["value"]["shipped"]["seeded"] == []
+    assert dry_hint_only["value"]["shipped"]["repair_hints"]
+    assert any("approve charter" in step for step in dry_hint_only["value"]["next"])
+
+    applied_hint_only = _upgrade(store, confirm=PHRASE)
+    assert is_ok(applied_hint_only), applied_hint_only
+    assert applied_hint_only["value"]["changed"] == []
+    assert applied_hint_only["value"]["shipped"]["seeded"] == []
+    assert applied_hint_only["value"]["next"] == dry_hint_only["value"]["next"]
+    assert any("approve charter" in step for step in applied_hint_only["value"]["next"])
+
     bad_placement = "records/findings/{slug}.md"
     set_preset_placement(store, finding=bad_placement)
     manifest_before = (store / "rail.yaml").read_bytes()
@@ -204,11 +221,14 @@ def test_upgrade_reports_incompatible_custom_placement_with_repair_hint_without_
         "presets.finding" in hint["path"] and "{id}" in hint["message"]
         for hint in shipped["repair_hints"]
     )
+    assert any("approve charter" in step for step in dry["value"]["next"])
 
     applied = _upgrade(store, confirm=PHRASE)
     assert is_ok(applied), applied
     raw_manifest = yaml.safe_load((store / "rail.yaml").read_text(encoding="utf-8"))
     assert raw_manifest["presets"]["finding"] == bad_placement
+    assert applied["value"]["next"] == dry["value"]["next"]
+    assert any("approve charter" in step for step in applied["value"]["next"])
 
 
 def test_upgrade_never_injects_literal_result_preset_into_custom_contractless_pack(
@@ -283,8 +303,7 @@ def test_reopened_adopted_history_requires_a_new_result_and_reapproval_keeps_req
         encoding="utf-8",
         newline="\n",
     )
-    # Seed templates via local pack resources? Keep templates absent so upgrade seeds from sibling or local?
-    # Write missing templates under packs/hist/templates only? No: test layout seeding + custom local pack.
+    # Local packs seed their own Markdown templates so adoption adds only missing placements.
     tpl_dir = store / "packs/hist/templates"
     tpl_dir.mkdir(parents=True, exist_ok=True)
     for preset_name, sections in (

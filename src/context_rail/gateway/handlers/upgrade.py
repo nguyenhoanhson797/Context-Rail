@@ -93,7 +93,10 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         # Records are placed by the pack, which only loads once the files above are rewritten.
         summary["record"] = commit(ctx.store, ctx.manifest, [], record, actor=actor)["record"]
     summary["shipped"] = plan.report()
-    summary["next"] = _next(ctx, [*changed, *plan.touched()])
+    needs_reapprove = bool(plan.placements_added or plan.repair_hints)
+    summary["next"] = _next(
+        ctx, [*changed, *plan.touched()], force_reapprove=needs_reapprove
+    )
     return summary
 
 

@@ -244,6 +244,15 @@ def _plan_result_artifacts(ctx: Context, store: Path, plan: ShippedPlan) -> None
         default_tpl = default_presets.get(preset_name)
         if existing is None:
             if isinstance(default_tpl, str) and default_tpl:
+                default_problem = _artifact_placement_problem(preset_name, default_tpl)
+                if default_problem is not None:
+                    plan.repair_hints.append(
+                        {
+                            "path": f"rail.yaml:presets.{preset_name}",
+                            "message": default_problem,
+                        }
+                    )
+                    continue
                 manifest_presets[preset_name] = default_tpl
                 added_presets.append(preset_name)
                 plan.placements_added.append(preset_name)
