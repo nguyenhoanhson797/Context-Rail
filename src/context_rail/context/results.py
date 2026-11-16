@@ -47,7 +47,7 @@ _SQL_BATCH = 200
 def item_in_reach(ctx: Context, item: str) -> bool:
     """Whether ``item`` itself is inside the caller's read reach."""
     reach = getattr(ctx, "reach", None)
-    if reach is None:
+    if reach is None or reach.unrestricted or reach.read_all:
         return True
     if not isinstance(item, str) or not item:
         return False
@@ -65,9 +65,10 @@ def result_in_reach(
     item: str,
     *,
     result_path: str | None = None,
+    item_verified: bool = False,
 ) -> bool:
     """Result visibility follows item reach plus any explicit ``records/`` path restrictions."""
-    if not item_in_reach(ctx, item):
+    if not item_verified and not item_in_reach(ctx, item):
         return False
     reach = getattr(ctx, "reach", None)
     if reach is None or reach.unrestricted or reach.read_all:
@@ -273,7 +274,22 @@ def result_summaries(
     if not ordered_items or limit <= 0:
         return []
 
-    visible_items = [slug for slug in ordered_items if item_in_reach(ctx, slug)]
+    reach = getattr(ctx, "reach", None)
+    if reach is None or reach.unrestricted or reach.read_all:
+        visible_items = ordered_items
+    else:
+        visible_set: set[str] = set()
+        for start in range(0, len(ordered_items), _SQL_BATCH):
+            chunk = ordered_items[start : start + _SQL_BATCH]
+            marks = ",".join("?" for _ in chunk)
+            for slug, path, preset in ctx.index.conn.execute(
+                f"SELECT slug, path, preset FROM docs WHERE slug IN ({marks}) "
+                "AND primitive = 'item' AND broken = 0",
+                chunk,
+            ):
+                if reach.can_read(slug, path=path, preset=preset):
+                    visible_set.add(slug)
+        visible_items = [slug for slug in ordered_items if slug in visible_set]
     if not visible_items:
         return []
 
@@ -309,7 +325,7 @@ def result_summaries(
             ) = row
             if item_slug in latest_by_item:
                 continue
-            if not result_in_reach(ctx, item_slug, result_path=path):
+            if not result_in_reach(ctx, item_slug, result_path=path, item_verified=True):
                 continue
             latest_by_item[item_slug] = _summary_from_values(
                 record_id=record_id,

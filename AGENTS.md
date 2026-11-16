@@ -58,7 +58,7 @@ repository.
 ## Engine rules (from the design; do not break them)
 
 - The engine never launches an agent and never runs git writes for agent work.
-  Agents reach it through `rail loop brief|candidate|review|report`; no
+  Agents reach it through `rail loop brief|candidate|result|review|report`; no
   engine code names a coding tool, a model or a runner.
 - Files are the truth. The SQLite index is a rebuildable cache under the
   worktree's git dir (or `<store>/.rail-local/` outside git), never in the repo

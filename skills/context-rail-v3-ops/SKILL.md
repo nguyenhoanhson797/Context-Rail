@@ -136,7 +136,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | A check reports `stale` | Declared inputs changed since the verdict | `rail check run` again |
 | `doctor` flags approval drift | A protected file changed after approval | Re-approve the target |
 | The index is corrupt or missing | Cache only | `rail ops reindex --full` |
-| An old store refuses a command with `rail ops upgrade` in the message | It predates the runtime-neutral engine | A human runs `rail --actor human ops upgrade --dry-run`, then `--confirm "UPGRADE store"`; re-approve if told to; `rail ops adapters render` |
+| An old store refuses a command with `rail ops upgrade` in the message | It predates the runtime-neutral engine or result contracts | A human runs `rail --actor human ops upgrade --dry-run`, then `--confirm "UPGRADE store"`; re-approve if told to (preserving historical done items and custom guidance); `rail ops adapters render` |
 | A command seems to act on old data | None expected: every daemon call reads the files afresh | Run it as `rail --no-daemon <command>`; if the answer differs, report it |
 | A write says `outcome unknown` | The daemon did not answer after the request may have reached it | Re-read the item to see whether it applied; repeat only a command that carries a `--key` |
 | Every command waits about 2 s | A warm daemon is stuck inside a call and `serve daemon --stop` gets no answer | End that `serve daemon` process by hand; commands run direct meanwhile and the next one starts a fresh daemon |

@@ -59,19 +59,24 @@ reads what it produced, so the CLI, MCP, UI and every agent see one answer.
 | **Quality belongs to the workflow** | A status can name a charter gate and the checks it selects. A missing or stale check refuses the move and names the command that produces it. Check modes cover commands (`cmd`), files (`exists`), supplied proof (`evidence`), candidate `review`, `human` sign-off, and `store` checks that prove a child store's committed item category without writing the child store or running git on reads (freshness checks the child's committed `HEAD` and item etag). |
 | **Approval is data** | `approve` is human-only. Change the semantics (transition, placement, operating block) and the store reports `approval_mismatch` until a human reapproves. |
 | **Agents get a narrow surface** | They never parse `pack.yaml`; they ask `rail types`, `rail next`, `rail read show`, `rail why`, `rail explain`, and run declared verbs with `rail do`. |
-| **Your tool does the work** | The rail hands out a brief and records the candidate commit, the check and the review. Your tool runs its own sub-agents in its own git worktrees and you merge in git; `gate` never runs Checks. |
+| **Your tool does the work** | The rail hands out a brief and records the candidate commit, the workflow-shaped Markdown `rail loop result` record, the check and the review. Your tool runs its own sub-agents in its own git worktrees and you merge in git; `gate` never runs Checks. |
 | **Collisions are impossible to miss** | Every write carries the etag it read; a stale write is refused. Every retry carries a `--key` and gets the same record back. |
 
 ## The loop in one line
 
 ```text
-rail overview → human approves → rail loop brief → your tool works → rail loop candidate → checks run → rail loop review → move to done
-     (state)        (gate)         (work order)     (own sub-agents)       (commit recorded)                  (other actor)     (gates read records)
+research: rail overview → approve → rail loop brief → work → rail loop result → checks → rail loop review → done
+code:     rail overview → approve → rail loop brief → work/commit → rail loop candidate → rail loop result --commit → checks → rail loop review → done
 ```
 
 `rail gate` is a read-only governance check. Nothing executes until a human
 approves the charter, or the charter binds `mode: solo` (one human owns the
 project; approval ceremony is skipped, the quality gates still apply).
+Every registered assignment leaves one workflow-shaped Markdown result record
+(up to 256 KiB / 262,144 bytes, ordered nonempty `##` sections, 4000-char brief
+contribution cap, `--key` idempotency, nullable `candidate_commit` so discovery
+never fabricates a commit); `rail --actor human ops upgrade` + `approve` adopts
+shipped result contracts on older stores without rewriting historical done items.
 
 ## Shape any kind of project
 

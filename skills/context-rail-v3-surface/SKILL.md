@@ -50,7 +50,9 @@ command: rail change move checkout-crash verifying --expect <etag>
 - **gate/proof** — what the move evaluates. `checks` are the selected checks;
   `acceptance` needs a fresh human acceptance check; `review` needs a separated
   review; `human` needs an explicitly named human; `children` needs every child
-  done or dropped.
+  done or dropped. `rail why <slug>` and `rail read show <slug>` also surface
+  the compiled `results` shape, derived path, and current result/review state
+  without reading `pack.yaml`.
 - **command** — the first legal next move, with the etag placeholder.
 
 ## Focus, queue and progress

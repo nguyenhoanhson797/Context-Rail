@@ -486,3 +486,19 @@ def test_shipped_profiles_and_skills_carry_cto_mandate_and_result_guidance(
     assert "review-checklist" in skills or "take-review" in skills
     review_skill = skills.get("review-checklist") or skills["take-review"]
     assert "result" in review_skill.lower()
+    if pack_name == "scrum":
+        assert "rail loop result" in skills["sprint-cadence"].lower()
+    elif pack_name == "flow":
+        assert "rail loop result" in skills["flow-shipping"].lower()
+    elif pack_name == "waterfall":
+        assert "rail loop result" in skills["phase-gates"].lower()
+    elif pack_name == "video":
+        assert "rail loop result" in skills["shot-brief"].lower()
+        assert "rail loop result" in skills["execution-records"].lower()
+
+    # Override templates exist and match their declared section headings cleanly.
+    from importlib import resources
+
+    pack_dir = Path(str(resources.files("context_rail").joinpath("packs", pack_name)))
+    pack = load_pack(pack_name, pack_dir)
+    assert result_template_problems(pack, pack_dir) == []

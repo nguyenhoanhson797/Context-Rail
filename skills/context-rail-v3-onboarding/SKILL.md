@@ -187,8 +187,12 @@ again. Do this instead:
 2. `rail model`, `rail types`, `rail ops pack show --name <pack>` — the operating model
    and approval state.
 3. `rail ops doctor` — placement, metadata and index integrity.
-4. `rail ops adapters render` — refresh the agent files if a skill moved.
-5. `rail next` — take work, or `rail why <slug>` — explain the block.
+4. `rail --actor human ops upgrade --confirm "UPGRADE store"` (plus `approve`
+   when prompted) — adopt missing result templates/placements and update
+   unedited workspace files while preserving historical done items and custom
+   guidance.
+5. `rail ops adapters render` — refresh the agent files if a skill moved.
+6. `rail next` — take work, or `rail why <slug>` — explain the block.
 
 ## Onboarding a project with no code
 

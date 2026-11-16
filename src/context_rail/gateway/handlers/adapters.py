@@ -46,21 +46,15 @@ AGENTS = "AGENTS.md"
 def _commands(roles: tuple[str, ...]) -> str:
     """The record loop, naming the roles that take a brief in this store."""
     names = ", ".join(roles)
-    return f"""\
-- `rail overview` shows what is executable and what needs a human.
-- `rail loop brief <item> --role <role>` prints the work order for a role. Roles that take a
-  brief here: {names}. Hand the order to your own sub-agent, in your own tool, in your
-  own checkout.
-- Commit, then record the commit with `rail loop candidate <item> --commit <sha>`.
-- `rail check declare` declares proof and `rail check run <item>` runs it. Unproven work is
-  not done.
-- A different actor reviews: `rail loop brief <item> --role <role>` for the reviewing role,
-  then `rail loop review <item> --commit <sha> --verdict approve|reject`.
-- `rail change move <item> <status>` moves the Item once its gate allows it.
-- `rail loop report --item <item> --report-file <json>` files what happened, even when
-  nothing did.
-- Human-only actions need the exact phrase the command prints.
-"""
+    return (
+        f"- `rail overview` shows work and human waits; `rail loop brief <item> --role <role>` "
+        f"gives the work order ({names}) for your own tool/sub-agents.\n"
+        "- Research/commitless work: `rail loop result <item> --body-file <md>` (never fabricate a commit).\n"
+        "- Code work: commit, `rail loop candidate <item> --commit <sha>`, then `rail loop result <item> --body-file <md> --commit <sha>`.\n"
+        "- `rail check run <item>`, separate reviewer `rail loop brief <item> --role <role>` + "
+        "`rail loop review <item> --verdict approve|reject --notes-file <md>`, then `rail change move <item> <status>`.\n"
+        "- `rail loop report --item <item> --report-file <json>` logs diagnostics; human-only actions need the printed confirm phrase."
+    )
 
 
 @dataclass(frozen=True)
@@ -512,96 +506,37 @@ def _decode(data: bytes | None, rel: str) -> tuple[str | None, str | None]:
 def _agents_payload(
     skills: list[_Skill], profiles: list[_Profile], roles: tuple[str, ...]
 ) -> str:
+    profile_summary = (
+        "; ".join(f"`{p.name}` ({p.title})" for p in profiles)
+        if profiles
+        else "none yet"
+    )
+    skill_summary = (
+        "; ".join(_skill_line(skill) for skill in skills)
+        if skills
+        else "none yet"
+    )
     lines = [
         "# Context Rail",
-        "",
-        "This project runs through Context Rail. The store folder beside this file",
-        "is the truth: every change goes through `rail`, the SQLite index is only a",
-        "cache, and its Records are immutable.",
-        "",
+        "Store (`context-rail/`) is the truth; SQLite is a cache; Records in `records/` are immutable; JSON envelope exits 0/1/2.",
         "## Read before you act",
-        "",
-        "Never parse the store's `pack.yaml`, `rail.yaml` or the charter to infer",
-        "the workflow. Ask the compiled surface:",
-        "",
-        "| Question | Command |",
-        "| --- | --- |",
-        "| What kinds of work exist? | `rail types` |",
-        "| What is executable now? | `rail next` |",
-        "| What is this item's workflow and proof? | `rail read show <slug>` |",
-        "| What proof is missing, and how do I produce it? | `rail why <slug>` |",
-        "| What does a preset, workflow or action mean? | `rail explain <name>` |",
-        "| What is the operating model? | `rail model` |",
-        "| What needs a human first? | `rail overview` |",
-        "| What is blocked, and why? | `rail read status` |",
-        "| Is the store governable right now? | `rail gate` |",
-        "",
-        "`rail next --all` reaches every item preset; `rail next --into <container>`",
-        "overrides the focus for one call; `rail next --focus-only` stays inside it.",
-        "",
-        "## The protocol for every write",
-        "",
-        "- Read first, then pass the etag: `--expect <etag>`. A stale write is",
-        "  refused with `CONFLICT`; re-read and retry.",
-        "- Pass `--key <idempotency-key>` so a retry returns the first result.",
-        "- Pass `--rel part_of=<slug>` and `--set <field>=<value>`. Never pass a",
-        "  path, a parent folder or a final title.",
-        "- Change status only with `rail change move`, or with a declared",
-        "  `rail do <action>`.",
-        "- Do not edit `records/`; they are immutable. Do not edit or delete the",
-        "  SQLite index; run `rail ops reindex` if reads disagree with the files.",
-        "- Every command prints one JSON envelope and exits 0 on success, 1 on a",
-        "  refusal, 2 on a failure.",
-        "",
-        "## Human-only",
-        "",
-        "`approve`, `ops migrate`, `ops upgrade` and `ops pack use` are human-only tools. They need",
-        "an explicitly named human (`--actor human` or `RAIL_ACTOR=human`) and the",
-        "typed phrase the command prints. Do not approve, lower a gate or switch a",
-        "pack on the human's behalf.",
-        "",
-        "## When a command refuses",
-        "",
-        "Read `error.code` and `error.details`; the refusal names the fix. `CONFLICT`",
-        "means re-read and retry. `AMBIGUOUS_FOCUS` lists candidates: choose one with",
-        "`--into`, never guess. `NO_FOCUS` means pass `--rel part_of=<container>` or",
-        "start the container. A `stale` check is not a pass: run `rail check run`",
-        "again. `approval_mismatch` needs a human reapproval. If reads disagree with",
-        "files, run `rail ops reindex`.",
-        "",
+        "Never parse `pack.yaml`, `rail.yaml` or the charter. Ask: `rail types`, `rail next` (`--all`/`--into`/`--focus-only`), "
+        "`rail read show <slug>`, `rail why <slug>`, `rail explain <name>`, `rail model`, `rail overview`, `rail read status`, `rail gate`.",
+        "## Write, Human-only & Refusals",
+        "- Read first and pass `--expect <etag>`, `--key <idempotency-key>`, `--rel part_of=<slug>`, `--set <field>=<value>` (no path/parent/title); change status only via `rail change move` or `rail do <action>`; run `rail ops reindex` after hand edits.",
+        "- Human-only (`--actor human` or `RAIL_ACTOR=human` + printed phrase): `approve`, `ops migrate`, `ops upgrade`, `ops pack use`. Never approve or lower a gate.",
+        "- Refusals: read `error.code`/`error.details` — `CONFLICT` re-read; `AMBIGUOUS_FOCUS` pass `--into`; `NO_FOCUS` pass `--rel part_of=` or start container; `stale` re-run `rail check run`; `approval_mismatch` needs human reapproval.",
         "## Start here",
-        "",
-        "- Coordinators run `rail overview` first.",
-        "- Anyone handed an item runs `rail loop brief <item> --role <role>` and follows it.",
-        "  The brief's role section names your role, its rules and its skills.",
-        "",
+        "- CTO owns design within charter and requires one registered item + Markdown result record per assignment (incl. discovery).",
+        "- Coordinators: `rail overview`. Workers: `rail loop brief <item> --role <role>` for your role, rules, compiled result shape, and skills.",
         "## The loop",
-        "",
-        "The rail does not run agents. Your tool does, with its own sub-agents, models",
-        "and sandboxes. The rail keeps the work order, the proof and the record:",
-        "",
-        _commands(roles).rstrip("\n"),
-        "",
-        "## Transports",
-        "",
-        "The same tool table is available over MCP stdio (`rail --actor cto serve",
-        "mcp`, or `rail serve mcp` from inside the project) and in a loopback UI",
-        "with `rail serve ui`. MCP keeps the canonical tool",
-        "names (`status`, `next`, `show`, `add`, `move`, `candidate`, ...).",
-        "",
-        "## Profiles",
-        "",
+        "The rail does not run agents; your tool runs sub-agents and merges in git. Rail keeps work order, proof and record:",
+        _commands(roles),
+        "## Transports, Profiles & Skills",
+        "- MCP (`rail serve mcp`, canonical names `status|next|show|add|move|result|candidate|review|...`) and loopback UI (`rail serve ui`).",
+        f"- Profiles: {profile_summary}.",
+        f"- Skills (bodies live in your brief / `.agents/skills/`): {skill_summary}",
     ]
-    if profiles:
-        lines.extend(f"- `{profile.name}` — {profile.title}" for profile in profiles)
-    else:
-        lines.append("No workspace profiles yet.")
-    lines.extend(["", "## Skills", ""])
-    if skills:
-        lines.extend(_skill_line(skill) for skill in skills)
-    else:
-        lines.append("No workspace skills yet.")
-    lines.extend(["", "Your brief names the skills your role uses and how to read them."])
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -701,7 +636,7 @@ def _roles(ctx: Context) -> tuple[str, ...]:
 def _skill_line(skill: _Skill) -> str:
     description = skill.doc.fields.get("description")
     text = description if isinstance(description, str) else ""
-    return f"- `{skill.name}` — {text}".rstrip()
+    return f"`{skill.name}` ({text})".rstrip()
 
 
 def _claude_agent_body(role: str) -> str:

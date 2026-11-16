@@ -162,11 +162,14 @@ rail check declare <slug> --spec-file FILE --expect ETAG|absent [--target ITEM]
 rail check run <target> [--worktree PATH] [--verdict pass|fail]
                  [--evidence RECORD]... [--confirm PHRASE] [--key KEY]
 rail loop brief <item> [--role implementer|reviewer] [--commit SHA] [--max-chars N]
+rail loop result <item> --body-file FILE [--commit SHA] [--outcome completed|partial|blocked|failed]
+                 [--set KEY=VALUE]... [--model TEXT] [--harness TEXT] [--key KEY]
 rail loop candidate <item> --commit SHA [--base SHA] [--profile NAME] [--model TEXT]
                     [--harness TEXT] [--usage NAME=NUMBER|unknown]... [--duration SECONDS]
                     [--key KEY]
-rail loop review <item> --commit SHA --verdict approve|reject [--notes-file FILE]
-                 [--model TEXT] [--harness TEXT] [--key KEY]
+rail loop review <item> [--commit SHA] [--result RECORD_ID] --verdict approve|reject
+                 [--notes-file FILE] [--set KEY=VALUE]... [--model TEXT] [--harness TEXT]
+                 [--key KEY]
 rail loop report [item] [--candidate SHA] --report-file FILE [--key KEY]
 rail loop triage [--limit N] [--report ID] [--acknowledge] [--key KEY]
 rail loop execution <target> --action NAME --state running|succeeded|failed|cancelled
@@ -174,10 +177,14 @@ rail loop execution <target> --action NAME --state running|succeeded|failed|canc
 ```
 
 `check run` on an item runs every executable check it declares, including
-`store` checks verified against committed items in child stores. A `human`
-check needs `--verdict` and the typed phrase. The rail never launches an
-agent: your tool does the work with its own sub-agents, then records the commit
-with `loop candidate`. You merge in git yourself.
+`result` checks (file-only verification of the current completed producer
+Markdown result) and `store` checks verified against committed items in child
+stores. A `human` check needs `--verdict` and the typed phrase. The rail never
+launches an agent: your tool does the work with its own sub-agents, then records
+its Markdown result with `loop result` (preceded by `loop candidate` when code
+changed; discovery/commitless work leaves `candidate_commit` null). Bodies are
+capped at 256 KiB (`262,144` bytes) with ordered nonempty `##` headings. You
+merge in git yourself.
 
 ## Operations
 
@@ -243,7 +250,7 @@ MCP clients see the canonical table, generated from the same source as the CLI:
 | Read | `cto brief`, `status`, `digest`, `find`, `show`, `ledger`, `types`, `next`, `model`, `explain`, `why` |
 | Change | `add`, `update`, `move`, `link`, `rename`, `relocate`, `do` |
 | Proof | `check`, `verify` |
-| Loop | `brief`, `candidate`, `review`, `report`, `triage` |
+| Loop | `brief`, `result`, `candidate`, `review`, `report`, `triage` |
 | Ops | `doctor`, `ci`, `reindex`, `rollback`, `pack list`, `pack show`, `pack validate`, `pack create`, `pack use`, `measure versions`, `measure fix`, `codegraph setup`, `codegraph refresh`, `codegraph status`, `codegraph adopt`, `sync`, `sync driver`, `adapters sync` |
 | Seats | `seat list`, `seat grant`, `seat revoke`, `seat open`, `seat close`, `seat show` |
 | Transports | `mcp serve`, `ui serve`, `serve daemon` |

@@ -18,7 +18,15 @@ __all__ = ["make_store"]
 
 
 def make_store(
-    root: Path, n: int, seed: int = 0, *, roles: bool = False, with_results: bool = False
+    root: Path,
+    n: int,
+    seed: int = 0,
+    *,
+    roles: bool = False,
+    with_results: bool = False,
+    hot_attempts: int = 0,
+    large_selected_bytes: int = 0,
+    with_reviews: bool = False,
 ) -> Path:
     """Write ``n`` valid documents under ``root/context-rail`` and return it.
 
@@ -29,6 +37,10 @@ def make_store(
     ``with_results=True`` uses the shipped ``basic`` pack and writes valid
     Markdown producer result records for done tasks; ``with_results=False``
     writes a minimal local ``basic`` pack without ``results``.
+
+    ``hot_attempts`` writes ``hot_attempts`` prior attempts on ``t0`` (with the
+    newest selected attempt optionally sized to ``large_selected_bytes``) and
+    ``with_reviews=True`` writes Markdown review verdicts bound to results.
 
     The store carries no charter, so it is locked out: a test that moves work
     approves it first with :func:`approve_generated`.
@@ -74,6 +86,20 @@ def make_store(
             status=None,
             tags=[],
         )
+    from context_rail.model.compiler import load_project
+    from context_rail.store.results import item_content_digest
+
+    compiled_result = (
+        load_project("basic", store).results.get("default")
+        if with_results
+        else None
+    )
+    contract_digest = (
+        compiled_result.produce.digest if compiled_result is not None else "0" * 64
+    )
+    review_contract_digest = (
+        compiled_result.review.digest if compiled_result is not None else "0" * 64
+    )
     for i in range(tasks):
         relations = {"part_of": f"g{i % goals}"}
         if i > 0 and i % 5 == 0:
@@ -92,8 +118,41 @@ def make_store(
             tags=["task"],
             relations=relations,
         )
-        if with_results and task_status == "done":
-            _write_result(store, f"t{i}", i)
+        if with_results and (task_status == "done" or (i == 0 and hot_attempts > 0)):
+            item_digest = item_content_digest(store, f"items/task/t{i}.md")
+            attempts = hot_attempts if i == 0 and hot_attempts > 0 else 1
+            last_rec_id: str | None = None
+            last_body_hash: str | None = None
+            for attempt in range(1, attempts + 1):
+                is_last = attempt == attempts
+                target_bytes = large_selected_bytes if (i == 0 and is_last) else 0
+                outcome = "completed" if is_last else "partial"
+                last_rec_id, last_body_hash = _write_result(
+                    store,
+                    f"t{i}",
+                    i,
+                    attempt=attempt,
+                    outcome=outcome,
+                    item_digest=item_digest,
+                    contract_digest=contract_digest,
+                    target_bytes=target_bytes,
+                )
+            if with_reviews and last_rec_id is not None and last_body_hash is not None:
+                _write_result_review(
+                    store,
+                    f"t{i}",
+                    i,
+                    result_record=last_rec_id,
+                    result_body_hash_hex=last_body_hash,
+                    item_digest=item_digest,
+                    review_contract_digest=review_contract_digest,
+                )
+    if with_results and roles:
+        import context_rail
+
+        local = store / "packs" / "basic"
+        if not local.exists():
+            shutil.copytree(Path(context_rail.__file__).parent / "packs" / "basic", local)
     if roles:
         _write_roles(store)
     return store
@@ -113,28 +172,46 @@ def _write_contractless_basic(store: Path) -> None:
     )
 
 
-def _write_result(store: Path, slug: str, index: int) -> None:
+def _write_result(
+    store: Path,
+    slug: str,
+    index: int,
+    *,
+    attempt: int = 1,
+    outcome: str = "completed",
+    item_digest: str | None = None,
+    contract_digest: str | None = None,
+    target_bytes: int = 0,
+) -> tuple[str, str]:
     from context_rail.model.compiler import load_project
     from context_rail.model.results import RESULT_KIND, result_body_hash
     from context_rail.store.doc import record_digest
     from context_rail.store.results import item_content_digest
 
-    body = (
+    base_body = (
         "## Summary\nDone.\n\n## Findings\nNone.\n\n## Decisions\nNone.\n\n"
-        "## Evidence\nVerified.\n\n## Next steps\nNone.\n"
+        "## Evidence\nVerified.\n\n## Next steps\n"
     )
+    tail = "None.\n"
+    if target_bytes > len(base_body.encode("utf-8")) + 10:
+        pad_len = min(target_bytes, 262144) - len(base_body.encode("utf-8")) - 1
+        tail = ("x" * pad_len) + "\n"
+    body = base_body + tail
     body_hash = result_body_hash(body)
-    record_id = f"01JGENRES{index:017d}"
-    item_digest = item_content_digest(store, f"items/task/{slug}.md")
-    compiled = load_project("basic", store).results.get("default")
-    contract_digest = compiled.produce.digest if compiled is not None else "0" * 64
+    record_id = f"01JGENRES{index:09d}{attempt:08d}"
+    if item_digest is None:
+        item_digest = item_content_digest(store, f"items/task/{slug}.md")
+    if contract_digest is None:
+        compiled = load_project("basic", store).results.get("default")
+        contract_digest = compiled.produce.digest if compiled is not None else "0" * 64
+    stamp = f"2026-10-28T{attempt // 3600:02d}:{(attempt % 3600) // 60:02d}:{attempt % 60:02d}Z"
     payload = {
         "schema": 1,
         "item": slug,
-        "attempt": 1,
+        "attempt": attempt,
         "actor": "cto",
-        "at": STAMP,
-        "outcome": "completed",
+        "at": stamp,
+        "outcome": outcome,
         "candidate_commit": None,
         "body_hash": body_hash,
         "item_digest": item_digest,
@@ -144,11 +221,11 @@ def _write_result(store: Path, slug: str, index: int) -> None:
     front: dict[str, Any] = {
         "primitive": "record",
         "preset": "result",
-        "title": f"{slug} result 1",
+        "title": f"{slug} result {attempt}",
         "tags": ["result"],
         "id": record_id,
         "kind": RESULT_KIND,
-        "at": STAMP,
+        "at": stamp,
         "actor": "cto",
         "about": [f"[[{slug}]]"],
         "data": payload,
@@ -162,6 +239,65 @@ def _write_result(store: Path, slug: str, index: int) -> None:
         encoding="utf-8",
         newline="\n",
     )
+    return record_id, body_hash
+
+
+def _write_result_review(
+    store: Path,
+    slug: str,
+    index: int,
+    *,
+    result_record: str,
+    result_body_hash_hex: str,
+    item_digest: str,
+    review_contract_digest: str,
+) -> str:
+    from context_rail.model.results import result_body_hash
+    from context_rail.store.doc import record_digest
+
+    body = (
+        "## Summary\nReviewed.\n\n## Findings\nClean.\n\n"
+        "## Evidence\nChecked result.\n\n## Verdict\nApproved.\n"
+    )
+    body_hash = result_body_hash(body)
+    record_id = f"01JGENREV{index:017d}"
+    stamp = "2026-10-28T12:00:00Z"
+    payload = {
+        "schema": 1,
+        "item": slug,
+        "reviewer_actor": "reviewer",
+        "implementer_actor": "cto",
+        "candidate_commit": None,
+        "result_record": result_record,
+        "result_body_hash": result_body_hash_hex,
+        "item_digest": item_digest,
+        "work_cycle": None,
+        "verdict": "approve",
+        "body_hash": body_hash,
+        "review_contract_digest": review_contract_digest,
+    }
+    front: dict[str, Any] = {
+        "primitive": "record",
+        "preset": "review-result",
+        "title": f"{slug} review",
+        "tags": ["review"],
+        "id": record_id,
+        "kind": "review.verdict",
+        "at": stamp,
+        "actor": "reviewer",
+        "about": [f"[[{slug}]]"],
+        "data": payload,
+        "workflow_name": "default",
+    }
+    front["digest"] = record_digest(front)
+    path = store / "records" / "result-reviews" / "default" / slug / f"{record_id}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\n" + dump_frontmatter(front) + "---\n" + body,
+        encoding="utf-8",
+        newline="\n",
+    )
+    return record_id
 
 
 def approve_generated(store: Path) -> None:

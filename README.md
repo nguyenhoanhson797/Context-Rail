@@ -59,7 +59,8 @@ rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Your
 
 To let agents pick up the work, use any coding tool you like. Context Rail does
 not start it: you or your tool run `rail loop brief` for the work order and
-record the result with `rail loop candidate`.
+record the result with `rail loop result` (plus `rail loop candidate` when code
+changed).
 
 ## How a day looks
 
@@ -67,13 +68,18 @@ record the result with `rail loop candidate`.
    and what is blocked.
 2. **Approve the plan.** Nothing runs until a human approves the brief.
    Working alone? Solo mode skips the ceremony; the quality checks still apply.
-3. **Hand out work.** `rail loop brief` gives your tool one task and a focused
-   brief. Its sub-agent works in its own git worktree and commits.
-4. **Record and prove it.** `rail loop candidate` records the commit, and the
-   checks you chose run against it.
-5. **Review and finish.** A different actor reviews with `rail loop review`.
-   Work reaches done only with fresh checks and an approved review, and you
-   merge in git.
+3. **Hand out work.** Register one item per assignment (individual shell reads
+   are not separate assignments; Context Rail never claims to detect unregistered
+   work). `rail loop brief` gives your tool one task and a focused brief with
+   its compiled result shape and derived path.
+4. **Record and prove it.** Research or commitless work records
+   `rail loop result --body-file <md>` without fabricating a commit. Code work
+   commits, records `rail loop candidate`, then records
+   `rail loop result --commit <sha>`, and runs the declared checks.
+5. **Review and finish.** A different actor reads the exact producer result
+   record and reviews with `rail loop review` (`--notes-file <md>`). Work
+   reaches done only with a current completed result record, fresh checks and an
+   approved review, and you merge in git.
 
 ## Works for any kind of project
 

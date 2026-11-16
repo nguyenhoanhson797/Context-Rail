@@ -76,7 +76,7 @@ refusal and `2` on an infrastructure failure:
 | Read | `overview`, `read status\|digest\|find\|show\|ledger`, `types`, `next`, `model`, `explain`, `why` | Understand without changing anything |
 | Change | `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` | Do the work |
 | Gate | `approve`, `gate`, `ops pack use` | Human decisions and governance |
-| Loop | `loop brief\|candidate\|review\|report` | Hand out work and record what any tool produced |
+| Loop | `loop brief\|result\|candidate\|review\|report` | Hand out work and record what any tool produced |
 | Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui\|daemon` | Maintain and connect |
 
 `rail --help` is authoritative. Flat names from older versions still work
@@ -100,24 +100,40 @@ authentication.
 ## The agent loop
 
 The rail does not run agents. Your tool does, with its own sub-agents. Once the
-charter is approved:
+charter is approved (register one item per assignment; individual shell reads
+are not separate assignments, and the rail never claims to detect unregistered
+work):
 
 ```bash
-rail loop brief <item> --role implementer          # the work order for your sub-agent
-rail loop candidate <item> --commit <sha> --key <key>
-rail check run <item>
-rail loop review <item> --commit <sha> --verdict approve --key <key>   # a different actor
+# Research / commitless path:
+rail loop brief <item> --role implementer          # the work order + compiled result shape
+rail loop result <item> --body-file result.md --outcome completed --key <key>
+rail check run <item>                              # when declared (incl. mode: result)
+rail loop review <item> --verdict approve --notes-file review.md --key <key>   # a different actor
 rail change move <item> done --expect <etag>
-rail loop report <item> --report-file report.json
+
+# Code path (commit before candidate, then commit-bound result):
+rail loop candidate <item> --commit <sha> --key <key>
+rail loop result <item> --body-file result.md --commit <sha> --key <key>
+rail check run <item>
+rail loop review <item> --commit <sha> --verdict approve --notes-file review.md --key <key>
+rail change move <item> done --expect <etag>
+rail loop report <item> --report-file report.json  # diagnostic channel
 ```
 
-- `brief` is bounded and role-scoped. It names no tool.
+- `brief` is bounded and role-scoped (`4000`-char selected-body contribution,
+  `5` history entries, `20` lead summaries). It names no tool.
+- `result` writes one immutable workflow-shaped Markdown record (up to `256 KiB`
+  / `262,144` bytes, ordered nonempty `##` headings, `--key` idempotency, nullable
+  commit — never fabricate a commit for commitless work).
 - `candidate` records the commit your tool made, with its changed files and,
   when you pass them, model, harness, usage and duration.
-- `review` is a different actor's verdict on one candidate commit; the author
-  cannot approve its own work.
+- `review` is a different actor's verdict (Markdown `--notes-file` when
+  contract-enabled) on the current result / candidate commit; the author cannot
+  approve its own work.
 - You merge in git yourself. The rail records and gates; it never runs git
-  writes for agent work.
+  writes for agent work. Existing stores adopt shipped result contracts via
+  explicit `rail --actor human ops upgrade` + `approve`.
 
 Each step has its own key and its own gate. Do not collapse them.
 

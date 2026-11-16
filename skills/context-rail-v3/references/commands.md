@@ -106,11 +106,14 @@ rail check declare <slug> --spec-file FILE --expect ETAG|absent [--target ITEM]
 rail check run <target> [--worktree PATH] [--verdict pass|fail]
                  [--evidence RECORD] [--confirm PHRASE]
 rail loop brief <item> [--role implementer|reviewer] [--commit SHA] [--max-chars N]
+rail loop result <item> --body-file FILE [--commit SHA] [--outcome completed|partial|blocked|failed]
+                 [--set KEY=VALUE]... [--model TEXT] [--harness TEXT] [--key KEY]
 rail loop candidate <item> --commit SHA [--base SHA] [--profile NAME] [--model TEXT]
                     [--harness TEXT] [--usage NAME=NUMBER|unknown]... [--duration SECONDS]
                     [--key KEY]
-rail loop review <item> --commit SHA --verdict approve|reject [--notes-file FILE]
-                 [--model TEXT] [--harness TEXT] [--key KEY]
+rail loop review <item> [--commit SHA] [--result RECORD_ID] --verdict approve|reject
+                 [--notes-file FILE] [--set KEY=VALUE]... [--model TEXT] [--harness TEXT]
+                 [--key KEY]
 rail loop report [item] [--candidate SHA] --report-file FILE
 rail loop triage [--limit N] [--report ID] [--acknowledge]
 rail loop execution <target> --action NAME --state running|succeeded|failed|cancelled
@@ -119,8 +122,10 @@ rail gate [--warnings-as-errors]
 ```
 
 `rail check declare` accepts JSON specs with `mode`: `cmd`, `exists`,
-`evidence`, `review`, `human`, or `store`. A `store` check proves a committed
-item's category in another store (a submodule or sibling repo):
+`evidence`, `review`, `human`, `result`, or `store`. A `result` check verifies
+the current completed producer Markdown result without running git. A `store`
+check proves a committed item's category in another store (a submodule or
+sibling repo):
 
 ```json
 {"schema": 1, "mode": "store", "acceptance": false, "verifies": ["<slice>"],
@@ -175,7 +180,7 @@ rail serve ui [--port N]
 
 Every former flat command name is still accepted: `status`, `digest`,
 `cto brief`, `find`, `show`, `ledger`, `add`, `update`, `move`, `link`,
-`rename`, `relocate`, `check`, `verify`, `brief`, `candidate`, `review`,
+`rename`, `relocate`, `check`, `verify`, `brief`, `result`, `candidate`, `review`,
 `report`, `triage`, `ci`, `doctor`, `reindex`, `migrate`, `upgrade`,
 `rollback`, `pack`, `measure`, `sync`, `adapters sync`, `mcp serve` and
 `ui serve`. The grouped names above are the documented surface. The `seat`

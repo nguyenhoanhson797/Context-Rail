@@ -216,29 +216,37 @@ path from the work graph.
 ## Checks and evidence
 
 A Check is a document with a strict JSON spec and a freshness rule. Modes
-include existence, command exit, JSON assertion, human verdict and acceptance.
-`rail check declare` creates or edits it; `rail check run` executes it and
-records a verdict. A stale verdict is not a pass.
+include existence, command exit, JSON assertion, human verdict, acceptance,
+`store`, and `result` (file-only freshness bound to the current completed
+producer Markdown result). `rail check declare` creates or edits it;
+`rail check run` executes it and records a verdict. A stale verdict is not a
+pass.
 
 The charter has four gates (`item_done`, `scope_done`, `merge`, `release`) and
 four booleans per gate (`require_checks`, `require_acceptance`,
 `require_review`, `require_human`). A workflow names a gate; the gate selects
-the proof.
+the proof. Workflow result contracts also enforce a current completed producer
+Markdown result (`256 KiB` / `262,144` bytes max, ordered nonempty `##`
+headings, `4000`-char brief contribution cap, `5` history entries, `20` lead
+summaries, nullable commit, role-scoped reach, and explicit human adoption via
+`ops upgrade` + `approve`).
 
 ## The agent loop
 
 ```text
-Brief → Work in your own tool → Candidate → Verify → Review → Move → Report → Digest
+Research: Brief → Work → Result → Verify (if declared) → Review → Move → Report → Digest
+Code:     Brief → Work/commit → Candidate → Result --commit → Verify → Review → Move → Report → Digest
 ```
 
 | Step | Guarantee |
 |---|---|
-| `loop brief` | a bounded, role-scoped work order for one item; names no tool and starts nothing |
-| `loop candidate` | records the commit your tool made: changed files, optional model, harness, usage and duration |
-| `check run --worktree` | runs the item's checks in any git worktree and binds the result to the commit |
-| `loop review` | a different actor's verdict on one candidate commit; the author cannot approve its own work |
-| `move ... done` | the charter's gates read the candidate, check and review records; a stale commit refuses |
-| `loop report` | one structured report per candidate: target, expectation, observation, impact, evidence |
+| `loop brief` | a bounded, role-scoped work order for one item (4000-char selected result body, 5 history entries, 20 summaries); names no tool and starts nothing |
+| `loop candidate` | records the commit your tool made for code work: changed files, optional model, harness, usage and duration |
+| `loop result` | records one immutable workflow-shaped Markdown result (`256 KiB` / `262,144` bytes max, `--key` idempotency, nullable commit); one registered item per assignment |
+| `check run --worktree` | runs the item's checks in any git worktree and binds the result to the commit (or current result record for `mode: result`) |
+| `loop review` | a different actor's verdict (structured Markdown `--notes-file` when contract-enabled) on the current result / candidate; the author cannot approve its own work |
+| `move ... done` | the charter's gates read the result, candidate, check and review records; a stale commit or attempt refuses |
+| `loop report` | one diagnostic report per item/candidate: target, expectation, observation, impact, evidence |
 | `loop execution` | record one attempt (`running`, then `succeeded`, `failed` or `cancelled`) of a pack-declared execution action, such as a video render; the engine records it and never runs it |
 | `read digest` | counts, waits, reversible decisions, quality, usage |
 

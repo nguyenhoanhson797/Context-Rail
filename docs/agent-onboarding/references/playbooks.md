@@ -19,7 +19,7 @@ rail overview
 Done when `rail read status` lists an executable task and `rail next` returns
 it.
 
-Next: `context-rail-v3-loop` for brief → candidate → review → report.
+Next: `context-rail-v3-loop` for brief → result → candidate (when code changed) → review → report.
 
 ## 2. Existing codebase, no store
 

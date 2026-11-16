@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 from context_rail.kernel import rights, structure
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from context_rail.gateway.gateway import Context
     from context_rail.model.compiler import ProjectModel
 
@@ -284,7 +286,11 @@ def resolve_unit(ctx: Context, model: ProjectModel) -> Unit | None:
 
 
 def resolve_focus(
-    ctx: Context, model: ProjectModel, *, into: str | None = None
+    ctx: Context,
+    model: ProjectModel,
+    *,
+    into: str | None = None,
+    preset_rows: dict[str, list[ItemRow]] | None = None,
 ) -> FocusResolution:
     """Resolve the focus, refusing an ambiguity instead of picking one."""
     policy = model.operating.focus
@@ -312,7 +318,7 @@ def resolve_focus(
         return FocusResolution("resolved", row, (), "into")
     if policy is None or policy.resolve == "none":
         return FocusResolution("none", None, (), "none")
-    candidates = _candidates(ctx, model)
+    candidates = _candidates(ctx, model, preset_rows=preset_rows)
     if policy.resolve == "explicit":
         return FocusResolution("none", None, candidates, "explicit")
     if not candidates:
@@ -352,13 +358,21 @@ def require_focus(
     return resolved.focus
 
 
-def resolve_hierarchy(ctx: Context, model: ProjectModel) -> tuple[Group, ...]:
+def resolve_hierarchy(
+    ctx: Context,
+    model: ProjectModel,
+    *,
+    preset_rows: dict[str, list[ItemRow]] | None = None,
+) -> tuple[Group, ...]:
     """Every declared hierarchy level, its containers and their order key."""
     groups: list[Group] = []
     reach = ctx.reach
     for level in model.operating.hierarchy:
-        rows = _rows(ctx, (level.preset,))
+        with_seq = level.order is None
+        rows = _rows(ctx, (level.preset,), with_seq=with_seq)
         rows.sort(key=lambda row: _order_key(row, level.order))
+        if preset_rows is not None:
+            preset_rows[level.preset] = rows
         outside = 0
         if reach is not None and not reach.read_all:
             outside = _count(ctx, (level.preset,)) - len(rows)
@@ -382,9 +396,13 @@ def resolve_queue(
     all: bool = False,
     into: str | None = None,
     focus_only: bool = False,
+    all_items: Sequence[Any] | None = None,
+    held_map: Mapping[str, str] | None = None,
+    parents: dict[str, tuple[str, ...]] | None = None,
+    preset_rows: dict[str, list[ItemRow]] | None = None,
 ) -> QueueView:
     """The operating queue: presets, eligibility, focus priority, stable order."""
-    focus = resolve_focus(ctx, model, into=into)
+    focus = resolve_focus(ctx, model, into=into, preset_rows=preset_rows)
     focus_slug = None if focus.focus is None else focus.focus.slug
     presets = model.operating.queue.presets
     if all:
@@ -393,9 +411,19 @@ def resolve_queue(
             for preset in sorted(ctx.pack.presets)
             if ctx.pack.presets[preset].primitive == "item"
         )
-    rows = _rows(ctx, presets)
-    parents = _parents(ctx)
-    grouped = _group_order(ctx, model)
+    if (
+        preset_rows is not None
+        and len(presets) == 1
+        and presets[0] in preset_rows
+    ):
+        rows = preset_rows[presets[0]]
+    else:
+        rows = _rows(ctx, presets, with_seq=False)
+        if preset_rows is not None and len(presets) == 1:
+            preset_rows[presets[0]] = rows
+    if parents is None:
+        parents = _parents(ctx)
+    grouped = _group_order(ctx, model, preset_rows=preset_rows)
     by_slug = {row.slug: row for row in rows}
     scope = "all" if all else ("focus" if focus_slug else "project")
     if focus_only:
@@ -411,8 +439,8 @@ def resolve_queue(
         )
     from context_rail.context import recipes
 
-    items = recipes.item_rows(ctx.index, ctx.pack)
-    held = structure.blocked(items)
+    items = list(all_items) if all_items is not None else recipes.item_rows(ctx.index, ctx.pack)
+    held = dict(held_map) if held_map is not None else structure.blocked(items)
     finished = {
         item.slug
         for item in items
@@ -423,17 +451,40 @@ def resolve_queue(
     }
     eligible: list[QueueItem] = []
     omitted = 0
+    action_cache: dict[tuple[str, str], tuple[str, ...]] = {}
+    has_actions = bool(ctx.pack.actions)
+    workflows: dict[str, Any] = {}
     for row in rows:
         if row.slug in blocked or row.category in ("done", "dropped", "blocked"):
             continue
-        actions = applicable_actions(ctx, model, row, actor)
+        if not has_actions:
+            actions: tuple[str, ...] = ()
+        else:
+            cache_key = (row.preset, row.status)
+            actions = action_cache.get(cache_key)  # type: ignore[assignment]
+            if actions is None:
+                # Actions without item-specific requirements depend only on preset+status.
+                actions = applicable_actions(ctx, model, row, actor)
+                if not any(
+                    a.requires.children
+                    or a.requires.check
+                    or a.requires.review
+                    or a.requires.field
+                    for a in ctx.pack.actions.values()
+                ):
+                    action_cache[cache_key] = actions
         if model.operating.queue.require == "action":
             if not actions:
                 omitted += 1
                 continue
-        elif not ctx.pack.workflow_for(row.preset).transitions.get(row.status, ()):
-            omitted += 1
-            continue
+        else:
+            workflow = workflows.get(row.preset)
+            if workflow is None:
+                workflow = ctx.pack.workflow_for(row.preset)
+                workflows[row.preset] = workflow
+            if not workflow.transitions.get(row.status, ()):
+                omitted += 1
+                continue
         in_focus = focus_slug is not None and (
             row.slug == focus_slug or focus_slug in _ancestors(row.slug, parents)
         )
@@ -486,6 +537,8 @@ def applicable_actions(
     ctx: Context, model: ProjectModel, row: ItemRow, actor: str
 ) -> tuple[str, ...]:
     """Every declared action that applies to this row's preset, state and actor."""
+    if not ctx.pack.actions:
+        return ()
     from context_rail.core.tool_names import canonical_methods
     from context_rail.gateway.tools import TOOLS
 
@@ -539,23 +592,50 @@ def applicable_actions(
 
 
 def resolve_progress(
-    ctx: Context, model: ProjectModel, group: str | None = None
+    ctx: Context,
+    model: ProjectModel,
+    group: str | None = None,
+    *,
+    parents: dict[str, tuple[str, ...]] | None = None,
+    preset_rows: dict[str, list[ItemRow]] | None = None,
 ) -> ProgressView:
     """Workflow progress over ``progress.of``, grouped along the hierarchy."""
     policy = model.operating.progress
-    rows = _rows(ctx, policy.of)
+    if (
+        preset_rows is not None
+        and len(policy.of) == 1
+        and policy.of[0] in preset_rows
+    ):
+        rows = preset_rows[policy.of[0]]
+    else:
+        rows = _rows(ctx, policy.of, with_seq=False)
+        if preset_rows is not None and len(policy.of) == 1:
+            preset_rows[policy.of[0]] = rows
     counts: dict[str, int] = {}
     complete = 0
+    complete_cache: dict[tuple[str, str], bool] = {}
     for row in rows:
         counts[row.category] = counts.get(row.category, 0) + 1
-        if _is_complete(ctx, model, row):
+        key = (row.preset, row.status)
+        done = complete_cache.get(key)
+        if done is None:
+            done = _is_complete(ctx, model, row)
+            complete_cache[key] = done
+        if done:
             complete += 1
     group_preset = group or policy.group
     children: list[dict[str, Any]] = []
     if group_preset is not None:
-        containers = _rows(ctx, (group_preset,))
-        containers.sort(key=lambda row: _order_key(row, _group_order_field(model, group_preset)))
-        parents = _parents(ctx)
+        if preset_rows is not None and group_preset in preset_rows:
+            containers = preset_rows[group_preset]
+        else:
+            order_field = _group_order_field(model, group_preset)
+            containers = _rows(ctx, (group_preset,), with_seq=order_field is None)
+            containers.sort(key=lambda row: _order_key(row, order_field))
+            if preset_rows is not None:
+                preset_rows[group_preset] = containers
+        if parents is None:
+            parents = _parents(ctx)
         members: dict[str, list[ItemRow]] = {row.slug: [] for row in containers}
         for row in rows:
             parent = _nearest_ancestor(row.slug, parents, members)
@@ -563,14 +643,21 @@ def resolve_progress(
                 members[parent].append(row)
         for container in containers:
             bucket = members[container.slug]
+            bucket_complete = 0
+            for row in bucket:
+                key = (row.preset, row.status)
+                done = complete_cache.get(key)
+                if done is None:
+                    done = _is_complete(ctx, model, row)
+                    complete_cache[key] = done
+                if done:
+                    bucket_complete += 1
             children.append(
                 {
                     "slug": container.slug,
                     "title": container.title,
                     "total": len(bucket),
-                    "complete": sum(
-                        1 for row in bucket if _is_complete(ctx, model, row)
-                    ),
+                    "complete": bucket_complete,
                 }
             )
     return ProgressView(
@@ -627,24 +714,44 @@ def _is_complete(ctx: Context, model: ProjectModel, row: ItemRow) -> bool:
     return workflow.statuses.get(row.status) == "done"
 
 
-def _candidates(ctx: Context, model: ProjectModel) -> list[ItemRow]:
+def _candidates(
+    ctx: Context,
+    model: ProjectModel,
+    *,
+    preset_rows: dict[str, list[ItemRow]] | None = None,
+) -> list[ItemRow]:
     policy = model.operating.focus
     if policy is None:
         return []
-    rows = _rows(ctx, (policy.preset,))
+    if preset_rows is not None and policy.preset in preset_rows:
+        rows = preset_rows[policy.preset]
+    else:
+        rows = _rows(ctx, (policy.preset,), with_seq=policy.order is None)
     return sorted(
         (row for row in rows if row.category == policy.category),
         key=lambda row: _order_key(row, policy.order),
     )
 
 
-def _group_order(ctx: Context, model: ProjectModel) -> dict[str, int]:
+def _group_order(
+    ctx: Context,
+    model: ProjectModel,
+    *,
+    preset_rows: dict[str, list[ItemRow]] | None = None,
+) -> dict[str, int]:
     order: dict[str, int] = {}
     position = 0
     for level in model.operating.hierarchy:
-        for row in sorted(
-            _rows(ctx, (level.preset,)), key=lambda item: _order_key(item, level.order)
-        ):
+        if preset_rows is not None and level.preset in preset_rows:
+            rows = preset_rows[level.preset]
+        else:
+            rows = sorted(
+                _rows(ctx, (level.preset,), with_seq=level.order is None),
+                key=lambda item: _order_key(item, level.order),
+            )
+            if preset_rows is not None:
+                preset_rows[level.preset] = rows
+        for row in rows:
             order[row.slug] = position
             position += 1
     return order
@@ -665,13 +772,19 @@ def _queue_key(
     by_slug: dict[str, ItemRow],
 ) -> tuple[Any, ...]:
     row = by_slug.get(item.slug)
-    parent_order = min(
-        (
-            grouped.get(ancestor, len(grouped))
-            for ancestor in _ancestors(item.slug, parents)
-        ),
-        default=len(grouped),
-    )
+    direct = parents.get(item.slug)
+    if not direct:
+        parent_order = len(grouped)
+    elif len(direct) == 1 and direct[0] not in parents:
+        parent_order = grouped.get(direct[0], len(grouped))
+    else:
+        parent_order = min(
+            (
+                grouped.get(ancestor, len(grouped))
+                for ancestor in _ancestors(item.slug, parents)
+            ),
+            default=len(grouped),
+        )
     return (
         0 if item.focus else 1,
         parent_order,
@@ -683,16 +796,21 @@ def _queue_key(
 
 def _ancestors(slug: str, parents: dict[str, tuple[str, ...]]) -> list[str]:
     """Every ancestor, nearest first, with each slug visited once."""
+    direct = parents.get(slug)
+    if not direct:
+        return []
     found: set[str] = set()
     ordered: list[str] = []
-    queue = list(parents.get(slug, ()))
-    while queue:
-        current = queue.pop(0)
-        if current in found:
-            continue
-        found.add(current)
-        ordered.append(current)
-        queue.extend(parents.get(current, ()))
+    idx = 0
+    ordered.extend(direct)
+    found.update(direct)
+    while idx < len(ordered):
+        current = ordered[idx]
+        idx += 1
+        for nxt in parents.get(current, ()):
+            if nxt not in found:
+                found.add(nxt)
+                ordered.append(nxt)
     return ordered
 
 
@@ -701,6 +819,11 @@ def _nearest_ancestor(
     parents: dict[str, tuple[str, ...]],
     containers: dict[str, list[ItemRow]],
 ) -> str | None:
+    direct = parents.get(slug)
+    if not direct:
+        return None
+    if len(direct) == 1 and direct[0] not in parents:
+        return direct[0] if direct[0] in containers else None
     for candidate in _ancestors(slug, parents):
         if candidate in containers:
             return candidate
@@ -726,7 +849,11 @@ def _count(ctx: Context, presets: tuple[str, ...]) -> int:
 
 
 def _rows(
-    ctx: Context, presets: tuple[str, ...] | None, *, slug: str | None = None
+    ctx: Context,
+    presets: tuple[str, ...] | None,
+    *,
+    slug: str | None = None,
+    with_seq: bool = True,
 ) -> list[ItemRow]:
     """The items one caller may read, in the resolver's own shape.
 
@@ -763,26 +890,44 @@ def _rows(
         return []
     paths = [row[8] for row in rows]
     slugs = [row[0] for row in rows]
-    fields: dict[str, dict[str, Any]] = {path: {} for path in paths}
-    for path, key, value in index.conn.execute(
-        "SELECT path, key, value_json FROM fields WHERE path IN "
-        f"({', '.join('?' * len(paths))})",
-        paths,
-    ):
-        fields[path][key] = json.loads(value)
+    fields: dict[str, dict[str, Any]] = {}
+    if len(paths) == 1:
+        path_map: dict[str, Any] = {}
+        for key, value in index.conn.execute(
+            "SELECT key, value_json FROM fields WHERE path = ?",
+            (paths[0],),
+        ):
+            path_map[key] = json.loads(value)
+        fields[paths[0]] = path_map
+    else:
+        for start in range(0, len(paths), 500):
+            chunk = paths[start : start + 500]
+            for path, key, value in index.conn.execute(
+                "SELECT path, key, value_json FROM fields WHERE path IN "
+                f"({', '.join('?' * len(chunk))})",
+                chunk,
+            ):
+                bucket = fields.get(path)
+                if bucket is None:
+                    fields[path] = {key: json.loads(value)}
+                else:
+                    bucket[key] = json.loads(value)
     created_seq: dict[str, str] = {}
-    for item_slug, record_slug in index.conn.execute(
-        "SELECT r.dst, MIN(d.slug) FROM relations r "
-        "JOIN docs d ON d.path = r.src_path "
-        "JOIN fields f ON f.path = d.path AND f.key = 'kind' "
-        "WHERE r.rel = 'about' AND d.primitive = 'record' AND d.broken = 0 "
-        "AND f.value_json = '\"doc.created\"' "
-        f"AND r.dst IN ({', '.join('?' * len(slugs))}) "
-        "GROUP BY r.dst",
-        slugs,
-    ):
-        if record_slug:
-            created_seq[item_slug] = record_slug
+    if with_seq:
+        for start in range(0, len(slugs), 500):
+            chunk = slugs[start : start + 500]
+            for item_slug, record_slug in index.conn.execute(
+                "SELECT r.dst, MIN(d.slug) FROM relations r "
+                "JOIN docs d ON d.path = r.src_path "
+                "JOIN fields f ON f.path = d.path AND f.key = 'kind' "
+                "WHERE r.rel = 'about' AND d.primitive = 'record' AND d.broken = 0 "
+                "AND f.value_json = '\"doc.created\"' "
+                f"AND r.dst IN ({', '.join('?' * len(chunk))}) "
+                "GROUP BY r.dst",
+                chunk,
+            ):
+                if record_slug:
+                    created_seq[item_slug] = record_slug
     return [
         ItemRow(
             slug=row[0],

@@ -173,8 +173,10 @@ The rail is not a task list with extra steps. The same compiled model drives:
   gates, declared by a pack.
 - **The operating model** — unit, hierarchy, focus, queue and progress, also
   declared by the pack and compiled into one immutable model.
-- **Execution** — briefs, checks, candidates, reviews, reports, triage,
-  budgets and a ledger, all recorded from whatever tool did the work.
+- **Execution** — briefs, `rail loop result` Markdown evidence records (both
+  commitless research and commit-bound code), checks, candidates, Markdown
+  reviews, diagnostic reports, triage, budgets and a ledger, all recorded from
+  whatever tool did the work.
 - **The projection** — `rail types|next|model|show|explain|why`, the MCP tool
   table, the loopback UI, the generated `AGENTS.md` and workspace skills.
 

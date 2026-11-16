@@ -141,3 +141,22 @@ def test_reach_resolution_is_under_100_ms_for_a_1000_doc_subtree(
         assert reading < 100
     finally:
         context.close()
+
+
+@pytest.mark.perf
+def test_scoped_lead_brief_with_results_stays_under_warm_budget(tmp_path: Path) -> None:
+    store = make_store(
+        tmp_path,
+        1000,
+        roles=True,
+        with_results=True,
+        hot_attempts=100,
+        large_selected_bytes=262144,
+        with_reviews=True,
+    )
+    token = open_test_session(store, GOAL_SEAT)
+    _checked(lambda: _seat_call(token, store, "cto brief"))
+
+    reading = median_ms(lambda: _checked(lambda: _seat_call(token, store, "cto brief")), 5)
+    print(f"scoped lead brief with results @1000+hot100+256KiB: {reading:.1f} ms (budget 300 ms)")
+    assert reading < 300

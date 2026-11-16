@@ -228,15 +228,26 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     ]
     model = ctx.model
     unit = operating.resolve_unit(ctx, model)
-    focus = _focus(ctx, model)
-    groups, groups_omitted = _groups(ctx, model)
-    progress_data = operating.resolve_progress(ctx, model).as_dict()
+    preset_rows: dict[str, list[operating.ItemRow]] = {}
+    parents = operating._parents(ctx)
+    groups, groups_omitted = _groups(ctx, model, preset_rows=preset_rows)
+    focus = _focus(ctx, model, preset_rows=preset_rows)
+    progress_data = operating.resolve_progress(
+        ctx, model, parents=parents, preset_rows=preset_rows
+    ).as_dict()
     progress_children = list(progress_data.get("children") or ())
     progress_data["children"] = progress_children[:LIST_CAP]
     progress_data["omitted"] = int(progress_data.get("omitted") or 0) + max(
         len(progress_children) - LIST_CAP, 0
     )
-    queue = _queue(ctx, model)
+    queue = _queue(
+        ctx,
+        model,
+        all_items=all_items,
+        held_map=held_now,
+        parents=parents,
+        preset_rows=preset_rows,
+    )
     result = {
         "counts": counts,
         "counts_scope": "every item preset" if ctx.reach is None else "read reach",
@@ -269,9 +280,14 @@ def status(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     return result
 
 
-def _focus(ctx: Context, model: Any) -> dict[str, Any]:
+def _focus(
+    ctx: Context,
+    model: Any,
+    *,
+    preset_rows: dict[str, list[operating.ItemRow]] | None = None,
+) -> dict[str, Any]:
     try:
-        return operating.resolve_focus(ctx, model).as_dict()
+        return operating.resolve_focus(ctx, model, preset_rows=preset_rows).as_dict()
     except operating.OperatingError as error:
         return {
             "state": "ambiguous" if error.code == "AMBIGUOUS_FOCUS" else "invalid",
@@ -282,9 +298,25 @@ def _focus(ctx: Context, model: Any) -> dict[str, Any]:
         }
 
 
-def _queue(ctx: Context, model: Any) -> dict[str, Any]:
+def _queue(
+    ctx: Context,
+    model: Any,
+    *,
+    all_items: Any = None,
+    held_map: Any = None,
+    parents: Any = None,
+    preset_rows: dict[str, list[operating.ItemRow]] | None = None,
+) -> dict[str, Any]:
     try:
-        view = operating.resolve_queue(ctx, model, ctx.actor)
+        view = operating.resolve_queue(
+            ctx,
+            model,
+            ctx.actor,
+            all_items=all_items,
+            held_map=held_map,
+            parents=parents,
+            preset_rows=preset_rows,
+        )
     except operating.OperatingError as error:
         return {
             "items": [],
@@ -301,8 +333,13 @@ def _queue(ctx: Context, model: Any) -> dict[str, Any]:
     }
 
 
-def _groups(ctx: Context, model: Any) -> tuple[list[dict[str, Any]], int]:
-    groups = operating.resolve_hierarchy(ctx, model)
+def _groups(
+    ctx: Context,
+    model: Any,
+    *,
+    preset_rows: dict[str, list[operating.ItemRow]] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    groups = operating.resolve_hierarchy(ctx, model, preset_rows=preset_rows)
     shown: list[dict[str, Any]] = []
     omitted = 0
     for group in groups:

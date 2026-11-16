@@ -59,9 +59,10 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | `actor_required` | a name-mode write with no named actor and no terminal | Pass `--actor <name>` or set `RAIL_ACTOR` |
 | A profile key is refused (`model`, `runner`, `tools`, ...) | the store predates the runtime-neutral engine | A human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |
 | A brief refuses | dependency, gate, claim or profile recipe | `rail why <item>` and `rail read show <item>`; finish the dependency or use the right profile |
+| A result refuses | Body exceeds `256 KiB` (`262,144` bytes), missing/empty ordered `##` headings, or unrecorded `--commit` | Write all compiled sections cleanly, pass `--key`, and omit `--commit` for commitless work |
 | A candidate refuses | the commit is not on a git worktree of this project | Commit first; pass the full commit SHA |
-| A review refuses | the reviewer authored the candidate, or the commit is stale | Use a distinct reviewer actor; review the current commit |
-| `move ... done` refuses | the candidate is not approved or is stale | Review the current candidate commit, then move |
+| A review refuses | the reviewer authored the result/candidate, or the commit/result is stale | Use a distinct reviewer actor; review the current result/commit with `--notes-file` |
+| `move ... done` refuses | result is missing/partial/stale, or candidate/review/checks are stale | Record a completed `rail loop result`, run fresh checks, obtain a separated `rail loop review`, then move |
 | `ops pack validate` fails | missing preset, template, field or operating reference | Fix the named key; `pack validate` is read-only |
 | `pack use` refuses | unmapped status, missing preset or an unsatisfiable required field | Add `--map OLD=NEW` or fix the target pack; never force |
 | `migrate` refuses a structural target | a legacy store has no work graph | Migrate into a flat layout first, then add structure |

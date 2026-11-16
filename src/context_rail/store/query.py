@@ -1172,13 +1172,12 @@ def human_proposals(ix: Index, limit: int = 20) -> tuple[list[dict[str, Any]], i
     limit = _bounded(limit, FEED_LIMIT_BOUNDS, "limit")
     where = (
         "WHERE d.primitive = 'note' AND d.broken = 0 "
-        "AND EXISTS (SELECT 1 FROM fields c WHERE c.path = d.path "
-        "AND c.key = 'decision_class' AND c.value_json = '\"human-only\"')"
+        "AND f.key = 'decision_class' AND f.value_json = '\"human-only\"'"
     )
+    joins = "FROM fields f JOIN docs d ON d.path = f.path "
     rows = ix.conn.execute(
-        "SELECT d.slug, d.title, d.updated, p.value_json FROM docs d "
-        "JOIN fields f ON f.path = d.path AND f.key = 'decision_class' "
-        " AND f.value_json = '\"human-only\"' "
+        "SELECT d.slug, d.title, d.updated, p.value_json "
+        f"{joins}"
         "LEFT JOIN fields p ON p.path = d.path AND p.key = 'proposed_change' "
         f"{where} ORDER BY d.updated DESC, d.slug DESC LIMIT ?",
         (limit,),
@@ -1193,7 +1192,7 @@ def human_proposals(ix: Index, limit: int = 20) -> tuple[list[dict[str, Any]], i
         }
         for slug, title, updated, change in rows
     ]
-    return found, _scalar(ix, f"SELECT COUNT(*) FROM docs d {where}")
+    return found, _scalar(ix, f"SELECT COUNT(*) {joins}{where}")
 
 
 def review_by_record(ix: Index, record_id: str) -> dict[str, Any] | None:

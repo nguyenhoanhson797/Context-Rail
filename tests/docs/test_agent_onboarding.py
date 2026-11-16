@@ -42,6 +42,7 @@ def test_the_portable_agents_file_teaches_the_safe_protocol() -> None:
         "AMBIGUOUS_FOCUS",
         "human-only",
         "immutable",
+        "rail loop result",
     ):
         assert phrase in text, phrase
 
@@ -74,6 +75,7 @@ def test_the_capability_reference_covers_the_full_power_surface() -> None:
         "placement",
         "check",
         "brief",
+        "result",
         "candidate",
         "review",
         "MCP",

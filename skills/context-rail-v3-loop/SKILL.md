@@ -1,6 +1,6 @@
 ---
 name: context-rail-v3-loop
-description: 'Run the Context Rail v3 record loop with any coding tool: brief, work in your own tool, candidate, verify, review, report, digest, plus the exact refusals and how a failure is reported. Load when handing out or reviewing agent work.'
+description: 'Use when handing out, recording, verifying, or reviewing agent work through Context Rail v3: brief, workflow-shaped Markdown result records (commitless research or commit-bound code), candidate, review, report, digest, and refusals.'
 ---
 
 # Context Rail v3 — the record loop
@@ -9,20 +9,24 @@ The rail does not run agents. Your coding tool does, with its own sub-agents,
 models and sandboxes (Claude Code, Codex, opencode, Droid, Cursor, Gemini CLI,
 or a person). The rail keeps the work order, the proof and the record. Whoever
 leads the work keeps no state between sessions beyond the store and its memory
-notes.
+notes. Register one item per separate assignment (individual shell reads inside
+an assignment do not need items; the rail never claims to detect unregistered
+work).
 
 ## The cycle
 
+Two public loop paths share one evidence contract:
+
 ```text
-1 Brief ─→ 2 Work ─→ 3 Candidate ─→ 4 Verify
-                                      │
-8 Digest ←─ 7 Report ←─ 6 Move ←─ 5 Review
-    │
-    └──────────────→ next session (back to 1)
+Research / commitless:
+  1 Brief ─→ 2 Work ─→ 3 Result ─→ 4 Verify (when declared) ─→ 5 Review ─→ 6 Move ─→ 7 Report ─→ 8 Digest
+
+Code:
+  1 Brief ─→ 2 Work/commit ─→ 3 Candidate ─→ 4 Result --commit ─→ 5 Verify ─→ 6 Review ─→ 7 Move ─→ 8 Report ─→ 9 Digest
 ```
 
-Steps 1, 3, 4, 5 and 7 are rail commands. Step 2 is your tool, in your own
-checkout. Step 6 is `rail change move`, which the item's gate allows or
+Steps 1, 3–6 and 7/8 are rail commands. Working/committing is your tool, in
+your own checkout. Move is `rail change move`, which the item's gate allows or
 refuses.
 
 ## Commands
@@ -31,10 +35,13 @@ refuses.
 rail overview                                   # bounded starting page
 
 rail loop brief <item> [--role implementer|reviewer] [--commit <sha>] [--max-chars N]
+rail loop result <item> --body-file <md> [--commit <sha>] [--outcome completed|partial|blocked|failed]
+                 [--set <k=v>]... [--model <text>] [--harness <text>] [--key <k>]
 rail loop candidate <item> --commit <sha> [--base <sha>] [--model <text>] [--harness <text>]
                     [--usage NAME=NUMBER]... [--duration SECONDS] [--key <k>]
-rail check run <item> [--worktree <path>]       # the declared checks, in that checkout
-rail loop review <item> --commit <sha> --verdict approve|reject [--notes-file <md>] [--key <k>]
+rail check run <item> [--worktree <path>]       # the declared checks (incl. mode: result)
+rail loop review <item> [--commit <sha>] [--result <id>] --verdict approve|reject
+                 [--notes-file <md>] [--set <k=v>]... [--key <k>]
 rail change move <item> <status> --expect <etag>
 
 rail loop report [<item>] [--candidate <sha>] --report-file <json>
@@ -43,8 +50,10 @@ rail loop execution <item> --action <name> --state running|succeeded|failed|canc
 rail read ledger [--item <slug>] [--since <iso>]
 ```
 
-- Every `--key` is an idempotency key: a retry returns the same record.
+- Every `--key` is an idempotency key: a retry returns the same record (even if
+  the temporary body file disappeared after the first commit).
 - Every `--expect` is the etag just read: a stale write is refused.
+- Paths and final titles are derived: `loop result` has no `--path` or `--title`.
 - `loop triage --report <id> --acknowledge` records a deliberate
   acknowledgement for one report below the recurrence threshold; it writes a
   `report.triaged` record and clears the doctor warning.
@@ -52,39 +61,61 @@ rail read ledger [--item <slug>] [--since <iso>]
 ## How one item goes
 
 1. **Brief.** `rail loop brief <item> --role implementer` prints the objective,
-   the selected scope, the Checks, the code area and how to record results.
-   Hand it to your own sub-agent. Nothing in it names a tool.
-2. **Work.** Your tool works in its own checkout or git worktree and commits.
-   The rail never creates the worktree and never runs git writes for you.
-3. **Candidate.** `rail loop candidate <item> --commit <sha>` records the
-   commit, the files it changed and, when you pass them, the model, harness,
-   usage and duration. Recording the same commit again returns the first
-   record.
-4. **Verify.** `rail check run <item> --worktree <path>` runs the declared
-   Checks in that checkout. A Check is fresh only while its inputs still match
-   the commit.
-5. **Review.** A different actor reads
-   `rail loop brief <item> --role reviewer --commit <sha>` and records
-   `rail loop review <item> --commit <sha> --verdict approve|reject`. The
-   author of a candidate cannot approve it, and the charter may require a
-   different model.
-6. **Move.** Merge or integrate in git yourself, then
-   `rail change move <item> done`. The gate reads the records: fresh Checks
-   for the candidate, the review when the gate needs one, acceptance and any
-   human verdict.
-7. **Report.** `rail loop report <item> --report-file <json>`: target class,
-   expectation, observation, impact, evidence. File one even when nothing
+   the selected scope, the compiled result shape and derived path, the Checks,
+   the code area and how to record results. Hand it to your own sub-agent.
+   Nothing in it names a tool or parses `pack.yaml`.
+2. **Work.** Your tool works in its own checkout or git worktree and commits
+   when code changed. The rail never creates the worktree and never runs git
+   writes for you.
+3. **Candidate (code work only).** `rail loop candidate <item> --commit <sha>`
+   records the commit, the files it changed and, when you pass them, the model,
+   harness, usage and duration. For discovery, research, design or other
+   commitless work, skip `candidate` and never fabricate a commit SHA.
+4. **Result.** `rail loop result <item> --body-file <md>` writes an immutable
+   workflow-shaped Markdown record under `records/`:
+   - Body limit: `256 KiB` (`262,144` bytes) checked on raw input bytes; BOM/CRLF
+     normalized to LF.
+   - Required sections: exact, ordered, unique nonempty `##` headings outside
+     code fences (`Not applicable: <reason>` counts; extra headings allowed).
+   - Commitless work leaves `candidate_commit` null (`None`); code work passes
+     `--commit <sha>` matching a recorded candidate on the item.
+   - Outcome: `completed`, `partial`, `blocked`, or `failed`. Only `completed`
+     can satisfy a done gate; a newer partial/failed/altered attempt supersedes
+     older proof.
+5. **Verify.** `rail check run <item> [--worktree <path>]` runs the declared
+   Checks (including `mode: result`, which checks the current completed producer
+   result via file-only freshness). A Check is fresh only while its inputs and
+   result binding still match.
+6. **Review.** A different actor reads
+   `rail loop brief <item> --role reviewer [--commit <sha>]` (bounded with up
+   to `4000` chars of the selected result body, `5` history entries, and `20`
+   lead summaries; full bodies stay on authorized `read show`) and records
+   `rail loop review <item> [--commit <sha>] [--result <id>] --verdict approve|reject --notes-file <md>`.
+   The author of a candidate or result cannot approve it, reviewer notes never
+   count as producer evidence, and the charter may require a different model.
+7. **Move.** Merge or integrate in git yourself, then
+   `rail change move <item> done`. The gate reads the records: current completed
+   producer result bound to item content and work cycle, fresh Checks, the
+   separated review, acceptance and any human verdict.
+8. **Report.** `rail loop report <item> --report-file <json>` is the diagnostic
+   channel (target class, expectation, observation, impact, evidence) when
+   something in the rail or environment needs attention, even when nothing
    happened.
 
-## Role mode
+## Role mode and adoption
 
 When the pack declares roles, every caller acts through a seat. Open one with
 `rail seat open <seat> --print-env` and export the printed `RAIL_SESSION`; the
 seat's role decides which commands it may call and which items and paths it may
-reach. A seat cannot record a candidate or a review for an item outside its
-write reach, and independence compares the acting seat and its profile with the
-seat and profile that produced the candidate. The code reach check re-resolves
-the producer's patterns from its seat at review time.
+reach (`can.result` and `sees.parts` `results` are role-scoped). A seat cannot
+record a result, candidate or review for an item outside its write reach, and
+independence compares the acting seat and its profile with the seat and
+profile that produced the candidate or result.
+
+Existing stores adopt shipped result contracts explicitly when a human runs
+`rail --actor human ops upgrade --confirm "UPGRADE store"` followed by
+`approve`; unchanged historical done items stay preserved without fabricating
+retroactive results.
 
 ## Focus and the queue
 

@@ -67,3 +67,39 @@ def test_work_brief_warm_read(tmp_path, n: int, warm_ms: int) -> None:
     reading = median_ms(checked, 5)
     print(f"brief warm read @{n}: {reading:.1f} ms (budget {warm_ms} ms)")
     assert reading < warm_ms
+
+
+@pytest.mark.perf
+def test_result_enabled_hot_item_and_cto_brief_stay_under_warm_budgets(tmp_path) -> None:
+    store = make_store(
+        tmp_path,
+        1000,
+        with_results=True,
+        hot_attempts=100,
+        large_selected_bytes=262144,
+        with_reviews=True,
+    )
+    pack = load_pack("basic", store)
+    ix = Index.open(store, pack)
+    try:
+        start = time.perf_counter()
+        ix.sync()
+        print(f"result-enabled index sync @1000+hot100: {(time.perf_counter() - start) * 1000:.1f} ms")
+    finally:
+        ix.close()
+
+    for tool, args, actor in (
+        ("cto brief", {}, "cto"),
+        ("brief", {"item": "t0"}, "dev"),
+        ("brief", {"item": "t0", "role": "reviewer"}, "reviewer"),
+        ("show", {"slug": "t0"}, "cto"),
+    ):
+        assert invoke(tool, args, store=store, actor=actor)["ok"]
+        reading = median_ms(
+            lambda tool=tool, args=args, actor=actor: invoke(
+                tool, args, store=store, actor=actor
+            ),
+            5,
+        )
+        print(f"result-enabled {tool} ({actor}) @1000+hot100+256KiB: {reading:.1f} ms (budget 300 ms)")
+        assert reading < 300

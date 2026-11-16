@@ -352,8 +352,8 @@ loop — presets, required metadata, placement recipes and pitfalls — load
 - One active pack per store. Different teams → different stores, or one
   superset pack where the extra steps are optional dependencies.
 - Transitions are legality, not evidence. For proof before a status, use a
-  dependency item or a gate check; a hard per-transition rule is an engine
-  change.
+  dependency item, a workflow `results` contract, or a gate check (`mode: result`
+  for producer Markdown results); a hard per-transition rule is an engine change.
 - Migration to a structural layout is refused: a legacy store has no work graph,
   so `ops migrate` cannot render `{part_of}` or a `kind:` placement. Migrate
   flat, then add the structure.

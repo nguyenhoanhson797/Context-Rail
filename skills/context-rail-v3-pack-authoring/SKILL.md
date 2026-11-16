@@ -114,6 +114,28 @@ presets:
 - Add a gate to the charter when a workflow names one; `pack validate` and
   `doctor` report an unknown gate.
 
+### Result artifact contracts (`results`, pack version 2)
+
+Version-2 packs may declare a `results` contract at the pack level (and
+complete per-artifact `produce` or `review` overrides under any workflow):
+
+```yaml
+results:
+  produce:
+    preset: result
+    sections: [Summary, Findings, Evidence, Next steps]
+  review:
+    preset: review-result
+    sections: [Summary, Findings, Evidence, Verdict]
+```
+
+- Both `produce` and `review` artifacts point at `primitive: record` presets
+  with `required: [workflow_name]`, a Markdown `template` declaring the exact
+  ordered `##` headings, and unique Markdown placements under `records/`.
+- Changing `results` sections, preset, or placement changes the semantic digest
+  and requires human re-approval. Legacy packs without `results` keep their
+  existing JSON reviews and digest shape.
+
 Actions are declarative verbs over the pack:
 
 ```yaml

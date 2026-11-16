@@ -91,6 +91,9 @@ _BROKEN_PROBLEMS = frozenset({PARSE_ERROR, BAD_ENCODING})
 _SEEK_INDEXES = (
     "CREATE INDEX IF NOT EXISTS reports_class_at ON reports(target_class, at DESC)",
     "CREATE INDEX IF NOT EXISTS docs_primitive ON docs(primitive, broken, slug, category)",
+    "CREATE INDEX IF NOT EXISTS fields_key_val_path ON fields(key, value_json, path)",
+    "CREATE INDEX IF NOT EXISTS fields_path ON fields(path)",
+    "CREATE INDEX IF NOT EXISTS relations_src_path_rel ON relations(src_path, rel)",
 )
 
 _SCHEMA = (
@@ -1554,7 +1557,13 @@ def _ensure_seek_indexes(conn: sqlite3.Connection) -> None:
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
     }
-    if {"reports_class_at", "docs_primitive"}.issubset(existing):
+    if {
+        "reports_class_at",
+        "docs_primitive",
+        "fields_key_val_path",
+        "fields_path",
+        "relations_src_path_rel",
+    }.issubset(existing):
         return
     for statement in _SEEK_INDEXES:
         conn.execute(statement)

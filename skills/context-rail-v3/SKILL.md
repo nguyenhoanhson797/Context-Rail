@@ -130,7 +130,7 @@ rail seat close sprint-1
 | Read | `overview`, `read status\|digest\|find\|show\|ledger` |
 | Change | `change add\|update\|link\|move\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` |
 | Gate | `approve`, `ops pack use`, `gate` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
-| Loop | `loop brief\|candidate\|review\|report\|triage\|execution` |
+| Loop | `loop brief\|result\|candidate\|review\|report\|triage\|execution` |
 | Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui` |
 
 Exact flags: `references/commands.md` in this skill.
@@ -143,7 +143,7 @@ Exact flags: `references/commands.md` in this skill.
 | Custom document types, statuses, transitions, BA/PO steps, pack switching | `context-rail-v3-workflows` |
 | Create a pack, add document types, require metadata, change placement | `context-rail-v3-pack-authoring` |
 | Work from the compiled surface: types, next, show, explain, why | `context-rail-v3-surface` |
-| Hand out and record agent work: brief → candidate → verify → review → report | `context-rail-v3-loop` |
+| Hand out and record agent work: brief → result → candidate (code) → verify → review → report | `context-rail-v3-loop` |
 | Doctor, reindex, recovery, git sync, budgets, test lanes | `context-rail-v3-ops` |
 | Every flag for every command | `references/commands.md` |
 
