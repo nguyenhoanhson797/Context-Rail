@@ -169,6 +169,11 @@ def test_public_docs_and_skills_document_result_records_and_limits() -> None:
         "sees.parts",
         "Not applicable:",
         "unregistered",
+        "duration_s",
+        "usage: {tokens:",
+        "unknown",
+        "One loop for every work kind",
+        "effort",
     ):
         assert phrase in loop_skill, phrase
 
@@ -197,6 +202,9 @@ def test_public_docs_and_skills_document_result_records_and_limits() -> None:
     assert "rail loop result" in coord
     assert "discovery" in coord.lower() or "commitless" in coord.lower()
     assert "rail loop report" in coord
+    assert "duration_s" in coord
+    assert "measure usage" in coord
+    assert "`task` preset" in coord
 
     # AGENTS.md command inventory includes loop result and preserves invariants.
     agents_md = _read("AGENTS.md")

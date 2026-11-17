@@ -50,3 +50,29 @@ def test_command_check_flags_removed_and_unknown_commands() -> None:
     )
     for example in bad:
         assert unknown_rail_commands(example) == [example.strip("`")], example
+
+
+def test_the_loop_skill_states_one_loop_and_the_recording_rule() -> None:
+    text = (ROOT / "skills" / "context-rail-v3-loop" / "SKILL.md").read_text(encoding="utf-8")
+    flat = " ".join(text.split())
+    for line in (
+        "plan rail change add task",
+        "pick rail next",
+        "hand rail loop brief <taskId>",
+        "work ... any harness, any sub-agents ...",
+        "report rail loop result <taskId> --body-file <file>",
+        "review rail loop review <taskId> --result <id> --verdict approve",
+        "close rail change move <taskId> <done-status>",
+        "learn rail loop report <taskId> --report-file <json>",
+    ):
+        assert line in flat, line
+    for rule in (
+        "Navigation and orientation are not recorded.",
+        "a commitless result naming the model and harness that produced it",
+        "must cite evidence that already exists in the store",
+        "the parent creates the task, passes the brief, and records the answer "
+        "as the accountable producer",
+        "Use the `task` preset for research, not `question`",
+        "`loop result` is the report step; `loop report` is optional findings for triage.",
+    ):
+        assert rule in flat, rule

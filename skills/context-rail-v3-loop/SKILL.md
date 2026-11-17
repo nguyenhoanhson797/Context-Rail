@@ -48,6 +48,8 @@ rail loop report [<item>] [--candidate <sha>] --report-file <json>
 rail loop triage [--limit N] [--report <id>] [--acknowledge]
 rail loop execution <item> --action <name> --state running|succeeded|failed|cancelled [--output <file>]... [--error <why>]
 rail read ledger [--item <slug>] [--since <iso>]
+rail ops measure usage --group-by item|model|harness|role|profile|skill
+                   [--item <slug>] [--since <iso>] [--until <iso>] [--limit N]
 ```
 
 - Every `--key` is an idempotency key: a retry returns the same record (even if
@@ -57,6 +59,38 @@ rail read ledger [--item <slug>] [--since <iso>]
 - `loop triage --report <id> --acknowledge` records a deliberate
   acknowledgement for one report below the recurrence threshold; it writes a
   `report.triaged` record and clears the doctor warning.
+
+## One loop for every work kind
+
+Code, research, investigation, find and review all run one loop, keyed by the
+item's `taskId`:
+
+```text
+plan    rail change add task "<title>" --rel part_of=<container>
+pick    rail next
+hand    rail loop brief <taskId>
+work    ... any harness, any sub-agents ...
+report  rail loop result <taskId> --body-file <file> [--commit <sha>]
+        rail loop candidate <taskId> --commit <sha> --usage tokens=...  (code only)
+review  rail loop review <taskId> --result <id> --verdict approve
+close   rail change move <taskId> <done-status>
+learn   rail loop report <taskId> --report-file <json>                (optional)
+```
+
+Record proportionately:
+
+- Navigation and orientation are not recorded.
+- A conclusion that will be reused or will change a decision is a task plus a
+  commitless result naming the model and harness that produced it.
+- A decision that changes scope, design, a gate or an approval must cite
+  evidence that already exists in the store.
+- Sub-agents are the harness's own business: the parent creates the task, passes
+  the brief, and records the answer as the accountable producer. The rail never
+  launches an agent and cannot see inside a harness's tool calls.
+- Use the `task` preset for research, not `question`: a lead's `can.move` names
+  the presets it can close (the portfolio lead's: `component, slice, release,
+  task, bug, fix`), so a question cannot be closed by that lead.
+- `loop result` is the report step; `loop report` is optional findings for triage.
 
 ## How one item goes
 
@@ -82,6 +116,12 @@ rail read ledger [--item <slug>] [--since <iso>]
    - Outcome: `completed`, `partial`, `blocked`, or `failed`. Only `completed`
      can satisfy a done gate; a newer partial/failed/altered attempt supersedes
      older proof.
+   - Effort: a leading `---` block before the first heading carries
+     `duration_s`, `usage: {tokens: ..., requests: ...}`, `model` and `harness`.
+     The block stays in the stored body, so the review binds the numbers too.
+     Use `unknown` for a counter the harness does not report; never guess, and
+     never report money. An unknown key or an invalid counter refuses the write,
+     and `--model`/`--harness` may not name the same fact the block names.
 5. **Verify.** `rail check run <item> [--worktree <path>]` runs the declared
    Checks (including `mode: result`, which checks the current completed producer
    result via file-only freshness). A Check is fresh only while its inputs and
@@ -151,7 +191,7 @@ active scene). The queue is focus-first and the brief's headline names it.
 | Refusal | Cause |
 |---|---|
 | `INVALID_STATE: '<slug>' is not an executable leaf` | Finish or drop the dependency, or pick a leaf item |
-| `INVALID_STATE: the charter is not approved` (the gateway says “the charter is not approved; nothing executes yet”) | Run `rail --actor human approve charter ...` first |
+| `INVALID_STATE: the charter is not approved` (the gateway says “the charter is not approved; nothing executes yet”) | Run `rail approve charter ... --confirmer "<you>"` first; add `--actor human` when the charter requires a human signature |
 | `BUSINESS_RULE_VIOLATED: the item_done gate is not satisfied` | Missing or stale checks, review, acceptance or human verdict |
 | `PERMISSION_DENIED` with `actor_required` | Name yourself: pass `--actor <name>` or set `RAIL_ACTOR` |
 | `AMBIGUOUS_FOCUS: N containers are active` | Two containers match; pass `--into <id>` or finish one |
@@ -175,8 +215,11 @@ active scene). The queue is focus-first and the brief's headline names it.
 
 - A budget only warns. The brief and `rail ops doctor` name an item that is over
   its attempts or seconds; nothing is refused for it.
-- Attempts and seconds always count. Token and credit budgets apply only when
-  the candidate reported usage; `unknown` is recorded, never zero.
+- Attempts count candidates. Seconds and usage counters sum the joined effort:
+  a result bound to a commit supplies that attempt's numbers, and a commitless
+  result is its own pending attempt. `unknown` is recorded, never zero.
+- `rail ops measure usage --group-by item` is the per-task view of that effort;
+  the digest's usage line reads the same join.
 - `rail read ledger` lists candidates with attempt-counted usage and unknown
   counters kept apart.
 - The charter and the profile each carry budgets; the stricter non-null bound
