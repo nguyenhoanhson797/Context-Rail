@@ -203,7 +203,7 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
         return constitution_state(context)
     pack_name = target[len("pack:") :] if target.startswith("pack:") else None
     hashes = protected_snapshot(context, pack_name=pack_name)
-    records = _eligible_records(context)
+    records = _eligible_records(context, target)
     latest = _latest_record(records, target)
     if pack_name is not None:
         changed = query.pack_change_for(context.index, target)
@@ -239,13 +239,17 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
     }
 
 
-def _eligible_records(context: Context) -> list[dict[str, Any]]:
-    """Approvals that count under the charter's signer policy, newest first.
+def _eligible_records(
+    context: Context, target: str | None = None
+) -> list[dict[str, Any]]:
+    """Approvals that count under the charter's signer policy.
 
     A record without the signer fields predates agent signatures and is read as
-    a human signature, so an old store keeps every approval it already had.
+    a human signature, so an old store keeps every approval it already had. A
+    ``target`` is filtered before the query's bound, so an older approval of that
+    target can never be crowded out by newer approvals of other targets.
     """
-    records = query.approval_records(context.index)
+    records = query.approval_records(context.index, target=target)
     policy = _policy_of(context)
     if policy is None or policy.approval.agents:
         return records

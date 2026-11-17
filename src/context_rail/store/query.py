@@ -1052,12 +1052,21 @@ def pack_change_for(ix: Index, target: str) -> dict[str, Any] | None:
     return None
 
 
-def approval_records(ix: Index, limit: int = 200) -> list[dict[str, Any]]:
-    """Every approval record, newest first, with its stored data."""
+def approval_records(
+    ix: Index, limit: int = 200, *, target: str | None = None
+) -> list[dict[str, Any]]:
+    """Every approval record, newest first, with its stored data.
+
+    ``target`` narrows the SQL selection, so the newest-``limit`` bound never
+    hides the latest approval of the target being read.
+    """
+    clause = "" if target is None else " WHERE target = ?"
+    params: list[Any] = [] if target is None else [target]
     rows = ix.conn.execute(
-        "SELECT record_id, target, at, path FROM approvals "
-        "ORDER BY at DESC, record_id DESC LIMIT ?",
-        (limit,),
+        "SELECT record_id, target, at, path FROM approvals"
+        + clause
+        + " ORDER BY at DESC, record_id DESC LIMIT ?",
+        [*params, limit],
     ).fetchall()
     found: list[dict[str, Any]] = []
     for record_id, target, at, path in rows:

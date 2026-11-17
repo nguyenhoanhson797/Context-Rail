@@ -375,6 +375,28 @@ def test_approving_a_pack_candidate_uses_the_planned_pack(
     assert _state(approved_store)["state"] == "approved"
 
 
+def test_an_older_approval_is_not_crowded_out_by_newer_other_targets(
+    approved_store: Path,
+) -> None:
+    from context_rail.store.query import approval_records
+
+    pack = invoke(
+        "approve",
+        {"target": "pack:basic", "confirm": "APPROVE pack:basic", "confirmer": "Val"},
+        store=approved_store,
+        actor="human",
+    )
+    assert is_ok(pack), pack
+    context = _context(approved_store)
+    try:
+        newest = approval_records(context.index, limit=1)
+        assert [record["target"] for record in newest] == ["pack:basic"]
+        charter = approval_records(context.index, limit=1, target="charter")
+        assert [record["target"] for record in charter] == ["charter"]
+    finally:
+        context.close()
+
+
 def test_semantic_hash_covers_meaning_not_lifecycle_fields() -> None:
     first = b"---\nprimitive: item\ntitle: Login\nstatus: todo\n---\nBody text.\n"
     lifecycle = (
