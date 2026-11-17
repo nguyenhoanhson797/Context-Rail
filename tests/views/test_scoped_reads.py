@@ -78,6 +78,28 @@ def test_ledger_filters_to_reachable_items(role_store: SimpleNamespace) -> None:
     assert ledger["value"]["omitted_outside_reach"] == 1
 
 
+def test_measure_usage_filters_to_reachable_items(role_store: SimpleNamespace) -> None:
+    write_candidate(role_store.store, "cand-usage-o1", role_store.o1, "1" * 40)
+    write_candidate(role_store.store, "cand-usage-b1", role_store.b1, "2" * 40)
+
+    usage = as_seat(
+        role_store.store, role_store.orders_seat, "measure usage", {"group_by": "item"}
+    )
+
+    assert is_ok(usage), usage
+    assert [row["key"] for row in usage["value"]["rows"]] == [role_store.o1]
+    assert usage["value"]["omitted_outside_reach"] == 1
+    assert usage["value"]["total"]["candidates"] == 1
+
+    refused = as_seat(
+        role_store.store,
+        role_store.orders_seat,
+        "measure usage",
+        {"group_by": "item", "item": role_store.b1},
+    )
+    assert refusal(refused) == ("PERMISSION_DENIED", "out_of_reach")
+
+
 def test_why_out_of_reach_is_refused(role_store: SimpleNamespace) -> None:
     why = as_seat(role_store.store, role_store.orders_seat, "why", {"slug": role_store.b1})
 

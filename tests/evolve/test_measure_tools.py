@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 
+import pytest
+
 from context_rail.gateway.gateway import invoke
 from helpers import write_attempt
 
@@ -95,3 +97,49 @@ def test_measurement_strata_serialize_to_json(measure_store) -> None:
     json.dumps(versions)
     usage = invoke("measure usage", {"group_by": "model"}, store=store, actor="cto")["value"]
     json.dumps(usage)
+
+
+def test_measure_usage_refuses_an_unknown_group_by(measure_store) -> None:
+    result = invoke(
+        "measure usage", {"group_by": "model_version"}, store=measure_store.store, actor="cto"
+    )
+    assert result["ok"] is False, result
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+    assert result["error"]["details"]["allowed"] == [
+        "item", "model", "harness", "role", "profile", "skill"
+    ]
+
+
+@pytest.mark.parametrize("limit", [0, 101])
+def test_measure_usage_refuses_a_limit_out_of_bounds(measure_store, limit) -> None:
+    result = invoke(
+        "measure usage", {"group_by": "item", "limit": limit}, store=measure_store.store, actor="cto"
+    )
+    assert result["ok"] is False, result
+    assert result["error"]["code"] == "VALIDATION_FAILED"
+
+
+def test_an_empty_window_reports_no_rows_and_no_usage(measure_store) -> None:
+    result = invoke("measure usage", {"group_by": "model"}, store=measure_store.store, actor="cto")
+    assert result["ok"] is True, result
+    value = result["value"]
+    assert value["rows"] == [] and value["omitted"] == 0
+    assert value["total"]["candidates"] == 0
+    assert value["total"]["usage"] == {}
+    assert value["total"]["duration"] is None
+
+
+def test_usage_rows_are_bounded_and_the_evidence_is_capped(measure_store) -> None:
+    store = measure_store.store
+    for number in range(51):
+        write_attempt(
+            store, f"cand-usage-cap-{number:02d}", model=f"m{number % 3}", usage={"tokens": 1}
+        )
+    value = invoke(
+        "measure usage", {"group_by": "model", "limit": 2}, store=store, actor="cto"
+    )["value"]
+    assert len(value["rows"]) == 2 and value["omitted"] == 1
+    assert value["total"]["candidates"] == 51
+    assert value["total"]["usage"]["tokens"]["total"] == 51
+    assert len(value["evidence"]["candidates"]) == 50
+    assert value["evidence"]["omitted_count"] == 1
