@@ -36,8 +36,7 @@ __all__ = [
 _PICTURE_YES = ("y", "yes", "true")
 _INTERVIEW_COMMAND = "rail init --interview"
 _APPROVE_COMMAND = (
-    'rail --actor human approve charter --confirm "APPROVE charter" '
-    "--confirmer NAME"
+    'rail approve charter --confirm "APPROVE charter" --confirmer NAME'
 )
 
 _CHARTER = "charter"
@@ -208,7 +207,10 @@ def approval_stage(
             "reason": "no_approve",
             "command": _APPROVE_COMMAND,
         }
-    if not actor_named or not name_is_human(actor):
+    lead = name_is_human(actor) or (
+        name_is_cto(actor) and policy is not None and policy.approval.agents
+    )
+    if not actor_named or not lead:
         return {
             "state": "skipped",
             "reason": "actor_not_named",

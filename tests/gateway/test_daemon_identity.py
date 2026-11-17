@@ -55,7 +55,7 @@ def test_unnamed_caller_stays_unnamed_when_the_daemon_env_names_human(
     monkeypatch.setenv("RAIL_ACTOR", "human")
     error = _error(_ask(served, "approve", _APPROVE, actor=None, actor_env=None))
     assert error["code"] == "PERMISSION_DENIED"
-    assert error["details"]["reason"] == "actor_not_named"
+    assert error["details"]["reason"] == "actor_required"
 
 
 def test_worker_caller_is_not_elevated_by_the_daemon_env(
@@ -66,7 +66,8 @@ def test_worker_caller_is_not_elevated_by_the_daemon_env(
         _ask(served, "approve", _APPROVE, actor=None, actor_env="implementer")
     )
     assert error["code"] == "PERMISSION_DENIED"
-    assert "needs actor 'human'" in error["message"]
+    assert error["details"]["reason"] == "not_lead"
+    assert "needs the CTO or the human" in error["message"]
 
 
 def test_named_human_caller_is_accepted_when_the_daemon_env_is_empty(
@@ -83,7 +84,7 @@ def test_a_request_without_actor_env_is_treated_as_unnamed(
     monkeypatch.setenv("RAIL_ACTOR", "human")
     error = _error(_ask(served, "approve", _APPROVE, actor=None))
     assert error["code"] == "PERMISSION_DENIED"
-    assert error["details"]["reason"] == "actor_not_named"
+    assert error["details"]["reason"] == "actor_required"
 
 
 def test_profile_narrowing_applies_through_the_daemon(

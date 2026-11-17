@@ -81,6 +81,10 @@ def test_approve_records_semantic_hashes_of_the_protected_set(
         "diff",
         "diff_omitted",
         "confirmer",
+        "signer",
+        "signer_kind",
+        "channel",
+        "on_behalf_of",
         "confirmation",
     }
     assert data["scope"] == "charter"
@@ -124,7 +128,18 @@ def test_approve_result_names_the_record_target_and_hashes(
 
     assert is_ok(result), result
     value = result["value"]
-    assert set(value) == {"approval", "target", "scope", "hashes", "diff"}
+    assert set(value) == {
+        "approval",
+        "target",
+        "scope",
+        "hashes",
+        "diff",
+        "confirmer",
+        "signer",
+        "signer_kind",
+        "channel",
+        "on_behalf_of",
+    }
     assert value["target"] == "charter"
     assert value["scope"] == "charter"
     assert value["hashes"] == _approval_records(store)[0]["data"]["protected_hashes"]
@@ -147,21 +162,6 @@ def test_approve_refuses_a_wrong_phrase_and_records_nothing(
         assert result["error"]["code"] == "VALIDATION_FAILED", result
     assert _approval_records(store) == []
     assert _state(store)["state"] == "missing"
-
-
-def test_a_cto_cannot_record_an_approval(tmp_path: Path, answers: Path) -> None:
-    assert is_ok(invoke("init", {"dir": str(tmp_path), "answers_file": str(answers), "confirm": "APPROVE charter"}, actor="human"))
-    store = tmp_path / "context-rail"
-
-    result = invoke(
-        "approve",
-        {"target": "charter", "confirm": "APPROVE charter", "confirmer": "Val"},
-        store=store,
-        actor="cto",
-    )
-
-    assert result["error"]["code"] == "PERMISSION_DENIED"
-    assert _approval_records(store) == []
 
 
 def test_show_charter_reports_the_state_digest_and_phrase(

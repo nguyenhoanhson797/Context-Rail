@@ -1,4 +1,4 @@
-"""Human-only tools need an explicitly named human."""
+"""Human-only tools need a human; an approval needs a named signer."""
 
 from __future__ import annotations
 
@@ -41,7 +41,8 @@ def test_human_tools_refuse_an_unnamed_actor(
         result = invoke(name, args, store=store, actor=None)
         assert result["ok"] is False, (name, result)
         assert result["error"]["code"] == "PERMISSION_DENIED", (name, result)
-        assert "explicitly named human" in result["error"]["message"], (name, result)
+        expected = "needs a named signer" if name == "approve" else "explicitly named human"
+        assert expected in result["error"]["message"], (name, result)
 
 
 def test_an_explicit_human_may_approve(unapproved_store: Path) -> None:

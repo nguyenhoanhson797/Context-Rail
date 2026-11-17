@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -203,7 +203,8 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
         return constitution_state(context)
     pack_name = target[len("pack:") :] if target.startswith("pack:") else None
     hashes = protected_snapshot(context, pack_name=pack_name)
-    latest = query.approval_for(context.index, target)
+    records = _eligible_records(context)
+    latest = _latest_record(records, target)
     if pack_name is not None:
         changed = query.pack_change_for(context.index, target)
         if changed is not None and changed["data"].get("candidate_snapshot") == hashes:
@@ -216,8 +217,9 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
                 "current_hashes": hashes,
                 "changed": _changed_paths(hashes, hashes),
                 "snapshot_digest": snapshot_digest(hashes),
+                **_signer_fields(None),
             }
-    approved = _folded_approval_hashes(context.index, target, latest)
+    approved = _folded_approval_hashes(records, target, latest)
     if latest is None:
         state = "missing"
     elif approved == hashes:
@@ -233,11 +235,78 @@ def approval_state(context: Context, target: str) -> dict[str, Any]:
         "current_hashes": hashes,
         "changed": _changed_paths(approved, hashes),
         "snapshot_digest": snapshot_digest(hashes),
+        **_signer_fields(latest),
+    }
+
+
+def _eligible_records(context: Context) -> list[dict[str, Any]]:
+    """Approvals that count under the charter's signer policy, newest first.
+
+    A record without the signer fields predates agent signatures and is read as
+    a human signature, so an old store keeps every approval it already had.
+    """
+    records = query.approval_records(context.index)
+    policy = _policy_of(context)
+    if policy is None or policy.approval.agents:
+        return records
+    return [record for record in records if _signer_kind(record) == "human"]
+
+
+def _policy_of(context: Any) -> Any:
+    """The charter policy a context already holds, or the one its store parses."""
+    policy = getattr(context, "policy", None)
+    if policy is not None:
+        return policy
+    found = charter_document(context)
+    if found is None:
+        return None
+    from context_rail.model.policy import parse_charter
+
+    return parse_charter(found[1])
+
+
+def _signer_kind(record: Mapping[str, Any]) -> str:
+    data = record.get("data") if isinstance(record.get("data"), dict) else {}
+    kind = data.get("signer_kind")
+    return kind if kind in ("human", "agent") else "human"
+
+
+def _latest_record(
+    records: Sequence[Mapping[str, Any]], target: str
+) -> Mapping[str, Any] | None:
+    for record in records:
+        if record.get("target") == target:
+            return record
+    return None
+
+
+def _signer_fields(record: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The signer metadata a view shows, with legacy records read as human."""
+    if record is None:
+        return {
+            "at": None,
+            "confirmer": None,
+            "signer": None,
+            "signer_kind": None,
+            "channel": None,
+            "on_behalf_of": None,
+        }
+    data = record.get("data") if isinstance(record.get("data"), dict) else {}
+    confirmer = data.get("confirmer")
+    return {
+        "at": record.get("at"),
+        "confirmer": confirmer,
+        "signer": data.get("signer") or confirmer,
+        "signer_kind": _signer_kind(record),
+        "channel": data.get("channel") or "unknown",
+        "on_behalf_of": data.get("on_behalf_of"),
     }
 
 
 def _folded_approval_hashes(
-    index: Any, target: str, latest: Mapping[str, Any] | None
+    records: Sequence[Mapping[str, Any]],
+    target: str,
+    latest: Mapping[str, Any] | None,
 ) -> dict[str, str | None] | None:
     """Newest approved hash per protected path across ``target``'s approvals.
 
@@ -248,7 +317,7 @@ def _folded_approval_hashes(
     if latest is None:
         return None
     folded: dict[str, str | None] = {}
-    for record in query.approval_records(index):
+    for record in records:
         if record.get("target") != target:
             continue
         data = record["data"] if isinstance(record.get("data"), dict) else {}
@@ -266,7 +335,8 @@ def _folded_approval_hashes(
                 folded[path] = stored[path]
         if data.get("scope") in (None, "charter", "constitution"):
             break
-    return folded or dict(latest["protected_hashes"])
+    data = latest.get("data") if isinstance(latest.get("data"), dict) else {}
+    return folded or dict(data.get("protected_hashes") or {})
 
 
 def _changed_paths(
@@ -289,7 +359,7 @@ def _changed_paths(
 def constitution_state(context: Context, pack_name: str | None = None) -> dict[str, Any]:
     """Newest approval per protected path across scopes, and what still drifted."""
     hashes = protected_snapshot(context, pack_name=pack_name)
-    records = query.approval_records(context.index)
+    records = _eligible_records(context)
     approved: dict[str, tuple[str, str | None]] = {}
     for record in records:
         data = record["data"] if isinstance(record.get("data"), dict) else {}

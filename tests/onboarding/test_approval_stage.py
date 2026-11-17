@@ -47,6 +47,32 @@ def test_approval_stage_records_the_fresh_phrase(
     assert shown["value"]["approval"]["state"] == "approved"
 
 
+def test_a_named_cto_may_record_the_approval_at_init(
+    unapproved_store: Path,
+) -> None:
+    manifest = load_manifest(unapproved_store)
+    context = Context(
+        store=unapproved_store,
+        manifest=manifest,
+        pack=load_pack(manifest.pack, unapproved_store),
+        actor="cto",
+    )
+    try:
+        result = approval_stage(
+            context,
+            actor="cto",
+            actor_named=True,
+            args=_args(confirmer="Ada", confirm="APPROVE charter"),
+        )
+    finally:
+        context.close()
+
+    assert result["state"] == "approved"
+    shown = invoke("show", {"slug": "charter"}, store=unapproved_store, actor="human")
+    assert shown["value"]["approval"]["state"] == "approved"
+    assert shown["value"]["approval"]["signer_kind"] == "agent"
+
+
 def test_approval_stage_is_unchanged_when_already_approved(
     approved_store: Path,
 ) -> None:
@@ -78,7 +104,7 @@ def test_no_approve_skips_without_prompting(
 
     assert result["state"] == "skipped"
     assert result["reason"] == "no_approve"
-    assert "rail --actor human approve charter" in result["command"]
+    assert "rail approve charter" in result["command"]
 
 
 def test_an_unnamed_human_is_not_enough(

@@ -522,6 +522,10 @@ _APPROVAL_KEYS = (
     "target",
     "protected_hashes",
     "confirmer",
+    "signer",
+    "signer_kind",
+    "channel",
+    "on_behalf_of",
     "confirmation",
     "scope",
     "files",
@@ -1062,6 +1066,14 @@ def _approval_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple
         string(path, "approval.protected_hashes path")
         string(digest, "approval.protected_hashes digest")
     confirmer = string(payload["confirmer"], "approval.confirmer")
+    _optional_text(payload.get("signer"), "approval.signer")
+    signer_kind = _optional_text(payload.get("signer_kind"), "approval.signer_kind")
+    if signer_kind is not None and signer_kind not in ("human", "agent"):
+        refuse("approval.signer_kind must be 'human' or 'agent'")
+    channel = _optional_text(payload.get("channel"), "approval.channel")
+    if channel is not None and channel not in ("terminal", "ui", "agent", "unknown"):
+        refuse("approval.channel must be 'terminal', 'ui', 'agent' or 'unknown'")
+    _optional_text(payload.get("on_behalf_of"), "approval.on_behalf_of")
     string(payload["confirmation"], "approval.confirmation")
     row = (doc.path, record_id, target, _at(doc), _json(hashes), confirmer)
     return [("approvals", row)]

@@ -202,7 +202,10 @@ def tools_for(context: Context) -> frozenset[str]:
         return names
     reads = frozenset(tool.name for tool in TOOLS if tool.permission == "read")
     if identity.kind == "seat" and identity.role is not None:
-        return reads | role_tools(identity.role)
+        tools = reads | role_tools(identity.role)
+        if identity.lead:
+            tools |= {"approve"}
+        return tools
     return reads
 
 

@@ -903,7 +903,7 @@ def _tracking_issues(store: Path, manifest: Manifest) -> list[dict[str, Any]]:
 
 
 def _approval_issues(context: Any) -> list[dict[str, Any]]:
-    """One issue when the picture has no human approval, or differs from it."""
+    """One issue when the picture has no approval, or differs from it."""
     from context_rail.store.approval import approval_state, charter_document
 
     found = charter_document(context)
@@ -918,7 +918,7 @@ def _approval_issues(context: Any) -> list[dict[str, Any]]:
             _issue(
                 "approval_missing",
                 path,
-                "the picture has no human approval",
+                "the picture has no approval",
                 fix=_APPROVE,
             )
         ]
@@ -934,7 +934,7 @@ def _approval_issues(context: Any) -> list[dict[str, Any]]:
 
 
 def _approval_message(changed: Any) -> str:
-    message = "the protected picture changed since the human approved it"
+    message = "the protected picture changed since it was approved"
     if not isinstance(changed, dict):
         return message
     paths = sorted(

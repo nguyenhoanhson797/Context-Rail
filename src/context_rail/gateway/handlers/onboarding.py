@@ -310,7 +310,7 @@ def _init_replay(store: Path, saved: dict[str, Any]) -> dict[str, Any]:
 
 
 def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
-    """Record one human approval of the protected picture's current meaning."""
+    """Record one approval of the protected picture's current meaning."""
     store = ctx.store
     with store_lock(store):
         index = ctx.index
@@ -323,6 +323,11 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "scope": data.get("scope") or "charter",
                 "hashes": data.get("protected_hashes", {}),
                 "diff": data.get("diff") or [],
+                "confirmer": data.get("confirmer"),
+                "signer": data.get("signer") or data.get("confirmer"),
+                "signer_kind": data.get("signer_kind") or "human",
+                "channel": data.get("channel") or "unknown",
+                "on_behalf_of": data.get("on_behalf_of"),
             }
         target = (args["target"] or "").strip()
         confirmer = (args["confirmer"] or "").strip()
@@ -339,6 +344,9 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 reason,
                 {"confirm": confirmation_phrase("approve", target)},
             )
+        signer_kind = "human" if ctx.identity.human else "agent"
+        channel = _signing_channel()
+        on_behalf_of = confirmer if signer_kind == "agent" else None
         pack_name = _approval_target(ctx, target)
         hashes = protected_snapshot(ctx, pack_name=pack_name)
         missing = sorted(path for path, digest in hashes.items() if digest is None)
@@ -390,6 +398,10 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                     "diff": diff,
                     "diff_omitted": omitted,
                     "confirmer": confirmer,
+                    "signer": actor,
+                    "signer_kind": signer_kind,
+                    "channel": channel,
+                    "on_behalf_of": on_behalf_of,
                     "confirmation": confirmation_phrase("approve", target),
                 },
             },
@@ -405,6 +417,11 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "scope": scope,
         "hashes": scoped,
         "diff": diff,
+        "confirmer": confirmer,
+        "signer": actor,
+        "signer_kind": signer_kind,
+        "channel": channel,
+        "on_behalf_of": on_behalf_of,
     }
     if ctx.manifest.code_graph is not None and any(
         entry["path"] == "rail.yaml" for entry in diff
@@ -413,6 +430,17 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
         summary["code_graph"] = readiness(store, ctx.manifest.code_graph)["line"]
     return summary
+
+
+def _signing_channel() -> str:
+    """How the signing call arrived: a person's terminal, the UI, or an agent."""
+    from context_rail.gateway.execution import HAS_TTY, HUMAN_CHANNEL
+
+    if HUMAN_CHANNEL.get():
+        return "ui"
+    if HAS_TTY.get():
+        return "terminal"
+    return "agent"
 
 
 def _approval_target(ctx: Context, target: str) -> str | None:
@@ -1104,6 +1132,7 @@ def _charter_frontmatter(
         "allow_push": charter.allow_push,
         "reviewer_different_model": charter.reviewer_different_model,
         "mode": charter.mode,
+        "approval": {"agents": charter.approval.agents},
     }
     return prepare_document_fields(pack.presets["charter"], front)
 

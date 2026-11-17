@@ -143,18 +143,18 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="approve",
-        summary="Record the human's approval of the protected picture's meaning.",
-        permission="human",
+        summary="Record an approval of the protected picture's meaning and its signer.",
+        permission="write",
         params=(
             Param("target", "str", required=True, positional=True, help="charter, a protected slug or pack:<name>"),
             Param("confirm", "str", required=True, help="the typed phrase APPROVE <target>"),
-            Param("confirmer", "str", required=True, help="who approved it"),
-            Param("expect", "str", help="the snapshot_digest the human saw"),
+            Param("confirmer", "str", required=True, help="the human the approval names"),
+            Param("expect", "str", help="the snapshot_digest the signer saw"),
             Param("scope", "str", help="charter, constitution, manifest, pack, checks or workflow:<name>"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.onboarding:approve",
-        decision="human-only",
+        decision="cto-alone",
     ),
     Tool(
         name="check",

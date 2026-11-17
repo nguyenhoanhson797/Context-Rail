@@ -537,12 +537,18 @@ def _brief_sections(
     approval_section.fixed.append(f"charter approval: {approval['state']}")
     if approval["state"] != "approved":
         approval_section.fixed.append(
-            "blocked: nothing executes until a human approves the charter"
+            "blocked: nothing executes until the charter is approved"
         )
     if approval.get("confirmer"):
-        approval_section.fixed.append(
-            f"approved by {approval['confirmer']} in {approval['latest_record']}"
-        )
+        if approval.get("signer_kind") == "agent":
+            approval_section.fixed.append(
+                f"approved by {approval.get('signer') or approval['confirmer']} "
+                f"on behalf of {approval['confirmer']} in {approval['latest_record']}"
+            )
+        else:
+            approval_section.fixed.append(
+                f"approved by {approval['confirmer']} in {approval['latest_record']}"
+            )
     approval_section.entries.extend(_wait_line(row) for row in waits)
     omitted["approval"] = waits_omitted
 
@@ -866,16 +872,10 @@ def _wont_entries(raw: Any) -> list[str]:
 
 
 def approval_state(context: Context) -> dict[str, Any]:
-    """The charter approval state plus who confirmed it, from the newest Record."""
+    """The charter approval state plus who signed and named it."""
     from context_rail.store.approval import approval_state as current_state
 
-    state = current_state(context, CHARTER_TARGET)
-    latest = query.approval_for(context.index, CHARTER_TARGET)
-    return {
-        **state,
-        "confirmer": None if latest is None else latest["confirmer"],
-        "at": None if latest is None else latest["at"],
-    }
+    return current_state(context, CHARTER_TARGET)
 
 
 def _memory_rows(

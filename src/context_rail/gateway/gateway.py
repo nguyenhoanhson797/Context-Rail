@@ -8,7 +8,7 @@ exception the layer below refused with.
 Rights are decided here, before any handler runs: a call's decision class comes
 from the technical facts of the change, a profile narrows its actor's methods,
 the human-only floor cannot be widened, and nothing executable runs until the
-human has approved the protected picture.
+protected picture is approved.
 
 The gateway also timestamps wall time per invocation (Phase 0/10 budget
 evidence): no I/O, no source hashing, just ``time.perf_counter`` spans over
@@ -128,7 +128,7 @@ def try_daemon_invoke(
 
 #: Writes that touch only Git's scratch files, run by Git itself with no caller to name.
 _SCRATCH_WRITES = frozenset({"sync driver"})
-#: Tools that execute something; none of them may run before the human approves.
+#: Tools that execute something; none of them may run before the picture is approved.
 EXECUTION_TOOLS = ("verify", "candidate", "review")
 #: The categories a move may not reach before approval.
 LOCKED_CATEGORIES = ("active", "done")
@@ -475,6 +475,8 @@ def _authorize(
     actor_named: bool = True,
 ) -> dict[str, Any] | None:
     """The refusal a call earns before its handler runs, if it earns one."""
+    if tool.name == "approve":
+        return _authorize_approval(context, actor, actor_named)
     if tool.permission == "human" and not actor_named:
         return fail(
             "PERMISSION_DENIED",
@@ -613,6 +615,51 @@ def _authorize(
                         "confirm": confirmation_phrase(action, target),
                     },
                 )
+    return None
+
+
+def _authorize_approval(
+    context: Context | None, actor: str, actor_named: bool
+) -> dict[str, Any] | None:
+    """The refusal an approval call earns before its handler runs.
+
+    An approval is a governance record, so it is authorized before profile and
+    role narrowing: a named lead signs it, and the record carries that name.
+    """
+    if context is None:
+        return fail(
+            "INVALID_STATE",
+            "an approval needs a store with a picture",
+            {"tool": "approve", "reason": "store_missing"},
+        )
+    identity = context.identity
+    if identity.human:
+        return None
+    if identity.kind == ANONYMOUS:
+        return fail(
+            "PERMISSION_DENIED",
+            "an approval needs a named signer",
+            {"tool": "approve", "reason": "actor_required"},
+        )
+    if not actor_named:
+        return fail(
+            "PERMISSION_DENIED",
+            "an approval needs an explicitly named signer; pass --actor <name>",
+            {"tool": "approve", "actor": actor, "reason": "actor_not_named"},
+        )
+    if not identity.lead:
+        return fail(
+            "PERMISSION_DENIED",
+            "an approval needs the CTO or the human",
+            {"tool": "approve", "reason": "not_lead", "actor": actor},
+        )
+    policy = context.policy
+    if policy is None or not policy.approval.agents:
+        return fail(
+            "PERMISSION_DENIED",
+            "the charter requires a human signature for approvals",
+            {"tool": "approve", "reason": "human_signature_required", "actor": actor},
+        )
     return None
 
 

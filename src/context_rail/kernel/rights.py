@@ -85,7 +85,7 @@ def allowed_decision(
 
     ``allowed_methods`` is a profile's method list; it narrows writes and never
     widens reads. ``approved`` gates writes on an approved charter, so nothing
-    executes before the human approves while planning and reads stay open.
+    executes before the picture is approved while planning and reads stay open.
     """
     refusal = allowed(permission, actor)
     if refusal is not None:

@@ -1,4 +1,8 @@
-"""Human-only decisions in role mode need human proof, never a name."""
+"""Human-only decisions in role mode need human proof, never a name.
+
+Approval is the exception: a project-anchored lead seat may sign it, and the
+record says so. The other human-only actions keep the human channel.
+"""
 
 from __future__ import annotations
 
@@ -51,21 +55,24 @@ def as_seat(store: Path, seat: str, tool: str, args: dict[str, Any]) -> dict[str
         return invoke(tool, args, store=store)
 
 
-def test_a_seat_cannot_approve_even_with_the_phrase(
+def test_the_lead_seat_may_sign_an_approval(role_store: SimpleNamespace) -> None:
+    approved = as_seat(role_store.store, role_store.lead, "approve", APPROVE)
+
+    assert is_ok(approved), approved
+    assert approved["value"]["signer"] == role_store.lead
+    assert approved["value"]["signer_kind"] == "agent"
+
+
+def test_a_session_caller_with_a_tty_signs_as_an_agent(
     role_store: SimpleNamespace,
 ) -> None:
-    refused = as_seat(role_store.store, role_store.lead, "approve", APPROVE)
-
-    assert refused["error"]["code"] == "PERMISSION_DENIED"
-
-
-def test_a_session_caller_with_a_tty_is_not_human(role_store: SimpleNamespace) -> None:
     token = open_test_session(role_store.store, role_store.lead)
 
     with caller_identity(None, None, session=token, tty=True):
-        refused = invoke("approve", APPROVE, store=role_store.store)
+        approved = invoke("approve", APPROVE, store=role_store.store)
 
-    assert refused["error"]["code"] == "PERMISSION_DENIED"
+    assert is_ok(approved), approved
+    assert approved["value"]["signer_kind"] == "agent"
 
 
 def test_anonymous_with_the_phrase_is_refused(role_store: SimpleNamespace) -> None:

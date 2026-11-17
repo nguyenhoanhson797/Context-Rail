@@ -179,7 +179,7 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
             <span>
               {approval === 'approved'
                 ? 'Execution is unlocked. A semantic change still needs reapproval.'
-                : 'Nothing executes until a human approves the picture.'}
+                : 'Nothing executes until the picture is approved.'}
             </span>
           </div>
           <dl className="rh-digests">

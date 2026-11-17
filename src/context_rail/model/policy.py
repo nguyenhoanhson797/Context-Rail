@@ -36,6 +36,7 @@ __all__ = [
     "GATE_KEYS",
     "HUMAN_ONLY_IDS",
     "ANSWERS_KEYS",
+    "Approval",
     "Charter",
     "Gate",
     "ModelError",
@@ -131,6 +132,13 @@ class Gate:
 
 
 @dataclass(frozen=True)
+class Approval:
+    """Who may sign an approval record: a human alone, or a named lead too."""
+
+    agents: bool = True
+
+
+@dataclass(frozen=True)
 class Charter:
     """A validated charter Policy document."""
 
@@ -148,6 +156,7 @@ class Charter:
     allow_push: bool
     reviewer_different_model: bool
     mode: str = "full"
+    approval: Approval = Approval()
 
 
 def parse_charter(fields: dict[str, Any]) -> Charter:
@@ -175,6 +184,7 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
     mode = string(mode_raw, "charter.mode")
     if mode not in ("full", "solo"):
         refuse("charter.mode must be 'full' or 'solo'")
+    approval = _approval(data.get("approval"))
 
     return Charter(
         schema=schema,
@@ -194,6 +204,7 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
             "charter.reviewer_different_model",
         ),
         mode=mode,
+        approval=approval,
     )
 
 
@@ -358,6 +369,16 @@ def _thresholds(raw: Any) -> dict[str, Any]:
             merged["triage_weight"], "charter.thresholds.triage_weight", positive=True
         ),
     }
+
+
+def _approval(raw: Any) -> Approval:
+    if raw is None:
+        return Approval()
+    data = mapping(raw, "charter.approval")
+    no_unknown(data, ("agents",), "charter.approval")
+    return Approval(
+        agents=boolean(data.get("agents", True), "charter.approval.agents")
+    )
 
 
 def _change_rule(raw: Any) -> dict[str, bool]:

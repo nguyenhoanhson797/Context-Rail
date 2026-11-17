@@ -222,6 +222,23 @@ def test_change_rule_defaults_to_the_pinned_value() -> None:
     }
 
 
+def test_approval_agents_defaults_to_allowing_a_named_agent() -> None:
+    assert parse_charter(minimal_charter()).approval.agents is True
+
+
+def test_approval_agents_can_require_a_human() -> None:
+    charter = parse_charter(charter_fields(approval={"agents": False}))
+
+    assert charter.approval.agents is False
+
+
+def test_approval_has_exactly_one_boolean() -> None:
+    with pytest.raises(ModelError):
+        parse_charter(charter_fields(approval={"agents": "yes"}))
+    with pytest.raises(ModelError):
+        parse_charter(charter_fields(approval={"extra": True}))
+
+
 def test_human_only_floor_cannot_shrink() -> None:
     with pytest.raises(ModelError):
         parse_charter(
@@ -542,6 +559,7 @@ def test_policy_allowlist_is_extended_once_centrally() -> None:
         "allow_push",
         "reviewer_different_model",
         "mode",
+        "approval",
     }
 
 
