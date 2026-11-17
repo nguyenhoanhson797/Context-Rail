@@ -2,9 +2,11 @@
 
 Global options, before the command: `[--store PATH] [--actor NAME] [--session-env NAME] [--no-daemon]`.
 `rail --version` prints the package version.
-Human-only tools (`approve`, `ops migrate`, `ops pack use`) need an explicitly
-named human: `--actor human` or `RAIL_ACTOR=human`. A role-mode store refuses
-`--actor`: open a seat session instead.
+Human-only tools (`ops migrate`, `ops upgrade`, `ops pack use`) need an explicitly
+named human: `--actor human` or `RAIL_ACTOR=human`. `approve` records its signer:
+a named lead may sign when the charter allows it (`approval.agents: true`, the
+default); `approval.agents: false` requires a human signature. A role-mode store
+refuses `--actor`: open a seat session instead.
 `--session-env NAME` (`^[A-Z_][A-Z0-9_]*$`) reads the session token for that call
 (and pins `rail --session-env NAME serve mcp`) from `NAME` instead of
 `RAIL_SESSION`; if the name is malformed (`session_env_invalid`) or that variable
@@ -85,16 +87,19 @@ role to one anchor (`project` or a container).
   the caller's read reach; a terminal with no session gets a read-only view.
 - A tokenless caller with no terminal has read tools and an empty reach. In role
   mode `--actor` is refused.
-- Human-only actions need a terminal human or the UI channel; a session caller
-  is never human.
+- Human-only actions (`ops migrate`, `ops upgrade`, `ops pack use`, a
+  `human: true` grant, the first grant) need a terminal human or the UI channel;
+  a session caller is never human. `approve` is different: a project-anchored
+  lead seat may sign it with its own session when the charter allows it.
 - A pack without roles stays in compat mode: name-based `--actor` behaviour is
   unchanged, and `seat` commands plus the lens refuse with "this pack declares
   no roles" and point at `ops pack use`.
 - `rail ops pack create --roles` writes a draft with operating version 2 and
   starter roles, without selecting it; it refuses a version-1 source and an
   extending pack without its own `operating` block.
-- In a role-mode store, run `ops pack use` and `approve` yourself in a terminal
-  (or through the UI). `--actor` is refused and a session is never human.
+- In a role-mode store, run `ops pack use` yourself in a terminal (or through
+  the UI); `--actor` is refused and a session is never human. A project-anchored
+  lead seat may sign `approve` with its own session; other seats cannot.
 - MCP in role mode lists read tools plus the write tools the seat's role holds;
   a legacy store and the human still see the whole table.
 
@@ -132,13 +137,23 @@ sibling repo):
  "store": "<rel-path>", "item": "<child-slug>", "category": "done"}
 ```
 
+`loop result` writes the workflow-shaped Markdown record; its body may open
+with a leading `---` effort block (`duration_s`,
+`usage: {tokens: ..., requests: ...}`, `model`, `harness`). `unknown` is
+allowed for an unreported counter, money is not a counter, and
+`--model`/`--harness` may not name a fact the block already names.
+
 ## Gates and approvals
 
 ```text
-rail --actor human approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
+rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
 ```
 
-`target` is `charter`, a protected slug, or `pack:<name>`.
+`target` is `charter`, a protected slug, or `pack:<name>`. A named lead signs by
+default; add `--actor human` for a human signature. The record carries `signer`,
+`signer_kind`, `channel` and `on_behalf_of`, and `--confirmer` names the human
+the approval is for. A charter with `approval.agents: false` accepts only a
+human signature.
 
 `rail ops pack show` reports `operating` (or `"neutral"`), `semantic_digest`,
 `presentation_digest`, `full_digest` and the approval state. Approval binds to

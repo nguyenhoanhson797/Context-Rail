@@ -6,7 +6,8 @@ humans use. For the short pitch and the five-minute start, see the
 [README](../README.md).
 
 A CTO agent runs the project; sub-agents get narrow, role-specific context; a
-human approves the boundary, the quality bar and irreversible actions. The
+human is accountable for the boundary, the quality bar and irreversible
+actions, and every approval records who signed it and the human it names. The
 store is plain files in your git repo: Markdown documents, JSON records and
 `rail.yaml`.
 
@@ -57,7 +58,7 @@ reads what it produced, so the CLI, MCP, UI and every agent see one answer.
 | **Files are the truth** | SQLite is a cache under the git dir (or `.rail-local/` outside git); deleting it only costs a rebuild. Records are append-only and never rewritten. |
 | **Paths are derived, never chosen** | You pass `--rel part_of=sprint-3`; the placement template renders the path. `rail change repath --dry-run` shows every implied move before you apply it. |
 | **Quality belongs to the workflow** | A status can name a charter gate and the checks it selects. A missing or stale check refuses the move and names the command that produces it. Check modes cover commands (`cmd`), files (`exists`), supplied proof (`evidence`), candidate `review`, `human` sign-off, and `store` checks that prove a child store's committed item category without writing the child store or running git on reads (freshness checks the child's committed `HEAD` and item etag). |
-| **Approval is data** | `approve` is human-only. Change the semantics (transition, placement, operating block) and the store reports `approval_mismatch` until a human reapproves. |
+| **Approval is data** | `approve` records who signed it, its channel and the human it names. A charter may set `approval.agents: false` to require a human signature. Change the semantics (transition, placement, operating block) and the store reports `approval_mismatch` until it is reapproved. |
 | **Agents get a narrow surface** | They never parse `pack.yaml`; they ask `rail types`, `rail next`, `rail read show`, `rail why`, `rail explain`, and run declared verbs with `rail do`. |
 | **Your tool does the work** | The rail hands out a brief and records the candidate commit, the workflow-shaped Markdown `rail loop result` record, the check and the review. Your tool runs its own sub-agents in its own git worktrees and you merge in git; `gate` never runs Checks. |
 | **Collisions are impossible to miss** | Every write carries the etag it read; a stale write is refused. Every retry carries a `--key` and gets the same record back. |
@@ -69,9 +70,10 @@ research: rail overview → approve → rail loop brief → work → rail loop r
 code:     rail overview → approve → rail loop brief → work/commit → rail loop candidate → rail loop result --commit → checks → rail loop review → done
 ```
 
-`rail gate` is a read-only governance check. Nothing executes until a human
-approves the charter, or the charter binds `mode: solo` (one human owns the
-project; approval ceremony is skipped, the quality gates still apply).
+`rail gate` is a read-only governance check. Nothing executes until the charter
+is approved, or the charter binds `mode: solo` (one human owns the project;
+approval ceremony is skipped, the quality gates still apply). The approval
+record names its signer and the human it was made for.
 Every registered assignment leaves one workflow-shaped Markdown result record
 (up to 256 KiB / 262,144 bytes, ordered nonempty `##` sections, 4000-char brief
 contribution cap, `--key` idempotency, nullable `candidate_commit` so discovery
@@ -221,8 +223,30 @@ rail loop candidate <item> --commit HEAD --model <name> --harness <tool> \
   --duration 5400 --usage tokens=152000 --usage requests=42
 ```
 
+A result body may open with the same facts in a leading `---` block:
+
+```yaml
+---
+duration_s: 5400
+usage: {tokens: 152000, requests: 42}
+model: <name>
+harness: <tool>
+---
+```
+
+The block stays in the stored body, so the body hash covers the numbers and
+the review binds them. `usage` names physical counters only — `tokens`,
+`input_tokens`, `output_tokens`, `requests`, `tool_calls` — never money. An
+unknown key or an invalid counter refuses the write; `unknown` is allowed for
+a counter the harness does not report. `--model`/`--harness` may not name the
+same fact the block names.
+
 `rail ops measure usage --group-by item|model|harness|role|profile|skill` rolls
-those candidates up over a window (`--item`, `--since`, `--until`, `--limit`).
+that effort up over a window (`--item`, `--since`, `--until`, `--limit`).
+Candidate and result join on the commit, once per attempt: a result bound to a
+candidate commit supplies that attempt's effort field by field, and a result
+with no commit is its own pending attempt. `attempts` still counts candidates;
+seconds and usage counters sum the joined effort.
 Each row reports candidates, pending, pass rate, mean attempts, mean duration
 and usage totals; `total` covers the whole window. Rows are not additive: a
 candidate pinned to two skills appears in both skill rows, and only `total`
@@ -235,8 +259,12 @@ being over budget. `rail ops measure versions` compares two versions of a skill
 or profile, and `rail ops measure fix` asks whether a resolved fix's reports
 came back.
 
+Record proportionately: navigation is not recorded; a conclusion that will be
+reused or will change a decision is a `task` plus a commitless result naming
+the model and harness that produced it.
+
 What this is not: no live timer, no token meter and no price table. Duration,
-tokens and cost exist only because a tool reported them; anything unreported
+tokens and requests exist only because a tool reported them; anything unreported
 stays `unknown` and is never counted as zero. Measurement is observational: it
 never applies a change and never rolls one back.
 
@@ -275,7 +303,9 @@ over the pack's `policy.code_graph`, which wins over the default `builtin`; the
 video pack ships `none`.
 
 `builtin` is the zero-install provider. `graphify` uses Graphify's code-only
-graph and `gitnexus` uses GitNexus; both are optional upgrades. Pass
+graph (`uv tool install "graphifyy>=0.9.100,<0.10"`, Apache-2.0) and `gitnexus`
+uses GitNexus (`npm install -g gitnexus`, Node 22.18+ or 24.11+); both are
+optional upgrades. Pass
 `--code-graph graphify` (or `gitnexus`, `builtin`, `none`) to `rail init` to
 write the choice into `rail.yaml`; for an external provider init runs a
 readiness probe once and reports the line at the end, without building a
@@ -349,6 +379,80 @@ Repair it once, as the human:
 ```bash
 rail --actor human ops migrate --source <old> --dir <project> --dry-run
 rail --actor human ops migrate --source <old> --dir <project>
+```
+
+## Roles and seats
+
+A pack's `operating` block, version 2, can declare roles: a lead, one lead per hierarchy level
+(sprint lead, scene lead), an implementer and a reviewer, or any names the pack
+chooses. A **seat** binds one agent to one role on one anchor - the whole
+project or one container. Roles live in the approved pack, so widening a role
+changes the semantic digest and needs re-approval.
+
+```bash
+rail seat grant impl-1 --role implementer --anchor send-invoice
+rail seat list
+rail seat open impl-1 -- rail next      # the child gets RAIL_SESSION
+rail impl-1 next                        # read the store as that seat
+rail seat close impl-1
+```
+
+In role mode the session token is the identity: `--actor` is refused. A
+tokenless caller that is not on a terminal has no seat and an empty reach, so
+open a session before reading or writing. `rail seat open <seat> --print-env`
+prints the one-time token in its JSON result; export it as `RAIL_SESSION` for
+the agent your tool starts. A seat sees only its anchor's
+subtree, the ancestors and shared notes its role declares, and every write is
+checked against the same reach. `rail <seat> ...` is a read-only lens when the
+session belongs to another seat.
+
+Human-only actions - using a pack, granting a `human: true` role, and the first
+grant when no seat exists yet - need the human on a terminal or through the UI,
+never an agent session. Approval is different: a project-anchored lead seat may
+sign it with its own session when the charter allows it, and the record names
+the signer and the human it was made for. A store whose pack
+declares no roles keeps the name-based `--actor` behaviour unchanged; there
+`rail seat ...` and the lens refuse with "this pack declares no roles" and point
+at `rail ops pack use`.
+
+To opt a pack into role mode, write a draft with starter roles and select it:
+
+```bash
+rail ops pack create --name mine --from scrum --roles
+rail ops pack use --name mine --expect <rail-yaml-etag> \
+  --confirm "USE PACK mine"
+```
+
+Run the pack switch yourself in a terminal: role mode refuses `--actor`, and a
+session is never human. The generated roles are a starting point; edit them in
+the draft before the new pack is approved. The human's first project seat
+can then be granted; after that, a lead may grant only the roles its own
+`can.grant` lists and only inside its write reach.
+
+## Several projects
+
+When several repositories need to land together, run one master store with the
+`portfolio` pack (`rail init --pack portfolio`) and keep each child project in
+its own repo and `context-rail/` store. The master store tracks cross-project
+`component`, `slice`, `release`, and `contract` notes, while each child keeps
+its own pack, workflow, and history — whether the child repos are git submodules
+inside the master checkout or sibling folders next to it, and whether or not a
+child uses roles.
+
+The human grants each project's CTO a `component-cto` seat anchored on its
+`component`. That seat plans and moves its own slices up to `integrating`,
+declares and runs `store` checks bound to the child's committed items, and files
+reports; `portfolio-lead` verifies slices through `item_done` and ships each
+`release` through `release`.
+
+Give each store its own session variable with `--session-env NAME` so a child
+CTO keeps its child token in `RAIL_SESSION` and its master token in a named
+variable such as `RAIL_SESSION_PORTFOLIO`:
+
+```powershell
+$env:RAIL_SESSION = (rail --store child/context-rail seat open cto-1 --print-env | ConvertFrom-Json).value.token
+$env:RAIL_SESSION_PORTFOLIO = (rail --store master/context-rail seat open auth-cto --print-env | ConvertFrom-Json).value.token
+rail --store ../master/context-rail --session-env RAIL_SESSION_PORTFOLIO next
 ```
 
 ## Layout

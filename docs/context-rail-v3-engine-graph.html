@@ -1279,7 +1279,7 @@
             <tr><td class="rel-name">01 Brief</td><td><code>rail loop brief &lt;item&gt; --role implementer</code></td><td>The work order: objective, selected scope, conventions, constraints, selected files, checks, allowed rail methods, code area, workflow breadcrumb and declared result contract. Read only; <code>--max_chars N</code> takes 100 to 32000.</td></tr>
             <tr><td class="rel-name">02 Work</td><td><em>any coding tool</em></td><td>The agent works in its own checkout with its own sub-agents. The engine has no process executor, so the rail starts nothing and watches nothing.</td></tr>
             <tr><td class="rel-name">03a Candidate (code)</td><td><code>rail loop candidate &lt;item&gt; --commit &lt;sha&gt;</code></td><td>For code work: an immutable Record of the commit that will be judged, with its base, profile and free-text model, harness, usage and duration.</td></tr>
-            <tr><td class="rel-name">03b Result</td><td><code>rail loop result &lt;item&gt; --body-file &lt;file&gt; [--commit &lt;sha&gt;]</code></td><td>Workflow-shaped Markdown result artifact (<code>--commit</code> omitted for commitless research/discovery; bound to the candidate SHA for code).</td></tr>
+            <tr><td class="rel-name">03b Result</td><td><code>rail loop result &lt;item&gt; --body-file &lt;file&gt; [--commit &lt;sha&gt;]</code></td><td>Workflow-shaped Markdown result artifact (<code>--commit</code> omitted for commitless research/discovery; bound to the candidate SHA for code). The body may open with an effort block: <code>duration_s</code>, <code>usage</code> (tokens, requests), <code>model</code>, <code>harness</code>.</td></tr>
             <tr><td class="rel-name">04 Check</td><td><code>rail check declare</code> · <code>rail check run &lt;check-or-item&gt;</code></td><td>The proof. A pass is <code>fresh</code> only while its definition and inputs still match; <code>stale</code> is not a pass, and <code>missing</code> and <code>unknown</code> stay distinct.</td></tr>
             <tr><td class="rel-name">05 Review</td><td><code>rail loop review &lt;item&gt; [--commit &lt;sha&gt;] [--result &lt;id&gt;] --verdict approve|reject --notes-file &lt;file&gt;</code></td><td>A different actor judges the current result or candidate commit. The done gate prefers the item's latest candidate and current result, so an older review is stale.</td></tr>
             <tr><td class="rel-name">06 Move</td><td><code>rail change move &lt;item&gt; &lt;status&gt;</code></td><td>The gate reads the latest candidate, current completed result and review. <code>rail loop report</code> and <code>rail loop triage</code> feed the human view, and <code>rail read digest</code> summarises.</td></tr>
@@ -1343,7 +1343,7 @@ rail init --answers-file answers.json --confirm "APPROVE charter"</code></pre>
           <div class="body card">
             <div class="body-head"><span class="badge badge--human">human</span><h3>Approve the boundary</h3></div>
             <pre class="cmd"><code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"</code></pre>
-            <p>Records the approval with hashes of the protected files. Until this exists, planning and reads stay open, but no candidate, check or review is recorded.</p>
+            <p>Records the approval with hashes of the protected files and its signer: a human, or a named lead signing on the human's behalf when the charter allows it (<code>approval.agents: true</code>, the default). Until this exists, planning and reads stay open, but no candidate, check or review is recorded.</p>
           </div>
         </article>
 
@@ -1431,7 +1431,7 @@ rail gate</code></pre>
 
       <div class="refusals">
         <div class="refusal"><b>NOT_FOUND: no store found</b><span>Run <code>rail init</code>, or put <code>--store path</code> before the command.</span></div>
-        <div class="refusal"><b>approval_mismatch</b><span>The protected picture changed since a human approved it. Run <code>rail --actor human approve charter ...</code> again; planning and reads stay open, and no candidate, check or review is recorded.</span></div>
+        <div class="refusal"><b>approval_mismatch</b><span>The protected picture changed since it was approved. Run <code>rail approve charter ...</code> again (a named lead may sign when the charter allows it); planning and reads stay open, and no candidate, check or review is recorded.</span></div>
         <div class="refusal"><b>CONFLICT: 'x' is at etag a, not b</b><span>Re-read the document, then retry with the etag you now hold. Never reuse an old one, and never guess.</span></div>
         <div class="refusal"><b>check is stale</b><span>Re-run <code>rail check run</code>. A stale pass is not a pass.</span></div>
         <div class="refusal"><b>'x' cannot take a candidate: depends_on:y</b><span>Finish or drop the dependency; only an executable leaf can take a candidate. The reason is also <code>container</code>, <code>finished</code> or <code>not_executable</code>.</span></div>
@@ -1630,7 +1630,7 @@ rail gate</code></pre>
         kind: "tool table",
         title: "61 tools, one table",
         blurb: "Every command is a Tool entry: name, summary, permission, decision class, parameters and a lazily imported handler.",
-        points: ["Families: read, change, gate, loop, seat and operate.", "Human-only: approve, ops migrate, ops upgrade, ops pack use.", "Execution: verify, candidate and review; brief is a read.", "The CLI, MCP server and UI all read this tuple."],
+        points: ["Families: read, change, gate, loop, seat and operate.", "Human-only: ops migrate, ops upgrade, ops pack use. Approve records its signer; a named lead may sign when the charter allows it.", "Execution: verify, candidate and review; brief is a read.", "The CLI, MCP server and UI all read this tuple."],
         meta: "gateway/tools.py"
       },
       kernel: {

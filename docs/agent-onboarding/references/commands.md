@@ -50,7 +50,7 @@ rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run] [--cod
           [--no-approve] [--no-git-drivers] [--harness ID]... [--confirmer NAME]
           [--interview | --answers-file FILE | --draft-file FILE]
           [--solo] [--key KEY]
-rail --actor human approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
+rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
 rail overview [--max-chars N] [--item-limit N]
 rail read status
 rail read digest [--since ISO] [--limit N] [--max-chars N]
@@ -67,7 +67,10 @@ rail gate [--warnings-as-errors]
 ```
 
 `approve` target is `charter`, a protected slug, or `pack:<name>`. Approval
-binds to the semantic digest.
+binds to the semantic digest. A named lead signs by default; add `--actor human`
+for a human signature. The record carries `signer`, `signer_kind`, `channel` and
+`on_behalf_of`; `--confirmer` names the human the approval is for. A charter with
+`approval.agents: false` accepts only a human signature.
 
 `init --answers-file` runs the same stages as the resumable pipeline: it writes
 the picture and workspace, renders the selected agent harnesses, installs the
@@ -116,8 +119,10 @@ rail <seat> [command ...]
 - In role mode a tokenless caller with no terminal has read tools and an empty
   reach; open a session to read or write. `--actor` is refused.
 - Human-only actions need the human on a terminal or the UI channel; a session
-  caller is never human. This covers `approve`, `ops migrate`, `ops pack use`,
-  a `human: true` grant and the first bootstrap grant.
+  caller is never human. This covers `ops migrate`, `ops upgrade`, `ops pack use`,
+  a `human: true` grant and the first bootstrap grant. `approve` is different: a
+  project-anchored lead seat may sign it with its own session when the charter
+  allows it (`approval.agents: true`, the default).
 - A pack without `roles` stays in compat mode: the name-based `--actor`
   behaviour is unchanged and `rail seat ...` / the lens refuse with "this pack
   declares no roles", pointing at `rail ops pack use`.
@@ -125,8 +130,9 @@ rail <seat> [command ...]
   starter roles, and does not select it. It refuses a version-1 source and an
   extending pack that has no own `operating` block. Select the draft with the
   human-only `ops pack use`.
-- In a role-mode store, run `ops pack use` and `approve` yourself in a terminal
-  (or through the UI). `--actor` is refused and a session is never human.
+- In a role-mode store, run `ops pack use` yourself in a terminal (or through
+  the UI); `--actor` is refused and a session is never human. A project-anchored
+  lead seat may sign `approve` with its own session; other seats cannot.
 
 ## Change surface
 
@@ -183,7 +189,11 @@ stores. A `human` check needs `--verdict` and the typed phrase. The rail never
 launches an agent: your tool does the work with its own sub-agents, then records
 its Markdown result with `loop result` (preceded by `loop candidate` when code
 changed; discovery/commitless work leaves `candidate_commit` null). Bodies are
-capped at 256 KiB (`262,144` bytes) with ordered nonempty `##` headings. You
+capped at 256 KiB (`262,144` bytes) with ordered nonempty `##` headings. The
+body may open with a leading `---` effort block (`duration_s`,
+`usage: {tokens: ..., requests: ...}`, `model`, `harness`); `unknown` is
+allowed for an unreported counter, money is not a counter, and
+`--model`/`--harness` may not name a fact the block already names. You
 merge in git yourself.
 
 ## Operations
