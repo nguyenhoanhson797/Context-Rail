@@ -147,6 +147,97 @@ def test_discovery_result_does_not_require_approval_or_git(tmp_path: Path) -> No
     assert front["data"]["candidate_commit"] is None
     assert front["data"]["body_hash"] == value["body_hash"]
     assert result_body_hash(body) == value["body_hash"]
+    assert "duration_s" not in front["data"]
+    assert "usage" not in front["data"]
+
+
+_EFFORT_BLOCK = (
+    "---\n"
+    "duration_s: 5400\n"
+    "usage: {tokens: 152000, requests: 42}\n"
+    "model: block-model\n"
+    "harness: block-harness\n"
+    "---\n"
+)
+
+
+def _research_task(store: Path, tmp_path: Path) -> str:
+    phase = _add_item(store, "phase", "Research Phase")
+    return _add_item(store, "task", "Investigate retries", rel=[f"part_of={phase}"])
+
+
+def test_effort_block_lands_in_the_payload_and_stays_in_the_body(tmp_path: Path) -> None:
+    store = init_result_store(tmp_path / "proj", approve=False)
+    task = _research_task(store, tmp_path)
+    body_path = _write_body(
+        tmp_path / "outside.md", _EFFORT_BLOCK + result_body(DEFAULT_PRODUCER_SECTIONS)
+    )
+
+    response = invoke(
+        "result", {"item": task, "body_file": str(body_path)}, store=store, actor="implementer"
+    )
+
+    assert is_ok(response), response
+    value = response["value"]
+    assert value["candidate_commit"] is None
+    front, body = _read_result_file(store, value["path"])
+    assert front["data"]["duration_s"] == 5400
+    assert front["data"]["usage"] == {"tokens": 152000, "requests": 42}
+    assert front["data"]["model"] == "block-model"
+    assert front["data"]["harness"] == "block-harness"
+    assert body.startswith("---\n")
+    assert result_body_hash(body) == value["body_hash"]
+
+
+def test_effort_conflicts_and_bad_blocks_refuse_and_write_nothing(tmp_path: Path) -> None:
+    store = init_result_store(tmp_path / "proj", approve=False)
+    task = _research_task(store, tmp_path)
+    before_tree = _store_files(store)
+    before_inv = record_inventory(store)
+    cases: list[tuple[dict[str, Any], str, str | None]] = [
+        ({"model": "flag-model"}, "---\nmodel: block-model\n---\n", "effort_conflict"),
+        ({"harness": "flag-harness"}, "---\nharness: block-harness\n---\n", "effort_conflict"),
+        ({}, "---\ncost_usd: 1.2\n---\n", None),
+        ({}, "---\nusage: {tokens: -1}\n---\n", None),
+        ({}, "---\nduration_s: soon\n---\n", None),
+        ({}, "---\nusage: {tokens: 1}\n---\n---\nusage: {tokens: 2}\n---\n", None),
+        ({"set": ["duration_s=5"]}, "", None),
+        ({"set": ["usage=tokens"]}, "", None),
+    ]
+    for flags, block, reason in cases:
+        body_path = _write_body(
+            tmp_path / "outside.md", block + result_body(DEFAULT_PRODUCER_SECTIONS)
+        )
+        response = invoke(
+            "result",
+            {"item": task, "body_file": str(body_path), **flags},
+            store=store,
+            actor="implementer",
+        )
+        assert not is_ok(response), (flags, block, response)
+        assert response["error"]["code"] == "VALIDATION_FAILED", response
+        if reason is not None:
+            assert response["error"]["details"]["reason"] == reason
+        _assert_unchanged(store, before_tree, before_inv)
+
+
+def test_an_effort_result_replays_without_a_second_record(tmp_path: Path) -> None:
+    store = init_result_store(tmp_path / "proj", approve=False)
+    task = _research_task(store, tmp_path)
+    body_path = _write_body(
+        tmp_path / "outside.md", _EFFORT_BLOCK + result_body(DEFAULT_PRODUCER_SECTIONS)
+    )
+    args = {"item": task, "body_file": str(body_path), "key": "effort-replay"}
+
+    first = invoke("result", args, store=store, actor="implementer")
+    assert is_ok(first), first
+    inventory = record_inventory(store)
+    second = invoke("result", args, store=store, actor="implementer")
+
+    assert is_ok(second), second
+    assert second["value"]["replayed"] is True
+    assert second["value"]["record"] == first["value"]["record"]
+    assert record_inventory(store) == inventory
 
 
 def test_unparented_container_blocked_and_partial_items_record_results(tmp_path: Path) -> None:

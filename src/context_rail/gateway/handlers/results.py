@@ -21,6 +21,7 @@ from context_rail.model.results import (
     RESULT_OUTCOMES,
     RESULT_SCHEMA,
     normalize_result_body,
+    parse_effort_block,
     parse_result,
     result_body_hash,
     validate_result_body,
@@ -60,6 +61,8 @@ _RESERVED_CALLER_FIELDS = frozenset(
         "skills",
         "model",
         "harness",
+        "duration_s",
+        "usage",
     }
 )
 
@@ -191,8 +194,16 @@ def _record(
     body = read_result_body(body_path)
     try:
         validate_result_body(body, artifact.sections)
+        effort = parse_effort_block(body)
     except ModelError as exc:
         raise WriteRefused(exc.code, exc.message, exc.details) from None
+    for name, flag in (("model", model_name), ("harness", harness)):
+        if name in effort and flag is not None:
+            raise WriteRefused(
+                "VALIDATION_FAILED",
+                f"{name} is named in both the effort block and --{name}",
+                {"reason": "effort_conflict", "param": name},
+            )
     body_hash = result_body_hash(body)
 
     identity = ctx.identity
@@ -260,8 +271,16 @@ def _record(
 
     if model_name is not None:
         payload["model"] = model_name
+    elif "model" in effort:
+        payload["model"] = effort["model"]
     if harness is not None:
         payload["harness"] = harness
+    elif "harness" in effort:
+        payload["harness"] = effort["harness"]
+    if "duration_s" in effort:
+        payload["duration_s"] = effort["duration_s"]
+    if "usage" in effort:
+        payload["usage"] = effort["usage"]
 
     try:
         parse_result(payload)
