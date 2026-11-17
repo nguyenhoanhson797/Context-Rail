@@ -17,8 +17,11 @@ Protocol:
    stage plan, then run it without `--dry-run`.
 3. If the picture is missing, ask the human which source to use: `--interview`,
    `--answers-file`, or a CTO `--draft-file`. Do not invent the picture.
-4. Approval is human-only. Never run `approve` yourself. Print the exact
-   command for the human and wait.
+4. Approval records its signer. You may run `approve` as the named lead when
+   the charter allows it (`approval.agents: true`, the default); name the human
+   in `--confirmer`. If the charter sets `approval.agents: false`, print the
+   exact human command and wait. Never claim a human signature you did not
+   receive.
 5. Seed one goal and one executable task. Read `rail types`, `rail next` and
    `rail read show` before you add anything.
 6. Render the agent files with `rail ops adapters render` and name the harness
@@ -142,7 +145,7 @@ Never read `pack.yaml`.
 For a write: read the etag, then `rail change ... --expect <etag> --key <key>`.
 Pass `--rel` and `--set`, never a path.
 Change status only with `rail change move`.
-Never approve; approval is human-only.
+Approval records its signer; name the human in `--confirmer`, and use `--actor human` only for a real human signature.
 If a command refuses, read `error.details` and follow the named fix.
 ```
 
@@ -153,6 +156,7 @@ You have the Context Rail MCP server. Use the canonical tools: `status`,
 `next`, `show`, `why`, `model`, `types`, `explain`, `add`, `update`, `move`,
 `link`, `check`, `verify`, `brief`, `result`, `candidate`, `review`.
 Start with `status` and `next`. Use `show` before any write. Every write needs
-the current etag and an idempotency key. Never call `approve`, `migrate` or
-`pack use` unless the session is explicitly human.
+the current etag and an idempotency key. Never call `migrate` or `pack use`
+unless the session is explicitly human; call `approve` only as the named lead
+when the charter allows it, naming the human in `confirmer`.
 ```

@@ -716,8 +716,12 @@ the work needs; the brief reads only what it must.</code></pre>
   --confirm "APPROVE charter" \
   --confirmer "Ada"</code></pre>
         <p class="small" style="margin-top: 10px;">
-          The approval is a record with the hash of every protected file. If a
-          protected file drifts, <code>doctor</code> and <code>ci</code> fail.
+          The approval is a record with the hash of every protected file, and it
+          names its signer: a human by default, or a named lead signing on the
+          human's behalf when the charter allows it (<code>approval.agents:
+          true</code>, the default; set <code>approval.agents: false</code> in
+          the charter to require a human signature). If a protected file drifts,
+          <code>doctor</code> and <code>ci</code> fail.
         </p>
       </div>
       <div class="card">
@@ -1199,13 +1203,13 @@ rail ops doctor</code></pre>
           </tr>
           <tr>
             <td><code>approval_mismatch</code></td>
-            <td>A protected file changed after the human approved it, so the pack and the approval no longer agree.</td>
-            <td>Review the diff, then reapprove as the human: <code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "…"</code>.</td>
+            <td>A protected file changed after it was approved, so the pack and the approval no longer agree.</td>
+            <td>Review the diff, then reapprove (a named lead may sign when the charter allows it): <code>rail approve charter --confirm "APPROVE charter" --confirmer "…"</code>.</td>
           </tr>
           <tr>
             <td>“the charter is not approved; nothing executes yet”</td>
-            <td>The human gate has not been passed.</td>
-            <td><code>rail --actor human approve charter --confirm "APPROVE charter" --confirmer "…"</code></td>
+            <td>The approval gate has not been passed.</td>
+            <td><code>rail approve charter --confirm "APPROVE charter" --confirmer "…"</code> (add <code>--actor human</code> for a human signature).</td>
           </tr>
           <tr>
             <td>A check reports <code>stale</code></td>

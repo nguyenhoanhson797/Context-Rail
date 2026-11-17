@@ -5,8 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_readme_documents_all_code_graph_providers() -> None:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
+def test_how_it_works_documents_all_code_graph_providers() -> None:
+    text = (ROOT / "docs" / "how-it-works.md").read_text(encoding="utf-8")
 
     for value in ("builtin", "graphify", "gitnexus", "none"):
         assert value in text

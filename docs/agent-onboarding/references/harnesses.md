@@ -80,7 +80,7 @@ envelope as the CLI: `{"ok": true, "value": ...}` or `{"ok": false, "error":
 |---|---|---|
 | Read-only exploration | no actor, or `--actor cto` | MCP defaults to `cto` |
 | Normal agent work | `--actor cto` or a worker name | writes are attributed |
-| Human approval session | `--actor human` | `approve`, `ops migrate`, `ops pack use` are human-only |
+| Human approval session | `--actor human` | a real human signature for `approve`; `ops migrate` and `ops pack use` are human-only |
 | Separate reviewer | `--actor reviewer` | separation from the implementer |
 
 The actor is a **workflow claim**, not authentication. It records who acted and

@@ -162,9 +162,12 @@ Identity resolution in role mode:
    UI's per-run channel is the other human proof.
 3. Anything else is anonymous: read tools only, with an empty reach.
 
-`--actor` is refused. Human-only actions need the terminal/UI proof, never a
-session token. The first grant when no seat exists is human-only; after that a
-seat grants only inside its `can.grant` and write reach.
+`--actor` is refused. Human-only actions (`ops migrate`, `ops upgrade`,
+`ops pack use`, a `human: true` grant, the first grant) need the terminal/UI
+proof, never a session token. `approve` is different: a project-anchored lead
+seat may sign it with its own session when the charter allows it
+(`approval.agents: true`, the default). The first grant when no seat exists is
+human-only; after that a seat grants only inside its `can.grant` and write reach.
 
 Commands: `seat list|grant|revoke|open|close|show` and the `rail <seat>` lens.
 The lens is read-only unless the session belongs to that seat, and it never
@@ -298,7 +301,8 @@ idle minutes. `--no-daemon` or `RAIL_NO_DAEMON=1` bypasses it;
 
 A label, screen or card change touches only the presentation digest. An
 operating, transition, preset or placement change is semantic and reports
-`approval_mismatch` until a human reapproves.
+`approval_mismatch` until it is reapproved (a named lead may sign when the
+charter allows it).
 
 ## State and lifecycle
 

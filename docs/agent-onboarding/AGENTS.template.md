@@ -83,19 +83,23 @@ refusal and `2` on an infrastructure failure:
 (`status`, `brief`, `candidate`, `review`, `check`, `verify`, `relocate`, `ci`,
 `pack`, `sync`, `adapters sync`, `cto brief`, `mcp serve`, `ui serve`).
 
-## Human-only actions
+## Approval and human-only actions
 
-`approve`, `ops migrate`, `ops upgrade` and `ops pack use` are human-only. They need an
+`ops migrate`, `ops upgrade` and `ops pack use` are human-only. They need an
 explicitly named human (`--actor human` or `RAIL_ACTOR=human`) and the typed
-phrase the command prints:
+phrase the command prints.
+
+`approve` records who signed it. By default a named lead may sign; the record
+carries `signer`, `signer_kind`, `channel` and the human it names (`--confirmer`).
+A charter that sets `approval.agents: false` accepts only a human signature:
 
 ```bash
 rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Name"
 ```
 
-Do not approve, reapprove, lower a gate or switch a pack on the human's behalf.
-Propose the decision and stop. The actor name is a workflow claim, not
-authentication.
+Never claim a human signature you did not receive. Name the human in
+`--confirmer`, and do not lower a gate or switch a pack on the human's behalf.
+The actor name is a workflow claim, not authentication.
 
 ## The agent loop
 
@@ -151,7 +155,7 @@ Read `error.code` and `error.details`; a refusal names the reason and the fix.
 | `INVALID_STATE` | The item is not executable, is immutable, or the profile has the wrong recipe |
 | `NOT_FOUND` | No store, unknown slug or unknown pack; check `--store` placement |
 | A check is `stale` | Run `rail check run` again; a stale pass is not a pass |
-| `approval_mismatch` | The semantic digest moved; a human must reapprove `pack:<name>` then the charter |
+| `approval_mismatch` | The semantic digest moved; reapprove `pack:<name>` then the charter (a named lead may sign when the charter allows it) |
 | Reads disagree with files | `rail ops reindex`; never edit the index |
 | Interrupted multi-file write | `rail ops repair` |
 

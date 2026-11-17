@@ -52,7 +52,7 @@ Everything else is a consequence.
 |---|---|
 | A project has no `context-rail/` store | `rail init --pack basic`, then `references/playbooks.md` |
 | A store exists but the agent is new | `rail overview`, `rail types`, `rail next`, `rail model` |
-| The store exists but approval is missing | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` |
+| The store exists but approval is missing | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"` (a named lead signs; add `--actor human` for a human signature) |
 | You are wiring a harness | `references/harnesses.md` |
 | You need a specific command or flag | `references/commands.md` |
 | A command refused | `references/refusals.md` |
@@ -71,7 +71,7 @@ From the project root:
 
 ```bash
 rail init --pack basic                  # resumable; supply the picture when asked
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Your Name"
+rail approve charter --confirm "APPROVE charter" --confirmer "Your Name"   # a named lead signs; add --actor human for a human signature
 rail change add goal "Ship the first slice"
 rail change add task "Write the first task" --rel part_of=ship-the-first-slice
 rail overview
@@ -154,11 +154,12 @@ In role mode:
   With the seat's own session it may read and write; with another seat's session
   it is read-only and allowed only when the target anchor is in the caller's
   reach.
-- **Human proof is not a name.** Approving, using a pack, granting a
-  `human: true` role and the first grant when no seat exists need the human on a
-  terminal or through the UI. A session caller can never satisfy a human-only
-  action. A non-human seat may grant only inside its `can.grant` and write
-  reach.
+- **Human proof is not a name.** Using a pack, granting a `human: true` role and
+  the first grant when no seat exists need the human on a terminal or through the
+  UI. A session caller can never satisfy those human-only actions. Approval is
+  different: it records the actor that signed it, and the charter's
+  `approval.agents` says whether an agent may sign. A non-human seat may grant
+  only inside its `can.grant` and write reach.
 - **Anonymous is empty.** With no session and no terminal, the caller has read
   tools and no documents; open a session to work.
 - **Revocation cascades.** Revoking a seat closes its sessions and every seat it
@@ -198,9 +199,12 @@ custom pack.
 - **Status is managed.** Use `rail change move` or a declared
   `rail do <action>`, never a hand edit.
 - **Records are immutable.** Do not edit `records/`.
-- **Human-only stays human.** `approve`, `ops migrate` and `ops pack use` need
-  an explicitly named human and the typed phrase. In role mode the human must be
-  on a terminal or use the UI channel; a seat session is never human.
+- **Human-only stays human.** `ops migrate`, `ops upgrade` and `ops pack use`
+  need an explicitly named human and the typed phrase. In role mode the human
+  must be on a terminal or use the UI channel; a seat session is never human.
+  `approve` records its signer: a named lead may sign when the charter allows it
+  (`approval.agents: true`, the default), and the record names the human it was
+  made for.
 - **A gate is not a suggestion.** `rail why` names the missing proof and the
   command that produces it.
 

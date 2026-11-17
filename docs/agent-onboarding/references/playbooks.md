@@ -3,11 +3,15 @@
 Each playbook is a complete path from a starting state to a verifiable working
 state. Commands are the documented surface; flat aliases also work.
 
+Approval commands name their signer: run them as the named lead, or add
+`--actor human` for a human signature. A charter with `approval.agents: false`
+accepts only the human form.
+
 ## 1. Greenfield code project
 
 ```bash
 rail init --pack basic
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
 rail change add goal "Ship the first usable slice"
 rail change add scope "The first slice" --rel part_of=ship-the-first-usable-slice --set priority=must
 rail change add task "Prove the walking skeleton" --rel part_of=ship-the-first-usable-slice
@@ -25,7 +29,7 @@ Next: `context-rail-v3-loop` for brief → result → candidate (when code chang
 
 ```bash
 rail init --pack scrum
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
 rail change add goal "Stabilise the existing product"
 rail change add task "Map the current entry points" --rel part_of=stabilise-the-existing-product
 rail change add task "Add a smoke check" --rel part_of=stabilise-the-existing-product
@@ -45,7 +49,7 @@ for one stream.
 
 ```bash
 rail init --pack flow
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
 rail change add goal "Publish the handbook"
 rail change add epic "Part one" --rel part_of=publish-the-handbook
 rail change add story "Draft chapter one" --rel part_of=part-one
@@ -64,7 +68,7 @@ the story until the sign-off is done. The built-in `scrum` pack has no
 
 ```bash
 rail init --pack scrum
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
 rail change add sprint "Sprint 1" --rel part_of=<goal>
 rail do start-sprint --item sprint-1 --etag <etag>
 rail change add story "Checkout BA sign-off" --rel part_of=sprint-1
@@ -159,8 +163,8 @@ semantic digest and reapprove deliberately:
 
 ```bash
 rail ops pack show --name <pack>
-rail --actor human approve pack:<pack> --confirm "APPROVE pack:<pack>" --confirmer "Ada"
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail approve pack:<pack> --confirm "APPROVE pack:<pack>" --confirmer "Ada"
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
 ```
 
 ## 10. Upgrading a built-in pack
@@ -171,8 +175,8 @@ an upgrade.
 
 ```bash
 rail ops pack show --name scrum
-rail --actor human approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer "Ada"
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer "Ada"
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
 ```
 
 A v1 local pack needs no change: it loads with the neutral model and keeps its

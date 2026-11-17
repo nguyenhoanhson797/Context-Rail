@@ -88,7 +88,7 @@ rail seat close sprint-1
 | Onboarding pipeline | `rail init --pack basic` | skeleton, pack profiles and skills, the offered picture, the fresh approval, agent files and optional git drivers |
 | Skeleton only | `rail init --pack basic --scaffold` | `rail.yaml`, `.gitignore`, empty pinned folders |
 | Picture source | `rail init --interview` **or** `rail init --answers-file file.json --confirm "APPROVE charter" [--confirmer "<you>"]` (human) **or** `rail init --draft-file file.json` (CTO) | goal, vision, Won't, scope docs, `charter.md`, the 3 profiles, the engine skills and the pack's skills (the store's own copies); the answers-file path also renders agent files and git drivers |
-| Approve | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` | an approval record with the protected-file hashes |
+| Approve | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"` (a named lead; `--actor human` for a human signature) | an approval record with the protected-file hashes and its signer |
 | Agent files | `rail ops adapters render [--harness agents\|claude\|cursor\|gemini]` | `AGENTS.md` (managed block: read-first table, write protocol, a "Start here" pointer and a skills index without bodies) and `.agents/skills/<name>/SKILL.md` per skill |
 | Git drivers | `rail ops sync install` | `.gitattributes` and clone-local merge drivers |
 
@@ -153,7 +153,7 @@ Exact flags: `references/commands.md` in this skill.
 |---|---|
 | `NOT_FOUND: no store found` | `rail init`, or put `--store` before the command |
 | `VALIDATION_FAILED: unrecognized arguments` | Global options belong before the command; `add` is positional |
-| “the charter is not approved; nothing executes yet” | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "<you>"` |
+| “the charter is not approved; nothing executes yet” | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"`; add `--actor human` when the charter requires a human signature |
 | `actor_required` on a write | Name yourself: `--actor <name>` or `RAIL_ACTOR`; an unnamed caller can only read |
 | `profile key 'model' was removed; run rail ops upgrade` | The store predates the runtime-neutral engine; a human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |
 | `AMBIGUOUS_FOCUS` | Two containers match the focus; pass `--into <id>` or finish one |

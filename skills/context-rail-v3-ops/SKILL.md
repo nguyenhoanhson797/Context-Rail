@@ -30,8 +30,10 @@ context-rail/.rail-local/    index, locks, sync progress
 ## Actor identity
 
 `--actor` and `RAIL_ACTOR` are workflow claims, not authentication. Human-only
-tools (`approve`, `ops migrate`, `ops pack use`) require an explicitly named
-human: `--actor human` or `RAIL_ACTOR=human`. Anyone with shell access as your
+tools (`ops migrate`, `ops upgrade`, `ops pack use`) require an explicitly named
+human: `--actor human` or `RAIL_ACTOR=human`. `approve` records its signer: a
+named lead may sign when the charter allows it (`approval.agents: true`, the
+default), naming the human in `--confirmer`. Anyone with shell access as your
 OS user can act as you; use OS-level isolation if you need a real boundary.
 
 ## Maintenance
@@ -92,6 +94,11 @@ rail ops pack show --name scrum
 rail --actor human approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer <you>
 rail --actor human approve charter --confirm "APPROVE charter" --confirmer <you>
 ```
+
+A named lead may sign both instead when the charter allows it
+(`approval.agents: true`, the default); drop `--actor human` and name the human
+in `--confirmer`. A charter with `approval.agents: false` accepts only the human
+signature shown above.
 
 A v1 local pack is unaffected: it loads with the neutral model and keeps its
 approval. A label-only change never needs reapproval.

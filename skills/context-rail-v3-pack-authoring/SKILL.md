@@ -479,9 +479,11 @@ anchor is visible rather than silently ignored.
 
 ## Approval
 
-Pack policy and operating changes, and `ops pack use`, are human-only
-decisions. A CTO may propose a pack, but the human runs the guarded switch with
-the typed phrase `USE PACK <name>`.
+Pack policy and operating changes are semantic and need reapproval; `ops pack
+use` is a human-only decision. A CTO may propose a pack, but the human runs the
+guarded switch with the typed phrase `USE PACK <name>`. A named lead may sign
+the reapproval when the charter allows it (`approval.agents: true`, the
+default).
 
 A semantic change (operating, transition, preset, placement, policy) changes the
 semantic digest. `rail ops pack show --name <name>` reports `semantic_digest`,
@@ -493,6 +495,10 @@ reapprove:
 rail ops pack show --name my-team
 rail --actor human approve pack:my-team --confirm "APPROVE pack:my-team" --confirmer <you>
 ```
+
+A named lead may sign instead: drop `--actor human` and name the human in
+`--confirmer`. A charter with `approval.agents: false` accepts only the human
+signature shown above.
 
 A label, screen or card-field change touches only the presentation digest and
 never needs reapproval.

@@ -33,7 +33,10 @@ def test_every_seat_command_is_in_the_command_reference() -> None:
 
 
 def test_the_public_entry_points_explain_role_mode() -> None:
-    for rel in ("README.md", "docs/agent-onboarding/README.md"):
+    readme = _read("README.md")
+    for phrase in ("role", "seat", "human", "how-it-works.md#roles-and-seats"):
+        assert phrase in readme, phrase
+    for rel in ("docs/how-it-works.md", "docs/agent-onboarding/README.md"):
         text = _read(rel)
         for phrase in (
             "role",

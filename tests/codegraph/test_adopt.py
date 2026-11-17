@@ -164,7 +164,7 @@ def test_the_fingerprint_ignores_endings_version_and_updated() -> None:
     assert adopt_fingerprint(base) != adopt_fingerprint(base.replace("body", "more"))
 
 
-def test_the_readme_names_adopt() -> None:
-    readme = Path(__file__).parents[2] / "README.md"
+def test_how_it_works_names_adopt() -> None:
+    readme = Path(__file__).parents[2] / "docs" / "how-it-works.md"
 
     assert "ops codegraph adopt" in readme.read_text(encoding="utf-8")

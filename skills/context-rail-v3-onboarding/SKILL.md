@@ -47,7 +47,7 @@ then runs the stages that are missing:
 | Skeleton | `rail.yaml`, `.gitignore`, pinned folders | kept if present |
 | Workspace | the pack's profiles and skills | absent-only |
 | Picture | goal, vision, scope, Won't, `charter.md` | skipped when present |
-| Approval | an approval record with protected-file hashes | human-only, fresh phrase |
+| Approval | an approval record with protected-file hashes and its signer | fresh phrase; a named lead may sign unless the charter sets `approval.agents: false` |
 | Agent files | `AGENTS.md` (an index of the store's skills and a "Start here" pointer) and `.agents/skills/<name>/SKILL.md` | runs after the picture exists; regenerated when a skill changes |
 | Git drivers | `.gitattributes` and clone-local merge drivers | offered only in a git checkout |
 
@@ -87,10 +87,15 @@ phrase records the charter approval in the same call; without it, approval stays
 missing and the separate approval below is required.
 
 A draft records no approval. The interview records no approval either: the
-approval is a separate, human-only decision with its own fresh phrase. (An
-answers-file init records it in the same call only when you pass `--confirmer`.)
+approval is a separate decision with its own fresh phrase. (An answers-file init
+records it in the same call only when you pass `--confirmer`.) A named lead may
+sign when the charter allows it (`approval.agents: true`, the default); a charter
+that sets `approval.agents: false` accepts only a human signature. To require
+that, a human sets `approval: {agents: false}` in the frontmatter of
+`charter.md` (a protected edit) before approving.
 
 ```powershell
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"   # agent signs, names the human
 rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
 ```
 
@@ -227,8 +232,8 @@ shots. If none fits, copy a pack and edit it — never fork the engine.
 
 ## What not to do
 
-- Do not lower a gate, approve as an agent, or switch packs to make a refusal
-  disappear.
+- Do not lower a gate, sign an approval the human did not make, or switch packs
+  to make a refusal disappear.
 - Do not pass a path, a parent folder or a final title to `change add`.
 - Do not edit `records/`; they are history.
 - Do not hand-edit the SQLite index or delete the store to fix a view.

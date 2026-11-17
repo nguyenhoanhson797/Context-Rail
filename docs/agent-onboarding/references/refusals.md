@@ -47,7 +47,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | `unrecognized arguments` | global option after the command, or `add` used with flags instead of positionals | `rail --store ... change add <preset> "<title>"` |
 | `CONFLICT` on every write | you are reusing an old etag | `rail read show <slug>`, then retry with the new etag |
 | A check reports `stale` | declared inputs changed since the verdict | `rail check run <target>` again; a stale pass is not a pass |
-| `the charter is not approved` | approval missing or drifted | `rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Name"` |
+| `the charter is not approved` | approval missing or drifted | `rail approve charter --confirm "APPROVE charter" --confirmer "Name"` (add `--actor human` when the charter requires a human signature) |
 | `approval_mismatch` | a semantic change moved the digest | Inspect `rail ops pack show --name <pack>`, then reapprove `pack:<pack>` and the charter |
 | `doctor` reports `placement_mismatch` | a path is not what the placement renders | `rail change repath --dry-run`, then `rail change repath` |
 | `placement_unresolved` / `placement_ambiguous` | the relation the placement walks has no single target | Fix the relation, or choose a different parent |
@@ -99,13 +99,14 @@ Focus is the container's own status, never an inference from its children.
 
 ## Approval refusals
 
-Approval is a human-only decision with a typed phrase and a protected-file
-snapshot digest.
+Approval needs a typed phrase and a protected-file snapshot digest. A named
+lead may sign when the charter allows it (`approval.agents: true`, the default);
+a charter with `approval.agents: false` accepts only `--actor human`.
 
 ```bash
-rail --actor human approve charter --confirm "APPROVE charter" --confirmer "Ada"
-rail --actor human approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer "Ada"
-rail --actor human approve <protected-slug> --confirm "APPROVE <slug>" --confirmer "Ada"
+rail approve charter --confirm "APPROVE charter" --confirmer "Ada"
+rail approve pack:scrum --confirm "APPROVE pack:scrum" --confirmer "Ada"
+rail approve <protected-slug> --confirm "APPROVE <slug>" --confirmer "Ada"
 ```
 
 If the semantic digest moved, reapprove the pack first, then the charter. A
@@ -144,7 +145,7 @@ refuses it before any check runs.
 - Never edit the SQLite index.
 - Never delete the store to fix a view.
 - Never hand-edit a Record.
-- Never lower a gate or approve as an agent.
+- Never lower a gate, and never claim a human signature you did not receive.
 - Never guess an etag, a focus or a workflow.
 - Never pass a path to `change add`.
 - Never trust a stale check verdict.
