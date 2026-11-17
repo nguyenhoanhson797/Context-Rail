@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -69,17 +70,7 @@ def candidates_in_window(
     decides, so a stamp the index cannot read is excluded rather than compared.
     """
     ix.sync()
-    clause = "1=1"
-    params: list[Any] = []
-    if item is not None:
-        clause += " AND item = ?"
-        params.append(item)
-    if since is not None:
-        clause += " AND at >= ?"
-        params.append(since)
-    if until is not None:
-        clause += " AND at <= ?"
-        params.append(until)
+    clause, params = _window(item, since, until)
     excluded = {"out_of_window": 0, "malformed": 0}
     verdicts = _latest_verdicts(ix)
     failed = _failed_commits(ix)
@@ -103,6 +94,90 @@ def candidates_in_window(
             excluded["malformed"] += 1
         samples.append(sample)
     return samples, excluded
+
+
+def effort_samples(
+    ix: Index,
+    *,
+    item: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+) -> tuple[list[AttemptSample], dict[str, int]]:
+    """One sample per attempt, with the effort that attempt finally reported.
+
+    A result bound to a candidate commit supplies that attempt's effort, field by
+    field; a result with no commit is its own pending attempt. The join key is the
+    commit, never the attempt ordinal, which the two tables number independently,
+    and one commit is never counted twice.
+    """
+    samples, excluded = candidates_in_window(ix, item=item, since=since, until=until)
+    clause, params = _window(item, since, until)
+    commits = {
+        record_id: (owner, commit)
+        for record_id, owner, commit in ix.conn.execute(
+            f"SELECT record_id, item, commit_sha FROM candidates WHERE {clause}",
+            params,
+        )
+    }
+    positions: dict[tuple[str, str], list[int]] = {}
+    for index, sample in enumerate(samples):
+        key = commits.get(sample.attempt_id)
+        if key is not None:
+            positions.setdefault(key, []).append(index)
+    valid_clause, valid_params = _window(item, since, until, base="valid = 1")
+    rows = ix.conn.execute(
+        "SELECT record_id, item, candidate_commit, at, data_json FROM results "
+        f"WHERE {valid_clause} ORDER BY record_id",
+        valid_params,
+    ).fetchall()
+    for record_id, owner, commit, at, data_json in rows:
+        if not _in_window(at, since, until):
+            excluded["out_of_window"] += 1
+            continue
+        data = _json_object(data_json)
+        reported, malformed = _sample(record_id, owner, data, None)
+        if malformed:
+            excluded["malformed"] += 1
+        targets = positions.get((owner, commit)) if commit else None
+        if targets:
+            for index in targets:
+                samples[index] = _merge_effort(samples[index], reported, data)
+            continue
+        samples.append(reported)
+    return samples, excluded
+
+
+def _window(
+    item: str | None, since: str | None, until: str | None, *, base: str = "1=1"
+) -> tuple[str, list[Any]]:
+    clause = base
+    params: list[Any] = []
+    if item is not None:
+        clause += " AND item = ?"
+        params.append(item)
+    if since is not None:
+        clause += " AND at >= ?"
+        params.append(since)
+    if until is not None:
+        clause += " AND at <= ?"
+        params.append(until)
+    return clause, params
+
+
+def _merge_effort(
+    candidate: AttemptSample, reported: AttemptSample, data: dict[str, Any]
+) -> AttemptSample:
+    """The result wins per field it names; the candidate keeps its verdict."""
+    changes: dict[str, Any] = {}
+    if reported.duration_s is not None:
+        changes["duration_s"] = reported.duration_s
+    if "usage" in data:
+        changes["usage"] = reported.usage
+    if reported.model is not None:
+        changes["model"] = reported.model
+    if reported.harness is not None:
+        changes["harness"] = reported.harness
+    return replace(candidate, **changes) if changes else candidate
 
 
 def reports_after_boundary(

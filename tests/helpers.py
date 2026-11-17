@@ -937,6 +937,9 @@ def record_result_for_test(
     outcome: str = "completed",
     commit: str | None = None,
     key: str | None = None,
+    effort: Mapping[str, Any] | None = None,
+    model: str | None = None,
+    harness: str | None = None,
 ) -> dict[str, Any]:
     """Record a workflow-shaped producer result via a temporary body outside ``store``."""
     import tempfile
@@ -966,7 +969,8 @@ def record_result_for_test(
 
     with tempfile.TemporaryDirectory() as tmpdir:
         body_path = Path(tmpdir) / "result-body.md"
-        body_path.write_text(result_body(sections), encoding="utf-8", newline="\n")
+        block = "" if effort is None else "---\n" + yaml.safe_dump(dict(effort), sort_keys=False) + "---\n"
+        body_path.write_text(block + result_body(sections), encoding="utf-8", newline="\n")
         args: dict[str, Any] = {
             "item": item,
             "body_file": str(body_path),
@@ -976,6 +980,10 @@ def record_result_for_test(
             args["commit"] = commit
         if key is not None:
             args["key"] = key
+        if model is not None:
+            args["model"] = model
+        if harness is not None:
+            args["harness"] = harness
         if session is not None:
             with caller_identity(None, None, session=session):
                 response = invoke("result", args, store=store)

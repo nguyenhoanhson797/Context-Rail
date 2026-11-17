@@ -1,10 +1,39 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
 from context_rail.gateway.gateway import invoke
-from context_rail.store.measure import candidates_in_window
-from helpers import write_attempt, write_review_verdict
+from context_rail.model.manifest import load_manifest
+from context_rail.model.pack import load_pack
+from context_rail.store.index import Index
+from context_rail.store.measure import candidates_in_window, effort_samples
+from helpers import init_result_store, record_result_for_test, write_attempt, write_review_verdict
 
 SKILL = "workspace/skills/test-first.md"
+
+
+@pytest.fixture
+def effort_store(tmp_path):
+    """A result-contract store with one task, for joining candidate and result effort."""
+    store = init_result_store(tmp_path / "proj")
+    phase = invoke("add", {"preset": "phase", "title": "Phase"}, store=store, actor="cto")
+    assert phase["ok"], phase
+    added = invoke(
+        "add",
+        {"preset": "task", "title": "Task", "rel": [f"part_of={phase['value']['slug']}"]},
+        store=store,
+        actor="cto",
+    )
+    assert added["ok"], added
+    manifest = load_manifest(store)
+    index = Index.open(store, load_pack(manifest.pack, store))
+    index.sync()
+    try:
+        yield SimpleNamespace(store=store, ix=index, task=added["value"]["slug"])
+    finally:
+        index.close()
 
 
 def _measure(store, **extra):
@@ -94,4 +123,59 @@ def test_a_window_with_no_candidates_is_empty_not_an_error(measure_store) -> Non
         measure_store.ix, since="2030-01-01T00:00:00Z"
     )
     assert samples == []
+    assert excluded == {"out_of_window": 0, "malformed": 0}
+
+
+def test_a_bound_result_supplies_only_the_effort_it_names(effort_store) -> None:
+    store, task = effort_store.store, effort_store.task
+    write_attempt(
+        store, "cand-effort-1", item=task, commit="1" * 40, actor="implementer",
+        model="m1", usage={"tokens": 10}, duration_s=60.0,
+    )
+    record_result_for_test(store, task, commit="1" * 40, effort={"usage": {"tokens": 99}})
+    samples, _ = effort_samples(effort_store.ix)
+    assert len(samples) == 1
+    assert samples[0].usage == {"tokens": 99}
+    assert samples[0].duration_s == 60.0
+    assert samples[0].model == "m1"
+    assert samples[0].attempt_id == "cand-effort-1"
+
+
+def test_a_commitless_result_is_its_own_pending_attempt(effort_store) -> None:
+    recorded = record_result_for_test(
+        effort_store.store,
+        effort_store.task,
+        effort={"duration_s": 30, "usage": {"tokens": 5}},
+        model="research-model",
+        harness="opencode",
+    )
+    samples, _ = effort_samples(effort_store.ix)
+    assert len(samples) == 1
+    sample = samples[0]
+    assert sample.attempt_id == recorded["record"]
+    assert sample.accepted is None
+    assert sample.duration_s == 30
+    assert sample.usage == {"tokens": 5}
+    assert (sample.model, sample.harness) == ("research-model", "opencode")
+
+
+def test_two_results_on_one_commit_do_not_double_count(effort_store) -> None:
+    store, task = effort_store.store, effort_store.task
+    write_attempt(store, "cand-effort-1", item=task, commit="1" * 40, actor="implementer", usage={"tokens": 10})
+    record_result_for_test(store, task, commit="1" * 40, effort={"usage": {"tokens": 20}})
+    record_result_for_test(store, task, commit="1" * 40, effort={"usage": {"tokens": 30}})
+    samples, _ = effort_samples(effort_store.ix)
+    assert len(samples) == 1
+    assert samples[0].usage == {"tokens": 30}
+
+
+def test_a_result_outside_the_window_is_excluded(effort_store) -> None:
+    store, task = effort_store.store, effort_store.task
+    write_attempt(store, "cand-effort-1", item=task, commit="1" * 40, actor="implementer", at="2026-10-28T12:00:00Z")
+    record_result_for_test(store, task, commit="1" * 40, effort={"usage": {"tokens": 20}})
+    samples, excluded = effort_samples(
+        effort_store.ix, since="2026-10-01T00:00:00Z", until="2026-10-31T00:00:00Z"
+    )
+    assert [sample.attempt_id for sample in samples] == ["cand-effort-1"]
+    assert samples[0].usage == {}
     assert excluded == {"out_of_window": 0, "malformed": 0}
