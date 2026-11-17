@@ -446,6 +446,19 @@ TOOLS: tuple[Tool, ...] = (
         handler="context_rail.gateway.handlers.measure:measure_fix",
     ),
     Tool(
+        name="measure usage",
+        summary="Roll up recorded effort by item, model, harness, role, profile or skill.",
+        permission="read",
+        params=(
+            Param("group_by", "str", required=True, help="item, model, harness, role, profile or skill"),
+            Param("item", "str", help="Item slug: only its candidates"),
+            Param("since", "str", help="UTC timestamp: candidates from then on"),
+            Param("until", "str", help="UTC timestamp: candidates until then"),
+            Param("limit", "int", default=20, help="rows (1-100)"),
+        ),
+        handler="context_rail.gateway.handlers.measure:measure_usage",
+    ),
+    Tool(
         name="rollback",
         summary="Restore a retained skill or profile version into a new version.",
         permission="write",

@@ -20,6 +20,7 @@ def test_aliases_resolve_to_canonical_tools() -> None:
     assert canonical_tool("loop candidate") == "candidate"
     assert canonical_tool("gate") == "ci"
     assert canonical_tool("overview") == "cto brief"
+    assert canonical_tool("ops measure usage") == "measure usage"
     assert canonical_tool("status") == "status"
 
 
@@ -124,6 +125,7 @@ def test_the_no_daemon_flag_does_not_hide_a_legacy_command() -> None:
         ("gate", "ci", {}),
         ("change repath", "relocate", {"dry_run": True}),
         ("ops adapters render", "adapters sync", {"dry_run": True}),
+        ("ops measure usage", "measure usage", {"group_by": "item"}),
         ("check run", "verify", {"target": "missing"}),
     ],
 )

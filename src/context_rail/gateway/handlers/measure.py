@@ -7,17 +7,20 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import canonical_iso
 from context_rail.kernel.measurement import (
+    GROUP_BY,
     AttemptSample,
+    AttemptSummary,
     compare_versions,
     measure_recurrence,
     summarize_attempts,
+    usage_rollup,
 )
 from context_rail.gateway.handlers.common import read_refusal
 from context_rail.model.errors import ModelError
 from context_rail.model.pack import effective_measurement_min_runs, load_pack
 from context_rail.store import query
 from context_rail.store.query import record_data
-from context_rail.store.measure import candidates_for_versions, reports_after_boundary
+from context_rail.store.measure import candidates_for_versions, candidates_in_window, reports_after_boundary
 from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:  # imported lazily by the gateway only when a measure tool runs
@@ -25,10 +28,16 @@ if TYPE_CHECKING:  # imported lazily by the gateway only when a measure tool run
 
 KINDS = ("skill", "profile")
 EVIDENCE_CAP = 50
+LIMIT_BOUNDS = (1, 100)
 LIMITATIONS = (
     "Measurement is observational: it reports indexed candidates and reports, never "
     "causes or an automatic rollout. Zero observed recurrences is not proof of "
     "permanent resolution."
+)
+USAGE_NOTE = (
+    " Rows are not additive: a candidate pinned to several skills appears in each"
+    " skill row, and only the total counts every candidate once. Tokens, credits"
+    " and cost are whatever the tool reported; an unknown counter is never zero."
 )
 
 
@@ -81,13 +90,107 @@ def measure_versions(ctx: Context, args: dict[str, Any], actor: str) -> dict[str
             f"quality {comparison.quality}; pass rate {comparison.pass_rate}; "
             f"attempts {comparison.attempts}; duration {comparison.duration}"
         ),
-        "strata": comparison.strata,
+        "strata": {
+            "before": _strata_rows(summary_before),
+            "after": _strata_rows(summary_after),
+        },
         "exclusions": {"before": before_ex, "after": after_ex},
         "limitations": LIMITATIONS + f" At least {minimum} comparable candidates are required per side.",
         "before": _side(before_version, summary_before, comparison.pass_rate),
         "after": _side(after_version, summary_after, comparison.pass_rate),
         "evidence": {"candidates": evidence[:EVIDENCE_CAP], "omitted_count": max(0, len(evidence) - EVIDENCE_CAP)},
     }
+
+
+def measure_usage(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Roll up the effort candidates reported, by one identity over a window."""
+    group_by = args["group_by"]
+    if group_by not in GROUP_BY:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "group_by must be one of: " + ", ".join(GROUP_BY),
+            {"group_by": group_by, "allowed": list(GROUP_BY)},
+        )
+    limit = args["limit"]
+    low, high = LIMIT_BOUNDS
+    if isinstance(limit, bool) or not isinstance(limit, int) or not low <= limit <= high:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            f"limit must be between {low} and {high}",
+            {"limit": limit},
+        )
+    item = args["item"]
+    if item is not None:
+        refused = read_refusal(ctx, item)
+        if refused is not None:
+            raise refused
+    samples, exclusions = candidates_in_window(
+        ctx.index, item=item, since=args["since"], until=args["until"]
+    )
+    outside_reach = 0
+    if ctx.reach is not None:
+        samples, outside_reach = _within_reach(ctx, samples)
+    rollup = usage_rollup(samples, group_by, limit)
+    evidence = sorted({sample.attempt_id for sample in samples})
+    return {
+        "group_by": group_by,
+        "item": item,
+        "since": args["since"],
+        "until": args["until"],
+        "rows": [_usage_row(group.key, group.summary) for group in rollup.rows],
+        "omitted": rollup.omitted,
+        "total": _usage_row(None, rollup.total),
+        "exclusions": exclusions,
+        "omitted_outside_reach": outside_reach,
+        "evidence": {
+            "candidates": evidence[:EVIDENCE_CAP],
+            "omitted_count": max(0, len(evidence) - EVIDENCE_CAP),
+        },
+        "limitations": LIMITATIONS + USAGE_NOTE,
+    }
+
+
+def _within_reach(
+    ctx: Context, samples: list[AttemptSample]
+) -> tuple[list[AttemptSample], int]:
+    """Keep only the candidates whose Item the seat may read, and count the rest."""
+    allowed: dict[str, bool] = {}
+    kept: list[AttemptSample] = []
+    for sample in samples:
+        owner = sample.item or ""
+        if owner not in allowed:
+            allowed[owner] = read_refusal(ctx, owner) is None
+        if allowed[owner]:
+            kept.append(sample)
+    return kept, len(samples) - len(kept)
+
+
+def _usage_row(key: str | None, summary: AttemptSummary) -> dict[str, Any]:
+    return {
+        "key": key,
+        "candidates": summary.n,
+        "pending": summary.pending,
+        "pass_rate": f"{summary.pass_rate.numerator}/{summary.pass_rate.denominator}",
+        "attempts": _mean(summary.attempts.mean),
+        "duration": _mean(summary.duration.mean),
+        "usage": {
+            name: {
+                "total": total.total,
+                "coverage": total.coverage,
+                "known_n": total.known_n,
+            }
+            for name, total in sorted(summary.usage.items())
+        },
+        "strata": _strata_rows(summary),
+    }
+
+
+def _strata_rows(summary: AttemptSummary) -> list[dict[str, Any]]:
+    """Strata as JSON rows: a tuple key cannot survive the CLI's envelope."""
+    return [
+        {"role": role, "model": model, "candidates": count}
+        for (role, model), count in sorted(summary.strata.items())
+    ]
 
 
 def measure_fix(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

@@ -70,6 +70,7 @@ VISIBLE_ALIASES: dict[str, str] = {
     "ops adapters render": "adapters sync",
     "ops measure versions": "measure versions",
     "ops measure fix": "measure fix",
+    "ops measure usage": "measure usage",
     "serve mcp": "mcp serve",
     "serve ui": "ui serve",
 }
@@ -148,6 +149,7 @@ LEGACY_TO_SURFACE: dict[str, str] = {
     "pack use": "ops pack use",
     "measure versions": "ops measure versions",
     "measure fix": "ops measure fix",
+    "measure usage": "ops measure usage",
     "sync": "ops sync",
     "sync install": "ops sync install",
     "sync driver": "sync driver",
@@ -211,7 +213,7 @@ GROUP_SUMMARIES: dict[str, str] = {
     "pack": "Inspect, validate, create and switch packs.",
     "sync": "Integrate clone changes or install git drivers.",
     "adapters": "Render the managed agent files and skills.",
-    "measure": "Compare versions and check whether a fix recurred.",
+    "measure": "Compare versions, roll up recorded effort and check whether a fix recurred.",
     "serve": "Open an MCP or HTTP transport.",
     "seat": "See which seats hold which roles, and manage them.",
 }
