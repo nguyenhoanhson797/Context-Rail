@@ -414,7 +414,7 @@ def test_the_doctor_emits_no_other_stage1b_prefix_code() -> None:
         | STAGE1A_CODES
         | set(STAGE2_SEVERITIES)
         | set(OPERATING_SEVERITIES)
-        | {"daemon_stale", "store_untracked", "approval_unsigned", "budget_exceeded"}
+        | {"daemon_stale", "store_untracked", "approval_unsigned", "budget_exceeded", "effort_unreported"}
         | {
             "seat_role_unknown",
             "seat_anchor_missing",

@@ -76,6 +76,7 @@ SEVERITIES: dict[str, str] = {
     "review_invalid": "error",
     "report_untriaged": "warning",
     "budget_exceeded": "warning",
+    "effort_unreported": "warning",
     "profile_invalid": "error",
     "profile_skill_missing": "warning",
     "adapter_modified": "warning",
@@ -123,6 +124,12 @@ _APPROVE = (
 )
 _RELOCATE = "rail change repath"
 _TRIAGE = "rail loop triage"
+_EFFORT_ITEM_CAP = 20
+_EFFORT_FIX = (
+    "state the effort in the result body's leading block (duration_s, "
+    "usage: {tokens: ..., requests: ...}), or usage: {tokens: unknown} when the "
+    "harness reports none; then record the result again"
+)
 _CHARTER = "charter.md"
 _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
 _FRESHNESS_CODES = {
@@ -209,6 +216,7 @@ def run_doctor(store: Path, manifest: Manifest, pack: Pack, ix: Index) -> dict[s
     issues.extend(_check_issues(context, ix))
     issues.extend(_review_issues(ix, policy))
     issues.extend(_budget_issues(ix, policy))
+    issues.extend(_effort_issues(context, ix))
     issues.extend(_report_issues(ix))
     issues.extend(
         _operating_issues(store, manifest, pack, rows, relations, children, ix)
@@ -1224,6 +1232,45 @@ def _budget_issues(ix: Index, policy: Any) -> list[dict[str, Any]]:
                 f"item {slug} is over its budget: " + "; ".join(state.reasons),
                 "raise the charter budget with the human, or split or drop the item",
                 {"item": slug, "reasons": list(state.reasons), "unknown": state.unknown},
+            )
+        )
+    return issues
+
+
+def _effort_issues(context: Any, ix: Index) -> list[dict[str, Any]]:
+    """One warning per current completed result that reports no effort at all.
+
+    Silence is visible, never a refusal: an agent whose harness exposes no
+    counters states ``unknown`` and still finishes.
+    """
+    from context_rail.store.results import historical_result_exempt, select_result
+
+    items = ix.conn.execute(
+        "SELECT DISTINCT item FROM results WHERE valid = 1 AND item IS NOT NULL "
+        "AND outcome = 'completed' ORDER BY item LIMIT ?",
+        (_EFFORT_ITEM_CAP,),
+    ).fetchall()
+    issues: list[dict[str, Any]] = []
+    for (item,) in items:
+        selection = select_result(context, item)
+        record = selection.record
+        if record is None or not selection.current or not selection.completed:
+            continue
+        if historical_result_exempt(context, item):
+            continue
+        usage = (record.get("data") or {}).get("usage")
+        if isinstance(usage, dict) and any(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in usage.values()
+        ):
+            continue
+        issues.append(
+            _issue(
+                "effort_unreported",
+                str(record.get("path") or item),
+                f"result {record.get('record_id')!r} for {item} reports no effort",
+                _EFFORT_FIX,
+                {"item": item, "result": record.get("record_id")},
             )
         )
     return issues
