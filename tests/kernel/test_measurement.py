@@ -9,6 +9,7 @@ from context_rail.kernel.measurement import (
     compare_versions,
     measure_recurrence,
     summarize_attempts,
+    usage_rollup,
 )
 
 
@@ -22,6 +23,10 @@ def _attempt(
     model: str | None = "m1",
     version: int = 1,
     usage: dict | None = None,
+    harness: str | None = None,
+    profile: str | None = None,
+    item: str = "t0",
+    skills: tuple[tuple[str, int], ...] | None = None,
 ) -> AttemptSample:
     return AttemptSample(
         attempt_id,
@@ -30,10 +35,12 @@ def _attempt(
         accepted,
         {} if usage is None else usage,
         1,
-        (("test-first", version),),
+        (("test-first", version),) if skills is None else skills,
         attempt,
         duration,
-        "t0",
+        item,
+        harness,
+        profile,
     )
 
 
@@ -123,6 +130,82 @@ def test_recurrence_labels() -> None:
     assert measure_recurrence([], cluster_keys=frozenset({"fp-1"}), boundary=boundary, eligible_runs=10).recurrence == "no-observed"
     assert measure_recurrence([], cluster_keys=frozenset({"fp-1"}), boundary=boundary, eligible_runs=9).recurrence == "unknown"
     assert measure_recurrence([], cluster_keys=frozenset({"fp-1"}), boundary=boundary, eligible_runs=None).recurrence == "unknown"
+
+
+def test_usage_rollup_groups_by_model_and_keeps_the_unnamed_apart() -> None:
+    rollup = usage_rollup(
+        [
+            _attempt("a", accepted=True, model="m1", usage={"tokens": 10}),
+            _attempt("b", accepted=True, model="m1", usage={"tokens": 5}),
+            _attempt("c", accepted=False, model=None, usage={"tokens": 7}),
+        ],
+        "model",
+        20,
+    )
+    assert [row.key for row in rollup.rows] == ["m1", "unknown"]
+    assert rollup.rows[0].summary.usage["tokens"].total == 15
+    assert rollup.rows[1].summary.usage["tokens"].total == 7
+    assert rollup.total.n == 3 and rollup.omitted == 0
+
+
+def test_a_rollup_never_turns_an_unknown_counter_into_zero() -> None:
+    rollup = usage_rollup(
+        [
+            _attempt("a", accepted=True, usage={"tokens": None}),
+            _attempt("b", accepted=True, usage={"tokens": 4}),
+        ],
+        "item",
+        20,
+    )
+    tokens = rollup.rows[0].summary.usage["tokens"]
+    assert tokens.total == 4 and tokens.coverage == "partial" and tokens.known_n == 1
+
+
+def test_a_multi_skill_candidate_belongs_to_each_skill_row_but_once_to_the_total() -> None:
+    rollup = usage_rollup(
+        [_attempt("a", accepted=True, skills=(("first", 1), ("second", 2)))],
+        "skill",
+        20,
+    )
+    assert [row.key for row in rollup.rows] == ["first", "second"]
+    assert all(row.summary.n == 1 for row in rollup.rows)
+    assert rollup.total.n == 1
+
+
+def test_a_candidate_without_a_skill_pin_is_the_unknown_skill_row() -> None:
+    rollup = usage_rollup([_attempt("a", accepted=True, skills=())], "skill", 20)
+    assert [row.key for row in rollup.rows] == ["unknown"]
+
+
+def test_rollup_rows_are_biggest_first_and_trimmed_with_a_remainder() -> None:
+    samples = [
+        _attempt(f"small{i}", accepted=True, item="small") for i in range(2)
+    ] + [_attempt(f"big{i}", accepted=True, item="big") for i in range(5)]
+    rollup = usage_rollup(samples, "item", 1)
+    assert [row.key for row in rollup.rows] == ["big"]
+    assert rollup.omitted == 1
+    assert rollup.total.n == 7
+
+
+def test_rollup_groups_by_harness_role_and_profile() -> None:
+    samples = [
+        _attempt("a", accepted=True, harness="opencode", role="cto", profile="lead"),
+        _attempt("b", accepted=True, harness="claude-code", role="dev", profile="implementer"),
+    ]
+    for group_by, expected in (
+        ("harness", ["claude-code", "opencode"]),
+        ("role", ["cto", "dev"]),
+        ("profile", ["implementer", "lead"]),
+    ):
+        rollup = usage_rollup(samples, group_by, 20)
+        assert sorted(row.key for row in rollup.rows) == expected
+
+
+def test_an_unknown_group_by_or_limit_is_refused() -> None:
+    with pytest.raises(ValueError):
+        usage_rollup([], "model_version", 20)
+    with pytest.raises(ValueError):
+        usage_rollup([], "model", 0)
 
 
 def test_kernel_imports_no_io_module() -> None:

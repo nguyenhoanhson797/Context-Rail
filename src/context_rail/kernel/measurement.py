@@ -16,6 +16,9 @@ _THRESHOLD = Fraction(1, 10)
 
 UNKNOWN_STRATUM = "unknown"
 
+#: The identities a usage rollup may group by. Fixed, and refused when unknown.
+GROUP_BY = ("item", "model", "harness", "role", "profile", "skill")
+
 
 @dataclass(frozen=True)
 class AttemptSample:
@@ -35,6 +38,8 @@ class AttemptSample:
     attempt: int | None = None
     duration_s: float | None = None
     item: str | None = None
+    harness: str | None = None
+    profile: str | None = None
 
     @property
     def stratum(self) -> tuple[str, str]:
@@ -80,6 +85,24 @@ class AttemptSummary:
     duration: Metric
     usage: dict[str, UsageTotal]
     strata: dict[tuple[str, str], int]
+
+
+@dataclass(frozen=True)
+class UsageGroup:
+    """One identity's recorded effort, summed from the candidates that name it."""
+
+    key: str
+    summary: AttemptSummary
+
+
+@dataclass(frozen=True)
+class UsageRollup:
+    """Bounded group rows, the whole-window total, and how many rows were trimmed."""
+
+    group_by: str
+    rows: tuple[UsageGroup, ...]
+    total: AttemptSummary
+    omitted: int
 
 
 @dataclass(frozen=True)
@@ -130,6 +153,36 @@ def summarize_attempts(attempts: Sequence[AttemptSample]) -> AttemptSummary:
         duration=_metric(durations),
         usage=_usage_totals(attempts),
         strata=strata,
+    )
+
+
+def usage_rollup(
+    samples: Sequence[AttemptSample], group_by: str, limit: int
+) -> UsageRollup:
+    """Group recorded effort by one identity, biggest group first.
+
+    A candidate pinned to several skills belongs to each of those rows, so the
+    rows are not additive. ``total`` is the only summary that counts every
+    candidate exactly once, including the candidates whose row was trimmed.
+    """
+    if group_by not in GROUP_BY:
+        raise ValueError(f"unknown group_by {group_by!r}")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    buckets: dict[str, list[AttemptSample]] = {}
+    for sample in samples:
+        for key in _group_keys(sample, group_by):
+            buckets.setdefault(key, []).append(sample)
+    groups = [
+        UsageGroup(key=key, summary=summarize_attempts(rows))
+        for key, rows in buckets.items()
+    ]
+    groups.sort(key=lambda group: (-group.summary.n, group.key))
+    return UsageRollup(
+        group_by=group_by,
+        rows=tuple(groups[:limit]),
+        total=summarize_attempts(samples),
+        omitted=max(0, len(groups) - limit),
     )
 
 
@@ -254,6 +307,20 @@ def _usage_totals(attempts: Sequence[AttemptSample]) -> dict[str, UsageTotal]:
         coverage = "complete" if len(known) == len(attempts) else "partial"
         totals[key] = UsageTotal(total=sum(known), coverage=coverage, known_n=len(known))
     return totals
+
+
+def _group_keys(sample: AttemptSample, group_by: str) -> tuple[str, ...]:
+    if group_by == "skill":
+        identities = tuple(sorted({identity for identity, _version in sample.skills}))
+        return identities or (UNKNOWN_STRATUM,)
+    value = {
+        "item": sample.item,
+        "model": sample.model,
+        "harness": sample.harness,
+        "role": sample.role,
+        "profile": sample.profile,
+    }[group_by]
+    return (value or UNKNOWN_STRATUM,)
 
 
 def _rate_label(before: Rate, after: Rate) -> str:
