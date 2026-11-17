@@ -12,6 +12,7 @@ import pytest
 
 from context_rail.store import git_index
 from context_rail.store.git_index import (
+    IndexEntry,
     IndexSnapshot,
     freshness,
     match_inputs,
@@ -510,4 +511,24 @@ def test_result_backed_review_check_freshness_without_git(
     shown = invoke("show", {"slug": task}, store=store)
     assert is_ok(invoke("move", {"slug": task, "status": "todo", "expect": shown["value"]["doc"]["etag"]}, store=store, actor="cto"))
     assert _check_freshness() == "stale"
+
+
+def test_a_racy_crlf_checkout_matches_its_lf_blob(tmp_path: Path) -> None:
+    import hashlib
+
+    from context_rail.gateway.handlers.checks import _racy_content_verifier
+
+    root = tmp_path / "crlf"
+    (root / "src").mkdir(parents=True)
+    target = root / "src/a.py"
+    target.write_bytes(b"aaaa\r\n")
+    blob = b"aaaa\n"
+    oid = hashlib.sha1(b"blob %d\0" % len(blob) + blob).hexdigest()
+    entry = IndexEntry("src/a.py", oid, 0o100644, len(b"aaaa\r\n"), 0, 0, 0, 0, None)
+    snapshot = IndexSnapshot({}, 2, 20, None, None, None)
+    verify = _racy_content_verifier(root, snapshot)
+
+    assert verify("src/a.py", entry) is True
+    target.write_bytes(b"bbbb\r\n")
+    assert verify("src/a.py", entry) is False
 

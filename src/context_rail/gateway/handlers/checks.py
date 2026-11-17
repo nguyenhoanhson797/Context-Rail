@@ -398,9 +398,16 @@ def _racy_content_verifier(
 
     The index reader never hashes; this caller-side exception reads only a
     selected input whose stat landed in the index's own write tick, bounded by
-    the size git recorded, where a same-size rewrite is invisible to stat.
+    the size git recorded, where a same-size rewrite is invisible to stat. A
+    Windows checkout may hold CRLF where git stored LF, so both forms are
+    compared: that is the equivalence git's text conversion applies, and a text
+    checkout must not read stale merely for its line endings.
     """
     algo = "sha1" if snapshot.oid_width == HASH_WIDTHS["sha1"] else "sha256"
+
+    def blob_oid(data: bytes) -> str:
+        header = f"blob {len(data)}\0".encode("ascii")
+        return hashlib.new(algo, header + data).hexdigest()
 
     def verify(path: str, entry: IndexEntry) -> bool | None:
         try:
@@ -410,8 +417,11 @@ def _racy_content_verifier(
             return None
         if len(data) != entry.size:
             return False
-        header = f"blob {len(data)}\0".encode("ascii")
-        return hashlib.new(algo, header + data).hexdigest() == entry.oid
+        if blob_oid(data) == entry.oid:
+            return True
+        if b"\r\n" in data and blob_oid(data.replace(b"\r\n", b"\n")) == entry.oid:
+            return True
+        return False
 
     return verify
 
