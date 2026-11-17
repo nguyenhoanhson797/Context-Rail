@@ -1,39 +1,10 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-import pytest
-
 from context_rail.gateway.gateway import invoke
-from context_rail.model.manifest import load_manifest
-from context_rail.model.pack import load_pack
-from context_rail.store.index import Index
 from context_rail.store.measure import candidates_in_window, effort_samples
-from helpers import init_result_store, record_result_for_test, write_attempt, write_review_verdict
+from helpers import record_result_for_test, write_attempt, write_review_verdict
 
 SKILL = "workspace/skills/test-first.md"
-
-
-@pytest.fixture
-def effort_store(tmp_path):
-    """A result-contract store with one task, for joining candidate and result effort."""
-    store = init_result_store(tmp_path / "proj")
-    phase = invoke("add", {"preset": "phase", "title": "Phase"}, store=store, actor="cto")
-    assert phase["ok"], phase
-    added = invoke(
-        "add",
-        {"preset": "task", "title": "Task", "rel": [f"part_of={phase['value']['slug']}"]},
-        store=store,
-        actor="cto",
-    )
-    assert added["ok"], added
-    manifest = load_manifest(store)
-    index = Index.open(store, load_pack(manifest.pack, store))
-    index.sync()
-    try:
-        yield SimpleNamespace(store=store, ix=index, task=added["value"]["slug"])
-    finally:
-        index.close()
 
 
 def _measure(store, **extra):

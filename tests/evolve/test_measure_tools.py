@@ -5,7 +5,7 @@ import hashlib
 import pytest
 
 from context_rail.gateway.gateway import invoke
-from helpers import write_attempt
+from helpers import record_result_for_test, write_attempt
 
 
 def _tree_hash(store) -> dict[str, str]:
@@ -143,3 +143,59 @@ def test_usage_rows_are_bounded_and_the_evidence_is_capped(measure_store) -> Non
     assert value["total"]["usage"]["tokens"]["total"] == 51
     assert len(value["evidence"]["candidates"]) == 50
     assert value["evidence"]["omitted_count"] == 1
+
+
+def test_commitless_work_appears_in_the_usage_rollup(effort_store) -> None:
+    record_result_for_test(
+        effort_store.store,
+        effort_store.task,
+        effort={"duration_s": 30, "usage": {"tokens": 5}},
+        model="research-model",
+    )
+    value = invoke(
+        "measure usage", {"group_by": "item"}, store=effort_store.store, actor="cto"
+    )["value"]
+    assert [row["key"] for row in value["rows"]] == [effort_store.task]
+    assert value["rows"][0]["usage"]["tokens"]["total"] == 5
+    assert value["rows"][0]["pending"] == 1
+    assert value["rows"][0]["duration"] == "30"
+    assert value["total"]["candidates"] == 1
+
+
+def test_the_digest_usage_includes_commitless_work(effort_store) -> None:
+    record_result_for_test(
+        effort_store.store, effort_store.task, effort={"usage": {"tokens": 5}}
+    )
+    digest = invoke("digest", {}, store=effort_store.store, actor="cto")["value"]
+    assert digest["usage"]["known_sum"]["tokens"] == 5
+
+
+def test_the_ledger_stays_the_candidate_trail(effort_store) -> None:
+    record_result_for_test(
+        effort_store.store, effort_store.task, effort={"usage": {"tokens": 5}}
+    )
+    ledger = invoke("ledger", {"limit": 20}, store=effort_store.store, actor="cto")["value"]
+    assert ledger["candidates"] == []
+
+
+def test_a_bound_result_does_not_double_count_in_the_rollup(effort_store) -> None:
+    store, task = effort_store.store, effort_store.task
+    write_attempt(
+        store, "cand-join-1", item=task, commit="1" * 40, actor="implementer", usage={"tokens": 10}
+    )
+    record_result_for_test(store, task, commit="1" * 40, effort={"usage": {"tokens": 99}})
+    value = invoke("measure usage", {"group_by": "item"}, store=store, actor="cto")["value"]
+    assert value["total"]["candidates"] == 1
+    assert value["total"]["usage"]["tokens"]["total"] == 99
+
+
+def test_rebuilt_index_returns_identical_joined_usage(effort_store) -> None:
+    record_result_for_test(
+        effort_store.store, effort_store.task, effort={"usage": {"tokens": 5}}
+    )
+    args = {"group_by": "item"}
+    first = invoke("measure usage", args, store=effort_store.store, actor="cto")
+    effort_store.ix.close()
+    (effort_store.store / ".rail-local").mkdir(exist_ok=True)
+    invoke("reindex", {"full": True}, store=effort_store.store, actor="cto")
+    assert invoke("measure usage", args, store=effort_store.store, actor="cto") == first

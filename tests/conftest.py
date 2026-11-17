@@ -22,7 +22,7 @@ import yaml
 
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from context_rail.model.manifest import DEFAULT_MANIFEST
+from context_rail.model.manifest import DEFAULT_MANIFEST, load_manifest
 from context_rail.model.pack import Pack, load_pack
 from context_rail.model.policy import DECISION_RIGHTS, HUMAN_ONLY_IDS
 from context_rail.model.seats import SEAT_GRANTED
@@ -35,6 +35,7 @@ from helpers import (
     approve_store,
     as_human,
     compiled_model,
+    init_result_store,
     init_store,
     require_git_identity,
     run_git,
@@ -1454,6 +1455,28 @@ def measure_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
     index.sync()
     try:
         yield SimpleNamespace(store=store, ix=index, pack=pack)
+    finally:
+        index.close()
+
+
+@pytest.fixture
+def effort_store(tmp_path: Path) -> Iterator[SimpleNamespace]:
+    """A result-contract store with one task, for joining candidate and result effort."""
+    store = init_result_store(tmp_path / "proj")
+    phase = invoke("add", {"preset": "phase", "title": "Phase"}, store=store, actor="cto")
+    assert is_ok(phase), phase
+    added = invoke(
+        "add",
+        {"preset": "task", "title": "Task", "rel": [f"part_of={phase['value']['slug']}"]},
+        store=store,
+        actor="cto",
+    )
+    assert is_ok(added), added
+    manifest = load_manifest(store)
+    index = Index.open(store, load_pack(manifest.pack, store))
+    index.sync()
+    try:
+        yield SimpleNamespace(store=store, ix=index, task=added["value"]["slug"])
     finally:
         index.close()
 

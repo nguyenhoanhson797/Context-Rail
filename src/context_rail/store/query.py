@@ -1490,7 +1490,7 @@ def digest_rows(
             "reviews": {"approve": review_approve, "reject": review_reject},
             "candidates": {"accepted": accepted, "rejected": rejected, "pending": pending},
         },
-        "usage": _visible_usage(_candidate_usages(ix, clause, params)),
+        "usage": _visible_usage(_effort_usages(ix, since)),
         "candidates": ledger(ix, since=since, limit=limit)["candidates"],
         "reports": reports,
         "items": _item_rows(ix, limit),
@@ -1808,6 +1808,14 @@ def _candidate_clause(
 def _usage_of(data_json: str) -> dict[str, Any]:
     usage = json.loads(data_json).get("usage")
     return usage if isinstance(usage, dict) else {}
+
+
+def _effort_usages(ix: Index, since: str | None) -> list[dict[str, Any]]:
+    """Usage per attempt in the window: a bound result supplies its candidate's effort."""
+    from context_rail.store.measure import effort_samples
+
+    samples, _ = effort_samples(ix, since=since)
+    return [dict(sample.usage) for sample in samples]
 
 
 def _candidate_usages(ix: Index, clause: str, params: Sequence[Any]) -> list[dict[str, Any]]:

@@ -20,7 +20,11 @@ from context_rail.model.errors import ModelError
 from context_rail.model.pack import effective_measurement_min_runs, load_pack
 from context_rail.store import query
 from context_rail.store.query import record_data
-from context_rail.store.measure import candidates_for_versions, candidates_in_window, reports_after_boundary
+from context_rail.store.measure import (
+    candidates_for_versions,
+    effort_samples,
+    reports_after_boundary,
+)
 from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:  # imported lazily by the gateway only when a measure tool runs
@@ -36,8 +40,10 @@ LIMITATIONS = (
 )
 USAGE_NOTE = (
     " Rows are not additive: a candidate pinned to several skills appears in each"
-    " skill row, and only the total counts every candidate once. Tokens, credits"
-    " and cost are whatever the tool reported; an unknown counter is never zero."
+    " skill row, and only the total counts every attempt once. A result bound to a"
+    " commit supplies that attempt's effort; a result with no commit is its own"
+    " pending attempt. Tokens, requests and every other counter are whatever the"
+    " tool reported; an unknown counter is never zero."
 )
 
 
@@ -124,7 +130,7 @@ def measure_usage(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, A
         refused = read_refusal(ctx, item)
         if refused is not None:
             raise refused
-    samples, exclusions = candidates_in_window(
+    samples, exclusions = effort_samples(
         ctx.index, item=item, since=args["since"], until=args["until"]
     )
     outside_reach = 0
