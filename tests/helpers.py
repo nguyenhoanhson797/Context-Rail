@@ -379,6 +379,7 @@ def write_attempt(
     duration_s: float = 60.0,
     attempt: int = 1,
     seat_role: str | None = None,
+    harness: str | None = None,
     at: str = "2026-10-28T12:00:00Z",
     actor: str = "dev",
 ) -> Path:
@@ -389,6 +390,8 @@ def write_attempt(
     ]
     sha = commit or (record_id.encode().hex() + "0" * 40)[:40]
     extra: dict[str, Any] = {} if seat_role is None else {"seat_role": seat_role}
+    if harness is not None:
+        extra["harness"] = harness
     return write_candidate(
         store,
         record_id,

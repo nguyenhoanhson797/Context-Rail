@@ -6,6 +6,7 @@ import json
 import math
 from collections.abc import Sequence
 from pathlib import PurePosixPath
+from typing import Any
 
 from context_rail.kernel.measurement import AttemptSample, ReportSample
 from context_rail.model.candidate import UNKNOWN_USAGE, parse_usage_map
@@ -48,6 +49,55 @@ def candidates_for_versions(
             continue
         sample, malformed = _sample(
             record_id, item, data, _outcome(verdicts.get((item, commit)), commit in failed)
+        )
+        if malformed:
+            excluded["malformed"] += 1
+        samples.append(sample)
+    return samples, excluded
+
+
+def candidates_in_window(
+    ix: Index,
+    *,
+    item: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+) -> tuple[list[AttemptSample], dict[str, int]]:
+    """Every recorded candidate in one window, with the identity it reported.
+
+    The item and the window narrow the SQL selection; ``_in_window`` still
+    decides, so a stamp the index cannot read is excluded rather than compared.
+    """
+    ix.sync()
+    clause = "1=1"
+    params: list[Any] = []
+    if item is not None:
+        clause += " AND item = ?"
+        params.append(item)
+    if since is not None:
+        clause += " AND at >= ?"
+        params.append(since)
+    if until is not None:
+        clause += " AND at <= ?"
+        params.append(until)
+    excluded = {"out_of_window": 0, "malformed": 0}
+    verdicts = _latest_verdicts(ix)
+    failed = _failed_commits(ix)
+    rows = ix.conn.execute(
+        "SELECT record_id, item, commit_sha, at, data_json FROM candidates "
+        f"WHERE {clause} ORDER BY record_id",
+        params,
+    ).fetchall()
+    samples: list[AttemptSample] = []
+    for record_id, owner, commit, at, data_json in rows:
+        if not _in_window(at, since, until):
+            excluded["out_of_window"] += 1
+            continue
+        sample, malformed = _sample(
+            record_id,
+            owner,
+            _json_object(data_json),
+            _outcome(verdicts.get((owner, commit)), commit in failed),
         )
         if malformed:
             excluded["malformed"] += 1
@@ -183,6 +233,8 @@ def _sample(
         attempt=attempt if isinstance(attempt, int) and not isinstance(attempt, bool) else None,
         duration_s=duration,
         item=item,
+        harness=data.get("harness") if isinstance(data.get("harness"), str) else None,
+        profile=data.get("profile") if isinstance(data.get("profile"), str) else None,
     )
     return sample, malformed
 
