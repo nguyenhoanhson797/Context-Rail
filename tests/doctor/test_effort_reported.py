@@ -50,3 +50,32 @@ def test_silence_warns_once_and_never_blocks_the_gate(effort_store) -> None:
     assert gate["ok"], gate
     assert gate["value"]["counts"]["warning"] >= 1
     assert gate["value"]["counts"]["error"] == 0
+
+
+def test_the_warning_is_not_limited_to_an_alphabetical_first_twenty(effort_store) -> None:
+    store = effort_store.store
+    for number in range(20):
+        added = invoke(
+            "add",
+            {
+                "preset": "task",
+                "title": f"Alpha {number}",
+                "rel": ["part_of=phase"],
+            },
+            store=store,
+            actor="cto",
+        )
+        assert added["ok"], added
+        record_result_for_test(
+            store, added["value"]["slug"], effort={"usage": {"tokens": 1}}
+        )
+    added = invoke(
+        "add",
+        {"preset": "task", "title": "Zulu research", "rel": ["part_of=phase"]},
+        store=store,
+        actor="cto",
+    )
+    assert added["ok"], added
+    record_result_for_test(store, added["value"]["slug"])
+
+    assert [issue["details"]["item"] for issue in _issues(store)] == ["zulu-research"]

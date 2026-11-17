@@ -124,7 +124,6 @@ _APPROVE = (
 )
 _RELOCATE = "rail change repath"
 _TRIAGE = "rail loop triage"
-_EFFORT_ITEM_CAP = 20
 _EFFORT_FIX = (
     "state the effort in the result body's leading block (duration_s, "
     "usage: {tokens: ..., requests: ...}), or usage: {tokens: unknown} when the "
@@ -1247,8 +1246,7 @@ def _effort_issues(context: Any, ix: Index) -> list[dict[str, Any]]:
 
     items = ix.conn.execute(
         "SELECT DISTINCT item FROM results WHERE valid = 1 AND item IS NOT NULL "
-        "AND outcome = 'completed' ORDER BY item LIMIT ?",
-        (_EFFORT_ITEM_CAP,),
+        "AND outcome = 'completed' ORDER BY item"
     ).fetchall()
     issues: list[dict[str, Any]] = []
     for (item,) in items:
