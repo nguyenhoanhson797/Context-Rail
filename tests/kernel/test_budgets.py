@@ -163,3 +163,23 @@ def test_too_long_without_a_cap_is_empty():
     candidates = many(90, seconds=90_000.0)
     assert too_long(items, candidates, {}) == ()
     assert too_long(items, candidates, {"item": {"attempts": None, "seconds": None}}) == ()
+
+
+def test_joined_effort_adds_time_and_tokens_but_not_attempts():
+    candidates = (cand(seconds=10.0, tokens=100),)
+    effort = (*candidates, cand(seconds=30.0, tokens=50))
+    assert budget_state(candidates, Budget({"attempts": 1}), 0.8, effort=effort).state == "near"
+    assert budget_state(candidates, Budget({"seconds": 35}), 0.8).state == "ok"
+    assert budget_state(candidates, Budget({"seconds": 35}), 0.8, effort=effort).state == "exceeded"
+    assert budget_state(candidates, Budget({"tokens": 140}), 0.8).state == "ok"
+    assert budget_state(candidates, Budget({"tokens": 140}), 0.8, effort=effort).state == "exceeded"
+
+
+def test_unknown_effort_stays_unknown_and_the_default_is_unchanged():
+    candidates = (cand(seconds=10.0, tokens=100),)
+    effort = (*candidates, cand(seconds=None, tokens="unknown"))
+    caps = Budget({"seconds": 100, "tokens": 1000})
+    state = budget_state(candidates, caps, 0.8, effort=effort)
+    assert state.unknown == {"seconds": 1, "tokens": 1}
+    assert state.state == "ok"
+    assert budget_state(candidates, caps, 0.8) == budget_state(candidates, caps, 0.8, effort=candidates)

@@ -98,9 +98,19 @@ def usage_totals(usages: Sequence[Mapping[str, Any]]) -> UsageTotals:
 
 
 def budget_state(
-    candidates: Sequence[CandidateFacts], budget: Budget, near_ratio: float
+    candidates: Sequence[CandidateFacts],
+    budget: Budget,
+    near_ratio: float,
+    *,
+    effort: Sequence[CandidateFacts] | None = None,
 ) -> BudgetState:
-    """The item's budget state: exceeded only strictly above a non-null cap."""
+    """The item's budget state: exceeded only strictly above a non-null cap.
+
+    ``attempts`` counts candidates, so a retry of code work keeps its meaning.
+    Time and usage counters sum ``effort`` when it is given, which also covers
+    work that produced no commit.
+    """
+    spent = candidates if effort is None else effort
     state = "ok"
     reasons: list[str] = []
     unknown: dict[str, int] = {}
@@ -110,13 +120,13 @@ def budget_state(
         if name == "attempts":
             used: int | float = len(candidates)
         elif name == "seconds":
-            durations = [_known_number(item.duration_s) for item in candidates]
+            durations = [_known_number(item.duration_s) for item in spent]
             used = sum(value for value in durations if value is not None)
             missing = sum(1 for value in durations if value is None)
             if missing:
                 unknown[name] = missing
         else:
-            counters = [_known_number(item.usage.get(name, UNKNOWN)) for item in candidates]
+            counters = [_known_number(item.usage.get(name, UNKNOWN)) for item in spent]
             used = sum(value for value in counters if value is not None)
             missing = sum(1 for value in counters if value is None)
             if missing:
