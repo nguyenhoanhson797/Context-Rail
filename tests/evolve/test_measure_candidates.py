@@ -140,6 +140,22 @@ def test_two_results_on_one_commit_do_not_double_count(effort_store) -> None:
     assert samples[0].usage == {"tokens": 30}
 
 
+def test_two_candidates_on_one_commit_count_the_result_once(effort_store) -> None:
+    store, task = effort_store.store, effort_store.task
+    write_attempt(
+        store, "cand-a-old", item=task, commit="2" * 40, actor="implementer", usage={"tokens": 10}
+    )
+    write_attempt(
+        store, "cand-b-new", item=task, commit="2" * 40, actor="implementer", usage={"tokens": 20}
+    )
+    record_result_for_test(store, task, commit="2" * 40, effort={"usage": {"tokens": 99}})
+    samples, _ = effort_samples(effort_store.ix)
+    by_id = {sample.attempt_id: sample for sample in samples}
+    assert len(samples) == 2
+    assert by_id["cand-a-old"].usage == {"tokens": 10}
+    assert by_id["cand-b-new"].usage == {"tokens": 99}
+
+
 def test_a_result_outside_the_window_is_excluded(effort_store) -> None:
     store, task = effort_store.store, effort_store.task
     write_attempt(store, "cand-effort-1", item=task, commit="1" * 40, actor="implementer", at="2026-10-28T12:00:00Z")

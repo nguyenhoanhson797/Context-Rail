@@ -108,7 +108,8 @@ def effort_samples(
     A result bound to a candidate commit supplies that attempt's effort, field by
     field; a result with no commit is its own pending attempt. The join key is the
     commit, never the attempt ordinal, which the two tables number independently,
-    and one commit is never counted twice.
+    and the newest candidate of a commit receives its result's effort, so one
+    commit's numbers are never counted twice.
     """
     samples, excluded = candidates_in_window(ix, item=item, since=since, until=until)
     clause, params = _window(item, since, until)
@@ -119,11 +120,11 @@ def effort_samples(
             params,
         )
     }
-    positions: dict[tuple[str, str], list[int]] = {}
+    positions: dict[tuple[str, str], int] = {}
     for index, sample in enumerate(samples):
         key = commits.get(sample.attempt_id)
         if key is not None:
-            positions.setdefault(key, []).append(index)
+            positions[key] = index
     valid_clause, valid_params = _window(item, since, until, base="valid = 1")
     rows = ix.conn.execute(
         "SELECT record_id, item, candidate_commit, at, data_json FROM results "
@@ -138,10 +139,9 @@ def effort_samples(
         reported, malformed = _sample(record_id, owner, data, None)
         if malformed:
             excluded["malformed"] += 1
-        targets = positions.get((owner, commit)) if commit else None
-        if targets:
-            for index in targets:
-                samples[index] = _merge_effort(samples[index], reported, data)
+        target = positions.get((owner, commit)) if commit else None
+        if target is not None:
+            samples[target] = _merge_effort(samples[target], reported, data)
             continue
         samples.append(reported)
     return samples, excluded
