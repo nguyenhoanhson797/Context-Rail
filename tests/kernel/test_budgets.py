@@ -165,6 +165,14 @@ def test_too_long_without_a_cap_is_empty():
     assert too_long(items, candidates, {"item": {"attempts": None, "seconds": None}}) == ()
 
 
+def test_too_long_counts_candidates_and_joined_seconds():
+    items = (plan_item("research"),)
+    effort = (cand("research", seconds=7201.0),)
+    caps = {"item": {"attempts": None, "seconds": 7200}}
+    assert too_long(items, (), caps) == ()
+    assert too_long(items, (), caps, effort=effort) == ("research",)
+
+
 def test_joined_effort_adds_time_and_tokens_but_not_attempts():
     candidates = (cand(seconds=10.0, tokens=100),)
     effort = (*candidates, cand(seconds=30.0, tokens=50))

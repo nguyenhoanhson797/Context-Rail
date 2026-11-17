@@ -189,13 +189,16 @@ def too_long_rows(
     items: Sequence[structure.ItemRow],
     titles: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """Every open Item whose recorded candidates or time exceed the item budget."""
+    """Every open Item whose recorded candidates or joined effort exceed the item budget."""
     policy = context.policy
     caps: dict[str, Any] = {} if policy is None else policy.budgets
     facts_by_item: dict[str, list[budgets.CandidateFacts]] = {}
     for fact in query.candidate_facts(context.index):
         facts_by_item.setdefault(fact.item, []).append(fact)
-    if not facts_by_item:
+    effort_by_item: dict[str, list[budgets.CandidateFacts]] = {}
+    for fact in budget_module.effort_facts(context.index):
+        effort_by_item.setdefault(fact.item, []).append(fact)
+    if not facts_by_item and not effort_by_item:
         return []
     facts = [
         budgets.ItemFacts(
@@ -207,19 +210,21 @@ def too_long_rows(
         for item in items
     ]
     candidates = [fact for owned in facts_by_item.values() for fact in owned]
+    effort = [fact for owned in effort_by_item.values() for fact in owned]
     cap = budget_module.item_caps(policy)
     ratio = budget_module.near_ratio(policy)
     rows: list[dict[str, Any]] = []
-    for slug in budgets.too_long(facts, candidates, caps):
+    for slug in budgets.too_long(facts, candidates, caps, effort=effort):
         own = facts_by_item.get(slug, [])
-        state = budgets.budget_state(own, cap, ratio)
+        own_effort = effort_by_item.get(slug, [])
+        state = budgets.budget_state(own, cap, ratio, effort=own_effort)
         rows.append(
             {
                 "slug": slug,
                 "title": titles.get(slug, slug),
                 "attempts": len(own),
                 "seconds": sum(
-                    value for value in (fact.duration_s for fact in own) if value is not None
+                    value for value in (fact.duration_s for fact in own_effort) if value is not None
                 ),
                 "reasons": list(state.reasons),
             }

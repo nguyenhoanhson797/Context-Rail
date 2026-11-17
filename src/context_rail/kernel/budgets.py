@@ -141,8 +141,14 @@ def too_long(
     items: Sequence[ItemFacts],
     candidates: Sequence[CandidateFacts],
     budgets: Mapping[str, Any],
+    *,
+    effort: Sequence[CandidateFacts] | None = None,
 ) -> tuple[str, ...]:
-    """Open and blocked items whose candidates or recorded time exceed the item cap."""
+    """Open and blocked items whose candidates or recorded time exceed the item cap.
+
+    Attempts count candidates; seconds sum ``effort`` when it is given, so work
+    whose only record is a commitless result still shows as too long.
+    """
     caps = _item_caps(budgets)
     attempt_cap = caps.get("attempts")
     second_cap = caps.get("seconds")
@@ -152,9 +158,11 @@ def too_long(
     seconds: dict[str, float] = {}
     for candidate in candidates:
         attempts[candidate.item] = attempts.get(candidate.item, 0) + 1
-        spent = _known_number(candidate.duration_s)
+    spent_facts = candidates if effort is None else effort
+    for fact in spent_facts:
+        spent = _known_number(fact.duration_s)
         if spent is not None:
-            seconds[candidate.item] = seconds.get(candidate.item, 0.0) + spent
+            seconds[fact.item] = seconds.get(fact.item, 0.0) + spent
     long_items = [
         item.slug
         for item in items

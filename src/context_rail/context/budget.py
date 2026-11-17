@@ -1,4 +1,4 @@
-"""The budget position of an item, read from the candidates recorded for it."""
+"""The budget position of an item, read from candidates and the joined effort."""
 
 from __future__ import annotations
 
@@ -11,7 +11,14 @@ from context_rail.store import query
 from context_rail.store.index import Index
 from context_rail.store.measure import effort_samples
 
-__all__ = ["NEAR_RATIO_DEFAULT", "item_budget", "item_caps", "items_over_budget", "near_ratio"]
+__all__ = [
+    "NEAR_RATIO_DEFAULT",
+    "effort_facts",
+    "item_budget",
+    "item_caps",
+    "items_over_budget",
+    "near_ratio",
+]
 
 NEAR_RATIO_DEFAULT = 0.8
 
@@ -34,7 +41,7 @@ def item_caps(policy: Any, extra: Mapping[str, Any] | None = None) -> budgets.Bu
     return budgets.Budget(caps)
 
 
-def _effort_facts(index: Index, slug: str | None = None) -> list[budgets.CandidateFacts]:
+def effort_facts(index: Index, slug: str | None = None) -> list[budgets.CandidateFacts]:
     """Joined candidate and result effort, as the budget rules read it."""
     samples, _ = effort_samples(index, item=slug)
     return [
@@ -52,7 +59,7 @@ def item_budget(
         facts,
         item_caps(policy, extra),
         near_ratio(policy),
-        effort=_effort_facts(index, slug),
+        effort=effort_facts(index, slug),
     )
 
 
@@ -65,7 +72,7 @@ def items_over_budget(index: Index, policy: Any) -> dict[str, budgets.BudgetStat
     for fact in query.candidate_facts(index):
         grouped.setdefault(fact.item, []).append(fact)
     effort: dict[str, list[budgets.CandidateFacts]] = {}
-    for fact in _effort_facts(index):
+    for fact in effort_facts(index):
         effort.setdefault(fact.item, []).append(fact)
     for slug in effort:
         grouped.setdefault(slug, [])
