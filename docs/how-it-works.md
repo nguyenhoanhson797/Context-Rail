@@ -205,10 +205,40 @@ and exits `0` / `1` / `2`. Global flags: `rail --store <path> --actor <who> --se
 | Find broken references | `rail ops doctor` |
 | Check gates | `rail gate` |
 | Hand out work | `rail loop brief <item> --role implementer` |
+| See what work cost | `rail ops measure usage --group-by model` |
 | Approve a pack | `rail --actor human approve pack:<name> ...` |
 
 Former flat names (`status`, `brief`, `review`, `ci`, …) still work;
 `rail <group> --help` is the grouped surface.
+
+## What work cost
+
+The rail records effort; it never measures it. A candidate carries what the
+tool reported:
+
+```bash
+rail loop candidate <item> --commit HEAD --model <name> --harness <tool> \
+  --duration 5400 --usage tokens=152000 --usage requests=42
+```
+
+`rail ops measure usage --group-by item|model|harness|role|profile|skill` rolls
+those candidates up over a window (`--item`, `--since`, `--until`, `--limit`).
+Each row reports candidates, pending, pass rate, mean attempts, mean duration
+and usage totals; `total` covers the whole window. Rows are not additive: a
+candidate pinned to two skills appears in both skill rows, and only `total`
+counts it once.
+
+`rail read digest` and `rail read ledger` show the same usage with unknown
+counters kept apart, and the charter's `budgets` turn it into an
+ok / near / exceeded state. A budget warns; the rail never refuses work for
+being over budget. `rail ops measure versions` compares two versions of a skill
+or profile, and `rail ops measure fix` asks whether a resolved fix's reports
+came back.
+
+What this is not: no live timer, no token meter and no price table. Duration,
+tokens and cost exist only because a tool reported them; anything unreported
+stays `unknown` and is never counted as zero. Measurement is observational: it
+never applies a change and never rolls one back.
 
 ## Surfaces
 

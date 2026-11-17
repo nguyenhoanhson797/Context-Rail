@@ -197,6 +197,8 @@ rail ops rollback --target-class skill|profile --target PATH --version N
 rail ops measure versions --target-class skill|profile --target NAME
                           --before N --after N [--since ISO] [--until ISO]
 rail ops measure fix --item SLUG [--until ISO]
+rail ops measure usage --group-by item|model|harness|role|profile|skill
+                       [--item SLUG] [--since ISO] [--until ISO] [--limit N]
 rail ops codegraph setup|refresh|status
 rail --actor human ops codegraph adopt [--dry-run]
 rail ops sync [--remote NAME] [--branch NAME] [--key KEY]
@@ -251,7 +253,7 @@ MCP clients see the canonical table, generated from the same source as the CLI:
 | Change | `add`, `update`, `move`, `link`, `rename`, `relocate`, `do` |
 | Proof | `check`, `verify` |
 | Loop | `brief`, `result`, `candidate`, `review`, `report`, `triage` |
-| Ops | `doctor`, `ci`, `reindex`, `rollback`, `pack list`, `pack show`, `pack validate`, `pack create`, `pack use`, `measure versions`, `measure fix`, `codegraph setup`, `codegraph refresh`, `codegraph status`, `codegraph adopt`, `sync`, `sync driver`, `adapters sync` |
+| Ops | `doctor`, `ci`, `reindex`, `rollback`, `pack list`, `pack show`, `pack validate`, `pack create`, `pack use`, `measure versions`, `measure fix`, `measure usage`, `codegraph setup`, `codegraph refresh`, `codegraph status`, `codegraph adopt`, `sync`, `sync driver`, `adapters sync` |
 | Seats | `seat list`, `seat grant`, `seat revoke`, `seat open`, `seat close`, `seat show` |
 | Transports | `mcp serve`, `ui serve`, `serve daemon` |
 

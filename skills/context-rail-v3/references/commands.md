@@ -157,6 +157,8 @@ rail ops rollback --target-class skill|profile --target PATH --version N --expec
 rail ops measure versions --target-class skill|profile --target NAME
                           --before N --after N [--since ISO] [--until ISO]
 rail ops measure fix --item SLUG [--until ISO]
+rail ops measure usage --group-by item|model|harness|role|profile|skill
+                       [--item SLUG] [--since ISO] [--until ISO] [--limit N]
 rail ops sync [--remote NAME] [--branch NAME]
 rail ops sync install
 rail ops adapters render [--harness agents|claude|cursor|gemini]... [--dry-run]
