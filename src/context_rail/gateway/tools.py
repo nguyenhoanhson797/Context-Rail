@@ -451,9 +451,9 @@ TOOLS: tuple[Tool, ...] = (
         permission="read",
         params=(
             Param("group_by", "str", required=True, help="item, model, harness, role, profile or skill"),
-            Param("item", "str", help="Item slug: only its candidates"),
-            Param("since", "str", help="UTC timestamp: candidates from then on"),
-            Param("until", "str", help="UTC timestamp: candidates until then"),
+            Param("item", "str", help="Item slug: only its attempts"),
+            Param("since", "str", help="UTC timestamp: attempts from then on"),
+            Param("until", "str", help="UTC timestamp: attempts until then"),
             Param("limit", "int", default=20, help="rows (1-100)"),
         ),
         handler="context_rail.gateway.handlers.measure:measure_usage",

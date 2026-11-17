@@ -252,12 +252,12 @@ and usage totals; `total` covers the whole window. Rows are not additive: a
 candidate pinned to two skills appears in both skill rows, and only `total`
 counts it once.
 
-`rail read digest` and `rail read ledger` show the same usage with unknown
-counters kept apart, and the charter's `budgets` turn it into an
-ok / near / exceeded state. A budget warns; the rail never refuses work for
-being over budget. `rail ops measure versions` compares two versions of a skill
-or profile, and `rail ops measure fix` asks whether a resolved fix's reports
-came back.
+`rail read digest` shows the same joined usage with unknown counters kept
+apart; `rail read ledger` stays the candidate trail. The charter's `budgets`
+turn the joined effort into an ok / near / exceeded state. A budget warns; the
+rail never refuses work for being over budget. `rail ops measure versions`
+compares two versions of a skill or profile, and `rail ops measure fix` asks
+whether a resolved fix's reports came back.
 
 Record proportionately: navigation is not recorded; a conclusion that will be
 reused or will change a decision is a `task` plus a commitless result naming
