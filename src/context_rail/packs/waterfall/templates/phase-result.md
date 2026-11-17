@@ -1,3 +1,10 @@
+---
+# Effort the harness reported. Replace unknown with a real number; never guess.
+usage: {tokens: unknown, requests: unknown}
+# duration_s: 5400
+# model: the model that did the work
+# harness: the tool that ran it
+---
 # {title}
 
 ## Summary

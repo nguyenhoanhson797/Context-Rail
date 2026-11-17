@@ -502,3 +502,15 @@ def test_shipped_profiles_and_skills_carry_cto_mandate_and_result_guidance(
     pack_dir = Path(str(resources.files("context_rail").joinpath("packs", pack_name)))
     pack = load_pack(pack_name, pack_dir)
     assert result_template_problems(pack, pack_dir) == []
+
+
+def test_every_producer_result_template_carries_a_parseable_effort_block() -> None:
+    from context_rail.model.results import parse_effort_block
+
+    root = Path(__file__).resolve().parents[2] / "src" / "context_rail" / "packs"
+    templates = sorted(p for p in root.rglob("*result*.md") if "review" not in p.name)
+    assert templates
+    for path in templates:
+        effort = parse_effort_block(path.read_text(encoding="utf-8"))
+        assert "usage" in effort, path
+        assert all(value == "unknown" for value in effort["usage"].values()), path
