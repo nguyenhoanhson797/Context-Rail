@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from context_rail.core.util import canonical_iso, sha256_hex
-from context_rail.model.candidate import TEXT_CAP
+import yaml
+
+from context_rail.core.util import canonical_iso, load_yaml, sha256_hex
+from context_rail.model.candidate import TEXT_CAP, parse_usage_map
 from context_rail.model.fields import (
     SLUG_RE,
+    finite_number,
     integer,
     mapping,
     no_unknown,
@@ -25,6 +28,7 @@ from context_rail.model.roles import is_name
 
 __all__ = [
     "ARTIFACT_KEYS",
+    "EFFORT_KEYS",
     "RESULT_ADOPTION_KIND",
     "RESULT_ADOPTION_KEYS",
     "RESULT_ADOPTION_SCHEMA",
@@ -47,6 +51,7 @@ __all__ = [
     "missing_or_unordered_headings",
     "normalize_result_body",
     "parse_artifact_spec",
+    "parse_effort_block",
     "parse_result",
     "parse_result_adoption",
     "parse_results",
@@ -95,6 +100,9 @@ REVIEW_KEYS = (
 )
 REVIEW_REQUIRED = ("schema", "item", "reviewer_actor", "verdict")
 RESULT_OUTCOMES = ("completed", "partial", "blocked", "failed")
+#: What a result body's leading effort block may name. Counters are physical
+#: units a harness can read; the rail never converts them into money.
+EFFORT_KEYS = ("duration_s", "usage", "model", "harness")
 RESULT_PAYLOAD_KEYS = (
     "schema",
     "item",
@@ -114,6 +122,8 @@ RESULT_PAYLOAD_KEYS = (
     "skills",
     "model",
     "harness",
+    "duration_s",
+    "usage",
 )
 _RESULT_REQUIRED_KEYS = (
     "schema",
@@ -186,6 +196,8 @@ class ResultPayload:
     skills: tuple[dict[str, Any], ...] = ()
     model: str | None = None
     harness: str | None = None
+    duration_s: int | float | None = None
+    usage: dict[str, int | float | str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -424,6 +436,46 @@ def result_body_hash(body: str) -> str:
     return sha256_hex(normalized.encode("utf-8"))
 
 
+def parse_effort_block(body: str) -> dict[str, Any]:
+    """The leading effort block of a result body, validated; ``{}`` when absent.
+
+    Only a block at the very start is effort; a later ``---`` is prose. The block
+    stays in the body, so the hash a review binds covers the numbers too.
+    """
+    normalized = normalize_result_body(body)
+    if not normalized.startswith("---\n"):
+        return {}
+    lines = normalized.split("\n")
+    end = next(
+        (index for index in range(1, len(lines)) if lines[index].strip() in ("---", "...")),
+        None,
+    )
+    if end is None:
+        refuse("result body opens an effort block that never closes")
+    rest = "\n".join(lines[end + 1 :]).lstrip("\n")
+    if rest.startswith("---\n"):
+        refuse("result body carries a second effort block")
+    try:
+        raw = load_yaml("\n".join(lines[1:end]))
+    except yaml.YAMLError as exc:
+        refuse(f"result effort block is not valid YAML: {exc}")
+    if raw is None:
+        return {}
+    entry = mapping(raw, "result.effort")
+    no_unknown(entry, EFFORT_KEYS, "result.effort")
+    effort: dict[str, Any] = {}
+    if entry.get("duration_s") is not None:
+        effort["duration_s"] = finite_number(
+            entry["duration_s"], "result.effort.duration_s", minimum=0
+        )
+    if "usage" in entry:
+        effort["usage"] = parse_usage_map(entry["usage"], "result.effort.usage")
+    for key in ("model", "harness"):
+        if entry.get(key) is not None:
+            effort[key] = _optional_text(entry[key], f"result.effort.{key}")
+    return effort
+
+
 def _extract_h2_sections(text: str) -> list[tuple[str, str]]:
     """Extract ordered ``(heading, section_body)`` pairs outside backtick/tilde fences."""
     normalized = normalize_result_body(text)
@@ -545,6 +597,10 @@ def parse_result(payload: Mapping[str, Any]) -> ResultPayload:
     skills = _skill_pins(data.get("skills", []))
     model = _optional_text(data.get("model"), "result.model")
     harness = _optional_text(data.get("harness"), "result.harness")
+    duration_s: int | float | None = None
+    if data.get("duration_s") is not None:
+        duration_s = finite_number(data["duration_s"], "result.duration_s", minimum=0)
+    usage = parse_usage_map(data.get("usage", {}), "result.usage")
 
     return ResultPayload(
         schema=schema,
@@ -565,6 +621,8 @@ def parse_result(payload: Mapping[str, Any]) -> ResultPayload:
         skills=skills,
         model=model,
         harness=harness,
+        duration_s=duration_s,
+        usage=usage,
     )
 
 

@@ -32,6 +32,7 @@ from context_rail.model.results import (
     ResultProtocol,
     ResultSelection,
     extract_markdown_h2_headings,
+    parse_effort_block,
     parse_result,
     parse_results,
     result_body_hash,
@@ -886,4 +887,84 @@ def test_parse_result_payload_validates_fields_and_refuses_unknown_keys() -> Non
     ):
         with pytest.raises(ModelError):
             parse_result(bad)
+
+
+_EFFORT_BODY = (
+    "---\n"
+    "duration_s: 5400\n"
+    "usage: {tokens: 152000, requests: 42}\n"
+    "model: m1\n"
+    "harness: opencode\n"
+    "---\n"
+    "## Summary\nDone.\n"
+)
+
+
+def test_parse_effort_block_reads_the_leading_block() -> None:
+    assert parse_effort_block(_EFFORT_BODY) == {
+        "duration_s": 5400,
+        "usage": {"tokens": 152000, "requests": 42},
+        "model": "m1",
+        "harness": "opencode",
+    }
+    assert parse_effort_block(_EFFORT_BODY.replace("\n", "\r\n")) == parse_effort_block(_EFFORT_BODY)
+
+
+def test_no_block_or_a_later_block_is_not_effort() -> None:
+    assert parse_effort_block("## Summary\nDone.\n") == {}
+    assert parse_effort_block("## Summary\nDone.\n\n---\nusage: {tokens: 5}\n---\n") == {}
+    assert parse_effort_block("---\n---\n## Summary\nDone.\n") == {}
+
+
+def test_an_unknown_key_or_a_second_block_is_refused() -> None:
+    for body in (
+        "---\ncost_usd: 1.2\n---\n## Summary\nx\n",
+        "---\nusage: {tokens: 1}\n---\n---\nusage: {tokens: 2}\n---\n## Summary\nx\n",
+        "---\nusage: {tokens: 1}\n## Summary\nx\n",
+    ):
+        with pytest.raises(ModelError):
+            parse_effort_block(body)
+
+
+def test_invalid_effort_values_are_refused_and_unknown_is_kept() -> None:
+    for body in (
+        "---\nusage: [1, 2\n---\n## Summary\nx\n",
+        "---\nusage: {Tokens: 5}\n---\n## Summary\nx\n",
+        "---\nusage: {tokens: -1}\n---\n## Summary\nx\n",
+        "---\nusage: {tokens: abc}\n---\n## Summary\nx\n",
+        "---\nduration_s: -5\n---\n## Summary\nx\n",
+        "---\nduration_s: soon\n---\n## Summary\nx\n",
+        "---\nmodel: 7\n---\n## Summary\nx\n",
+    ):
+        with pytest.raises(ModelError):
+            parse_effort_block(body)
+    assert parse_effort_block("---\nusage: {tokens: unknown}\n---\n## Summary\nx\n") == {
+        "usage": {"tokens": "unknown"}
+    }
+
+
+def test_parse_result_carries_effort_and_refuses_an_invalid_map() -> None:
+    parsed = parse_result(_valid_result_payload(duration_s=60, usage={"tokens": 10}))
+    assert parsed.duration_s == 60
+    assert parsed.usage == {"tokens": 10}
+    assert parse_result(_valid_result_payload()).usage == {}
+    assert parse_result(_valid_result_payload()).duration_s is None
+    for bad in (
+        _valid_result_payload(usage={"tokens": -1}),
+        _valid_result_payload(usage={"Tokens": 1}),
+        _valid_result_payload(duration_s=-1),
+        _valid_result_payload(duration_s="soon"),
+    ):
+        with pytest.raises(ModelError):
+            parse_result(bad)
+
+
+def test_an_effort_block_does_not_disturb_the_section_contract() -> None:
+    sections = ("Summary", "Findings", "Evidence", "Next steps")
+    body = (
+        "---\nusage: {tokens: 10}\n---\n"
+        "## Summary\nOk.\n## Findings\nNone.\n## Evidence\nLogs.\n## Next steps\nDone.\n"
+    )
+    validate_result_body(body, sections)
+    assert result_body_hash(body) == result_body_hash(body.replace("\n", "\r\n"))
 
