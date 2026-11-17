@@ -118,6 +118,7 @@ def test_a_sprint_and_a_bug_run_their_own_workflows(tmp_path: Path) -> None:
         bug["slug"],
         actor="cto",
         outcome="completed",
+        effort={"usage": {"tokens": 10, "requests": 1}},
         commit=invoke(
             "ledger",
             {"item": bug["slug"]},
@@ -139,11 +140,15 @@ def test_a_sprint_and_a_bug_run_their_own_workflows(tmp_path: Path) -> None:
 
     for status in ("doing", "done"):
         if status == "done":
-            record_result_for_test(store, task["slug"], actor="cto")
+            record_result_for_test(
+                store, task["slug"], actor="cto", effort={"usage": {"tokens": 10, "requests": 1}}
+            )
         moved = _move(store, task["slug"], status)
         assert is_ok(moved), moved
 
-    record_result_for_test(store, sprint["slug"], actor="cto")
+    record_result_for_test(
+        store, sprint["slug"], actor="cto", effort={"usage": {"tokens": 10, "requests": 1}}
+    )
     closed = invoke(
         "do",
         {"action": "close-sprint", "item": sprint["slug"], "etag": _etag(store, sprint["slug"])},
