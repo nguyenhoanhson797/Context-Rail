@@ -1,4 +1,5 @@
-"""Check freshness from the index and file stats: never git, never a source hash."""
+"""Check freshness from the index and file stats: the reader never runs git or
+hashes a source; a racy input may be content-verified by a caller-supplied bound."""
 
 from __future__ import annotations
 
@@ -192,6 +193,57 @@ def test_racy_timestamps_never_prove_fresh(tmp_path: Path) -> None:
     assert observed.st_size == entry.size
     assert observed.st_mtime_ns != recorded
     assert _freshness(root, snapshot, verdict, check) in {"unknown", "stale"}
+
+
+def _racy_repo(tmp_path: Path, name: str) -> tuple[Path, IndexSnapshot, dict, dict]:
+    """A committed repo whose index write time equals its input's mtime."""
+    root = tmp_path / name
+    _commit_repo(root, {"src/a.py": "aaaa\n"})
+    snapshot = read_index(root / ".git", root)
+    entry = snapshot.entries["src/a.py"]
+    recorded = entry.mtime_s * 1_000_000_000 + entry.mtime_ns
+    os.utime(root / ".git" / "index", ns=(recorded, recorded))
+    git_index.clear_snapshot_cache()
+    racy = read_index(root / ".git", root)
+    assert racy.written_at == recorded
+    verdict = {"passed": True, "check_etag": "etag-current", "input_blobs": {"src/a.py": entry.oid}}
+    return root, racy, verdict, _check(["src/a.py"])
+
+
+def test_a_racy_input_defers_to_the_content_verifier(tmp_path: Path) -> None:
+    root, snapshot, verdict, check = _racy_repo(tmp_path, "racy-unit")
+    stats = selected_stats(root, ["src/a.py"])
+    assert freshness(verdict, check, snapshot, stats) == "unknown"
+    assert freshness(verdict, check, snapshot, stats, verify_racy=lambda p, e: True) == "fresh"
+    assert freshness(verdict, check, snapshot, stats, verify_racy=lambda p, e: False) == "stale"
+    assert freshness(verdict, check, snapshot, stats, verify_racy=lambda p, e: None) == "unknown"
+
+
+def test_freshness_of_verifies_a_racy_input_and_catches_a_same_tick_rewrite(
+    tmp_path: Path,
+) -> None:
+    from context_rail.gateway.handlers.checks import freshness_of
+
+    root, snapshot, verdict, check = _racy_repo(tmp_path, "racy-gate")
+    entry = snapshot.entries["src/a.py"]
+    recorded = entry.mtime_s * 1_000_000_000 + entry.mtime_ns
+    row = {
+        "mode": "cmd",
+        "inputs": ["src/a.py"],
+        "definition_etag": "etag-current",
+        "passed": True,
+        "verdict": verdict,
+        "check_etag": "etag-current",
+        "input_blobs": verdict["input_blobs"],
+    }
+    ctx = SimpleNamespace(store=tmp_path / "outside", manifest=None)
+    assert freshness_of(ctx, row, worktree=root) == "fresh"
+
+    target = root / "src/a.py"
+    target.write_text("bbbb\n", encoding="utf-8", newline="\n")
+    os.utime(target, ns=(recorded, recorded))
+    assert target.stat().st_size == entry.size
+    assert freshness_of(ctx, row, worktree=root) == "stale"
 
 
 def test_same_blobs_after_a_squash_stay_fresh_and_a_changed_blob_goes_stale(

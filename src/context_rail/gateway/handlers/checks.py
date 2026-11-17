@@ -9,10 +9,11 @@ proof, and nothing is ever staged to make a check pass.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -44,6 +45,7 @@ from context_rail.runner.run import run as run_command
 from context_rail.store import query
 from context_rail.store.doc import etag, parse_doc
 from context_rail.store.git_index import (
+    HASH_WIDTHS,
     GlobError,
     IndexEntry,
     IndexSnapshot,
@@ -375,12 +377,43 @@ def freshness_of(
     except GlobError:
         return "unknown"
     stats = selected_stats(worktree, matched)
-    state = freshness(verdict, definition, snapshot, stats)
+    state = freshness(
+        verdict,
+        definition,
+        snapshot,
+        stats,
+        verify_racy=_racy_content_verifier(worktree, snapshot),
+    )
     if state == "fresh":
         untracked = _untracked_state(worktree, snapshot, globs, ctx.store, ctx.manifest)
         if untracked is not None:
             return untracked
     return state
+
+
+def _racy_content_verifier(
+    worktree: Path, snapshot: IndexSnapshot
+) -> Callable[[str, IndexEntry], bool | None]:
+    """Verify a racy input's current bytes against its index OID.
+
+    The index reader never hashes; this caller-side exception reads only a
+    selected input whose stat landed in the index's own write tick, bounded by
+    the size git recorded, where a same-size rewrite is invisible to stat.
+    """
+    algo = "sha1" if snapshot.oid_width == HASH_WIDTHS["sha1"] else "sha256"
+
+    def verify(path: str, entry: IndexEntry) -> bool | None:
+        try:
+            with open(worktree / path, "rb") as handle:
+                data = handle.read(entry.size + 1)
+        except OSError:
+            return None
+        if len(data) != entry.size:
+            return False
+        header = f"blob {len(data)}\0".encode("ascii")
+        return hashlib.new(algo, header + data).hexdigest() == entry.oid
+
+    return verify
 
 
 def _review_freshness(ctx: Context, row: Mapping[str, Any]) -> str | None:

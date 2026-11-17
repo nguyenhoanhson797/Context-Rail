@@ -2,9 +2,12 @@
 
 Reads never run git and never hash a source file: paths, object IDs and stat
 data come from the index bytes, and freshness adds one stat per selected
-worktree path. Anything the reader cannot trust -- an unsupported version, a
-split or sparse index, a truncated file, an unmerged entry, an entry git
-marked skip-worktree -- becomes ``unknown``, which is never proof.
+worktree path. A racy input -- one whose stat landed in the index's own write
+tick, where a same-size rewrite is invisible to stat -- stays unknown unless
+the caller supplies a bounded content verifier that hashes just that input
+against its index OID. Anything the reader cannot trust -- an unsupported
+version, a split or sparse index, a truncated file, an unmerged entry, an entry
+git marked skip-worktree -- becomes ``unknown``, which is never proof.
 
 The reader is bounded by design. It sees the paths git recorded, so a newly
 untracked file that matches an input glob is invisible here; it also cannot
@@ -19,7 +22,7 @@ import os
 import re
 import stat as stat_module
 import struct
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -210,8 +213,16 @@ def freshness(
     check: Mapping[str, Any],
     snapshot: IndexSnapshot,
     stats: Mapping[str, tuple[int, int] | None],
+    *,
+    verify_racy: Callable[[str, IndexEntry], bool | None] | None = None,
 ) -> str:
-    """How much a recorded verdict still says about the current worktree."""
+    """How much a recorded verdict still says about the current worktree.
+
+    ``verify_racy`` may resolve an input whose stat landed in the index's write
+    tick: it returns True when the current bytes still hash to the index OID,
+    False when they differ, None when they cannot be read. Without it a racy
+    input stays unknown.
+    """
     if snapshot.unknown is not None:
         return UNKNOWN
     if verdict is None:
@@ -256,7 +267,13 @@ def freshness(
         if mtime_ns != entry_ns:
             return STALE
         if _time_is_unverifiable(mtime_ns, snapshot.written_at):
-            return UNKNOWN
+            if verify_racy is None:
+                return UNKNOWN
+            verified = verify_racy(path, entry)
+            if verified is None:
+                return UNKNOWN
+            if not verified:
+                return STALE
     return FRESH
 
 
@@ -284,7 +301,7 @@ def _time_is_unverifiable(observed_ns: int, written_at: int | None) -> bool:
     A file whose mtime is at or after the index's own write time, or whose
     timestamps carry no sub-second precision, can be rewritten without any
     stat field changing; git hashes content in that window, and this reader
-    instead refuses to call the input clean.
+    refuses to call the input clean unless a caller verifies its content.
     """
     if written_at is None:
         return True
