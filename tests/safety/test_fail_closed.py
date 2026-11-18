@@ -18,6 +18,7 @@ from helpers import run_cli
 HUMAN = {"RAIL_ACTOR": "human"}
 _REFUSED_TOOLS = (
     "approve",
+    "delegate",
     "add",
     "update",
     "move",
@@ -78,6 +79,12 @@ _REFUSED_TOOLS = (
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
+    "delegate": {
+        "to": "cto",
+        "action": ["ops upgrade"],
+        "confirm": "DELEGATE cto",
+        "expect": "0123456789abcdef",
+    },
     "add": {"preset": "task", "title": "Refused"},
     "update": {"slug": "t0", "expect": "0123456789abcdef", "set": ["estimate=1"]},
     "move": {"slug": "t0", "status": "doing", "expect": "0123456789abcdef"},
