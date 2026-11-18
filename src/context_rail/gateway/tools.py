@@ -765,14 +765,26 @@ TOOLS: tuple[Tool, ...] = (
         name="codegraph setup",
         summary="Check the code graph provider and build the first snapshot of the checkout's HEAD.",
         permission="read",
-        params=(),
+        params=(
+            Param(
+                "timeout_s",
+                "int",
+                help="seconds before extraction gives up; default 30 builtin, 120 external",
+            ),
+        ),
         handler="context_rail.gateway.handlers.codegraph:setup",
     ),
     Tool(
         name="codegraph refresh",
         summary="Build the code graph snapshot of the checkout's current HEAD when it has none.",
         permission="read",
-        params=(),
+        params=(
+            Param(
+                "timeout_s",
+                "int",
+                help="seconds before extraction gives up; default 30 builtin, 120 external",
+            ),
+        ),
         handler="context_rail.gateway.handlers.codegraph:refresh",
     ),
     Tool(

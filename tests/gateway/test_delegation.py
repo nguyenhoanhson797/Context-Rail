@@ -234,7 +234,9 @@ def test_a_seat_that_is_not_the_delegate_is_refused(role_store) -> None:
 def test_an_action_outside_the_list_is_still_human_only(role_store) -> None:
     _delegate(role_store.store, role_store.lead, ["ops adapters render"])
 
-    result = as_seat(role_store.store, role_store.lead, "upgrade", {"dry_run": True})
+    result = as_seat(
+        role_store.store, role_store.lead, "upgrade", {"confirm": "UPGRADE store"}
+    )
 
     assert not is_ok(result)
     assert refusal(result) == ("PERMISSION_DENIED", "human_channel_required")

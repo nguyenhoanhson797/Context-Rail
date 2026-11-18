@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.context import operating, surface
 from context_rail.gateway.handlers.common import read_refusal
+from context_rail.gateway.identity import ANONYMOUS
 from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:
@@ -55,6 +56,16 @@ def next(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     ):
         return _seat_next(ctx, args, identity)
     if not identity.lead:
+        if identity.kind == ANONYMOUS:
+            raise WriteRefused(
+                "PERMISSION_DENIED",
+                "this caller has no actor; pass --actor <name> or open a seat "
+                "session with `rail seat open <seat> --print-env`",
+                {
+                    "reason": "actor_required",
+                    "command": "rail seat open <seat> --print-env",
+                },
+            )
         if not args.get("item"):
             raise WriteRefused(
                 "VALIDATION_FAILED",

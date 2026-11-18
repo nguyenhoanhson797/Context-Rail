@@ -19,6 +19,7 @@ from context_rail.store.codegraph import (
     snapshot_info,
 )
 from context_rail.store.codemap import pins_code_map, semantic_fingerprint
+from context_rail.store.write import WriteRefused
 
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
@@ -73,6 +74,7 @@ def setup(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
     configured, _source = resolved(ctx.manifest, ctx.pack)
     store = Path(ctx.store)
+    timeout_s = _timeout_s(args)
     if configured in ("graphify", "gitnexus"):
         found = worktree_git_dir(store)
         head = head_sha(store)
@@ -81,13 +83,13 @@ def setup(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         record = probe(store, found[1], configured)
         if not record.get("ready", False):
             return _hinted(ctx, _status(ctx))
-        return _hinted(ctx, _build(ctx, force=True))
-    return _hinted(ctx, _build(ctx))
+        return _hinted(ctx, _build(ctx, force=True, timeout_s=timeout_s))
+    return _hinted(ctx, _build(ctx, timeout_s=timeout_s))
 
 
 def refresh(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Build the snapshot of the checkout's current HEAD when it has none."""
-    return _hinted(ctx, _build(ctx))
+    return _hinted(ctx, _build(ctx, timeout_s=_timeout_s(args)))
 
 
 def _hinted(ctx: Context, value: dict[str, Any]) -> dict[str, Any]:
@@ -140,7 +142,9 @@ def _adopt_line(report: dict[str, Any]) -> str:
     return "code map: " + ", ".join(parts)
 
 
-def _build(ctx: Context, *, force: bool = False) -> dict[str, Any]:
+def _build(
+    ctx: Context, *, force: bool = False, timeout_s: float | None = None
+) -> dict[str, Any]:
     from context_rail.runner.codegraph import ensure_snapshot
 
     configured, _source = resolved(ctx.manifest, ctx.pack)
@@ -156,6 +160,7 @@ def _build(ctx: Context, *, force: bool = False) -> dict[str, Any]:
         worktree=found[1],
         commit=head,
         configured=configured,
+        timeout_s=timeout_s,
         force=force or configured in ("graphify", "gitnexus"),
     )
     value = _status(ctx)
@@ -165,6 +170,20 @@ def _build(ctx: Context, *, force: bool = False) -> dict[str, Any]:
         if ensured.warning is not None:
             value["line"] = f"code graph: not built: {ensured.warning}"
     return value
+
+
+def _timeout_s(args: dict[str, Any]) -> float | None:
+    """The caller's extraction deadline, when it names one."""
+    value = args.get("timeout_s")
+    if value is None:
+        return None
+    if value <= 0:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "timeout_s must be positive",
+            {"timeout_s": value},
+        )
+    return float(value)
 
 
 def _not_git(ctx: Context) -> dict[str, Any]:

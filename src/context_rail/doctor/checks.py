@@ -658,6 +658,20 @@ def _broken_relations(
     return issues
 
 
+def _placement_fix(error: PlacementError) -> str | None:
+    """The repair a placement issue can name, or None when it cannot."""
+    if error.code != "placement_ambiguous":
+        return None
+    paths = error.details.get("paths")
+    if not isinstance(paths, list) or not paths:
+        return None
+    return (
+        "rename or remove one of: "
+        + ", ".join(str(path) for path in paths)
+        + "; rail ops reindex"
+    )
+
+
 def _placement(
     row: _Row,
     expected: str | None,
@@ -669,7 +683,15 @@ def _placement(
     if is_scoped_skill(row.path):
         return []
     if error is not None:
-        return [_issue(error.code, row.path, error.message)]
+        return [
+            _issue(
+                error.code,
+                row.path,
+                error.message,
+                fix=_placement_fix(error),
+                details=error.details or None,
+            )
+        ]
     if expected is None or expected == row.path:
         return []
     return [

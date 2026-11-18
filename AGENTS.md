@@ -1,6 +1,6 @@
-# Context Rail v3
+# Context Rail
 
-Context Rail v3 is an agentic project workspace and the context for agents: a
+Context Rail is an agentic project workspace and the context for agents: a
 file-backed store, a workflow with gates, and role-scoped views. It never
 launches an agent. Any coding tool (Claude Code, Codex, opencode, Droid, Cursor,
 Gemini CLI) does the work in its own way with its own sub-agents and records the

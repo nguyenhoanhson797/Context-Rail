@@ -139,10 +139,15 @@ class PlacementGraph:
 
     def node(self, slug: str) -> _Node:
         if slug in self.duplicates:
+            paths = sorted(
+                node.path
+                for node in self.by_path.values()
+                if node.slug == slug and node.path is not None
+            )
             raise PlacementError(
                 "placement_ambiguous",
                 f"slug {slug!r} names more than one document",
-                {"slug": slug},
+                {"slug": slug, "paths": paths},
             )
         node = self.nodes.get(slug)
         if node is None:

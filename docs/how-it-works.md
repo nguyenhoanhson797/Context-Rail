@@ -1,6 +1,7 @@
 # How Context Rail works
 
-This page is the engineering view of Context Rail v3: what the engine
+This page is the engineering view of Context Rail v3, the product generation
+(the Python package release is 4.x): what the engine
 guarantees, how a project's shape is declared, and which commands agents and
 humans use. For the short pitch and the five-minute start, see the
 [README](../README.md).

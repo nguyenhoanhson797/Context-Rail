@@ -296,6 +296,16 @@ def test_duplicate_slug_reports_the_duplicate_and_its_ambiguity(
     assert issue["message"].index("items/task/x.md") < issue["message"].index(
         "notes/note/x.md"
     )
+    ambiguous = [
+        item for item in report["issues"] if item["code"] == "placement_ambiguous"
+    ]
+    assert ambiguous
+    assert all(item["fix"] for item in ambiguous)
+    assert "rename or remove" in ambiguous[0]["fix"]
+    assert set(ambiguous[0]["details"]["paths"]) == {
+        "items/task/x.md",
+        "notes/note/x.md",
+    }
 
 
 def test_broken_relation_reported_alone(store_factory) -> None:

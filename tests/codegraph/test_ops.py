@@ -45,6 +45,21 @@ def test_setup_builds_the_first_snapshot_and_says_ready(
     assert has_snapshot(store, _head(root))
 
 
+def test_setup_accepts_a_timeout(git_approved_store: SimpleNamespace) -> None:
+    store = git_approved_store.store
+
+    result = invoke(
+        "codegraph setup", {"timeout_s": 60}, store=store, actor="human"
+    )
+    assert result["ok"], result
+    assert result["value"]["ready"] is True
+
+    refused = invoke(
+        "codegraph setup", {"timeout_s": 0}, store=store, actor="human"
+    )
+    assert refused["error"]["code"] == "VALIDATION_FAILED"
+
+
 def test_setup_reports_not_ready_when_extraction_times_out(
     git_approved_store: SimpleNamespace, monkeypatch
 ) -> None:

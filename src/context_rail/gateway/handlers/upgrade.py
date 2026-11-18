@@ -15,6 +15,7 @@ from context_rail.gateway.delegation import (
     summary as delegation_summary,
 )
 from context_rail.gateway.execution import caller_session
+from context_rail.gateway.handlers.adapters import SkillConflict, render_conflicts
 from context_rail.gateway.handlers.shipped import (
     ShippedPlan,
     commit_shipped,
@@ -39,13 +40,15 @@ _SHIPPED_REASON = "upgrade shipped guidance"
 def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Rewrite profiles, local packs and the charter, then bring shipped guidance up to date."""
     delegated = is_delegated(ctx, "ops upgrade")
-    if not delegated and (not name_is_human(actor) or caller_session() is not None):
+    dry_run = bool(args.get("dry_run"))
+    if not dry_run and not delegated and (
+        not name_is_human(actor) or caller_session() is not None
+    ):
         raise WriteRefused(
             "PERMISSION_DENIED",
             "upgrading a store is a human-only action",
             {"tool": "upgrade", "actor": actor},
         )
-    dry_run = bool(args.get("dry_run"))
     if not dry_run and not delegated:
         reason = validate_confirmation("upgrade", "store", args.get("confirm"))
         if reason is not None:
@@ -190,14 +193,45 @@ def _next(
 ) -> list[str]:
     if not changed and not force_reapprove:
         return []
-    steps = ["rail ops adapters render"] if changed else []
+    steps: list[str] = []
     if force_reapprove or _approval_changed(ctx):
-        steps.insert(
-            0,
+        steps.append(
             "rail approve charter --confirmer <name> --confirm "
-            + repr(confirmation_phrase("approve", "charter")),
+            + repr(confirmation_phrase("approve", "charter"))
         )
+    if changed:
+        conflicts = _render_conflicts(ctx)
+        if conflicts is None:
+            return steps
+        if conflicts:
+            steps.extend(_conflict_step(conflict) for conflict in conflicts)
+        else:
+            steps.append("rail ops adapters render")
     return steps
+
+
+def _render_conflicts(ctx: Context) -> list[SkillConflict] | None:
+    """The skill conflicts a render would refuse, or None when unreadable."""
+    from context_rail.gateway.gateway import _open_context
+
+    try:
+        fresh = _open_context(ctx.store, ctx.actor)
+    except (ModelError, WriteRefused, OSError):
+        return None
+    try:
+        return render_conflicts(fresh)
+    except (ModelError, WriteRefused, OSError):
+        return None
+    finally:
+        fresh.close()
+
+
+def _conflict_step(conflict: SkillConflict) -> str:
+    paths = ", ".join(conflict.paths)
+    return (
+        f"skill {conflict.name!r} is exported from two sources: {paths}; "
+        "rename or remove one, run `rail ops reindex`, then `rail ops adapters render`"
+    )
 
 
 def _approval_changed(ctx: Context) -> bool:

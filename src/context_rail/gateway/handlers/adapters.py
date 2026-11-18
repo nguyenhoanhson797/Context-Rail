@@ -45,7 +45,7 @@ from context_rail.store.write import ABSENT, Op, WriteRefused, commit, replay
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["sync"]
+__all__ = ["SkillConflict", "render_conflicts", "sync"]
 
 RECORD_KIND = "adapters.synced"
 AGENTS = "AGENTS.md"
@@ -93,6 +93,14 @@ class _Profile:
     @property
     def title(self) -> str:
         return self.doc.title or f"Context Rail {self.doc.slug} role"
+
+
+@dataclass(frozen=True)
+class SkillConflict:
+    """One skill name exported from more than one source with different text."""
+
+    name: str
+    paths: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -558,10 +566,29 @@ def _sources(
     store: Path, ctx: Context
 ) -> tuple[list[_Skill], list[_Profile], dict[str, str]]:
     """The workspace skills and profiles, with their source etags."""
-    skills: list[_Skill] = []
+    skills, profiles, sources, conflicts = _collect_sources(store, ctx)
+    if conflicts:
+        conflict = conflicts[0]
+        raise WriteRefused(
+            "CONFLICT",
+            f"skill {conflict.name!r} is exported from two sources",
+            {"name": conflict.name, "paths": list(conflict.paths)},
+        )
+    return skills, profiles, sources
+
+
+def render_conflicts(ctx: Context) -> list[SkillConflict]:
+    """The skill names a render would refuse, with every source path."""
+    return _collect_sources(ctx.store, ctx)[3]
+
+
+def _collect_sources(
+    store: Path, ctx: Context
+) -> tuple[list[_Skill], list[_Profile], dict[str, str], list[SkillConflict]]:
+    """Read every skill and profile, grouping skill names that would collide."""
+    grouped: dict[str, list[_Skill]] = {}
     profiles: list[_Profile] = []
     sources: dict[str, str] = {}
-    names: dict[str, tuple[str, str]] = {}
     rows = ctx.index.conn.execute(
         "SELECT path, primitive FROM docs WHERE primitive IN ('note', 'actor') ORDER BY path"
     ).fetchall()
@@ -570,24 +597,22 @@ def _sources(
             if not is_skill_path(path):
                 continue
             skill = _skill(store, path)
-            if skill.name in names:
-                first_path, first_text = names[skill.name]
-                if skill.text != first_text:
-                    raise WriteRefused(
-                        "CONFLICT",
-                        f"skill {skill.name!r} is exported from two sources",
-                        {"name": skill.name, "paths": sorted([first_path, path])},
-                    )
-                sources[path] = skill.doc.etag
-                continue
-            names[skill.name] = (path, skill.text)
-            skills.append(skill)
+            grouped.setdefault(skill.name, []).append(skill)
             sources[path] = skill.doc.etag
         elif primitive == "actor" and path.startswith("workspace/"):
             profile = _profile(store, path)
             profiles.append(profile)
             sources[path] = profile.doc.etag
-    return skills, profiles, sources
+    skills: list[_Skill] = []
+    conflicts: list[SkillConflict] = []
+    for name, found in grouped.items():
+        if len({skill.text for skill in found}) > 1:
+            conflicts.append(
+                SkillConflict(name, tuple(sorted(skill.path for skill in found)))
+            )
+        else:
+            skills.append(found[0])
+    return skills, profiles, sources, conflicts
 
 
 def _skill(store: Path, path: str) -> _Skill:

@@ -156,6 +156,8 @@ _DELEGATED_TOOLS = {
     "adapters sync": "ops adapters render",
     "rollback": "ops rollback",
 }
+#: Tools whose dry_run is a read-only preview, so it needs no actor.
+_PREVIEW_TOOLS = frozenset({"upgrade"})
 
 
 @dataclass
@@ -389,7 +391,11 @@ def invoke(
                     context.actor = resolved_actor
                     context.actor_named = actor_named
                     ACTOR_NAMED.set(actor_named)
-            elif _require_terminal_human_in_role_store(context, actor):
+            elif _require_terminal_human_in_role_store(
+                context,
+                actor,
+                require_terminal=params.get("dry_run") is not True,
+            ):
                 resolved_actor, actor_named = "human", True
                 context.actor, context.actor_named = resolved_actor, actor_named
                 ACTOR_NAMED.set(actor_named)
@@ -585,6 +591,10 @@ def _authorize(
         return None
     verdict = _delegated_verdict(tool, context, actor, actor_named)
     if verdict is True:
+        return None
+    if params.get("dry_run") is True and tool.name in _PREVIEW_TOOLS:
+        # A dry run reads the plan; it never writes, so it needs no actor and
+        # no terminal. The write path below stays exactly as it was.
         return None
     if isinstance(verdict, dict):
         return verdict
@@ -940,10 +950,14 @@ def _open_context(store: Path | str | None, actor: str, actor_named: bool = True
     )
 
 
-def _require_terminal_human_in_role_store(context: Context, actor: str | None) -> bool:
+def _require_terminal_human_in_role_store(
+    context: Context, actor: str | None, *, require_terminal: bool = True
+) -> bool:
     """In a store with roles only the human on a terminal or the UI channel upgrades it.
 
     Returns whether the store has roles, in which case that channel is the human.
+    A read-only dry run still refuses an explicit ``--actor`` flag, but it does
+    not need a terminal because it writes nothing.
     """
     from context_rail.store.upgrade import declares_roles
 
@@ -956,6 +970,8 @@ def _require_terminal_human_in_role_store(context: Context, actor: str | None) -
             "run the upgrade yourself in a terminal",
             {"tool": "upgrade", "reason": "actor_flag_refused"},
         )
+    if not require_terminal:
+        return True
     if not (HAS_TTY.get() or HUMAN_CHANNEL.get()):
         raise WriteRefused(
             "PERMISSION_DENIED",

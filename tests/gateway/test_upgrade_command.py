@@ -138,18 +138,81 @@ def test_upgrade_reports_reapproval_next_step(approved_store: Path) -> None:
     assert PROFILE in record["data"]["changed"]
 
 
+def test_upgrade_does_not_send_a_conflicting_skill_to_adapters_render(
+    approved_store: Path,
+) -> None:
+    added = invoke(
+        "add",
+        {
+            "preset": "skill",
+            "title": "lean-testing",
+            "set": ["version=1", "description=Prove the test first"],
+        },
+        store=approved_store,
+        actor="cto",
+    )
+    assert is_ok(added), added
+    slug = added["value"]["slug"]
+    shared_rel = added["value"]["path"]
+    copy_rel = f"workspace/profiles/implementer/skills/{slug}.md"
+    shared = approved_store / shared_rel
+    copy = approved_store / copy_rel
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    copy.write_text(
+        shared.read_text(encoding="utf-8") + "\nA different copy.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    write_legacy_runtime_files(approved_store)
+
+    result = _upgrade(approved_store, confirm=PHRASE)
+
+    assert is_ok(result), result
+    steps = result["value"]["next"]
+    assert "rail ops adapters render" not in steps
+    repair = next(
+        step for step in steps if slug in step and "rename or remove" in step
+    )
+    assert shared_rel in repair
+    assert copy_rel in repair
+
+    refused = invoke("adapters sync", {}, store=approved_store, actor="cto")
+    assert refused["error"]["code"] == "CONFLICT"
+    assert refused["error"]["details"]["paths"] == sorted([shared_rel, copy_rel])
+
+
 def test_role_mode_upgrade_refuses_an_actor_flag(role_store: SimpleNamespace) -> None:
     result = invoke("upgrade", {"dry_run": True}, store=role_store.store, actor="human")
 
     assert refusal(result) == ("PERMISSION_DENIED", "actor_flag_refused")
 
 
-def test_role_mode_upgrade_refuses_a_tokenless_caller_without_a_terminal(
+def test_a_name_mode_dry_run_needs_no_actor(approved_store: Path) -> None:
+    write_legacy_runtime_files(approved_store)
+
+    result = invoke("upgrade", {"dry_run": True}, store=approved_store)
+
+    assert is_ok(result), result
+    assert result["value"]["dry_run"] is True
+
+
+def test_role_mode_upgrade_dry_run_runs_without_a_terminal(
     role_store: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("RAIL_ACTOR", "human")
+    monkeypatch.delenv("RAIL_ACTOR", raising=False)
 
     result = invoke("upgrade", {"dry_run": True}, store=role_store.store)
+
+    assert is_ok(result), result
+    assert result["value"]["dry_run"] is True
+
+
+def test_role_mode_upgrade_write_still_needs_the_human_terminal(
+    role_store: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("RAIL_ACTOR", raising=False)
+
+    result = invoke("upgrade", {"confirm": PHRASE}, store=role_store.store)
 
     assert refusal(result)[0] == "PERMISSION_DENIED"
 

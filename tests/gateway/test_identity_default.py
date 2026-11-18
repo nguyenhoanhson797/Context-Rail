@@ -45,6 +45,15 @@ def test_unnamed_non_terminal_read_allowed(leaf_item: SimpleNamespace) -> None:
     assert is_ok(result), result
 
 
+def test_unnamed_non_terminal_next_names_the_missing_actor(
+    leaf_item: SimpleNamespace,
+) -> None:
+    result = invoke("next", {}, store=leaf_item.store)
+
+    assert refusal(result) == ("PERMISSION_DENIED", "actor_required")
+    assert "--actor" in result["error"]["message"]
+
+
 def test_unnamed_terminal_caller_is_human(leaf_item: SimpleNamespace) -> None:
     with caller_identity(None, None, tty=True):
         result = add_note(leaf_item)
