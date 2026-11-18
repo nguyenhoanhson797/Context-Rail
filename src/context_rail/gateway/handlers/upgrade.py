@@ -6,6 +6,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
+from context_rail.gateway.delegation import (
+    DELEGATION_USED,
+    is_delegated,
+    used_record,
+)
+from context_rail.gateway.delegation import (
+    summary as delegation_summary,
+)
 from context_rail.gateway.execution import caller_session
 from context_rail.gateway.handlers.shipped import (
     ShippedPlan,
@@ -14,10 +22,10 @@ from context_rail.gateway.handlers.shipped import (
     unedited_shipped_copies,
 )
 from context_rail.gateway.identity import name_is_human
-from context_rail.store.upgrade import plan_upgrade
 from context_rail.model.errors import ModelError
 from context_rail.store.doc import etag
 from context_rail.store.lock import store_lock
+from context_rail.store.upgrade import plan_upgrade
 from context_rail.store.write import Op, WriteRefused, commit
 
 if TYPE_CHECKING:  # the gateway imports this module only when upgrade is invoked
@@ -30,14 +38,15 @@ _SHIPPED_REASON = "upgrade shipped guidance"
 
 def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Rewrite profiles, local packs and the charter, then bring shipped guidance up to date."""
-    if not name_is_human(actor) or caller_session() is not None:
+    delegated = is_delegated(ctx, "ops upgrade")
+    if not delegated and (not name_is_human(actor) or caller_session() is not None):
         raise WriteRefused(
             "PERMISSION_DENIED",
             "upgrading a store is a human-only action",
             {"tool": "upgrade", "actor": actor},
         )
     dry_run = bool(args.get("dry_run"))
-    if not dry_run:
+    if not dry_run and not delegated:
         reason = validate_confirmation("upgrade", "store", args.get("confirm"))
         if reason is not None:
             raise WriteRefused(
@@ -74,6 +83,8 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         summary["next"] = _next(
             ctx, [*changed, *touched], force_reapprove=needs_reapprove
         )
+        if delegated:
+            summary["delegation"] = delegation_summary(ctx, "ops upgrade")
         return summary
     if changes:
         ops = [Op(change.rel, change.after, etag(change.before)) for change in changes]
@@ -90,13 +101,26 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "shipped": plan.report(),
             },
         }
-        # Records are placed by the pack, which only loads once the files above are rewritten.
-        summary["record"] = commit(ctx.store, ctx.manifest, [], record, actor=actor)["record"]
+        # Records are placed by the pack, which only loads once the files above
+        # are rewritten. The index is opened only for the delegated audit record:
+        # the repair path may have no pack to open it with.
+        audit: dict[str, Any] = {}
+        if delegated:
+            audit = {
+                "index": ctx.index,
+                "extra_records": (used_record(ctx, "ops upgrade"),),
+                "reserved_kinds": frozenset({DELEGATION_USED}),
+            }
+        summary["record"] = commit(
+            ctx.store, ctx.manifest, [], record, actor=actor, **audit
+        )["record"]
     summary["shipped"] = plan.report()
     needs_reapprove = bool(plan.placements_added or plan.repair_hints)
     summary["next"] = _next(
         ctx, [*changed, *plan.touched()], force_reapprove=needs_reapprove
     )
+    if delegated:
+        summary["delegation"] = delegation_summary(ctx, "ops upgrade")
     return summary
 
 

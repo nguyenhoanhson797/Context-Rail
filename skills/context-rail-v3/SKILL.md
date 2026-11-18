@@ -76,8 +76,14 @@ rail seat close sprint-1
 - A lens (`rail <seat> ...`) is read-only unless the session belongs to that
   seat, and never widens the caller's reach.
 - Human-only actions need the human on a terminal or the UI channel, never an
-  agent session. The first grant when no seat exists is human-only; after that a
-  seat grants only inside its `can.grant` and write reach.
+  agent session — unless the approved charter names the caller's lead seat in
+  `delegation` and lists that exact action. Then the lead may run it, and a
+  `delegation.used` record names the delegate and the human. The first seat grant
+  when no seat exists is human-only; after that a seat grants only inside its
+  `can.grant` and write reach. The human sets the block with `rail ops delegate
+  <seat> --action <id> --expect <charter-etag> --confirm "DELEGATE <seat>"`.
+  `--force`, `ops pack use`, `ops migrate` and `init` stay human: they replace
+  or create the boundary itself.
 - A pack without roles is compat mode: the name-based `--actor` behaviour is
   unchanged and the seat commands refuse with the `ops pack use` hint.
 

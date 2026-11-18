@@ -1134,6 +1134,11 @@ def _charter_frontmatter(
         "mode": charter.mode,
         "approval": {"agents": charter.approval.agents},
     }
+    if charter.delegation is not None:
+        front["delegation"] = {
+            "to": charter.delegation.to,
+            "actions": list(charter.delegation.actions),
+        }
     return prepare_document_fields(pack.presets["charter"], front)
 
 

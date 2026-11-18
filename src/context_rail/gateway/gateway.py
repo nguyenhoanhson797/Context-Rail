@@ -27,9 +27,18 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable
 
-from context_rail.core.result import fail, ok
-from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.context.reach import ReachError, ReachSet, resolve_reach
+from context_rail.core.result import fail, ok
+from context_rail.core.tool_names import (
+    REMOVED_COMMANDS,
+    REMOVED_FLAGS,
+    alias_defaults,
+    canonical_methods,
+    canonical_tool,
+    removed_message,
+)
+from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
+from context_rail.gateway.daemon import NO_DAEMON_ENV
 from context_rail.gateway.execution import (
     ACTOR_NAMED,
     HAS_TTY,
@@ -39,18 +48,15 @@ from context_rail.gateway.execution import (
     caller_session,
     resolve_actor_name,
 )
-from context_rail.gateway.identity import ACTOR_HINT, ANONYMOUS, Identity, resolve_identity
-from context_rail.gateway.role_guard import authorize_role
-from context_rail.core.tool_names import (
-    REMOVED_COMMANDS,
-    REMOVED_FLAGS,
-    alias_defaults,
-    canonical_methods,
-    canonical_tool,
-    removed_message,
+from context_rail.gateway.identity import (
+    ACTOR_HINT,
+    ANONYMOUS,
+    Identity,
+    name_is_human,
+    resolve_identity,
 )
+from context_rail.gateway.role_guard import authorize_role
 from context_rail.gateway.tools import TOOLS, Param, Tool, daemon_eligible
-from context_rail.gateway.daemon import NO_DAEMON_ENV
 from context_rail.kernel import rights
 from context_rail.kernel.lifecycle import category_of
 from context_rail.model.cto import Profile, parse_profile
@@ -144,6 +150,12 @@ _CONFIRM_SLUG = {
 _COMPILED_SURFACE = frozenset(
     {"types", "next", "model", "explain", "why", "seat list", "brief"}
 )
+#: Human-only tools a charter may delegate, mapped to their fixed action ids.
+_DELEGATED_TOOLS = {
+    "upgrade": "ops upgrade",
+    "adapters sync": "ops adapters render",
+    "rollback": "ops rollback",
+}
 
 
 @dataclass
@@ -155,6 +167,8 @@ class Context:
     pack: Pack
     actor: str
     actor_named: bool = True
+    delegated_action: str | None = None
+    delegated_by: str | None = None
     _index: Index | None = field(default=None, repr=False)
     _identity: Identity | None = field(default=None, repr=False)
 
@@ -349,8 +363,33 @@ def invoke(
             params = _parameters(tool, args)
         if tool.name == "upgrade":
             if context is None:
-                context = _open_manifest_only(store, resolved_actor, actor_named)
-            if _require_terminal_human_in_role_store(context, actor):
+                # A human upgrade keeps the manifest-only repair path, so a
+                # dry-run never syncs the index. A seat session or a named agent
+                # may hold a delegation, which lives in the charter.
+                agent_caller = caller_session() is not None or (
+                    resolved_actor != ANONYMOUS and not name_is_human(resolved_actor)
+                )
+                context = (
+                    _open_upgrade_context(store, resolved_actor, actor_named)
+                    if agent_caller
+                    else _open_manifest_only(store, resolved_actor, actor_named)
+                )
+            if context.pack is not None:
+                context.identity = resolve_identity(
+                    context,
+                    actor=actor,
+                    session=caller_session(),
+                    tty=HAS_TTY.get(),
+                    lens=LENS_SEAT.get(),
+                    human_channel=HUMAN_CHANNEL.get(),
+                )
+                if context.role_mode:
+                    resolved_actor = context.identity.name
+                    actor_named = context.identity.kind != "anonymous"
+                    context.actor = resolved_actor
+                    context.actor_named = actor_named
+                    ACTOR_NAMED.set(actor_named)
+            elif _require_terminal_human_in_role_store(context, actor):
                 resolved_actor, actor_named = "human", True
                 context.actor, context.actor_named = resolved_actor, actor_named
                 ACTOR_NAMED.set(actor_named)
@@ -371,6 +410,10 @@ def invoke(
                 context.actor = resolved_actor
                 context.actor_named = actor_named
                 ACTOR_NAMED.set(actor_named)
+        if context is not None:
+            # A reused context must not inherit a previous call's delegation.
+            context.delegated_action = None
+            context.delegated_by = None
         _auth_start = time.perf_counter()
         refusal = _authorize(tool, params, context, resolved_actor, actor_named)
         _auth_ms = (time.perf_counter() - _auth_start) * 1000.0
@@ -467,6 +510,49 @@ def effective_decision(
     return rights.decision_class(tool.name, facts, context.policy)
 
 
+def _delegated_verdict(
+    tool: Tool,
+    context: Context | None,
+    actor: str,
+    actor_named: bool,
+) -> bool | dict[str, Any] | None:
+    """Whether the charter delegates this call, a refusal, or nothing.
+
+    True means the named lead may execute the action: the charter lists it, the
+    caller is the delegate, and the charter approval is current. None means the
+    ordinary human-only rule applies. A dict is a refusal the caller earned
+    because the delegation exists but is dormant.
+    """
+    action = _DELEGATED_TOOLS.get(tool.name)
+    if action is None or context is None or context.pack is None:
+        return None
+    policy = context.policy
+    delegation = None if policy is None else policy.delegation
+    if delegation is None or not delegation.allows(action):
+        return None
+    identity = context.identity
+    if context.role_mode:
+        matched = (
+            identity.kind == "seat"
+            and identity.lead
+            and identity.name == delegation.to
+        )
+    else:
+        matched = actor_named and actor == delegation.to
+    if not matched:
+        return None
+    if context.approval["state"] != "approved":
+        return fail(
+            "PERMISSION_DENIED",
+            "the charter changed; a human must reapprove it before the "
+            "delegation applies",
+            {"tool": tool.name, "action": action, "reason": "delegation_unapproved"},
+        )
+    context.delegated_action = action
+    context.delegated_by = delegation.to
+    return True
+
+
 def _authorize(
     tool: Tool,
     params: dict[str, Any],
@@ -477,6 +563,44 @@ def _authorize(
     """The refusal a call earns before its handler runs, if it earns one."""
     if tool.name == "approve":
         return _authorize_approval(context, actor, actor_named)
+    if tool.name == "adapters sync" and params.get("force"):
+        # Replacing a hand-edited generated file is a human action even under a
+        # delegation, so it is checked before the delegation is considered.
+        if context is None or not context.identity.human:
+            return fail(
+                "PERMISSION_DENIED",
+                "forcing generated adapter files is a human-only action",
+                {"tool": tool.name, "actor": actor},
+            )
+        reason = validate_confirmation("adapters_force", "adapters", params.get("confirm"))
+        if reason is not None:
+            return fail(
+                "VALIDATION_FAILED",
+                reason,
+                {
+                    "target": "adapters",
+                    "confirm": confirmation_phrase("adapters_force", "adapters"),
+                },
+            )
+        return None
+    verdict = _delegated_verdict(tool, context, actor, actor_named)
+    if verdict is True:
+        return None
+    if isinstance(verdict, dict):
+        return verdict
+    if (
+        tool.name == "upgrade"
+        and context is not None
+        and context.pack is not None
+        and context.role_mode
+        and not context.identity.human
+    ):
+        return fail(
+            "PERMISSION_DENIED",
+            "upgrading a store with roles needs the human on a terminal, "
+            "or a charter delegation to this seat",
+            {"tool": tool.name, "reason": "human_channel_required"},
+        )
     if tool.permission == "human" and not actor_named:
         return fail(
             "PERMISSION_DENIED",
@@ -539,26 +663,6 @@ def _authorize(
                 },
             )
     if tool.permission == "read":
-        return None
-    if tool.name == "adapters sync" and params.get("force"):
-        # Replacing a hand-edited generated file is a human action even in a
-        # store with no charter yet, so it is checked before the policy rules.
-        if not context.identity.human:
-            return fail(
-                "PERMISSION_DENIED",
-                "forcing generated adapter files is a human-only action",
-                {"tool": tool.name, "actor": actor},
-            )
-        reason = validate_confirmation("adapters_force", "adapters", params.get("confirm"))
-        if reason is not None:
-            return fail(
-                "VALIDATION_FAILED",
-                reason,
-                {
-                    "target": "adapters",
-                    "confirm": confirmation_phrase("adapters_force", "adapters"),
-                },
-            )
         return None
     policy = context.policy
     if policy is None:
@@ -691,6 +795,8 @@ def _confirmation(
     """The confirmation action and target a human-only call needs."""
     if tool.name == "adapters sync":
         return ("adapters_force", "adapters") if params.get("force") else ("approve", None)
+    if tool.name == "delegate":
+        return "delegate", params.get("to")
     return "approve", _confirmation_target(tool, params, context)
 
 
@@ -801,6 +907,21 @@ def _coerce(tool: Tool, param: Param, raw: Any) -> Any:
             "VALIDATION_FAILED", f"{where} must be text", {"argument": where}
         )
     return raw
+
+
+def _open_upgrade_context(
+    store: Path | str | None, actor: str, actor_named: bool
+) -> Context:
+    """A full context when the store is healthy, else the manifest-only repair path.
+
+    A delegated upgrade needs the charter that names the delegate, so it only
+    works while the store loads. A broken store still falls back to the human
+    terminal repair path.
+    """
+    try:
+        return _open_context(store, actor, actor_named)
+    except (ModelError, WriteRefused):
+        return _open_manifest_only(store, actor, actor_named)
 
 
 def _open_context(store: Path | str | None, actor: str, actor_named: bool = True) -> Context:

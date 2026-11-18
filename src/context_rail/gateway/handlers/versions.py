@@ -11,6 +11,14 @@ from context_rail.gateway.confirmation import (
     confirmation_phrase,
     validate_confirmation,
 )
+from context_rail.gateway.delegation import (
+    DELEGATION_USED,
+    is_delegated,
+    used_record,
+)
+from context_rail.gateway.delegation import (
+    summary as delegation_summary,
+)
 from context_rail.gateway.handlers.common import (
     VERSIONED_KINDS,
     compose_doc,
@@ -133,6 +141,7 @@ def rollback(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             "restored_from_version": version,
         },
     }
+    delegated = is_delegated(ctx, "ops rollback")
     result = commit(
         store,
         ctx.manifest,
@@ -141,14 +150,19 @@ def rollback(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         actor=actor,
         key=args.get("key"),
         index=ctx.index,
+        extra_records=(used_record(ctx, "ops rollback"),) if delegated else (),
+        reserved_kinds=frozenset({DELEGATION_USED}) if delegated else frozenset(),
     )
-    return {
+    value = {
         "target": rel,
         "version": version,
         "restored_from_version": version,
         "record": result["record"],
         "etag": etag(after_data),
     }
+    if delegated:
+        value["delegation"] = delegation_summary(ctx, "ops rollback")
+    return value
 
 
 def _protected(

@@ -742,7 +742,7 @@
               <!-- handlers -->
               <g class="node node--handlers" data-node="handlers" tabindex="0" role="button" aria-label="Tool table and handlers">
                 <rect x="130" y="252" width="860" height="74" rx="16"/>
-                <text class="n-title" x="560" y="279" text-anchor="middle">One tool table · 61 tools</text>
+                <text class="n-title" x="560" y="279" text-anchor="middle">One tool table · 62 tools</text>
                 <text class="n-sub" x="560" y="299" text-anchor="middle">read · change · gate · loop · operate</text>
                 <text class="n-small" x="560" y="317" text-anchor="middle">CLI, MCP and UI are all generated from the same tuple</text>
               </g>
@@ -806,7 +806,7 @@
               <li>Dashed arrows are pure rules, recorded facts or reads.</li>
               <li>The write pipeline is the only path that changes files.</li>
             </ul>
-            <p class="meta">61 tools · 1 gateway · 1 write path</p>
+            <p class="meta">62 tools · 1 gateway · 1 write path</p>
           </div>
           <button id="engine-reset" class="detail-reset" type="button">Show all nodes</button>
         </aside>
@@ -1513,7 +1513,7 @@ rail gate</code></pre>
         </div>
         <p class="section-lede">
           The store is a normal folder in git. The index and control files live outside the repository
-          tree. Every command in the table below is generated from the same 61-tool tuple.
+          tree. Every command in the table below is generated from the same 62-tool tuple.
         </p>
       </div>
 
@@ -1549,7 +1549,7 @@ rail gate</code></pre>
         <div class="family">Operate</div><div class="tools"><code>init</code> · <code>gate</code> · <code>do</code> · <code>ops doctor</code> · <code>ops repair</code> · <code>ops reindex</code> · <code>ops sync</code> · <code>ops adapters render</code> · <code>ops rollback</code> · <code>ops pack create</code> · <code>ops codegraph setup</code> · <code>serve mcp</code> · <code>serve ui</code> · <code>serve daemon</code></div>
         <div class="family">Seat</div><div class="tools"><code>seat grant</code> · <code>seat list</code> · <code>seat show</code> · <code>seat open</code> · <code>seat close</code> · <code>seat revoke</code></div>
       </div>
-      <p class="note"><b>61 tools, one table.</b> The CLI, MCP server and UI cannot drift from each other because they are generated from <code>src/context_rail/gateway/tools.py</code>.</p>
+      <p class="note"><b>62 tools, one table.</b> The CLI, MCP server and UI cannot drift from each other because they are generated from <code>src/context_rail/gateway/tools.py</code>.</p>
     </div>
   </section>
 
@@ -1628,7 +1628,7 @@ rail gate</code></pre>
       },
       handlers: {
         kind: "tool table",
-        title: "61 tools, one table",
+        title: "62 tools, one table",
         blurb: "Every command is a Tool entry: name, summary, permission, decision class, parameters and a lazily imported handler.",
         points: ["Families: read, change, gate, loop, seat and operate.", "Human-only: ops migrate, ops upgrade, ops pack use. Approve records its signer; a named lead may sign when the charter allows it.", "Execution: verify, candidate and review; brief is a read.", "The CLI, MCP server and UI all read this tuple."],
         meta: "gateway/tools.py"

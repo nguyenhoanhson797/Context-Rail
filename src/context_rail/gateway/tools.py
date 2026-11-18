@@ -157,6 +157,32 @@ TOOLS: tuple[Tool, ...] = (
         decision="cto-alone",
     ),
     Tool(
+        name="delegate",
+        summary="Set or remove the charter's delegation of named operational actions.",
+        permission="human",
+        params=(
+            Param(
+                "to",
+                "str",
+                required=True,
+                positional=True,
+                help="the lead seat or actor the charter names",
+            ),
+            Param(
+                "action",
+                "str",
+                repeat=True,
+                help="a delegable action id (ops upgrade, ops adapters render, ops rollback)",
+            ),
+            Param("remove", "bool", help="remove the delegation instead of setting it"),
+            Param("confirm", "str", required=True, help="the typed phrase DELEGATE <to>"),
+            Param("expect", "str", required=True, help="current charter.md etag"),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.delegation:delegate",
+        decision="human-only",
+    ),
+    Tool(
         name="check",
         summary="Create or edit one Check document and declare what it proves.",
         permission="write",

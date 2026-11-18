@@ -14,6 +14,7 @@ __all__ = ["ACTIONS", "confirmation_phrase", "validate_confirmation"]
 
 ACTIONS = {
     "approve": "APPROVE {target}",
+    "delegate": "DELEGATE {target}",
     "pass": "PASS {target}",
     "fail": "FAIL {target}",
     "pack_use": "USE PACK {target}",

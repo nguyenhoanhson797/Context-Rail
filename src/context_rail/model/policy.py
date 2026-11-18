@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from context_rail.model.candidate import parse_budget_caps
+from context_rail.model.delegation import Delegation, parse_delegation
 from context_rail.model.errors import ModelError
 from context_rail.model.fields import (
     boolean,
@@ -38,6 +39,7 @@ __all__ = [
     "ANSWERS_KEYS",
     "Approval",
     "Charter",
+    "Delegation",
     "Gate",
     "ModelError",
     "parse_answers",
@@ -157,6 +159,7 @@ class Charter:
     reviewer_different_model: bool
     mode: str = "full"
     approval: Approval = Approval()
+    delegation: Delegation | None = None
 
 
 def parse_charter(fields: dict[str, Any]) -> Charter:
@@ -185,6 +188,9 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
     if mode not in ("full", "solo"):
         refuse("charter.mode must be 'full' or 'solo'")
     approval = _approval(data.get("approval"))
+    delegation = (
+        parse_delegation(data["delegation"]) if "delegation" in data else None
+    )
 
     return Charter(
         schema=schema,
@@ -205,6 +211,7 @@ def parse_charter(fields: dict[str, Any]) -> Charter:
         ),
         mode=mode,
         approval=approval,
+        delegation=delegation,
     )
 
 

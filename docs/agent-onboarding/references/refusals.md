@@ -57,7 +57,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | `doctor` reports an interrupted write | a multi-file commit stopped mid-way | `rail ops repair`, then `rail ops reindex` |
 | The index is corrupt or missing | cache only | `rail ops reindex --full` |
 | `actor_required` | a name-mode write with no named actor and no terminal | Pass `--actor <name>` or set `RAIL_ACTOR` |
-| A profile key is refused (`model`, `runner`, `tools`, ...) | the store predates the runtime-neutral engine | A human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |
+| A profile key is refused (`model`, `runner`, `tools`, ...) | the store predates the runtime-neutral engine | Run `rail ops upgrade` when the charter delegates it, else a human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |
 | A brief refuses | dependency, gate, claim or profile recipe | `rail why <item>` and `rail read show <item>`; finish the dependency or use the right profile |
 | A result refuses | Body exceeds `256 KiB` (`262,144` bytes), missing/empty ordered `##` headings, or unrecorded `--commit` | Write all compiled sections cleanly, pass `--key`, and omit `--commit` for commitless work |
 | A candidate refuses | the commit is not on a git worktree of this project | Commit first; pass the full commit SHA |

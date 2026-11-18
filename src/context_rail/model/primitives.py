@@ -69,6 +69,7 @@ CHARTER_KEYS = (
     "reviewer_different_model",
     "mode",
     "approval",
+    "delegation",
 )
 
 #: The one allowlist for Policy data, so no surface accepts a key another refuses.

@@ -59,6 +59,7 @@ VISIBLE_ALIASES: dict[str, str] = {
     "ops codegraph adopt": "codegraph adopt",
     "ops migrate": "migrate",
     "ops upgrade": "upgrade",
+    "ops delegate": "delegate",
     "ops rollback": "rollback",
     "ops pack list": "pack list",
     "ops pack show": "pack show",
@@ -141,6 +142,7 @@ LEGACY_TO_SURFACE: dict[str, str] = {
     "codegraph adopt": "ops codegraph adopt",
     "migrate": "ops migrate",
     "upgrade": "ops upgrade",
+    "delegate": "ops delegate",
     "rollback": "ops rollback",
     "pack list": "ops pack list",
     "pack show": "ops pack show",
@@ -224,6 +226,7 @@ ALIAS_SUMMARIES: dict[str, str] = {
     "gate": "Gate the store: doctor issues, approval and done gates; never runs Checks.",
     "change repath": "Move every document to the path its placement renders now.",
     "ops adapters render": "Render the managed AGENTS.md block and one skill file per skill Note.",
+    "ops delegate": "Name one lead and the operational actions the charter lets it run.",
     "ops sync install": "Install the git merge drivers for store-only clones.",
 }
 for _alias in ALIAS_SUMMARIES:

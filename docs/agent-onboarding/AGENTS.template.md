@@ -85,9 +85,12 @@ refusal and `2` on an infrastructure failure:
 
 ## Approval and human-only actions
 
-`ops migrate`, `ops upgrade` and `ops pack use` are human-only. They need an
-explicitly named human (`--actor human` or `RAIL_ACTOR=human`) and the typed
-phrase the command prints.
+`ops migrate`, `ops pack use`, `ops delegate`, `init`, `pack create` and a
+`--force` render are always human-only. They need an explicitly named human (`--actor human` or
+`RAIL_ACTOR=human`) and the typed phrase the command prints. `ops upgrade`, `ops
+adapters render` and `ops rollback` are human-only too, unless the approved
+charter delegates that exact action to this lead; then run it and report the
+`delegation` facts. Never widen the list yourself.
 
 `approve` records who signed it. By default a named lead may sign; the record
 carries `signer`, `signer_kind`, `channel` and the human it names (`--confirmer`).
@@ -137,7 +140,8 @@ rail loop report <item> --report-file report.json  # diagnostic channel
   approve its own work.
 - You merge in git yourself. The rail records and gates; it never runs git
   writes for agent work. Existing stores adopt shipped result contracts via
-  explicit `rail --actor human ops upgrade` + `approve`.
+  `rail ops upgrade` when the charter delegates it, or `rail --actor human ops
+  upgrade` otherwise, then `approve`.
 
 Each step has its own key and its own gate. Do not collapse them.
 

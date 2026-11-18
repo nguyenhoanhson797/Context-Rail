@@ -2,11 +2,13 @@
 
 Global options, before the command: `[--store PATH] [--actor NAME] [--session-env NAME] [--no-daemon]`.
 `rail --version` prints the package version.
-Human-only tools (`ops migrate`, `ops upgrade`, `ops pack use`) need an explicitly
-named human: `--actor human` or `RAIL_ACTOR=human`. `approve` records its signer:
-a named lead may sign when the charter allows it (`approval.agents: true`, the
-default); `approval.agents: false` requires a human signature. A role-mode store
-refuses `--actor`: open a seat session instead.
+Human-only tools (`ops migrate`, `ops upgrade`, `ops pack use`, `ops delegate`)
+need an explicitly named human: `--actor human` or `RAIL_ACTOR=human`.
+`approve` records its signer: a named lead may sign when the charter allows it
+(`approval.agents: true`, the default); `approval.agents: false` requires a human
+signature. A charter may instead delegate named operational actions to one lead;
+the delegate then runs only those actions, and each use is recorded. A role-mode
+store refuses `--actor`: open a seat session instead.
 `--session-env NAME` (`^[A-Z_][A-Z0-9_]*$`) reads the session token for that call
 (and pins `rail --session-env NAME serve mcp`) from `NAME` instead of
 `RAIL_SESSION`; if the name is malformed (`session_env_invalid`) or that variable
@@ -87,10 +89,12 @@ role to one anchor (`project` or a container).
   the caller's read reach; a terminal with no session gets a read-only view.
 - A tokenless caller with no terminal has read tools and an empty reach. In role
   mode `--actor` is refused.
-- Human-only actions (`ops migrate`, `ops upgrade`, `ops pack use`, a
-  `human: true` grant, the first grant) need a terminal human or the UI channel;
-  a session caller is never human. `approve` is different: a project-anchored
-  lead seat may sign it with its own session when the charter allows it.
+- Human-only actions (`ops migrate`, `ops upgrade`, `ops pack use`, `ops
+  delegate`, a `human: true` grant, the first grant) need a terminal human or the
+  UI channel; a session caller is never human. Two exceptions are recorded with
+  their signer: `approve` lets a project-anchored lead seat sign when the charter
+  allows it, and a charter `delegation` block lets that seat run the named
+  operational actions while the approval is current.
 - A pack without roles stays in compat mode: name-based `--actor` behaviour is
   unchanged, and `seat` commands plus the lens refuse with "this pack declares
   no roles" and point at `ops pack use`.

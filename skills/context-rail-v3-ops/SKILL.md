@@ -30,11 +30,27 @@ context-rail/.rail-local/    index, locks, sync progress
 ## Actor identity
 
 `--actor` and `RAIL_ACTOR` are workflow claims, not authentication. Human-only
-tools (`ops migrate`, `ops upgrade`, `ops pack use`) require an explicitly named
-human: `--actor human` or `RAIL_ACTOR=human`. `approve` records its signer: a
+tools (`ops migrate`, `ops upgrade`, `ops pack use`, `ops delegate`) require an
+explicitly named human: `--actor human` or `RAIL_ACTOR=human`. `approve` records its signer: a
 named lead may sign when the charter allows it (`approval.agents: true`, the
-default), naming the human in `--confirmer`. Anyone with shell access as your
-OS user can act as you; use OS-level isolation if you need a real boundary.
+default), naming the human in `--confirmer`. A charter may also delegate named
+operational actions to one lead:
+
+```yaml
+delegation:
+  to: portfolio-lead
+  actions: [ops upgrade, ops adapters render, ops rollback]
+```
+
+The block is part of the approved picture; the lead may run only those actions,
+only while the approval is current, and each use writes a `delegation.used`
+record. Set it as the human with `rail ops delegate <seat> --action <id>
+--expect <charter-etag> --confirm "DELEGATE <seat>"` (name mode: add `--actor
+human`; role mode: run on a terminal with no session), then approve the charter;
+`--remove` clears it.
+`ops pack use`, `ops migrate`, `init`, `pack create` and a `--force` render stay
+human: they replace or create the boundary that authorizes the delegate. Anyone with shell access as your OS user can act as you; use OS-level
+isolation if you need a real boundary.
 
 ## Maintenance
 

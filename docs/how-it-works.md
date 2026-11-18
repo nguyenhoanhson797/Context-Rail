@@ -410,7 +410,40 @@ Human-only actions - using a pack, granting a `human: true` role, and the first
 grant when no seat exists yet - need the human on a terminal or through the UI,
 never an agent session. Approval is different: a project-anchored lead seat may
 sign it with its own session when the charter allows it, and the record names
-the signer and the human it was made for. A store whose pack
+the signer and the human it was made for.
+
+A charter may also delegate named operational actions to one lead:
+
+```yaml
+delegation:
+  to: portfolio-lead
+  actions: [ops upgrade, ops adapters render, ops rollback]
+```
+
+The block is part of the charter's approved meaning. While the approval is
+current, that live project-anchored seat may run exactly those actions; each use
+writes a `delegation.used` record naming the delegate and the human the approval
+names. A stale approval makes the delegation dormant until a fresh approval
+records the edited charter, and a delegate never widens its own list. `ops pack
+use`, `ops migrate`, `ops delegate`, `init`, `pack create` and a `--force`
+render stay human because they create, replace or install the boundary that
+authorizes the delegate. A store whose charter cannot load cannot delegate
+either: the human repairs it.
+
+Set it with the human-only command, then approve the edited charter:
+
+```bash
+rail show charter                       # copy doc.etag
+rail ops delegate portfolio-lead \
+  --action "ops upgrade" --action "ops adapters render" \
+  --expect <charter-etag> --confirm "DELEGATE portfolio-lead"
+rail approve charter --confirm "APPROVE charter" --confirmer "<you>"
+```
+
+Remove it the same way with `--remove`; the approval becomes stale until you
+approve the edited charter again.
+
+A store whose pack
 declares no roles keeps the name-based `--actor` behaviour unchanged; there
 `rail seat ...` and the lens refuse with "this pack declares no roles" and point
 at `rail ops pack use`.

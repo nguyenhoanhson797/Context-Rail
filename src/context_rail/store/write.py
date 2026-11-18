@@ -35,6 +35,8 @@ from context_rail.core.util import (
     sha256_hex,
     write_bytes_atomic,
 )
+from context_rail.kernel.relations import endpoint_problem
+from context_rail.model.delegation import DELEGATION_USED
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest
 from context_rail.model.metadata import prepare_fields
@@ -42,7 +44,6 @@ from context_rail.model.pack import load_pack
 from context_rail.model.primitives import PRIMITIVES, RECORD_STAMPED_KEYS, RELATIONS
 from context_rail.model.results import RESULT_ADOPTION_KIND
 from context_rail.model.seats import SEAT_KINDS
-from context_rail.kernel.relations import endpoint_problem
 from context_rail.store.adapters import ADAPTER_PREFIX, project_root, resolve_adapter
 from context_rail.store.doc import etag, parse_doc, record_digest
 from context_rail.store.index import Index
@@ -106,7 +107,9 @@ _RECORD_PAYLOAD_ORDER = (
 #: Files a commit may place, but that a record may never occupy.
 _PROTOCOL_FILES = frozenset({"rail.yaml", ".gitignore"})
 _ETAG_RE = re.compile(r"^[0-9a-f]{16}$")
-_RESERVED_RECORD_KINDS = frozenset(SEAT_KINDS) | frozenset({RESULT_ADOPTION_KIND})
+_RESERVED_RECORD_KINDS = (
+    frozenset(SEAT_KINDS) | frozenset({RESULT_ADOPTION_KIND, DELEGATION_USED})
+)
 _REPLACE_RETRIES = 5
 
 

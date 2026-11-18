@@ -524,6 +524,17 @@ def test_answers_charter_is_validated() -> None:
         parse_answers(answers_data(charter=broken))
 
 
+def test_answers_may_carry_a_delegation() -> None:
+    charter = minimal_charter()
+    charter["delegation"] = {"to": "cto", "actions": ["ops upgrade"]}
+
+    parsed = parse_answers(answers_data(charter=charter))
+
+    assert parsed["charter"].delegation is not None
+    assert parsed["charter"].delegation.to == "cto"
+    assert parsed["charter"].delegation.allows("ops upgrade")
+
+
 def test_answers_pack_must_be_a_non_empty_string() -> None:
     with pytest.raises(ModelError):
         parse_answers(answers_data(pack=""))
@@ -560,7 +571,42 @@ def test_policy_allowlist_is_extended_once_centrally() -> None:
         "reviewer_different_model",
         "mode",
         "approval",
+        "delegation",
     }
+
+
+def test_a_charter_may_delegate_named_operational_actions() -> None:
+    charter = parse_charter(
+        charter_fields(
+            delegation={
+                "to": "cto",
+                "actions": ["ops upgrade", "ops adapters render"],
+            }
+        )
+    )
+
+    assert charter.delegation is not None
+    assert charter.delegation.to == "cto"
+    assert charter.delegation.allows("ops upgrade")
+    assert not charter.delegation.allows("ops rollback")
+    assert "charter" in charter.human_in_loop
+
+
+@pytest.mark.parametrize(
+    "delegation",
+    [
+        {"to": "human", "actions": ["ops upgrade"]},
+        {"to": "CTO", "actions": ["ops upgrade"]},
+        {"to": "cto", "actions": []},
+        {"to": "cto", "actions": ["ops pack use"]},
+        {"to": "cto", "actions": ["ops upgrade", "ops upgrade"]},
+        {"to": "cto", "actions": ["ops upgrade"], "extra": 1},
+        {"actions": ["ops upgrade"]},
+    ],
+)
+def test_an_invalid_delegation_is_refused(delegation: dict[str, Any]) -> None:
+    with pytest.raises(ModelError):
+        parse_charter(charter_fields(delegation=delegation))
 
 
 def test_pinned_decision_rights_match_the_design() -> None:

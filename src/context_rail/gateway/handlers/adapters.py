@@ -26,6 +26,14 @@ from typing import TYPE_CHECKING, Any
 
 from context_rail.context.work_brief import NAME_MODE_ROLES
 from context_rail.core.util import dump_frontmatter, sha256_hex
+from context_rail.gateway.delegation import (
+    DELEGATION_USED,
+    is_delegated,
+    used_record,
+)
+from context_rail.gateway.delegation import (
+    summary as delegation_summary,
+)
 from context_rail.gateway.handlers.common import is_skill_path
 from context_rail.model.errors import ModelError
 from context_rail.store import adapters
@@ -261,6 +269,7 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "harnesses": list(harnesses) if requested else [],
         "binding": binding,
     }
+    delegated = is_delegated(ctx, "ops adapters render")
     result = commit(
         store,
         ctx.manifest,
@@ -269,8 +278,10 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         actor=actor,
         key=key,
         index=ctx.index,
+        extra_records=(used_record(ctx, "ops adapters render"),) if delegated else (),
+        reserved_kinds=frozenset({DELEGATION_USED}) if delegated else frozenset(),
     )
-    return _value(
+    value = _value(
         written=written,
         unchanged=unchanged,
         refused=[],
@@ -279,6 +290,9 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         record=result["record"],
         dry_run=False,
     )
+    if delegated:
+        value["delegation"] = delegation_summary(ctx, "ops adapters render")
+    return value
 
 
 def _binding(

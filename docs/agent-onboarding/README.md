@@ -158,8 +158,10 @@ In role mode:
   the first grant when no seat exists need the human on a terminal or through the
   UI. A session caller can never satisfy those human-only actions. Approval is
   different: it records the actor that signed it, and the charter's
-  `approval.agents` says whether an agent may sign. A non-human seat may grant
-  only inside its `can.grant` and write reach.
+  `approval.agents` says whether an agent may sign. A charter may also delegate
+  named operational actions to one lead; the lead runs only those, only while the
+  approval is current, and every use is recorded. A non-human seat may grant only
+  inside its `can.grant` and write reach.
 - **Anonymous is empty.** With no session and no terminal, the caller has read
   tools and no documents; open a session to work.
 - **Revocation cascades.** Revoking a seat closes its sessions and every seat it
@@ -199,10 +201,13 @@ custom pack.
 - **Status is managed.** Use `rail change move` or a declared
   `rail do <action>`, never a hand edit.
 - **Records are immutable.** Do not edit `records/`.
-- **Human-only stays human.** `ops migrate`, `ops upgrade` and `ops pack use`
-  need an explicitly named human and the typed phrase. In role mode the human
-  must be on a terminal or use the UI channel; a seat session is never human.
-  `approve` records its signer: a named lead may sign when the charter allows it
+- **Human-only stays human by default.** `ops migrate`, `ops pack use`,
+  `ops delegate`, `init`, `pack create` and a `--force` render always need an
+  explicitly named human and the typed phrase. In role mode the human must be on a terminal or use the UI
+  channel; a seat session is never human. `ops upgrade`, `ops adapters render` and
+  `ops rollback` are human-only unless the approved charter delegates that exact
+  action to one lead; the lead then runs it and the use is recorded. `approve`
+  records its signer: a named lead may sign when the charter allows it
   (`approval.agents: true`, the default), and the record names the human it was
   made for.
 - **A gate is not a suggestion.** `rail why` names the missing proof and the
