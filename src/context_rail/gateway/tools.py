@@ -172,7 +172,7 @@ TOOLS: tuple[Tool, ...] = (
                 "action",
                 "str",
                 repeat=True,
-                help="a delegable action id (ops upgrade, ops adapters render, ops rollback)",
+                help="a delegable action id; repeat to narrow the delegation (omit for all operational actions)",
             ),
             Param("remove", "bool", help="remove the delegation instead of setting it"),
             Param("confirm", "str", required=True, help="the typed phrase DELEGATE <to>"),

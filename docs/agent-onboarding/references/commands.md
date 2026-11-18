@@ -26,23 +26,24 @@ rail --version
   explicitly named human (`--actor human` or `RAIL_ACTOR=human`). A store whose
   pack declares roles refuses `--actor`: the session token is the identity
   there.
-- A charter may delegate named operational actions to one lead
-  (`delegation: {to: <seat>, actions: [...]}`). While the charter approval is
-  current, that lead may run exactly those actions, and every use writes a
+- An approved charter authorizes its live project lead to run `ops upgrade`,
+  `ops adapters render` and `ops rollback`. A `delegation` block may pin that to
+  one named lead or narrow it to a list (`delegation: {to: <seat>, actions:
+  [...]}`; omit `actions` for every operational action). Every use writes a
   `delegation.used` record naming the delegate and the human. `ops pack use`,
   `ops migrate`, `ops delegate`, `init`, `pack create` and a `--force` render
   stay human.
-  Set it as the human (name mode: prefix `--actor human`; role mode: run on a
-  terminal with no session), then approve the edited charter:
+  Set or narrow it as the human (name mode: prefix `--actor human`; role mode:
+  run on a terminal with no session), then approve the edited charter:
 
   ```bash
-  rail ops delegate <seat> --action "ops upgrade" \
-    --action "ops adapters render" --expect <charter-etag> \
+  rail ops delegate <seat> --expect <charter-etag> \
     --confirm "DELEGATE <seat>"
   rail approve charter --confirm "APPROVE charter" --confirmer "<you>"
   ```
 
-  Remove it with the same command plus `--remove` (no `--action`).
+  Repeat `--action` to narrow; remove the block with `--remove` to restore the
+  live lead's default.
 - `--session-env NAME` reads the call's session token from environment variable
   `NAME` instead of `RAIL_SESSION`; invalid variable names or unset/empty
   values are refused without falling back.
@@ -138,12 +139,12 @@ rail <seat> [command ...]
 - Human-only actions need the human on a terminal or the UI channel; a session
   caller is never human. This covers `ops migrate`, `ops pack use`, `init`,
   `pack create`, a `human: true` grant and the first bootstrap grant. `ops
-  upgrade`, `ops adapters render` and `ops rollback` are human-only unless the
-  approved charter delegates that exact action to the caller's lead seat; then
-  the lead runs it and a `delegation.used` record names the delegate and the
-  human. `approve` is different: a project-anchored lead seat may sign it with
-  its own session when the charter allows it (`approval.agents: true`, the
-  default).
+  upgrade`, `ops adapters render` and `ops rollback` are available to the
+  caller's live lead seat while the charter approval is current; a `delegation`
+  block may narrow or pin them. The lead runs them and a `delegation.used`
+  record names the delegate and the human. `approve` is different: a
+  project-anchored lead seat may sign it with its own session when the charter
+  allows it (`approval.agents: true`, the default).
 - A pack without `roles` stays in compat mode: the name-based `--actor`
   behaviour is unchanged and `rail seat ...` / the lens refuse with "this pack
   declares no roles", pointing at `rail ops pack use`.

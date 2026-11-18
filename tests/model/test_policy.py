@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from context_rail.model import pack as pack_module
+from context_rail.model.delegation import DELEGABLE_ACTIONS
 from context_rail.model.errors import ModelError
 from context_rail.model.policy import (
     CHARTER_SCHEMA,
@@ -590,6 +591,14 @@ def test_a_charter_may_delegate_named_operational_actions() -> None:
     assert charter.delegation.allows("ops upgrade")
     assert not charter.delegation.allows("ops rollback")
     assert "charter" in charter.human_in_loop
+
+
+def test_a_delegation_may_omit_the_action_list() -> None:
+    charter = parse_charter(charter_fields(delegation={"to": "cto"}))
+
+    assert charter.delegation is not None
+    assert charter.delegation.to == "cto"
+    assert set(charter.delegation.actions) == set(DELEGABLE_ACTIONS)
 
 
 @pytest.mark.parametrize(

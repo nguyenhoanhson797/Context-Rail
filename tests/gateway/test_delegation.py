@@ -1,4 +1,4 @@
-"""A charter delegates named operational actions to one lead, once."""
+"""An approved charter authorizes the live lead; a delegation narrows or pins it."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from context_rail.store.doc import etag
 
 
 def _delegate(
-    store: Path, to: str, actions: list[str], *, role_mode: bool = True
+    store: Path, to: str, actions: list[str] | None, *, role_mode: bool = True
 ) -> None:
     """Add the charter's delegation block and have the human approve it."""
     path = store / "charter.md"
@@ -24,7 +24,9 @@ def _delegate(
     end = text.find("\n---\n", 4)
     assert end > 0
     fields = load_yaml(text[4:end])
-    fields["delegation"] = {"to": to, "actions": actions}
+    fields["delegation"] = {"to": to}
+    if actions is not None:
+        fields["delegation"]["actions"] = actions
     path.write_text(
         "---\n" + dump_frontmatter(fields) + "---\n" + text[end + 5 :],
         encoding="utf-8",
@@ -165,11 +167,18 @@ def test_the_human_can_remove_the_delegation(role_store) -> None:
     assert is_ok(result), result
     assert result["value"]["delegation"] is None
 
-    refused = as_seat(
+    dormant = as_seat(
         role_store.store, role_store.lead, "adapters sync", {"dry_run": True}
     )
-    assert not is_ok(refused)
-    assert refusal(refused) == ("PERMISSION_DENIED", "ops_human_only")
+    assert not is_ok(dormant)
+    assert refusal(dormant) == ("PERMISSION_DENIED", "ops_human_only")
+
+    with as_human():
+        approved = approve_picture(role_store.store, actor=None)
+    assert is_ok(approved), approved
+
+    allowed = as_seat(role_store.store, role_store.lead, "upgrade", {"dry_run": True})
+    assert is_ok(allowed), allowed
 
 
 def test_an_agent_cannot_set_a_delegation(role_store) -> None:
@@ -313,6 +322,85 @@ def test_the_lead_may_upgrade_when_the_charter_delegates_it(role_store) -> None:
 
     assert is_ok(result), result
     assert result["value"]["delegation"]["delegate"] == role_store.lead
+
+
+def test_an_approved_charter_lets_the_live_lead_act_without_a_delegation(
+    role_store,
+) -> None:
+    preview = as_seat(role_store.store, role_store.lead, "upgrade", {"dry_run": True})
+    assert is_ok(preview), preview
+    assert preview["value"]["delegation"]["delegate"] == role_store.lead
+
+    result = as_seat(role_store.store, role_store.lead, "adapters sync", {})
+    assert is_ok(result), result
+    records = _used(role_store.store)
+    assert [record["data"]["action"] for record in records] == ["ops adapters render"]
+    assert records[0]["data"]["delegate"] == role_store.lead
+
+
+def test_a_non_lead_seat_has_no_implicit_operational_authority(role_store) -> None:
+    result = as_seat(
+        role_store.store, role_store.orders_seat, "adapters sync", {"dry_run": True}
+    )
+
+    assert not is_ok(result)
+    assert refusal(result) == ("PERMISSION_DENIED", "ops_human_only")
+
+
+def test_the_lead_sees_the_operational_tools_after_approval(role_store) -> None:
+    from context_rail.gateway.execution import caller_identity
+    from context_rail.gateway.gateway import _open_context
+    from context_rail.gateway.identity import resolve_identity
+    from context_rail.gateway.role_guard import tools_for
+    from helpers import open_test_session
+
+    def names() -> frozenset[str]:
+        token = open_test_session(role_store.store, role_store.lead)
+        with caller_identity(None, None, session=token):
+            context = _open_context(role_store.store, "human", False)
+            try:
+                context.identity = resolve_identity(
+                    context, actor=None, session=token, tty=False
+                )
+                return tools_for(context)
+            finally:
+                context.close()
+
+    assert {"upgrade", "adapters sync", "rollback"} <= names()
+
+    _delegate(role_store.store, role_store.lead, ["ops adapters render"])
+    narrowed = names()
+    assert "adapters sync" in narrowed
+    assert "upgrade" not in narrowed and "rollback" not in narrowed
+
+
+def test_delegating_without_a_list_covers_every_operational_action(role_store) -> None:
+    charter = role_store.store / "charter.md"
+    with as_human():
+        result = invoke(
+            "delegate",
+            {
+                "to": role_store.lead,
+                "confirm": f"DELEGATE {role_store.lead}",
+                "expect": etag(charter.read_bytes()),
+            },
+            store=role_store.store,
+        )
+    assert is_ok(result), result
+    assert result["value"]["delegation"] == {"to": role_store.lead}
+
+    with as_human():
+        approved = approve_picture(role_store.store, actor=None)
+    assert is_ok(approved), approved
+
+    preview = as_seat(role_store.store, role_store.lead, "upgrade", {"dry_run": True})
+    assert is_ok(preview), preview
+    assert preview["value"]["delegation"]["delegate"] == role_store.lead
+
+    render = as_seat(
+        role_store.store, role_store.lead, "adapters sync", {"dry_run": True}
+    )
+    assert is_ok(render), render
 
 
 def test_every_allowlisted_action_has_a_gateway_mapping() -> None:

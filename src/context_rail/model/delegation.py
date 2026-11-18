@@ -1,8 +1,8 @@
-"""Charter-approved delegation of named operational actions to one lead.
+"""Charter-approved delegation of operational actions to one lead.
 
 The delegation executes a decision the human already made; it never makes a new
 one. The block is part of the charter's semantic picture, so changing it needs a
-new approval, and the action list is fixed here: an unknown action is refused.
+new approval. The action ids are fixed here: an unknown action is refused.
 """
 
 from __future__ import annotations
@@ -54,17 +54,28 @@ class Delegation:
 
 
 def parse_delegation(raw: Any) -> Delegation:
-    """Validate a charter's delegation block, refusing every unknown field."""
+    """Validate a charter's delegation block, refusing every unknown field.
+
+    Omitting ``actions`` delegates every operational action; an explicit list
+    narrows the delegation, and an empty list is refused rather than guessed.
+    """
     data = mapping(raw, _WHAT)
     no_unknown(data, DELEGATION_KEYS, _WHAT)
-    require(data, DELEGATION_KEYS, _WHAT)
+    require(data, ("to",), _WHAT)
     to = string(data["to"], f"{_WHAT}.to")
     if to == "human" or not is_name(to):
         refuse(
             f"{_WHAT}.to {to!r} is not a delegate name; "
             f"use a lowercase slug of at most {MAX_NAME_LENGTH} characters"
         )
+    if "actions" not in data:
+        return Delegation(to=to, actions=DELEGABLE_ACTIONS)
     actions = string_list(data["actions"], f"{_WHAT}.actions")
+    if not actions:
+        refuse(
+            f"{_WHAT}.actions must name at least one action; "
+            "omit it to cover every operational action"
+        )
     if len(set(actions)) != len(actions):
         refuse(f"{_WHAT}.actions must not repeat an action")
     unknown = sorted(set(actions) - set(DELEGABLE_ACTIONS))

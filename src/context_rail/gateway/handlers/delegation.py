@@ -109,14 +109,15 @@ def delegate(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         fields.pop("delegation", None)
         value = None
     else:
-        delegation = parse_delegation(
-            {"to": to, "actions": list(args["action"])}
-        )
-        fields["delegation"] = {
-            "to": delegation.to,
-            "actions": list(delegation.actions),
-        }
-        value = {"to": delegation.to, "actions": list(delegation.actions)}
+        requested = list(args.get("action") or ())
+        block: dict[str, Any] = {"to": to}
+        if requested:
+            block["actions"] = requested
+        delegation = parse_delegation(block)
+        fields["delegation"] = dict(block)
+        value = {"to": delegation.to}
+        if requested:
+            value["actions"] = list(delegation.actions)
     fields["updated"] = now_iso()
     updated = ("---\n" + dump_frontmatter(fields) + "---\n" + text[end + 5 :]).encode(
         "utf-8"

@@ -48,7 +48,8 @@ def test_human_only_actions_include_the_upgrade_and_its_delegation(
 
     assert "ops upgrade" in text
     assert "ops delegate" in text
-    assert "delegates that exact action" in text
+    assert "live project lead" in text
+    assert "charter approval is current" in text
     assert "role-mode store" in text
 
 

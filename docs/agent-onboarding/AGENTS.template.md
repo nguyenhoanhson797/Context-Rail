@@ -86,11 +86,12 @@ refusal and `2` on an infrastructure failure:
 ## Approval and human-only actions
 
 `ops migrate`, `ops pack use`, `ops delegate`, `init`, `pack create` and a
-`--force` render are always human-only. They need an explicitly named human (`--actor human` or
-`RAIL_ACTOR=human`) and the typed phrase the command prints. `ops upgrade`, `ops
-adapters render` and `ops rollback` are human-only too, unless the approved
-charter delegates that exact action to this lead; then run it and report the
-`delegation` facts. Never widen the list yourself.
+`--force` render are always human-only. They need the human on a terminal or
+through the UI (in a name-based store, `--actor human` or `RAIL_ACTOR=human`
+plus the typed phrase). `ops upgrade`, `ops adapters render` and `ops rollback`
+are available to the live project lead while the charter approval is current; a
+`delegation` block may narrow or pin them to one named lead. Run only what the
+approved charter allows and report the `delegation` facts.
 
 `approve` records who signed it. By default a named lead may sign; the record
 carries `signer`, `signer_kind`, `channel` and the human it names (`--confirmer`).
@@ -140,8 +141,9 @@ rail loop report <item> --report-file report.json  # diagnostic channel
   approve its own work.
 - You merge in git yourself. The rail records and gates; it never runs git
   writes for agent work. Existing stores adopt shipped result contracts via
-  `rail ops upgrade` when the charter delegates it, or `rail --actor human ops
-  upgrade` otherwise, then `approve`.
+  `rail ops upgrade` as the live lead while the charter approval is current;
+  otherwise ask the human to run it on a terminal or through the UI, then
+  `approve`.
 
 Each step has its own key and its own gate. Do not collapse them.
 
@@ -187,8 +189,9 @@ rail serve daemon --stop        # the CLI starts its warm daemon itself; this en
 
 MCP keeps the canonical tool names (`status`, `next`, `show`, `add`, `move`,
 `candidate`, `result`, `review`, `brief`, …), not the grouped CLI aliases. The serving actor
-is `--actor`, then `RAIL_ACTOR`, then `cto`; launch with `--actor human` when a
-session must perform a human-only tool.
+is `--actor`, then `RAIL_ACTOR`, then `cto`; a name-based store can pass
+`--actor human` for a human-only tool, while a role-mode store needs the human
+on a terminal or through the UI.
 
 ## Next
 

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping
 
 from context_rail.core.result import fail
+from context_rail.gateway.delegation import DELEGATED_TOOLS
 from context_rail.gateway.tools import TOOLS
 from context_rail.model.roles import role_tools
 from context_rail.store.index import Index
@@ -205,8 +206,24 @@ def tools_for(context: Context) -> frozenset[str]:
         tools = reads | role_tools(identity.role)
         if identity.lead:
             tools |= {"approve"}
+            tools |= _delegated_tool_names(context)
         return tools
     return reads
+
+
+def _delegated_tool_names(context: Context) -> frozenset[str]:
+    """The operational tools this lead may see under the current charter."""
+    if context.approval["state"] != "approved":
+        return frozenset()
+    policy = context.policy
+    delegation = None if policy is None else policy.delegation
+    if delegation is None:
+        return frozenset(DELEGATED_TOOLS)
+    if context.identity.name != delegation.to:
+        return frozenset()
+    return frozenset(
+        name for name, action in DELEGATED_TOOLS.items() if delegation.allows(action)
+    )
 
 
 def authorize_role(

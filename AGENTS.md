@@ -107,12 +107,14 @@ repository.
   React module may branch on a pack name.
 - Quality belongs to the workflow: a status may name a charter gate and the
   checks it selects. The engine never branches on a gate name.
-- A charter's `delegation` names one lead and an explicit list of fixed action
-  ids. It never changes `decision_rights` or `human_in_loop`, and it is dormant
-  while the charter approval is stale. `init`, `migrate`, `pack create`, `pack
-  use`, `ops delegate`, `sync` and a `--force` render stay human: they create,
-  replace or install the boundary that authorizes the delegate. Every delegated
-  use writes a `delegation.used` record naming the delegate and the human.
+- An approved charter authorizes its live project-anchored lead to run the fixed
+  operational action ids. A `delegation` block may pin that to one named lead or
+  narrow it to a subset; it never changes `decision_rights` or `human_in_loop`,
+  and it is dormant while the charter approval is stale. `init`, `migrate`, `pack
+  create`, `pack use`, `ops delegate`, `sync` and a `--force` render stay human:
+  they create, replace or install the boundary that authorizes the delegate.
+  Every delegated use writes a `delegation.used` record naming the delegate and
+  the human.
 - Agents read the compiled surface (`model`, `types`, `next`, `show`, `explain`,
   `why`),
   never `pack.yaml`. Pack actions are declarative and run as the caller through

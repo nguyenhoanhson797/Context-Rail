@@ -165,8 +165,9 @@ Identity resolution in role mode:
 `--actor` is refused. Human-only actions (`ops migrate`, `ops pack use`, `ops
 delegate`, `init`, `pack create`, a `human: true` grant, the first grant) need
 the terminal/UI proof, never a session token. `ops upgrade`, `ops adapters render` and `ops
-rollback` are human-only too, unless the approved charter delegates that exact
-action to the caller's lead seat; then the seat runs it and the use is recorded.
+rollback` are available to the caller's live lead seat while the charter approval
+is current; a `delegation` block may narrow or pin them. The seat runs them and
+the use is recorded.
 `approve` is different: a project-anchored lead seat may sign it with its own
 session when the charter allows it (`approval.agents: true`, the default). The
 first grant when no seat exists is human-only; after that a seat grants only

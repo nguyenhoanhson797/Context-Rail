@@ -205,8 +205,9 @@ custom pack.
   `ops delegate`, `init`, `pack create` and a `--force` render always need an
   explicitly named human and the typed phrase. In role mode the human must be on a terminal or use the UI
   channel; a seat session is never human. `ops upgrade`, `ops adapters render` and
-  `ops rollback` are human-only unless the approved charter delegates that exact
-  action to one lead; the lead then runs it and the use is recorded. `approve`
+  `ops rollback` are available to the live project lead while the charter
+  approval is current; a `delegation` block may narrow or pin them to one lead.
+  The lead then runs them and each use is recorded. `approve`
   records its signer: a named lead may sign when the charter allows it
   (`approval.agents: true`, the default), and the record names the human it was
   made for.

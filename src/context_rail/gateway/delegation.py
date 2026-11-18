@@ -10,6 +10,13 @@ from typing import Any
 
 from context_rail.model.delegation import DELEGATION_USED
 
+#: Tool name -> fixed action id for tools the approved charter may authorize.
+DELEGATED_TOOLS = {
+    "upgrade": "ops upgrade",
+    "adapters sync": "ops adapters render",
+    "rollback": "ops rollback",
+}
+
 DELEGATION_USED_SCHEMA = 1
 
 __all__ = [

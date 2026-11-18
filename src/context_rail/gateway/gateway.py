@@ -39,6 +39,7 @@ from context_rail.core.tool_names import (
 )
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.daemon import NO_DAEMON_ENV
+from context_rail.gateway.delegation import DELEGATED_TOOLS as _DELEGATED_TOOLS
 from context_rail.gateway.execution import (
     ACTOR_NAMED,
     HAS_TTY,
@@ -150,12 +151,6 @@ _CONFIRM_SLUG = {
 _COMPILED_SURFACE = frozenset(
     {"types", "next", "model", "explain", "why", "seat list", "brief"}
 )
-#: Human-only tools a charter may delegate, mapped to their fixed action ids.
-_DELEGATED_TOOLS = {
-    "upgrade": "ops upgrade",
-    "adapters sync": "ops adapters render",
-    "rollback": "ops rollback",
-}
 #: Tools whose dry_run is a read-only preview, so it needs no actor.
 _PREVIEW_TOOLS = frozenset({"upgrade"})
 
@@ -522,32 +517,46 @@ def _delegated_verdict(
     actor: str,
     actor_named: bool,
 ) -> bool | dict[str, Any] | None:
-    """Whether the charter delegates this call, a refusal, or nothing.
+    """Whether the approved charter authorizes this call, a refusal, or nothing.
 
-    True means the named lead may execute the action: the charter lists it, the
-    caller is the delegate, and the charter approval is current. None means the
-    ordinary human-only rule applies. A dict is a refusal the caller earned
-    because the delegation exists but is dormant.
+    True means the live project lead (or the explicitly named delegate) may
+    execute the action while the charter approval is current. An explicit
+    ``delegation`` block narrows the default; None means the ordinary
+    human-only rule applies. A dict is a refusal the caller earned because the
+    delegation exists but is dormant.
     """
     action = _DELEGATED_TOOLS.get(tool.name)
     if action is None or context is None or context.pack is None:
         return None
+    identity = context.identity
+    if identity.human:
+        return None
     policy = context.policy
     delegation = None if policy is None else policy.delegation
-    if delegation is None or not delegation.allows(action):
-        return None
-    identity = context.identity
-    if context.role_mode:
-        matched = (
-            identity.kind == "seat"
-            and identity.lead
-            and identity.name == delegation.to
-        )
+    if delegation is None:
+        if not identity.lead:
+            return None
+        if context.role_mode:
+            if identity.kind != "seat":
+                return None
+        elif not actor_named:
+            return None
     else:
-        matched = actor_named and actor == delegation.to
-    if not matched:
-        return None
+        if not delegation.allows(action):
+            return None
+        if context.role_mode:
+            matched = (
+                identity.kind == "seat"
+                and identity.lead
+                and identity.name == delegation.to
+            )
+        else:
+            matched = actor_named and actor == delegation.to
+        if not matched:
+            return None
     if context.approval["state"] != "approved":
+        if delegation is None:
+            return None
         return fail(
             "PERMISSION_DENIED",
             "the charter changed; a human must reapprove it before the "
@@ -555,7 +564,7 @@ def _delegated_verdict(
             {"tool": tool.name, "action": action, "reason": "delegation_unapproved"},
         )
     context.delegated_action = action
-    context.delegated_by = delegation.to
+    context.delegated_by = identity.name
     return True
 
 
