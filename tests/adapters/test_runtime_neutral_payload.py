@@ -41,8 +41,15 @@ def test_agents_payload_names_no_launcher(approved_store: Path) -> None:
     assert "does not run agents" in lowered or "does not start agents" in lowered
 
 
-def test_human_only_actions_include_the_upgrade(approved_store: Path) -> None:
-    assert "ops upgrade" in _agents(approved_store)
+def test_human_only_actions_include_the_upgrade_and_its_delegation(
+    approved_store: Path,
+) -> None:
+    text = _agents(approved_store)
+
+    assert "ops upgrade" in text
+    assert "ops delegate" in text
+    assert "delegates that exact action" in text
+    assert "role-mode store" in text
 
 
 @pytest.mark.parametrize("role", ["cto", "implementer", "reviewer"])
