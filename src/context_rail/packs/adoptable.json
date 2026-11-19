@@ -408,5 +408,37 @@
       "aa3a477c08b21e1da9d0c1079801cac72dbc235db18e365e39c5e1360784e895",
       "3607e915f153118a040611b5deae264fd9e4e2a1bc03cbaf6c76230128b42701"
     ]
+  },
+  "adaptive-contract": {
+    "workspace/cto/profile.md": [
+      "7cdd4417275fb8f9d0dd9f5d19cb1eef19a9b1d5d480bdf4ee6c7668c02c061f"
+    ],
+    "workspace/cto/skills/adaptive-intake.md": [
+      "c308481e21e383f85c7fe678aab7072613978a034816a3022115660919cdaed3"
+    ],
+    "workspace/cto/skills/adaptive-evolution.md": [
+      "fe65e0f8f82eaba31715918a8870a256a33b4af3b6dd5bf405542f3af7614840"
+    ],
+    "workspace/cto/skills/rail-coordinate.md": [
+      "aca7d5e30b6fb054d999a4a7e6ca5b50b2bffcbd2c71f5fb05fc53d869f054b4"
+    ],
+    "workspace/cto/skills/rail-triage.md": [
+      "f5c74bd7fe40c92a6448210d1ee64342c9ff4c5c6202e8bb50b1cbb408c4c968"
+    ],
+    "workspace/cto/skills/rail-recover.md": [
+      "419685a27eb36f2679f4336133de566c668a5fb2a57301d608acd57965a754c0"
+    ],
+    "workspace/profiles/implementer/profile.md": [
+      "15706a612280b7370a3180794d0971344f247098c81144405ea46aec25b06c42"
+    ],
+    "workspace/profiles/implementer/skills/proportionate-verification.md": [
+      "f05a1168187219c99db4492d4c209879cccb248fe0a045d1fd9a5236cf999f14"
+    ],
+    "workspace/profiles/reviewer/profile.md": [
+      "adaee697be09d0e647712df3443dba735d90482244528b76dc6a7f8149550d67"
+    ],
+    "workspace/profiles/reviewer/skills/review-checklist.md": [
+      "d93c63f6c1ee1684ca867b26c88f77b4a9e4c0ea7eb93bdc4ed6ac057b7a6d40"
+    ]
   }
 }

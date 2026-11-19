@@ -120,16 +120,17 @@ waterfall  phase ──▶ deliverable   (planned → designing → building →
 flow       epic ──▶ story           (backlog → ready → building → review → shipped)
 basic      goal ──▶ task            (todo → doing → done)
 portfolio  component ──▶ slice     (intake → planned → delegated → integrating → verified → released)
+adaptive-contract  change          (intake → contracted → approved → building → verifying → review → done)
 ```
 
-| | scrum | waterfall | video | flow | basic | portfolio |
-|---|---|---|---|---|---|---|
-| Container | sprint (required) | phase (required) | scene (required) | epic (optional) | goal (optional) | component (required) |
-| Unit | story | deliverable | shot | story | task | slice |
-| Focus | active sprint | active phase | active scene | continuous | continuous | none (concurrent) |
-| Queue | story·task·bug | deliverable·task·bug | shot | story·task·bug | task·bug | slice·release |
-| Progress | done / sprint | done / phase | `approved` / scene | done / epic | done / goal | done / component |
-| Gate | `item_done` (bugfix adds `repro-check`+`acceptance`) | `item_done` | `item_done` | `item_done` (default) | `item_done` (default) | `item_done` + `release` (`store` checks) |
+| | scrum | waterfall | video | flow | basic | portfolio | adaptive-contract |
+|---|---|---|---|---|---|---|---|
+| Container | sprint (required) | phase (required) | scene (required) | epic (optional) | goal (optional) | component (required) | goal (optional) |
+| Unit | story | deliverable | shot | story | task | slice | standard-change |
+| Focus | active sprint | active phase | active scene | continuous | continuous | none (concurrent) | continuous |
+| Queue | story·task·bug | deliverable·task·bug | shot | story·task·bug | task·bug | slice·release | trivial·standard·critical change |
+| Progress | done / sprint | done / phase | `approved` / scene | done / epic | done / goal | done / component | done / goal |
+| Gate | `item_done` (bugfix adds `repro-check`+`acceptance`) | `item_done` | `item_done` | `item_done` (default) | `item_done` (default) | `item_done` + `release` (`store` checks) | `item_done` (critical adds `smoke`) |
 
 Every move into a done-category status needs the charter's `item_done` gate
 (or `scope_done` for a scope entry), whether or not the workflow names it.
@@ -512,7 +513,7 @@ rail --store ../master/context-rail --session-env RAIL_SESSION_PORTFOLIO next
 | `src/context_rail/store/` | the only write path + SQLite cache |
 | `src/context_rail/gateway/` | tool table, permissions, envelope |
 | `src/context_rail/model/` | compiler, placement, operating model |
-| `src/context_rail/packs/` | `basic`, `flow`, `scrum`, `waterfall`, `video`, `portfolio` |
+| `src/context_rail/packs/` | `basic`, `flow`, `scrum`, `waterfall`, `video`, `portfolio`, `adaptive-contract` |
 | `web/` | React shell; built into `ui/static` and served by `rail serve ui` |
 | `docs/agent-onboarding/` | portable onboarding kit for any harness |
 | `skills/` | operator skills (`context-rail-v3*`) for agent skill directories |

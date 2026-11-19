@@ -1,0 +1,28 @@
+﻿version: 1
+labels:
+  trivial-change: {one: Trivial change, many: Trivial changes}
+  standard-change: {one: Standard change, many: Standard changes}
+  critical-change: {one: Critical change, many: Critical changes}
+  contract: {one: Contract, many: Contracts}
+  lesson: {one: Lesson, many: Lessons}
+  goal: {one: Goal, many: Goals}
+  task: {one: Task, many: Tasks}
+  bug: {one: Bug, many: Bugs}
+  fix: {one: Fix, many: Fixes}
+  risk: {one: Risk, many: Risks}
+  question: {one: Question, many: Questions}
+  result: {one: Result, many: Results}
+  review-result: {one: Result Review, many: Result Reviews}
+screens:
+  - {id: summary, kind: summary, title: Summary}
+  - {id: board, kind: board, title: Changes, preset: standard-change, group_by: status}
+  - {id: plan, kind: timeline, title: Goals, preset: goal}
+  - {id: workflow, kind: workflow, title: Workflow}
+  - {id: execution, kind: execution, title: Progress}
+  - {id: catalog, kind: catalog, title: Other changes and learning, presets: [trivial-change, critical-change, contract, lesson]}
+  - {id: records, kind: records, title: Records, presets: [result, review-result, decision]}
+  - {id: pack, kind: pack, title: Pack}
+fields:
+  card: [status, workflow, kind]
+  filters: [status, workflow]
+  columns: [title, status]

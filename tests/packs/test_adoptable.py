@@ -30,7 +30,7 @@ def shipped_store_texts(pack: str) -> dict[str, str]:
         }
 
 
-@pytest.mark.parametrize("pack", ["basic", "flow", "portfolio", "scrum", "video", "waterfall"])
+@pytest.mark.parametrize("pack", ["adaptive-contract", "basic", "flow", "portfolio", "scrum", "video", "waterfall"])
 def test_every_shipped_copy_is_adoptable(pack: str) -> None:
     source = resources.files("context_rail").joinpath("packs", "adoptable.json")
     known = json.loads(source.read_text(encoding="utf-8"))

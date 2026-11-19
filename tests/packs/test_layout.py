@@ -15,7 +15,7 @@ from context_rail.model.manifest import DEFAULT_MANIFEST, initial_manifest, load
 from context_rail.model.pack import pack_layout
 from helpers import init_store
 
-PACKS = ("basic", "flow", "portfolio", "scrum", "video", "waterfall")
+PACKS = ("adaptive-contract", "basic", "flow", "portfolio", "scrum", "video", "waterfall")
 
 
 def _pack_document(name: str) -> dict:

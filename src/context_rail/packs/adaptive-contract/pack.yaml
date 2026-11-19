@@ -1,0 +1,167 @@
+name: adaptive-contract
+version: 2
+statuses: {intake: not_started, contracted: not_started, approved: not_started, building: active, verifying: active, review: active, done: done, blocked: blocked, dropped: dropped}
+initial: intake
+transitions:
+  intake: [contracted, building, dropped]
+  contracted: [approved, building, intake, dropped]
+  approved: [building, contracted, dropped]
+  building: [verifying, blocked, dropped]
+  verifying: [review, done, building, blocked, dropped]
+  review: [done, verifying, blocked, dropped]
+  done: [building]
+  blocked: [intake, contracted, approved, building, verifying, review, dropped]
+  dropped: [intake]
+execution:
+  review: {queue: false}
+workflows:
+  trivial:
+    initial: intake
+    transitions:
+      intake: [building, dropped]
+      building: [verifying, blocked, dropped]
+      verifying: [done, building, blocked, dropped]
+      done: [building]
+      blocked: [building, verifying, dropped]
+      dropped: [intake]
+    quality:
+      done: {gate: item_done, checks: [typecheck]}
+  standard:
+    initial: intake
+    transitions:
+      intake: [contracted, dropped]
+      contracted: [building, intake, dropped]
+      building: [verifying, blocked, dropped]
+      verifying: [done, building, blocked, dropped]
+      done: [building]
+      blocked: [building, verifying, dropped]
+      dropped: [intake]
+    quality:
+      done: {gate: item_done, checks: [typecheck, existing-tests]}
+  critical:
+    initial: intake
+    transitions:
+      intake: [contracted, dropped]
+      contracted: [approved, intake, dropped]
+      approved: [building, contracted, dropped]
+      building: [verifying, blocked, dropped]
+      verifying: [review, building, blocked, dropped]
+      review: [done, verifying, blocked, dropped]
+      done: [building]
+      blocked: [contracted, approved, building, verifying, review, dropped]
+      dropped: [intake]
+    execution:
+      review: {queue: false}
+    quality:
+      done: {gate: item_done, checks: [typecheck, existing-tests, smoke]}
+presets:
+  goal:          {primitive: item,   tags: [goal], container: true}
+  scope:         {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
+  trivial-change: {primitive: item,  tags: [change], container: false, workflow: trivial, fields: {kind: [docs, format, dependency, config, small-fix]}, template: templates/trivial-change.md}
+  standard-change: {primitive: item, tags: [change], container: false, workflow: standard, fields: {kind: [feature, fix, refactor, dependency, config]}, template: templates/standard-change.md}
+  critical-change: {primitive: item, tags: [change], container: false, workflow: critical, fields: {kind: [security, data, api, dependency, config], approval: [approved], risk: [high, critical]}, template: templates/critical-change.md}
+  task:          {primitive: item,   tags: [task], container: false, workflow: standard}
+  bug:           {primitive: item,   tags: [bug], container: false, workflow: standard}
+  fix:           {primitive: item,   tags: [], container: false, workflow: standard}
+  risk:          {primitive: item,   tags: [risk], container: false, fields: {severity: [low, medium, high, critical]}}
+  question:      {primitive: item,   tags: [question], container: false}
+  contract:      {primitive: note,   tags: [contract], template: templates/contract.md}
+  lesson:        {primitive: note,   tags: [lesson], template: templates/lesson.md}
+  note:          {primitive: note,   tags: []}
+  convention:    {primitive: note,   tags: [convention]}
+  code:          {primitive: note,   tags: [code], fields: {kind: [file, module, class, function, method]}, template: templates/code.md}
+  decision:      {primitive: record, tags: [decision]}
+  event:         {primitive: record, tags: [event]}
+  result:        {primitive: record, tags: [result], required: [workflow_name], template: templates/result.md}
+  review-result: {primitive: record, tags: [review], required: [workflow_name], template: templates/review-result.md}
+  check:         {primitive: check,  tags: []}
+  charter:       {primitive: policy, tags: [], template: templates/charter.md}
+  vision:        {primitive: note,   tags: []}
+  wont:          {primitive: note,   tags: []}
+  skill:         {primitive: note,   tags: []}
+  cto:           {primitive: actor,  tags: []}
+  profile:       {primitive: actor,  tags: []}
+policy: {stuck_hours: 24, measurement_min_runs: 10}
+results:
+  produce:
+    preset: result
+    sections: [Summary, Contract, Tier decision, Verification, Lessons, Evidence, Next steps]
+  review:
+    preset: review-result
+    sections: [Summary, Tier fit, Verification, Lessons, Evidence, Verdict]
+operating:
+  version: 1
+  unit: standard-change
+  hierarchy:
+    - preset: goal
+      required: false
+  queue:
+    presets: [trivial-change, standard-change, critical-change]
+    require: transition
+    focus: priority
+  progress:
+    group: goal
+    of: [trivial-change, standard-change, critical-change]
+    complete: {category: done}
+actions:
+  start-trivial:
+    "on": trivial-change
+    from: [intake]
+    tool: change move
+    args: {slug: "{item}", status: building, expect: "{etag}"}
+    use_when: "a trivial change is recognized and ready to build"
+  contract-standard:
+    "on": standard-change
+    from: [intake]
+    tool: change move
+    args: {slug: "{item}", status: contracted, expect: "{etag}"}
+    use_when: "a standard change has its written contract"
+  start-standard:
+    "on": standard-change
+    from: [contracted]
+    tool: change move
+    args: {slug: "{item}", status: building, expect: "{etag}"}
+    use_when: "a contracted standard change is ready to build"
+  contract-critical:
+    "on": critical-change
+    from: [intake]
+    tool: change move
+    args: {slug: "{item}", status: contracted, expect: "{etag}"}
+    use_when: "a critical change has its written contract and blast-radius review"
+  approve-critical:
+    "on": critical-change
+    from: [contracted]
+    tool: change move
+    args: {slug: "{item}", status: approved, expect: "{etag}"}
+    requires: {field: approval}
+    use_when: "a human has recorded approval before critical work starts"
+  start-critical:
+    "on": critical-change
+    from: [approved]
+    tool: change move
+    args: {slug: "{item}", status: building, expect: "{etag}"}
+    use_when: "an approved critical change is ready to build"
+  verify-change:
+    "on": "*"
+    from: [building]
+    tool: change move
+    args: {slug: "{item}", status: verifying, expect: "{etag}"}
+    use_when: "the change is built and its proportionate verification is due"
+  close-change:
+    "on": "*"
+    from: [verifying, review]
+    tool: change move
+    args: {slug: "{item}", status: done, expect: "{etag}"}
+    use_when: "the declared verification and review prove the change"
+  capture-lesson:
+    "on": "*"
+    from: []
+    tool: change add
+    args: {preset: lesson, title: "{title}"}
+    use_when: "a surprise should change how the next change is verified"
+  next-actions:
+    "on": "*"
+    from: []
+    tool: next
+    args: {}
+    use_when: "the queue is unclear and the next card is needed"

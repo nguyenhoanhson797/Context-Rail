@@ -13,7 +13,7 @@ from context_rail.gateway.gateway import invoke
 from context_rail.store.adapters import END_MARK, START_MARK
 
 _ROOT = Path(__file__).resolve().parents[2]
-_SHIPPED_PACKS = ("basic", "flow", "scrum", "waterfall", "video", "portfolio")
+_SHIPPED_PACKS = ("adaptive-contract", "basic", "flow", "scrum", "waterfall", "video", "portfolio")
 
 
 def _read(rel: str) -> str:

@@ -11,7 +11,7 @@ from context_rail.gateway.gateway import invoke
 from context_rail.model.pack import load_pack
 from helpers import as_human, init_store
 
-PACKS = ("basic", "flow", "portfolio", "scrum", "waterfall", "video")
+PACKS = ("adaptive-contract", "basic", "flow", "portfolio", "scrum", "waterfall", "video")
 
 
 @pytest.mark.parametrize("pack", PACKS)

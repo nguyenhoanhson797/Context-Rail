@@ -21,7 +21,7 @@ from context_rail.model.cto import (
 from context_rail.model.manifest import load_manifest
 from context_rail.model.pack import load_pack
 
-PACKS = ("basic", "flow", "portfolio", "scrum", "video", "waterfall")
+PACKS = ("adaptive-contract", "basic", "flow", "portfolio", "scrum", "video", "waterfall")
 ROLES = ("cto", "implementer", "reviewer")
 REPORT_FIELDS = (
     "schema",

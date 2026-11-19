@@ -187,8 +187,8 @@ The rail is not a task list with extra steps. The same compiled model drives:
 
 An agent never parses `pack.yaml`, `rail.yaml` or the charter to infer the
 workflow. It asks the compiled surface. That is what keeps one agent correct
-across `basic`, `flow`, `scrum`, `waterfall`, `video`, `portfolio` and any
-custom pack.
+across `basic`, `flow`, `scrum`, `waterfall`, `video`, `portfolio`,
+`adaptive-contract` and any custom pack.
 
 ## Non-negotiables
 

@@ -19,7 +19,7 @@ from context_rail.model.pack import load_pack
 from context_rail.model.roles import parse_roles
 from context_rail.model.starter import starter_roles
 
-SHIPPED = ["basic", "flow", "portfolio", "scrum", "video", "waterfall"]
+SHIPPED = ["adaptive-contract", "basic", "flow", "portfolio", "scrum", "video", "waterfall"]
 
 _OLD_PACK: dict[str, Any] = {
     "name": "old",

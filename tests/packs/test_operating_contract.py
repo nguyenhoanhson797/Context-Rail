@@ -259,7 +259,7 @@ def test_no_builtin_workflow_queues_a_status_its_pack_holds_back(
 ) -> None:
     from context_rail.model.pack import load_pack
 
-    for name in ("basic", "flow", "portfolio", "scrum", "waterfall", "video"):
+    for name in ("adaptive-contract", "basic", "flow", "portfolio", "scrum", "waterfall", "video"):
         pack = load_pack(name, tmp_path)
         held = [
             status
@@ -304,7 +304,7 @@ def test_a_scrum_story_waits_in_the_product_backlog_before_any_sprint(
 
 def test_every_builtin_pack_validates(tmp_path: Path) -> None:
     store = init_store(tmp_path)
-    for name in ("basic", "flow", "portfolio", "scrum", "waterfall", "video"):
+    for name in ("adaptive-contract", "basic", "flow", "portfolio", "scrum", "waterfall", "video"):
         result = invoke("pack validate", {"name": name}, store=store, actor="human")
         assert result["value"]["valid"] is True, result
 
