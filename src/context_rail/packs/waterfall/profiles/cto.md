@@ -5,7 +5,8 @@ recipe: cto
 allowed_methods: [do, find, show, cto brief, brief, ledger, result, report, add, update, move, link,
                   rename, relocate, status, reindex, doctor, check, verify, candidate,
                   triage, digest, adapters sync, ci, pack list, pack show,
-                  pack validate, pack create, measure versions, measure fix, rollback,
+                  pack validate, pack create, measure versions, measure fix,
+                  measure usage, rollback,
                   sync, sync driver, mcp serve]
 budget: {max_chars: 12000, max_docs: 20}
 skills: [workspace/cto/skills/rail-coordinate.md, workspace/cto/skills/rail-triage.md,

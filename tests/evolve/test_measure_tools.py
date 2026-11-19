@@ -35,6 +35,11 @@ def test_rebuilt_index_returns_identical_measurement(measure_store) -> None:
     assert invoke("measure versions", args, store=measure_store.store, actor="cto") == first
 
 
+def test_the_shipped_cto_profile_may_read_the_usage_rollup(approved_store) -> None:
+    result = invoke("measure usage", {"group_by": "item"}, store=approved_store, actor="cto")
+    assert result["ok"] is True, result
+
+
 def test_measure_usage_is_read_only(measure_store, monkeypatch) -> None:
     import subprocess
 

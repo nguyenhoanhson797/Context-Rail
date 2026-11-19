@@ -197,6 +197,7 @@ CTO_METHODS = WORKER_METHODS + (
     "pack create",
     "measure versions",
     "measure fix",
+    "measure usage",
     "rollback",
     "sync",
     "sync driver",
