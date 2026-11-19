@@ -44,7 +44,7 @@ def test_readme_is_a_product_page_that_links_the_deep_docs() -> None:
     assert "pip install context-rail" in text
     assert "rail init" in text
     assert "Agents never read `pack.yaml`" in text
-    assert "context-rail-banner.jpg" in text
+    assert "context-rail-hero.jpg" in text
     assert "docs/building-blocks.md" in text
 
 def test_building_blocks_page_shows_the_primitives_graph_and_two_projects() -> None:

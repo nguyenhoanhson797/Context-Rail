@@ -13,7 +13,7 @@ engine: you declare the stages, the evidence each stage owes, the paths work
 lives at, and the approvals that cannot be skipped. Your coding tool still runs
 the agent; Context Rail decides what counts as done.
 
-![Context Rail: keep your AI agents on the rails](docs/assets/context-rail-banner.jpg)
+![Context Rail's workflow: ask, build, check, approve, done](docs/assets/context-rail-hero.jpg)
 
 The problem is not model speed. It is coordination: agents forget decisions,
 lose track of finished work, skip checks and change things nobody asked for.
