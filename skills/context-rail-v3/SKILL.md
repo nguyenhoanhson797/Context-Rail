@@ -126,6 +126,7 @@ rail seat close sprint-1
 | `rail overview` | The daily starting page: approval, goal, gates, executable work, waits |
 | `rail read status` | Counts, executable items, blockers with reasons, stuck items, focus, groups, progress |
 | `rail read digest` | Activity, human waits, reversible decisions, quality, usage |
+| `rail ops measure usage --group-by item` | Recorded effort by item, model, harness, role, profile or skill; unknown stays apart |
 | `rail model` | The compiled operating model, focus, unit, hierarchy and digests |
 | `rail types` | Pack document types, workflows and the operating role of each |
 

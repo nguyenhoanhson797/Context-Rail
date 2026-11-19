@@ -184,6 +184,7 @@ the UI Settings **Configuration** tab makes:
 ```powershell
 rail change update implementer --set skills=<list> --expect <etag> --key <k>
 rail change update review-checklist --set description=<text> --expect <etag> --key <k>
+rail ops measure usage --group-by model
 rail ops measure versions --target-class profile --target implementer --before 1 --after 2
 rail ops rollback --target-class profile --target implementer --version 1
 ```
@@ -196,8 +197,11 @@ rail ops rollback --target-class profile --target implementer --version 1
   a CTO `update` that raises `budgets.attempts/seconds/tokens/credits`.
 - Skills: `name == file stem`, `description` non-empty, `allowed_tools` is a
   free-form list your tool understands; version auto-increments.
-- `measure versions` is observational only, never an auto-rollout; if the
-  comparison regresses, `rollback` restores the earlier version as a new one.
+- Start with `measure usage` to see where effort went, then `measure versions`
+  to compare a candidate change. Both are observational only, never an
+  auto-rollout; if the comparison regresses, `rollback` restores the earlier
+  version as a new one, a protected target needs the human, and nothing is
+  applied automatically.
 
 ## Speed budgets (fixed, tested in CI)
 

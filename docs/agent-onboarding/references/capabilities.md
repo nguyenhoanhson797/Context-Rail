@@ -253,6 +253,7 @@ Code:     Brief → Work/commit → Candidate → Result --commit → Verify →
 |---|---|
 | `loop brief` | a bounded, role-scoped work order for one item (4000-char selected result body, 5 history entries, 20 summaries); names no tool and starts nothing |
 | `loop candidate` | records the commit your tool made for code work: changed files, optional model, harness, usage and duration |
+| `ops measure usage` | rolls recorded effort up by item, model, harness, role, profile or skill over a window; unknown counters stay apart and no price is derived |
 | `loop result` | records one immutable workflow-shaped Markdown result (`256 KiB` / `262,144` bytes max, `--key` idempotency, nullable commit); one registered item per assignment |
 | `check run --worktree` | runs the item's checks in any git worktree and binds the result to the commit (or current result record for `mode: result`) |
 | `loop review` | a different actor's verdict (structured Markdown `--notes-file` when contract-enabled) on the current result / candidate; the author cannot approve its own work |
@@ -260,6 +261,10 @@ Code:     Brief → Work/commit → Candidate → Result --commit → Verify →
 | `loop report` | one diagnostic report per item/candidate: target, expectation, observation, impact, evidence |
 | `loop execution` | record one attempt (`running`, then `succeeded`, `failed` or `cancelled`) of a pack-declared execution action, such as a video render; the engine records it and never runs it |
 | `read digest` | counts, waits, reversible decisions, quality, usage |
+
+Effort is what the tool reported on `candidate` or in a result's leading `---`
+block, never a live measurement. Unknown counters stay apart from known sums,
+money is not a counter, and a budget warns rather than refuses.
 
 Every write uses an idempotency key. A retry returns the same record. The rail
 never launches an agent and never runs git writes for agent work: your tool

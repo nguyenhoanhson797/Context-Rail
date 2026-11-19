@@ -31,5 +31,8 @@ def test_the_generated_agents_block_teaches_the_rail_protocol(
         "AMBIGUOUS_FOCUS",
         "rail ops reindex",
         "rail serve mcp",
+        "rail ops measure usage",
+        "Effort and cost",
+        "money is never a counter",
     ):
         assert phrase in text, phrase

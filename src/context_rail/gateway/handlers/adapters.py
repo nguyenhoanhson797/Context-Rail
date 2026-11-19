@@ -554,6 +554,11 @@ def _agents_payload(
         "## The loop",
         "The rail does not run agents; your tool runs sub-agents and merges in git. Rail keeps work order, proof and record:",
         _commands(roles),
+        "## Effort and cost",
+        "- Record what the tool reported on `rail loop candidate` (`--model`, `--harness`, "
+        "`--usage NAME=NUMBER|unknown`, `--duration SECONDS`) or in a result's leading `---` block. "
+        "`rail ops measure usage --group-by item|model|harness|role|profile|skill` rolls it up; "
+        "`unknown` stays unknown, money is never a counter, and a budget warns rather than refuses.",
         "## Transports, Profiles & Skills",
         "- MCP (`rail serve mcp`, canonical names `status|next|show|add|move|result|candidate|review|...`) and loopback UI (`rail serve ui`).",
         f"- Profiles: {profile_summary}.",

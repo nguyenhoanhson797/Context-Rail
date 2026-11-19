@@ -77,7 +77,7 @@ refusal and `2` on an infrastructure failure:
 | Change | `change add\|update\|move\|link\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` | Do the work |
 | Gate | `approve`, `gate`, `ops pack use` | Human decisions and governance |
 | Loop | `loop brief\|result\|candidate\|review\|report` | Hand out work and record what any tool produced |
-| Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui\|daemon` | Maintain and connect |
+| Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure usage\|versions\|fix`, `serve mcp\|ui\|daemon` | Maintain and connect |
 
 `rail --help` is authoritative. Flat names from older versions still work
 (`status`, `brief`, `candidate`, `review`, `check`, `verify`, `relocate`, `ci`,
@@ -146,6 +146,19 @@ rail loop report <item> --report-file report.json  # diagnostic channel
   `approve`.
 
 Each step has its own key and its own gate. Do not collapse them.
+
+## Effort and cost
+
+The rail records effort; it never measures it. `loop candidate` accepts
+`--model`, `--harness`, `--usage NAME=NUMBER|unknown` and `--duration SECONDS`.
+A result body may open with a leading `---` block carrying `duration_s`,
+`usage: {tokens: ..., requests: ...}`, `model` and `harness`; a counter the
+harness did not report stays `unknown`, never zero, and money is not a counter.
+
+`rail ops measure usage --group-by item|model|harness|role|profile|skill` rolls
+the recorded effort up over a window. Budgets read the same joined effort and
+warn; the rail never refuses work for being over budget. There is no live timer,
+token meter or price table.
 
 ## When a command refuses
 
