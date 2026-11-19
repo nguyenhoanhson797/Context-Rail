@@ -130,6 +130,14 @@ rail seat close sprint-1
 | `rail model` | The compiled operating model, focus, unit, hierarchy and digests |
 | `rail types` | Pack document types, workflows and the operating role of each |
 
+## Track and steer
+
+`rail read digest` and `rail ops measure usage` show recorded effort;
+`rail ops measure versions` compares two versions of a skill or profile.
+`rail ops rollback` restores an earlier version as a new one when the target and
+delegation allow. Measurement never applies or rolls back a change by itself:
+put the evidence in `rail loop report` and let the human decide.
+
 ## Five command families
 
 | Family | Commands |
@@ -151,7 +159,7 @@ Exact flags: `references/commands.md` in this skill.
 | Create a pack, add document types, require metadata, change placement | `context-rail-v3-pack-authoring` |
 | Work from the compiled surface: types, next, show, explain, why | `context-rail-v3-surface` |
 | Hand out and record agent work: brief → result → candidate (code) → verify → review → report | `context-rail-v3-loop` |
-| Doctor, reindex, recovery, git sync, budgets, test lanes | `context-rail-v3-ops` |
+| Doctor, reindex, recovery, git sync, budgets, cost and steering | `context-rail-v3-ops` |
 | Every flag for every command | `references/commands.md` |
 
 ## First-run refusals

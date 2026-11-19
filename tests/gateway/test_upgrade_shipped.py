@@ -58,6 +58,7 @@ def test_upgrade_replaces_unedited_shipped_copies_and_seeds_new_skills(
     text = (store / IMPLEMENTER).read_text(encoding="utf-8")
     assert "version: 2" in text
     assert "workspace/profiles/implementer/skills/lean-testing.md" in text
+    assert "measure usage" in (store / CTO).read_text(encoding="utf-8")
     assert (store / COORDINATE).is_file()
     for path in RETIRED:
         assert not (store / path).exists()

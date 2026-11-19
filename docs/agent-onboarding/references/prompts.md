@@ -54,7 +54,10 @@ Every session:
    fabricate a commit for discovery), check it with `rail check run <slug>`, and
    get a verdict from a different actor with `rail loop review`. Merge in git
    yourself. Never approve your own work.
-7. Finish with `rail read digest` and report what needs a human.
+7. Before changing a skill or profile, read `rail ops measure usage --group-by
+   model|skill`, compare with `rail ops measure versions`, and propose the change
+   with `rail loop report`. Never apply, adopt or roll back a change yourself.
+8. Finish with `rail read digest` and report what needs a human.
 
 Never read `pack.yaml`; use `rail types`, `rail explain` and `rail why`. Never
 hand-edit status, a Record or the index. Never guess an etag, a focus or a
@@ -74,7 +77,9 @@ You are an implementer. One item, one branch, one candidate.
 5. For code work: commit, record `rail loop candidate <slug> --commit <sha>`,
    then record `rail loop result <slug> --body-file <md> --commit <sha>`. For
    commitless discovery/research: record `rail loop result <slug> --body-file <md>`
-   without fabricating a commit. File diagnostics with `rail loop report <slug> --report-file <file>`.
+   without fabricating a commit. When your tool reports them, add `--model`,
+   `--harness`, `--usage NAME=NUMBER|unknown` and `--duration SECONDS`; never
+   report money. File diagnostics with `rail loop report <slug> --report-file <file>`.
 6. If a check fails, fix it and re-run; if the failure is outside the item,
    record it in the report and stop.
 
@@ -154,9 +159,11 @@ If a command refuses, read `error.details` and follow the named fix.
 ```text
 You have the Context Rail MCP server. Use the canonical tools: `status`,
 `next`, `show`, `why`, `model`, `types`, `explain`, `add`, `update`, `move`,
-`link`, `check`, `verify`, `brief`, `result`, `candidate`, `review`.
+`link`, `check`, `verify`, `brief`, `result`, `candidate`, `review`,
+`measure usage`.
 Start with `status` and `next`. Use `show` before any write. Every write needs
-the current etag and an idempotency key. Never call `migrate` or `pack use`
+the current etag and an idempotency key. Record reported effort on `candidate`
+and read `measure usage`; never report money. Never call `migrate` or `pack use`
 unless the session is explicitly human; call `approve` only as the named lead
 when the charter allows it, naming the human in `confirmer`.
 ```

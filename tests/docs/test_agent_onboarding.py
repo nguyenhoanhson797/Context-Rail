@@ -48,6 +48,7 @@ def test_the_portable_agents_file_teaches_the_safe_protocol() -> None:
         "immutable",
         "rail loop result",
         "rail ops measure usage",
+        "rail ops measure versions",
     ):
         assert phrase in text, phrase
 
@@ -86,6 +87,7 @@ def test_the_capability_reference_covers_the_full_power_surface() -> None:
         "candidate",
         "review",
         "ops measure usage",
+        "ops measure versions",
         "MCP",
         "semantic_digest",
         "Records",

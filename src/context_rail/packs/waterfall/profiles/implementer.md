@@ -34,6 +34,9 @@ Rules:
   first, and then record your commit-bound `rail loop result <item> --body-file <md> --commit <sha>`.
 - For discovery, search, design, or other commitless work, do not fabricate a commit:
   record `rail loop result <item> --body-file <md>` in the compiled sections and path.
+- When your tool reports effort, add `--model`, `--harness`, `--usage NAME=NUMBER|unknown`
+  and `--duration SECONDS` to the candidate, or put the same facts in the result's leading
+  `---` block. `unknown` stays unknown; never report money.
 - Record `--outcome partial`, `blocked`, or `failed` honestly when you cannot finish,
   instead of claiming `completed`. Exit code 0 is not proof.
 - Never widen your own tools, autonomy or budget, and never stage files to make a Check

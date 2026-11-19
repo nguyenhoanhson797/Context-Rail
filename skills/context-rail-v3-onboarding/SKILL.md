@@ -181,7 +181,7 @@ The store is ready when:
 | Create or change a pack | `context-rail-v3-pack-authoring` |
 | Work from `types`, `next`, `show`, `explain`, `why` | `context-rail-v3-surface` |
 | Brief, record candidates, verify, review, report | `context-rail-v3-loop` |
-| Doctor, reindex, recovery, budgets | `context-rail-v3-ops` |
+| Doctor, reindex, recovery, budgets, cost and steering | `context-rail-v3-ops` |
 
 ## Onboarding an existing project (no picture rewrite)
 

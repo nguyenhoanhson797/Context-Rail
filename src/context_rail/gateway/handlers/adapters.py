@@ -543,7 +543,8 @@ def _agents_payload(
         "Store (`context-rail/`) is the truth; SQLite is a cache; Records in `records/` are immutable; JSON envelope exits 0/1/2.",
         "## Read before you act",
         "Never parse `pack.yaml`, `rail.yaml` or the charter. Ask: `rail types`, `rail next` (`--all`/`--into`/`--focus-only`), "
-        "`rail read show <slug>`, `rail why <slug>`, `rail explain <name>`, `rail model`, `rail overview`, `rail read status`, `rail gate`.",
+        "`rail read show <slug>`, `rail why <slug>`, `rail explain <name>`, `rail model`, `rail overview`, `rail read status`, "
+        "`rail read digest`, `rail read ledger`, `rail gate`.",
         "## Write, Human-only & Refusals",
         "- Read first and pass `--expect <etag>`, `--key <idempotency-key>`, `--rel part_of=<slug>`, `--set <field>=<value>` (no path/parent/title); change status only via `rail change move` or `rail do <action>`; run `rail ops reindex` after hand edits.",
         "- Human-only: `ops migrate`, `ops pack use`, `ops delegate`, and every `--force` render. Operational actions (`ops upgrade`, `ops adapters render`, `ops rollback`) are available to the live project lead while the charter approval is current; a `delegation` block may narrow or pin these to one named lead. A name-based store takes `--actor human` (or `RAIL_ACTOR=human`) plus the printed phrase; a role-mode store needs the human on a terminal or through the UI. `approve` records its signer; the charter's `approval.agents` says whether an agent may sign. Never widen a delegation, never claim a human signature you did not receive, and never lower a gate.",
@@ -559,6 +560,9 @@ def _agents_payload(
         "`--usage NAME=NUMBER|unknown`, `--duration SECONDS`) or in a result's leading `---` block. "
         "`rail ops measure usage --group-by item|model|harness|role|profile|skill` rolls it up; "
         "`unknown` stays unknown, money is never a counter, and a budget warns rather than refuses.",
+        "- Steering: compare a skill or profile with `rail ops measure versions --target-class skill|profile "
+        "--target <path> --before <n> --after <n>`; `rail ops rollback` restores an earlier version as a new one "
+        "when the target and delegation allow. Measurement never applies or rolls back a change by itself.",
         "## Transports, Profiles & Skills",
         "- MCP (`rail serve mcp`, canonical names `status|next|show|add|move|result|candidate|review|...`) and loopback UI (`rail serve ui`).",
         f"- Profiles: {profile_summary}.",

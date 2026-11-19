@@ -160,6 +160,13 @@ the recorded effort up over a window. Budgets read the same joined effort and
 warn; the rail never refuses work for being over budget. There is no live timer,
 token meter or price table.
 
+To steer a change, measure first, then compare with
+`rail ops measure versions --target-class skill|profile --target <path> --before <n> --after <n>`,
+and propose the change with `rail loop report`. A human decides.
+`rail ops rollback` restores an earlier version as a new one when the target
+and delegation allow; a protected target needs the human. Measurement never
+applies or rolls back a change by itself.
+
 ## When a command refuses
 
 Read `error.code` and `error.details`; a refusal names the reason and the fix.
@@ -201,7 +208,7 @@ rail serve daemon --stop        # the CLI starts its warm daemon itself; this en
 ```
 
 MCP keeps the canonical tool names (`status`, `next`, `show`, `add`, `move`,
-`candidate`, `result`, `review`, `brief`, …), not the grouped CLI aliases. The serving actor
+`candidate`, `result`, `review`, `brief`, `measure usage`, …), not the grouped CLI aliases. The serving actor
 is `--actor`, then `RAIL_ACTOR`, then `cto`; a name-based store can pass
 `--actor human` for a human-only tool, while a role-mode store needs the human
 on a terminal or through the UI.

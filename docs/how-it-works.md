@@ -269,6 +269,16 @@ tokens and requests exist only because a tool reported them; anything unreported
 stays `unknown` and is never counted as zero. Measurement is observational: it
 never applies a change and never rolls one back.
 
+### Steering a change
+
+Measurement is not a decision. To change a skill or profile, compare two
+versions with
+`rail ops measure versions --target-class skill|profile --target <path> --before <n> --after <n>`,
+then file the proposal through `rail loop report` with the comparison as
+evidence. A human decides. If the decision is to restore, `rail ops rollback`
+restores an earlier version as a new version; a protected target needs the
+human's typed phrase. Nothing measures, applies or rolls back automatically.
+
 ## Surfaces
 
 | Surface | Command | For |

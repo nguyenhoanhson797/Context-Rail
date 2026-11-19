@@ -57,6 +57,19 @@ def test_how_it_works_describes_the_effort_block_and_the_join() -> None:
     ):
         assert phrase in flat, phrase
     assert "effort block" in _read("docs/building-blocks.md")
+    assert "ops measure usage" in _read("docs/building-blocks.md")
+
+
+def test_how_it_works_describes_steering_without_automation() -> None:
+    flat = " ".join(_read("docs/how-it-works.md").split())
+    for phrase in (
+        "Steering a change",
+        "rail ops measure versions",
+        "rail loop report",
+        "rail ops rollback",
+        "Nothing measures, applies or rolls back automatically",
+    ):
+        assert phrase in flat, phrase
 
 
 def test_the_public_skills_name_the_usage_rollup() -> None:

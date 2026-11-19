@@ -249,3 +249,24 @@ rail --store portfolio/context-rail --session-env RAIL_SESSION_PORTFOLIO next
 
 Each slice uses a `store` Check (`mode: "store"`) against the child store's
 committed item category; `portfolio-lead` verifies slices and ships releases.
+Read `rail --store portfolio/context-rail read digest` for waits and usage,
+and `rail --store portfolio/context-rail ops measure usage --group-by item` for
+effort per slice or component.
+
+## 15. Tracking effort and steering a change
+
+Record what the tool reported; the rail never measures it.
+
+```bash
+rail loop candidate <item> --commit <sha> --model <name> --harness <tool> \
+  --duration 5400 --usage tokens=152000 --usage requests=42
+rail ops measure usage --group-by item|model|harness|role|profile|skill
+rail ops measure versions --target-class skill --target workspace/skills/<name>.md \
+  --before 1 --after 2
+```
+
+Unknown counters stay `unknown`, money is not a counter, and a budget only warns.
+To steer, put the measurement or comparison in `rail loop report` and let the
+human decide. `rail ops rollback` restores an earlier version as a new one when
+the target and delegation allow; a protected target needs the human. Nothing is
+applied or rolled back automatically.

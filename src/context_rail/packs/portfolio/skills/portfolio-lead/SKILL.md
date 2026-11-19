@@ -1,6 +1,6 @@
 ---
 schema: 1
-version: 1
+version: 2
 name: portfolio-lead
 description: Coordinate components, slices, contracts, releases and component-cto seats on the portfolio rail.
 primitive: note
@@ -20,4 +20,5 @@ child stores and declared `store` Checks, never in prose alone.
 - Require each subagent or `component-cto` assignment to leave a `rail loop result` Markdown record on its slice or component (not chat-only summaries); keep `rail loop report` for diagnostics.
 - Move a `slice` from `integrating` to `verified` with `rail do verify-slice --item <slice> --etag <etag>` only once its current completed slice result and declared `store` Check pass fresh.
 - Group verified slices into a `release` (`rail change add release "<name>" --rel depends_on=<slice>`), move it to `releasing` (`rail change move <release> releasing --expect <etag>`), record the release result, and close it with `rail do ship-release --item <release> --etag <etag>` through the `release` gate.
+- Track the portfolio with `rail overview` and `rail read digest` for waits, stuck components and usage; `rail ops measure usage --group-by item` shows recorded effort per slice or component, with unknown counters kept apart.
 - Triage incoming reports with `rail do triage-report --set report=<report>` and escalate charter, gate or pack changes to the human.

@@ -1,6 +1,6 @@
 ---
 schema: 1
-version: 4
+version: 5
 name: rail-coordinate
 description: Run the CTO loop on the rail - read the queue, plan Items, hand off work, read Markdown result records, judge candidates, and leave human-only decisions to people.
 primitive: note
@@ -19,5 +19,7 @@ Read the state before you act. Each step below uses a rail command, not a launch
 5. Read the exact producer Markdown result record (not a chat-only summary), run declared Checks with `rail check run <item>`, then hand off to a separate reviewer: `rail loop brief <item> --role reviewer` and `rail loop review <item> --verdict approve|reject --notes-file <md>`. The reviewer is never the implementer. Effort joins candidate and result once per attempt; `rail ops measure usage --group-by item` shows it per task.
 6. Move the Item with `rail change move <slug> <status> --expect <etag>`, or run a declared pack action with `rail do <action>`.
 7. File `rail loop report <item> --report-file <json>` only as the diagnostic channel for rail or environment issues, and read `rail read digest` for waits, stuck Items and reversible decisions.
+
+Steering a change is measurement first: `rail ops measure usage --group-by item|model|skill` shows recorded effort and `rail ops measure versions --target-class skill|profile --target <path> --before <n> --after <n>` compares two versions. Put that evidence in `rail loop report` when you propose a change; a human decides. `rail ops rollback` restores an earlier version as a new one only when the target, your delegation and the approval allow it, and measurement never applies or rolls back a change by itself.
 
 Approval records its signer. As the named lead you may sign `rail approve <target> --confirm "APPROVE <target>" --confirmer "<human>"` when the charter allows it (`approval.agents: true`, the default); name the human the approval is for, and never claim a human signature you did not receive. When the charter sets `approval.agents: false`, print the exact `rail approve ...` command and wait for the human on a terminal or through the UI. As the live project lead you may also run `rail ops upgrade`, `rail ops adapters render` and `rail ops rollback` while the charter approval is current; a `delegation` block may narrow or pin that to a listed subset, and you never widen it. `--force`, a pack switch, a migration, `init`, `pack create` and every action outside the delegation still wait for the human. Otherwise people decide these, and you ask for them: human gate verdicts, budget changes, and authoring or loosening acceptance Checks.

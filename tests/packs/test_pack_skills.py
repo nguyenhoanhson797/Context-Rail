@@ -85,6 +85,12 @@ def test_engine_skill_commands_resolve() -> None:
         assert unknown_rail_commands(text) == [], name
 
 
+def test_the_portfolio_skills_cover_tracking_and_effort() -> None:
+    skills = load_pack_skills("portfolio")
+    assert "measure usage" in skills["portfolio-lead"]
+    assert "measure usage" in skills["portfolio-report"]
+
+
 @pytest.mark.parametrize("pack", PACKS)
 def test_no_pack_ships_a_work_order_template(pack: str) -> None:
     assert not (_pack_root(pack) / "templates" / "work-order.md").is_file()
@@ -94,6 +100,7 @@ def test_no_pack_ships_a_work_order_template(pack: str) -> None:
 def test_the_cto_names_how_to_propose_a_change(pack: str) -> None:
     body = load_pack_profile(pack, "cto").body
     assert "rail loop report" in body and "--report-file" in body
+    assert "rail ops measure usage" in body and "rail ops measure versions" in body
     for field in REPORT_FIELDS:
         assert f"`{field}`" in body, (pack, field)
     for target_class in REPORT_TARGET_CLASSES:

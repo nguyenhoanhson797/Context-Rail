@@ -254,6 +254,7 @@ Code:     Brief → Work/commit → Candidate → Result --commit → Verify →
 | `loop brief` | a bounded, role-scoped work order for one item (4000-char selected result body, 5 history entries, 20 summaries); names no tool and starts nothing |
 | `loop candidate` | records the commit your tool made for code work: changed files, optional model, harness, usage and duration |
 | `ops measure usage` | rolls recorded effort up by item, model, harness, role, profile or skill over a window; unknown counters stay apart and no price is derived |
+| `ops measure versions` | compares two versions of a skill or profile from their recorded attempts; observational only |
 | `loop result` | records one immutable workflow-shaped Markdown result (`256 KiB` / `262,144` bytes max, `--key` idempotency, nullable commit); one registered item per assignment |
 | `check run --worktree` | runs the item's checks in any git worktree and binds the result to the commit (or current result record for `mode: result`) |
 | `loop review` | a different actor's verdict (structured Markdown `--notes-file` when contract-enabled) on the current result / candidate; the author cannot approve its own work |
@@ -265,6 +266,11 @@ Code:     Brief → Work/commit → Candidate → Result --commit → Verify →
 Effort is what the tool reported on `candidate` or in a result's leading `---`
 block, never a live measurement. Unknown counters stay apart from known sums,
 money is not a counter, and a budget warns rather than refuses.
+
+Steering is human-gated. `ops measure usage` shows where effort went,
+`ops measure versions` compares two versions of a skill or profile, and
+`ops rollback` restores an earlier version as a new one. A protected target
+needs the human, and measurement never applies or rolls back a change by itself.
 
 Every write uses an idempotency key. A retry returns the same record. The rail
 never launches an agent and never runs git writes for agent work: your tool

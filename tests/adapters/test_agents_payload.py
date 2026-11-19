@@ -32,6 +32,10 @@ def test_the_generated_agents_block_teaches_the_rail_protocol(
         "rail ops reindex",
         "rail serve mcp",
         "rail ops measure usage",
+        "rail ops measure versions",
+        "rail ops rollback",
+        "rail read digest",
+        "rail read ledger",
         "Effort and cost",
         "money is never a counter",
     ):

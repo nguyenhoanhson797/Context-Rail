@@ -12,7 +12,7 @@ reading the engine source.
 | `context-rail-v3-pack-authoring` | Creating or adjusting a pack: presets, required metadata, defaults, declarative placement |
 | `context-rail-v3-surface` | Working from `model`, `types`, `next`, `show`, `explain` and `why` without reading the pack |
 | `context-rail-v3-loop` | Handing out and recording agent work: brief → candidate → verify → review → report |
-| `context-rail-v3-ops` | Doctor, reindex, recovery, git sync, budgets, test lanes |
+| `context-rail-v3-ops` | Doctor, reindex, recovery, git sync, budgets, cost, steering, test lanes |
 
 Each `SKILL.md` is short and routes to `references/` only when needed:
 `context-rail-v3/references/commands.md` for exact flags,

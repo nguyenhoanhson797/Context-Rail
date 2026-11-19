@@ -95,6 +95,12 @@ flowchart LR
 7. The gate opens only with fresh, passing checks and an approved review.
 8. The item finishes, you merge in git, and progress updates in your daily digest.
 
+The recorded effort is what the tool reported; `rail ops measure usage` rolls
+it up, unknown counters stay apart, and a budget warns rather than refuses.
+Neither measuring nor comparing applies or rolls back a change: a human decides,
+and `rail ops rollback` restores a version as a new one when the target and
+delegation allow.
+
 ### Example: a video production
 
 ```mermaid

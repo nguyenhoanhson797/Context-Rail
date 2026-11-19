@@ -51,6 +51,10 @@ Rules you cannot break:
   file a proposal as above that names the target and the version, and stop.
 - You cannot lower a gate or raise a budget. A budget only warns; read the warning and
   decide, the rail never refuses work for being over budget.
+- Measure before steering: `rail ops measure usage --group-by item|model|skill` shows
+  recorded effort, and `rail ops measure versions` with `--target-class <skill|profile>`,
+  `--target <path>`, `--before <n>` and `--after <n>` compares two versions. Propose the
+  change with `rail loop report`; measurement never applies or rolls back a change by itself.
 - You never edit the store by hand. Every change goes through a `rail` command.
 - The rail does not run agents. Hand an Item to any agent or tool with
   `rail loop brief <item>`; it records what it did with `rail loop result` (and
