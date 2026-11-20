@@ -30,11 +30,15 @@ def near_ratio(policy: Any) -> float:
 
 
 def item_caps(policy: Any, extra: Mapping[str, Any] | None = None) -> budgets.Budget:
-    """The charter's item caps, tightened by any cap a profile also sets."""
+    """The charter's item caps, tightened by a profile's time and usage caps.
+
+    A profile's ``attempts`` allowance is a per-work-cycle limit, not the item
+    attempt budget: the item's own ``budgets.item.attempts`` is authoritative.
+    """
     scope = {} if policy is None else policy.budgets.get("item", {})
     caps: dict[str, int | float | None] = dict(scope)
     for name, cap in (extra or {}).items():
-        if cap is None:
+        if name == "attempts" or cap is None:
             continue
         current = caps.get(name)
         caps[name] = cap if current is None else min(current, cap)

@@ -425,6 +425,54 @@ def test_a_check_slug_another_document_uses_is_refused(
     assert not (store / "checks" / "unit.md").exists()
 
 
+def test_a_check_named_for_its_item_gets_a_check_suffix(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    spec = spec_file(
+        tmp_path,
+        "feature-a.json",
+        cmd_spec([sys.executable, "-c", "print('ok')"], ["src/**/*.py"]),
+    )
+
+    created = invoke(
+        "check",
+        {
+            "slug": "feature-a",
+            "target": "feature-a",
+            "spec_file": str(spec),
+            "expect": "absent",
+        },
+        store=store,
+        actor="cto",
+    )
+
+    assert is_ok(created), created
+    assert created["value"]["slug"] == "feature-a-check"
+    assert (store / "checks" / "feature-a-check.md").is_file()
+
+
+def test_expect_may_be_omitted_on_create(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    spec = spec_file(
+        tmp_path,
+        "unit.json",
+        cmd_spec([sys.executable, "-c", "print('ok')"], ["src/**/*.py"]),
+    )
+
+    created = invoke(
+        "check",
+        {"slug": "unit", "target": "feature-a", "spec_file": str(spec)},
+        store=store,
+        actor="cto",
+    )
+
+    assert is_ok(created), created
+    assert (store / "checks" / "unit.md").is_file()
+
+
 def test_editing_an_existing_check_keeps_its_slug(
     git_approved_store: Any, tmp_path: Path
 ) -> None:

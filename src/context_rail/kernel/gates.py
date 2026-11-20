@@ -109,7 +109,10 @@ def evaluate_gate(
             reasons.append(f"check {check.slug!r} has unknown freshness {check.freshness!r}")
     if rule.require_checks:
         if not selected:
-            reasons.append("no checks were selected; an empty required set never passes")
+            reasons.append(
+                f"no checks were selected for {target!r}; "
+                "declare a check before closing"
+            )
         else:
             reasons.extend(_check_reasons(selected, candidate))
     if rule.require_acceptance and not _has_fresh_acceptance(selected):

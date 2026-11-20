@@ -125,9 +125,9 @@ _APPROVE = (
 _RELOCATE = "rail change repath"
 _TRIAGE = "rail loop triage"
 _EFFORT_FIX = (
-    "state the effort in the result body's leading block (duration_s, "
-    "usage: {tokens: ..., requests: ...}), or usage: {tokens: unknown} when the "
-    "harness reports none; then record the result again"
+    "state at least one known numeric usage counter in the result body's leading "
+    "block (for example usage: {tokens: 12}), or duration_s; an all-unknown map "
+    "is still reported as unreported. Then record the result again"
 )
 _CHARTER = "charter.md"
 _BROKEN = frozenset({PARSE_ERROR, BAD_ENCODING})
@@ -1144,6 +1144,16 @@ def _check_issues(context: Any, ix: Index) -> list[dict[str, Any]]:
     for row in query.check_states(ix):
         if row["verdict"] is None:
             continue
+        if row.get("mode") == "environment":
+            continue
+        owner = row.get("item")
+        if isinstance(owner, str) and owner:
+            status = ix.conn.execute(
+                "SELECT category FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 LIMIT 1",
+                (owner,),
+            ).fetchone()
+            if status is not None and status[0] == "done":
+                continue
         state = freshness_of(context, row)
         code = _FRESHNESS_CODES.get(state)
         if code is None:

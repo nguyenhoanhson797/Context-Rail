@@ -187,11 +187,17 @@ TOOLS: tuple[Tool, ...] = (
         summary="Create or edit one Check document and declare what it proves.",
         permission="write",
         params=(
-            Param("slug", "str", required=True, positional=True, help="check slug"),
+            Param(
+                "slug",
+                "str",
+                required=True,
+                positional=True,
+                help="check slug; a new check named exactly like its Item gets a -check suffix",
+            ),
             Param("target", "str", help="the Item slug this check verifies"),
             Param("spec_file", "str", required=True, help="strict JSON check spec", path=True),
             Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
-            Param("expect", "str", required=True, help="current etag, or absent on create"),
+            Param("expect", "str", help="the current etag, or 'absent' when creating"),
             Param("key", "str", help="idempotency key"),
         ),
         handler="context_rail.gateway.handlers.checks:check",
@@ -237,14 +243,26 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="result",
-        summary="Record one workflow-shaped Markdown result for an Item.",
+        summary=(
+            "Record one workflow-shaped Markdown result for an Item. Effort is "
+            "stated in the body's leading block (duration_s, usage, model, harness)."
+        ),
         permission="write",
         params=(
             Param("item", "str", required=True, positional=True, help="the Item the result is about"),
-            Param("body_file", "str", required=True, help="Markdown body file outside the store", path=True),
+            Param(
+                "body_file",
+                "str",
+                required=True,
+                help=(
+                    "Markdown body file outside the store; it may open with a "
+                    "leading --- effort block (duration_s, usage, model, harness)"
+                ),
+                path=True,
+            ),
             Param("commit", "str", help="recorded candidate commit SHA or unambiguous prefix for code work"),
             Param("outcome", "str", default="completed", help="completed, partial, blocked or failed"),
-            Param("set", "str", repeat=True, help="artifact metadata field as KEY=VALUE"),
+            Param("set", "str", repeat=True, help="artifact metadata field as KEY=VALUE; effort is not settable here"),
             Param("model", "str", help="the model that produced it (free text)"),
             Param("harness", "str", help="the tool that produced it (free text)"),
             Param("key", "str", help="idempotency key"),

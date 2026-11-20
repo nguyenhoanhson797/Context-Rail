@@ -20,8 +20,9 @@ def test_basic_pack_transitions(basic_pack):
 
 @pytest.mark.parametrize(
     ("current", "target"),
-    [("todo", "doing"), ("todo", "dropped"), ("doing", "blocked"), ("doing", "done"),
-     ("doing", "todo"), ("blocked", "doing"), ("done", "doing"), ("dropped", "todo")],
+    [("todo", "doing"), ("todo", "blocked"), ("todo", "dropped"), ("doing", "blocked"),
+     ("doing", "done"), ("doing", "todo"), ("blocked", "todo"), ("blocked", "doing"),
+     ("done", "doing"), ("dropped", "todo")],
 )
 def test_declared_transitions_are_allowed(basic_pack, current, target):
     assert check_transition(_default(basic_pack), current, target) is None
@@ -29,7 +30,7 @@ def test_declared_transitions_are_allowed(basic_pack, current, target):
 
 @pytest.mark.parametrize(
     ("current", "target"),
-    [("todo", "blocked"), ("doing", "doing"), ("blocked", "done"), ("done", "todo"),
+    [("doing", "doing"), ("blocked", "done"), ("done", "todo"),
      ("dropped", "done")],
 )
 def test_undeclared_transitions_are_refused_with_a_reason(basic_pack, current, target):

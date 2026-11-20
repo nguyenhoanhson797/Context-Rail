@@ -126,9 +126,15 @@ def artifact_fields(
             )
         seen_keys.add(key)
         if key in _RESERVED_CALLER_FIELDS:
+            effort = key in ("model", "harness", "duration_s", "usage")
             raise WriteRefused(
                 "VALIDATION_FAILED",
-                f"{key!r} is owned by the engine and cannot be set via --set",
+                f"{key!r} is owned by the engine and cannot be set via --set"
+                + (
+                    "; state it in the result body's leading effort block instead"
+                    if effort
+                    else ""
+                ),
                 {"key": key},
             )
     caller_fields = parse_set_values(raw_list)

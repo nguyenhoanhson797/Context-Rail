@@ -741,8 +741,12 @@ def test_two_project_portfolio_from_plan_to_release(tmp_path: Path) -> None:
     stale_issues = [
         issue for issue in doctor["issues"] if issue["code"] == "check_stale"
     ]
-    assert stale_issues, doctor["issues"]
-    assert any("web-done-check" in issue["path"] for issue in stale_issues)
+    # A closed item's proof is judged where it closed, not against later child work.
+    assert not any("web-done-check" in issue["path"] for issue in stale_issues)
+    bypassed = [
+        issue for issue in doctor["issues"] if issue["code"] == "gate_bypassed"
+    ]
+    assert not any(web_slice in issue["path"] for issue in bypassed), bypassed
 
     # Reopen web_slice to integrating, then try to move it back to verified while web-done-check is stale.
     _cli_ok(

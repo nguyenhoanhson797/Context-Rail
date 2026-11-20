@@ -236,7 +236,9 @@ def authorize_role(
             return None
         return fail(
             "SESSION_REQUIRED",
-            "a tokenless caller may only read; open a seat session to write",
+            "a tokenless caller may only read; the project owner opens a seat "
+            "session with 'rail seat open <seat> --print-env' and shares "
+            "RAIL_SESSION",
             {"reason": "session_required", "command": SESSION_COMMAND},
         )
     if identity.view_as is not None and tool.permission != "read":

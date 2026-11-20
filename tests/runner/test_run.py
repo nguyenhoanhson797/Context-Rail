@@ -75,7 +75,7 @@ def test_default_env_allow_is_pinned() -> None:
 def test_secret_name_matches_secret_bearing_names() -> None:
     for name in ("MY_API_KEY", "github_token", "DbPassword", "AWS_CREDENTIAL"):
         assert SECRET_NAME.search(name), name
-    for name in ("PATH", "HOME", "APP_MODE"):
+    for name in ("PATH", "HOME", "APP_MODE", "SESSIONNAME", "SESSION"):
         assert SECRET_NAME.search(name) is None, name
 
 

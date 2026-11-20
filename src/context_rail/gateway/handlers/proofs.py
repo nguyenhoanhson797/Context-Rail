@@ -53,24 +53,45 @@ def completion_facts(
 ) -> CompletionFacts:
     """Gather checks, candidate, review and producer result proofs for ``item``."""
     wf_name = workflow_name
+    closed = False
     if wf_name is None:
         row = ctx.index.conn.execute(
-            "SELECT workflow FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 LIMIT 1",
+            "SELECT workflow, status FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 LIMIT 1",
             (item,),
         ).fetchone()
         wf_name = (row[0] or "default") if row is not None else "default"
+        closed = (
+            row is not None
+            and ctx.pack.statuses.get(row[1] or "") == "done"
+        )
+    else:
+        row = ctx.index.conn.execute(
+            "SELECT status FROM docs WHERE slug = ? AND primitive = 'item' AND broken = 0 LIMIT 1",
+            (item,),
+        ).fetchone()
+        closed = (
+            row is not None
+            and ctx.pack.statuses.get(row[0] or "") == "done"
+        )
 
     workflow = ctx.pack.workflows.get(wf_name)
     required = workflow.checks_for(target) if workflow is not None else None
     rows = query.check_states(ctx.index, item)
     missing: list[str] = []
     if required is None:
-        selected = rows
+        selected = [row for row in rows if row.get("mode") != "environment"]
     else:
         by_slug = {row["slug"]: row for row in rows}
         selected = [by_slug[slug] for slug in required if slug in by_slug]
         missing = [slug for slug in required if slug not in by_slug]
     states = tuple(check_gate_state(ctx, row) for row in selected)
+    if assessment and closed:
+        closed_at = _closed_at(ctx, item)
+        if closed_at is not None:
+            states = tuple(
+                _closed_check_state(row, state, closed_at)
+                for row, state in zip(selected, states)
+            )
     stale = tuple(
         state.slug
         for state in states
@@ -138,6 +159,47 @@ def completion_facts(
         stale=stale,
         historical_exempt=exempt,
     )
+
+
+def _closed_at(ctx: Context, item: str) -> str | None:
+    """When a status record last moved ``item`` into a done category."""
+    for record in query.records_about(ctx.index, item, limit=100):
+        if record.get("kind") != "status.changed":
+            continue
+        data = record.get("data") or {}
+        if data.get("to_category") == "done":
+            at = record.get("at")
+            return at if isinstance(at, str) else None
+    return None
+
+
+def _closed_check_state(
+    row: dict[str, Any], state: gates.CheckState, closed_at: str
+) -> gates.CheckState:
+    """A closed Item's passed proof stands; later work does not reopen it.
+
+    Only a verdict recorded no later than the status record that closed the
+    Item is trusted. The close gate already required it to be fresh then; a
+    definition edit or a later verdict still invalidates it.
+    """
+    verdict_at = row.get("at")
+    if (
+        state.freshness != "fresh"
+        and isinstance(verdict_at, str)
+        and verdict_at <= closed_at
+        and row.get("verdict") is not None
+        and bool(row.get("passed"))
+        and row.get("check_etag") == row.get("definition_etag")
+    ):
+        return gates.CheckState(
+            slug=state.slug,
+            passed=state.passed,
+            freshness="fresh",
+            candidate=state.candidate,
+            acceptance=state.acceptance,
+            requires_candidate=state.requires_candidate,
+        )
+    return state
 
 
 def verify_contract_review(

@@ -446,6 +446,7 @@ def _check_state(ix: Index, row: Sequence[Any]) -> dict[str, Any]:
         "candidate_commit": None,
         "runner_digest": None,
         "reason": None,
+        "output": None,
         "store_binding": None,
         "result_binding": None,
     }
@@ -464,6 +465,7 @@ def _check_state(ix: Index, row: Sequence[Any]) -> dict[str, Any]:
                 "candidate_commit": candidate,
                 "runner_digest": digest,
                 "reason": payload.get("reason"),
+                "output": payload.get("output"),
                 "store_binding": payload.get("store"),
                 "result_binding": payload.get("result"),
             }

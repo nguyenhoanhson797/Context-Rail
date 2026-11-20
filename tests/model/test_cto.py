@@ -126,7 +126,26 @@ def test_every_mode_parses_with_its_own_fields() -> None:
     for mode in ("review", "human", "result"):
         parsed = parse_check({"schema": 1, "mode": mode, "acceptance": True})
         assert parsed.mode == mode
-    assert CHECK_MODES == ("cmd", "exists", "evidence", "review", "human", "store", "result")
+    environment = parse_check(
+        {
+            "schema": 1,
+            "mode": "environment",
+            "acceptance": False,
+            "cmd": ["py", "-V"],
+            "inputs": ["pyproject.toml"],
+        }
+    )
+    assert environment.cmd == ("py", "-V")
+    assert CHECK_MODES == (
+        "cmd",
+        "exists",
+        "environment",
+        "evidence",
+        "review",
+        "human",
+        "store",
+        "result",
+    )
 
 
 @pytest.mark.parametrize(
@@ -321,6 +340,14 @@ def test_valid_cmd_verdict_parses() -> None:
     assert verdict.check == "smoke"
     assert verdict.passed is True
     assert verdict.input_blobs == {"src/app.py": "0" * 40}
+
+
+def test_bracketed_index_paths_are_plain_verdict_inputs() -> None:
+    path = "app/(create)/create/courses/[courseId]/[tab]/page.tsx"
+    verdict = parse_verdict(
+        verdict_data(input_blobs={path: "0" * 40}, input_globs=["app/**"])
+    )
+    assert verdict.input_blobs == {path: "0" * 40}
 
 
 def test_cmd_verdict_needs_input_blobs() -> None:

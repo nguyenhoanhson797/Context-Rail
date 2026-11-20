@@ -80,6 +80,35 @@ def test_reads_launch_no_process_and_hash_no_source(
     assert "hashlib" not in vars(git_index)
 
 
+def test_identical_bytes_with_a_new_mtime_stay_fresh(
+    git_index_repo: SimpleNamespace,
+) -> None:
+    from context_rail.gateway.handlers.checks import _racy_content_verifier
+
+    worktree = git_index_repo.worktree
+    snapshot = read_index(git_index_repo.git_dir, worktree)
+    verdict = _verdict(snapshot, ["docs/readme.md"])
+    check = _check(["docs/readme.md"])
+    target = worktree / "docs/readme.md"
+    entry = snapshot.entries["docs/readme.md"]
+    entry_ns = entry.mtime_s * 1_000_000_000 + entry.mtime_ns
+    stamp = entry_ns + 1_000_000_000
+    os.utime(target, ns=(stamp, stamp))
+
+    stats = selected_stats(worktree, ["docs/readme.md"])
+
+    assert freshness(
+        verdict, check, snapshot, stats,
+        verify_racy=_racy_content_verifier(worktree, snapshot),
+    ) == "fresh"
+    target.write_text("# changed!\n", encoding="utf-8", newline="\n")
+    stats = selected_stats(worktree, ["docs/readme.md"])
+    assert freshness(
+        verdict, check, snapshot, stats,
+        verify_racy=_racy_content_verifier(worktree, snapshot),
+    ) == "stale"
+
+
 def test_a_dirty_tracked_input_is_stale(git_index_repo: SimpleNamespace) -> None:
     snapshot = read_index(git_index_repo.git_dir, git_index_repo.worktree)
     verdict = _verdict(snapshot, ["docs/readme.md"])

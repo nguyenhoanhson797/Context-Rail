@@ -223,8 +223,10 @@ path from the work graph.
 
 ## Checks and evidence
 
-A Check is a document with a strict JSON spec and a freshness rule. Its seven
-modes are `cmd` (command exit), `exists` (relative files), `evidence` (declared
+A Check is a document with a strict JSON spec and a freshness rule. Its eight
+modes are `cmd` (command exit), `exists` (relative files), `environment` (a
+command probe whose verdict is informational and never a gate proof),
+`evidence` (declared
 proof), `review` (separated candidate review), `result` (completed producer
 result freshness, checked from files/index without git), `human` (human
 sign-off) and `store` (committed child-store item category, checked against

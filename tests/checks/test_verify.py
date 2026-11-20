@@ -120,8 +120,30 @@ def test_pass_and_fail_record_verdicts_with_blob_ids(git_approved_store: Any, tm
     failing_verdict = latest_record(store, "check.verdict")
     assert failing_verdict["data"]["passed"] is False
     assert failing_verdict["data"]["exit"] == 1
+    assert failing_verdict["data"]["output"] is None
+    assert "no output was captured" in failing_verdict["data"]["reason"]
     shown = invoke("show", {"slug": "failing"}, store=store)["value"]
     assert shown["freshness"] == "stale"
+
+
+def test_a_failed_verdict_keeps_the_tail_of_its_output(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    command = [sys.executable, "-c", "import sys; print('step one'); print('boom', file=sys.stderr); sys.exit(2)"]
+    assert is_ok(declare(store, tmp_path, "noisy", cmd_payload(command, ["src/**/*.py"])))
+
+    failed = invoke("verify", {"target": "noisy"}, store=store, actor="cto")
+
+    assert is_ok(failed), failed
+    entry = failed["value"]["verdicts"][0]
+    assert entry["passed"] is False
+    assert "step one" in entry["output"]
+    assert "boom" in entry["output"]
+    stored = latest_record(store, "check.verdict")["data"]
+    assert "step one" in stored["output"]
+    shown = invoke("show", {"slug": "noisy"}, store=store)["value"]
+    assert "boom" in shown["output"]
 
 
 def test_inputs_changed_during_execution_invalidate_the_verdict(
@@ -734,6 +756,33 @@ def test_an_untracked_input_is_not_fresh(
 
     shown = invoke("show", {"slug": "smoke"}, store=store)["value"]
     assert shown["freshness"] == "untracked"
+
+
+def test_excluded_and_ignored_paths_do_not_make_a_verdict_untracked(
+    git_approved_store: Any, tmp_path: Path
+) -> None:
+    store = git_approved_store.store
+    payload = cmd_payload([sys.executable, "-c", "print('ok')"], ["src/**/*.py"])
+    payload["exclude"] = ["src/generated/**"]
+    assert is_ok(declare(store, tmp_path, "scoped", payload))
+    assert invoke("verify", {"target": "scoped"}, store=store, actor="cto")["value"]["passed"] is True
+
+    generated = git_approved_store.root / "src" / "generated" / "output.py"
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_text("x = 1\n", encoding="utf-8", newline="\n")
+    ignored = git_approved_store.root / "src" / "__pycache__" / "cached.py"
+    ignored.parent.mkdir(parents=True, exist_ok=True)
+    ignored.write_text("x = 1\n", encoding="utf-8", newline="\n")
+    (git_approved_store.root / ".gitignore").write_text(
+        "__pycache__/\n", encoding="utf-8", newline="\n"
+    )
+
+    assert invoke("show", {"slug": "scoped"}, store=store)["value"]["freshness"] == "fresh"
+
+    (git_approved_store.root / "src" / "extra.py").write_text(
+        "x = 1\n", encoding="utf-8", newline="\n"
+    )
+    assert invoke("show", {"slug": "scoped"}, store=store)["value"]["freshness"] == "untracked"
 
 
 def test_freshness_reads_launch_no_process_and_fail_closed_on_bad_tree(

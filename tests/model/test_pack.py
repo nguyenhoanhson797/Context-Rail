@@ -92,9 +92,9 @@ def test_builtin_basic_pack_matches_pinned_values(tmp_path: Path) -> None:
     }
     assert p.initial == "todo"
     assert p.transitions == {
-        "todo": ("doing", "dropped"),
+        "todo": ("doing", "blocked", "dropped"),
         "doing": ("blocked", "done", "dropped", "todo"),
-        "blocked": ("doing", "dropped"),
+        "blocked": ("todo", "doing", "dropped"),
         "done": ("doing",),
         "dropped": ("todo",),
     }

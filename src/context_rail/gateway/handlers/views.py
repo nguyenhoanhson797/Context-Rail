@@ -152,9 +152,11 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             for row in query.check_states(index, doc["slug"])
         ]
     if doc["primitive"] == "check":
-        shown["freshness"] = recipes.freshness(
-            ctx, query.check_state(index, doc["slug"])
-        )
+        state = query.check_state(index, doc["slug"])
+        shown["freshness"] = recipes.freshness(ctx, state)
+        if state is not None:
+            shown["reason"] = state.get("reason")
+            shown["output"] = state.get("output")
     history = query.records_about(index, doc["slug"], limit=HISTORY_CAP + 1)
     shown["history"] = [
         {

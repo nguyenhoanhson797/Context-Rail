@@ -697,7 +697,13 @@ def _authorize(
     # and the lockout on the protected picture are skipped; the workflow
     # quality gates (checks, review, merge) still apply.
     if getattr(policy, "mode", "full") == "solo":
-        if tool.name in EXECUTION_TOOLS and not context.identity.lead:
+        if (
+            tool.name in EXECUTION_TOOLS
+            and tool.name != "review"
+            and not context.identity.lead
+        ):
+            # Review stays open to a separated identity: the profile or role
+            # above already narrowed it, and the handler enforces separation.
             return fail(
                 "PERMISSION_DENIED",
                 "solo mode allows the lead to execute",

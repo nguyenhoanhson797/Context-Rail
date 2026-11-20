@@ -131,7 +131,9 @@ rail gate [--warnings-as-errors]
 ```
 
 `rail check declare` accepts JSON specs with `mode`: `cmd`, `exists`,
-`evidence`, `review`, `human`, `result`, or `store`. A `result` check verifies
+`environment`, `evidence`, `review`, `human`, `result`, or `store`. An
+`environment` check runs a command probe but its verdict is informational and
+never a gate proof. A `result` check verifies
 the current completed producer Markdown result without running git. A `store`
 check proves a committed item's category in another store (a submodule or
 sibling repo):

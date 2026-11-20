@@ -608,7 +608,7 @@
       <div class="stat"><b>6</b><span>fixed primitives</span></div>
       <div class="stat"><b>8</b><span>named relations</span></div>
       <div class="stat"><b>5</b><span>status categories</span></div>
-      <div class="stat"><b>7</b><span>check modes</span></div>
+      <div class="stat"><b>8</b><span>check modes</span></div>
       <div class="stat"><b>60</b><span>tools · one table</span></div>
       <div class="stat"><b>1</b><span>write path</span></div>
     </div>
@@ -873,7 +873,7 @@
           <span class="num">04 · primitive</span>
           <h3>Check</h3>
           <p class="what">A verifiable condition with a verdict and a freshness state. A Check can target one Item; only a linked, fresh pass gates work.</p>
-          <div class="chips"><span>cmd</span><span>exists</span><span>evidence</span><span>review</span><span>result</span><span>human</span><span>store</span></div>
+          <div class="chips"><span>cmd</span><span>exists</span><span>environment</span><span>evidence</span><span>review</span><span>result</span><span>human</span><span>store</span></div>
           <p class="effect"><b>Affects the project by:</b> gating <code>item_done</code> and <code>scope_done</code>, and the <code>merge</code> and <code>release</code> gates a charter may declare. A stale pass is not a pass.</p>
         </article>
 
@@ -1145,7 +1145,7 @@
       </div>
 
       <p class="note"><b>Legacy names still resolve.</b> <code>small</code> is an alias for <code>basic</code> and <code>indie</code> for <code>flow</code>; an approved store keeps the pack name its approval recorded while reading the successor's resources.</p>
-      <p class="note"><b>Transitions are declared, not guessed.</b> In <code>basic</code>: <code>todo → doing | dropped</code>, <code>doing → blocked | done | dropped | todo</code>, <code>blocked → doing | dropped</code>, <code>done → doing</code>, <code>dropped → todo</code>. Any other move is refused with the allowed list.</p>
+      <p class="note"><b>Transitions are declared, not guessed.</b> In <code>basic</code>: <code>todo → doing | blocked | dropped</code>, <code>doing → blocked | done | dropped | todo</code>, <code>blocked → todo | doing | dropped</code>, <code>done → doing</code>, <code>dropped → todo</code>. Any other move is refused with the allowed list.</p>
     </div>
   </section>
 

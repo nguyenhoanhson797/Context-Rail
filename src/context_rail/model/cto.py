@@ -55,6 +55,7 @@ __all__ = [
     "STORE_BINDING_KEYS",
     "UNKNOWN",
     "VERDICT_KEYS",
+    "VERDICT_OUTPUT_MAX",
     "VERDICT_SCHEMA",
     "WORKER_METHODS",
     "Check",
@@ -77,8 +78,11 @@ UNKNOWN = "unknown"
 
 CHECK_SCHEMA = VERDICT_SCHEMA = PROFILE_SCHEMA = REPORT_SCHEMA = 1
 SKILL_SCHEMA = 1
+#: A failed command verdict keeps only the tail of its output, so a red proof
+#: stays reviewable without turning the record into a build log.
+VERDICT_OUTPUT_MAX = 4096
 
-CHECK_MODES = ("cmd", "exists", "evidence", "review", "human", "store", "result")
+CHECK_MODES = ("cmd", "exists", "environment", "evidence", "review", "human", "store", "result")
 CHECK_KEYS = (
     "schema",
     "mode",
@@ -86,6 +90,7 @@ CHECK_KEYS = (
     "verifies",
     "cmd",
     "inputs",
+    "exclude",
     "exists",
     "evidence",
     "store",
@@ -95,10 +100,20 @@ CHECK_KEYS = (
     "legacy",
 )
 #: Check fields that only one mode may carry: every other mode must omit them.
-_MODE_SCOPED_KEYS = ("cmd", "inputs", "exists", "evidence", "store", "item", "category")
+_MODE_SCOPED_KEYS = (
+    "cmd",
+    "inputs",
+    "exclude",
+    "exists",
+    "evidence",
+    "store",
+    "item",
+    "category",
+)
 MODE_ONLY_KEYS: dict[str, frozenset[str]] = {
-    "cmd": frozenset({"cmd", "inputs"}),
-    "exists": frozenset({"exists", "inputs"}),
+    "cmd": frozenset({"cmd", "inputs", "exclude"}),
+    "exists": frozenset({"exists", "inputs", "exclude"}),
+    "environment": frozenset({"cmd", "inputs", "exclude"}),
     "evidence": frozenset({"evidence"}),
     "review": frozenset(),
     "human": frozenset(),
@@ -142,6 +157,7 @@ VERDICT_KEYS = (
     "exit",
     "evidence",
     "reason",
+    "output",
     "candidate_commit",
     "store",
     "result",
@@ -257,6 +273,7 @@ class Check:
     store: str | None = None
     item: str | None = None
     category: str | None = None
+    exclude: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -277,6 +294,7 @@ class Verdict:
     candidate_commit: str | None
     store: dict[str, str] | None = None
     result: dict[str, str | None] | None = None
+    output: str | None = None
 
 
 @dataclass(frozen=True)
@@ -334,20 +352,27 @@ def parse_check(fields: dict[str, Any]) -> Check:
 
     cmd: tuple[str, ...] = ()
     inputs: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
     exists: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
     store: str | None = None
     item: str | None = None
     category: str | None = None
-    if mode == "cmd":
+    if mode in ("cmd", "environment"):
         cmd = string_list(data.get("cmd"), "check.cmd")
         inputs = string_list(data.get("inputs"), "check.inputs")
+        exclude = string_list(
+            data.get("exclude") or [], "check.exclude", allow_empty=True
+        )
     elif mode == "exists":
         exists = tuple(
             relative_path(path, "check.exists")
             for path in string_list(data.get("exists"), "check.exists")
         )
         inputs = string_list(data.get("inputs"), "check.inputs")
+        exclude = string_list(
+            data.get("exclude") or [], "check.exclude", allow_empty=True
+        )
     elif mode == "evidence":
         evidence = string_list(data.get("evidence"), "check.evidence")
     elif mode == "store":
@@ -355,8 +380,8 @@ def parse_check(fields: dict[str, Any]) -> Check:
         store = _store_path(data["store"], "check.store")
         item = _slug(data["item"], "check.item")
         category = _category(data["category"], "check.category")
-    if mode in ("cmd", "exists"):
-        for glob in inputs:
+    if mode in ("cmd", "exists", "environment"):
+        for glob in (*inputs, *exclude):
             relative_path(glob, "check.inputs", glob=True)
 
     verifies: tuple[str, ...] = ()
@@ -387,6 +412,7 @@ def parse_check(fields: dict[str, Any]) -> Check:
         store=store,
         item=item,
         category=category,
+        exclude=exclude,
     )
 
 
@@ -475,13 +501,15 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
         refuse("verdict.mode must be one of " + ", ".join(CHECK_MODES))
     blobs = mapping(payload["input_blobs"], "verdict.input_blobs")
     for path, oid in blobs.items():
-        relative_path(path, "verdict.input_blobs")
+        # Keys are exact index entries, not patterns: legal Git paths may carry
+        # glob characters such as a Next.js ``[id]`` route segment.
+        relative_path(path, "verdict.input_blobs", glob=True)
         string(oid, "verdict.input_blobs")
     globs = string_list(payload["input_globs"], "verdict.input_globs", allow_empty=True)
 
     runner_digest = _optional_string(payload.get("runner_digest"), "verdict.runner_digest")
     exit_code = _optional_int(payload.get("exit"), "verdict.exit")
-    if mode == "cmd":
+    if mode in ("cmd", "environment"):
         if not blobs or not globs:
             refuse("a cmd verdict needs its declared inputs, blobs and globs")
         if runner_digest is None or exit_code is None:
@@ -491,6 +519,11 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
             refuse(f"mode {mode!r} carries no runner digest or exit code")
 
     passed = boolean(payload["passed"], "verdict.passed")
+    output = _optional_string(payload.get("output"), "verdict.output")
+    if output is not None and len(output) > VERDICT_OUTPUT_MAX:
+        refuse(
+            f"verdict.output must not exceed {VERDICT_OUTPUT_MAX} characters"
+        )
     binding: dict[str, str] | None = None
     if mode == "store":
         if "store" not in payload:
@@ -527,6 +560,7 @@ def parse_verdict(data: dict[str, Any]) -> Verdict:
         ),
         store=binding,
         result=result_binding,
+        output=output,
     )
 
 

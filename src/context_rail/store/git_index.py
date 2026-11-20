@@ -215,13 +215,14 @@ def freshness(
     stats: Mapping[str, tuple[int, int] | None],
     *,
     verify_racy: Callable[[str, IndexEntry], bool | None] | None = None,
+    exclude: Sequence[str] = (),
 ) -> str:
     """How much a recorded verdict still says about the current worktree.
 
-    ``verify_racy`` may resolve an input whose stat landed in the index's write
-    tick: it returns True when the current bytes still hash to the index OID,
-    False when they differ, None when they cannot be read. Without it a racy
-    input stays unknown.
+    ``verify_racy`` may resolve an input whose stat no longer matches the index
+    (a racy write, or an identical rewrite with a new mtime): it returns True
+    when the current bytes still hash to the index OID, False when they differ,
+    None when they cannot be read. Without it a changed stat stays stale.
     """
     if snapshot.unknown is not None:
         return UNKNOWN
@@ -234,7 +235,7 @@ def freshness(
         if mode in ("review", "human", "evidence"):
             return _bound(verdict, check, definition)
         return MISSING
-    if mode not in ("cmd", "exists"):
+    if mode not in ("cmd", "exists", "environment"):
         return MISSING
     if verdict.get("passed") is not True:
         return STALE
@@ -242,6 +243,9 @@ def freshness(
         return STALE
     try:
         matched = match_inputs(snapshot, globs)
+        if exclude:
+            omitted = set(match_inputs(snapshot, exclude))
+            matched = tuple(path for path in matched if path not in omitted)
     except GlobError:
         return UNKNOWN
     if not matched:
@@ -265,7 +269,15 @@ def freshness(
             return STALE
         entry_ns = entry.mtime_s * 1_000_000_000 + entry.mtime_ns
         if mtime_ns != entry_ns:
-            return STALE
+            # A build or formatter can rewrite a file with identical bytes and a
+            # new mtime. Re-hash only this selected input before calling it dirty.
+            if verify_racy is None:
+                return STALE
+            verified = verify_racy(path, entry)
+            if verified is None:
+                return UNKNOWN
+            if not verified:
+                return STALE
         if _time_is_unverifiable(mtime_ns, snapshot.written_at):
             if verify_racy is None:
                 return UNKNOWN

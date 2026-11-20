@@ -31,6 +31,7 @@ from context_rail.model.candidate import (
 )
 from context_rail.runner import git
 from context_rail.store import query
+from context_rail.store.location import owns_path, store_prefixes
 from context_rail.store.lock import store_lock
 from context_rail.store.write import WriteRefused, replay
 from context_rail.store.write import commit as commit_records
@@ -82,6 +83,13 @@ def _record(
         return _value(ctx, existing, replayed=True)
     base = explicit_base or _default_base(root, commit, policy.default_branch)
     names = git.diff_names(root, base, commit)
+    store_owned = store_prefixes(ctx.store, root, ctx.manifest)
+    if names and store_owned and all(owns_path(name, store_owned) for name in names):
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "the commit changes only the rail store; record the code commit instead",
+            {"reason": "store_only_commit", "commit": commit, "files": names[:FILES_CAP]},
+        )
 
     identity = ctx.identity
     seat = identity.seat if identity.kind == "seat" else None

@@ -24,6 +24,7 @@ from context_rail.gateway.handlers.common import (
     prepare_document_fields,
     preset_for,
     template_body,
+    unique_slug,
     validate_relation_targets,
 )
 from context_rail.gateway.handlers.result_checks import (
@@ -36,9 +37,13 @@ from context_rail.gateway.handlers.store_check import (
     store_payload,
 )
 from context_rail.kernel.rights import review_separation
-from context_rail.model.cto import Check, parse_check, parse_verdict
+from context_rail.model.cto import (
+    VERDICT_OUTPUT_MAX,
+    Check,
+    parse_check,
+    parse_verdict,
+)
 from context_rail.model.fields import SLUG_RE, glob_regex
-from context_rail.model.manifest import render_path
 from context_rail.model.pack import Preset
 from context_rail.runner import git as git_runner
 from context_rail.runner.run import run as run_command
@@ -81,14 +86,14 @@ MAX_TIMEOUT_S = 3600
 DEFAULT_TIMEOUT_S = 120
 EMPTY_DIGEST = "sha256:" + sha256_hex(b"")
 HUMAN_VERDICTS = ("pass", "fail")
-SHELL_MODES = ("cmd", "exists")
+SHELL_MODES = ("cmd", "environment", "exists")
 #: The modes whose verification may carry a supplied ``--evidence`` list.
 EVIDENCE_MODES = ("evidence", "human")
 #: Modes an Item-wide verification leaves out: a human verdict is the human's,
 #: and a review proves one exact candidate the review command produced.
-ITEM_WIDE_SKIP = ("human", "review")
+ITEM_WIDE_SKIP = ("human", "review", "environment")
 _RECORD_ID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
-_EXECUTABLE_MODES = ("cmd", "exists", "evidence", "review", "store", "result")
+_EXECUTABLE_MODES = ("cmd", "environment", "exists", "evidence", "review", "store", "result")
 
 
 class _DuplicateKey(Exception):
@@ -97,8 +102,8 @@ class _DuplicateKey(Exception):
 
 def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Create or edit one Check document and its declaration Record."""
-    slug = _check_slug(args["slug"])
-    expect = args["expect"]
+    requested_slug = _check_slug(args["slug"])
+    expect = args.get("expect") or ABSENT
     key = args["key"]
     store = ctx.store
     with store_lock(store):
@@ -113,6 +118,12 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             resolve_child_store(ctx, spec.store)
         preset = preset_for(ctx.pack, "check")
         target = _trimmed(args.get("target"))
+        declared = spec.verifies[0] if spec.verifies else None
+        item = target or declared
+        slug = requested_slug
+        if expect == ABSENT and item is not None and slug == item:
+            # An item's natural check name would collide with the item itself.
+            slug = unique_slug(index, f"{slug}-check")
         relations = {"verifies": (target,)} if target else {}
         validate_relation_targets(index, slug, "check", relations)
         try:
@@ -172,7 +183,6 @@ def check(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             if target is None:
                 inherited = current.relations.get("verifies", ())
                 target = inherited[0] if inherited else None
-        declared = spec.verifies[0] if spec.verifies else None
         if target is not None and declared is not None and target != declared:
             raise WriteRefused(
                 "VALIDATION_FAILED",
@@ -372,8 +382,12 @@ def freshness_of(
     git_dir, worktree = located
     snapshot = read_index(git_dir, worktree)
     globs = list(row.get("inputs") or ())
+    exclude = _exclude_globs(row)
     try:
         matched = match_inputs(snapshot, globs)
+        if exclude:
+            omitted = set(match_inputs(snapshot, exclude))
+            matched = tuple(path for path in matched if path not in omitted)
     except GlobError:
         return "unknown"
     stats = selected_stats(worktree, matched)
@@ -383,9 +397,12 @@ def freshness_of(
         snapshot,
         stats,
         verify_racy=_racy_content_verifier(worktree, snapshot),
+        exclude=exclude,
     )
     if state == "fresh":
-        untracked = _untracked_state(worktree, snapshot, globs, ctx.store, ctx.manifest)
+        untracked = _untracked_state(
+            worktree, snapshot, globs, ctx.store, ctx.manifest, exclude
+        )
         if untracked is not None:
             return untracked
     return state
@@ -508,6 +525,8 @@ def _review_freshness(ctx: Context, row: Mapping[str, Any]) -> str | None:
 
 
 _MAX_UNTRACKED_DIRS = 10_000
+_MAX_IGNORE_LINES = 5_000
+_MAX_IGNORE_LINE = 512
 
 
 def _untracked_state(
@@ -516,13 +535,14 @@ def _untracked_state(
     globs: Sequence[str],
     store: Path,
     manifest: Any,
+    exclude: Sequence[str] = (),
 ) -> str | None:
     """``'untracked'`` or ``'unknown'`` when the checkout adds an untracked input.
 
     Reads never run git: declared literal prefixes are walked directly with
-    ``os.scandir`` against ``snapshot.entries``, skipping ``.git`` and the
-    store's own prefixes. Unreadable folders, walk caps or bad globs fail
-    closed to ``'unknown'``.
+    ``os.scandir`` against ``snapshot.entries``, skipping ``.git``, the store's
+    own prefixes and paths the checkout's own ``.gitignore`` files ignore.
+    Unreadable folders, walk caps or bad globs fail closed to ``'unknown'``.
     """
     from context_rail.store.location import owns_path, store_prefixes
 
@@ -542,10 +562,20 @@ def _untracked_state(
         return None
     if "" in roots:
         roots = {""}
+    omitted: tuple[re.Pattern[str], ...] = ()
+    if exclude:
+        try:
+            omitted = tuple(
+                glob_regex(str(text).replace("\\", "/").strip("/"))
+                for text in exclude
+                if text
+            )
+        except re.error:
+            return "unknown"
     ignored = store_prefixes(store, worktree, manifest)
     tracked = snapshot.entries
     scanned_dirs = 0
-    stack: list[tuple[Path, str]] = []
+    stack: list[tuple[Path, str, tuple[_IgnoreRule, ...]]] = []
     for prefix in sorted(roots):
         target = worktree if not prefix else worktree / Path(*prefix.split("/"))
         try:
@@ -554,21 +584,35 @@ def _untracked_state(
             continue
         except OSError:
             return "unknown"
+        rules = _ignore_rules_to(worktree, prefix)
         if os.path.islink(target):
             rel = prefix
-            if rel and rel not in tracked and any(p.match(rel) for p in patterns):
+            if (
+                rel
+                and rel not in tracked
+                and not _ignored(rel, False, rules)
+                and any(p.match(rel) for p in patterns)
+                and not any(p.match(rel) for p in omitted)
+            ):
                 return "untracked"
             continue
         if os.path.isdir(target):
-            stack.append((target, prefix))
+            stack.append((target, prefix, rules))
         elif os.path.isfile(target):
-            if prefix and prefix not in tracked and any(p.match(prefix) for p in patterns):
+            if (
+                prefix
+                and prefix not in tracked
+                and not _ignored(prefix, False, rules)
+                and any(p.match(prefix) for p in patterns)
+                and not any(p.match(prefix) for p in omitted)
+            ):
                 return "untracked"
     while stack:
         scanned_dirs += 1
         if scanned_dirs > _MAX_UNTRACKED_DIRS:
             return "unknown"
-        directory, prefix = stack.pop()
+        directory, prefix, inherited = stack.pop()
+        inherited = _ignore_rules_from(directory, prefix, inherited)
         try:
             with os.scandir(directory) as handle:
                 entries = list(handle)
@@ -587,12 +631,121 @@ def _untracked_state(
                 is_file = False if (is_symlink or is_dir) else entry.is_file(follow_symlinks=False)
             except OSError:
                 return "unknown"
+            if _ignored(rel, is_dir, inherited):
+                continue
             if is_dir:
-                stack.append((Path(entry.path), rel))
+                stack.append((Path(entry.path), rel, inherited))
             elif is_file or is_symlink:
-                if rel not in tracked and any(pattern.match(rel) for pattern in patterns):
+                if (
+                    rel not in tracked
+                    and any(pattern.match(rel) for pattern in patterns)
+                    and not any(pattern.match(rel) for pattern in omitted)
+                ):
                     return "untracked"
     return None
+
+
+class _IgnoreRule:
+    """One ``.gitignore`` line, already anchored to its folder."""
+
+    __slots__ = ("dir_only", "negated", "regex")
+
+    def __init__(self, regex: re.Pattern[str], negated: bool, dir_only: bool) -> None:
+        self.regex = regex
+        self.negated = negated
+        self.dir_only = dir_only
+
+
+def _ignore_rules_to(worktree: Path, prefix: str) -> tuple[_IgnoreRule, ...]:
+    """Rules from the root down to ``prefix``'s parent folder."""
+    parent = prefix.rsplit("/", 1)[0] if "/" in prefix else ""
+    rules: tuple[_IgnoreRule, ...] = _ignore_rules_from(worktree, "", ())
+    rel = ""
+    for part in (segment for segment in parent.split("/") if segment):
+        rel = f"{rel}/{part}" if rel else part
+        rules = _ignore_rules_from(worktree / Path(*rel.split("/")), rel, rules)
+    return rules
+
+
+def _ignore_rules_from(
+    directory: Path, prefix: str, inherited: tuple[_IgnoreRule, ...]
+) -> tuple[_IgnoreRule, ...]:
+    path = directory / ".gitignore"
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return inherited
+    rules = list(inherited)
+    for line in text.splitlines()[:_MAX_IGNORE_LINES]:
+        rule = _ignore_rule(line, prefix)
+        if rule is not None:
+            rules.append(rule)
+    return tuple(rules)
+
+
+def _ignore_rule(line: str, prefix: str) -> _IgnoreRule | None:
+    text = line.rstrip()
+    if not text or text.startswith("#") or len(text) > _MAX_IGNORE_LINE:
+        return None
+    negated = text.startswith("!")
+    if negated:
+        text = text[1:]
+    if not text:
+        return None
+    dir_only = text.endswith("/")
+    text = text.rstrip("/")
+    anchored = text.startswith("/") or "/" in text
+    text = text.lstrip("/")
+    body = _ignore_body(text)
+    if anchored:
+        base = re.escape(prefix) + "/" if prefix else ""
+        regex = re.compile("^" + base + body + "$")
+    else:
+        regex = re.compile("(?:^|/)" + body + "$")
+    return _IgnoreRule(regex, negated, dir_only)
+
+
+def _ignore_body(pattern: str) -> str:
+    pieces: list[str] = []
+    index = 0
+    while index < len(pattern):
+        if pattern.startswith("**/", index):
+            pieces.append("(?:.*/)?")
+            index += 3
+        elif pattern.startswith("**", index):
+            pieces.append(".*")
+            index += 2
+        elif pattern[index] == "*":
+            pieces.append("[^/]*")
+            index += 1
+        elif pattern[index] == "?":
+            pieces.append("[^/]")
+            index += 1
+        elif pattern[index] == "[":
+            end = pattern.find("]", index + 1)
+            if end == -1:
+                pieces.append(r"\[")
+                index += 1
+            else:
+                char_class = pattern[index : end + 1]
+                if char_class.startswith("[!"):
+                    char_class = "[^" + char_class[2:]
+                pieces.append(char_class)
+                index = end + 1
+        else:
+            pieces.append(re.escape(pattern[index]))
+            index += 1
+    return "".join(pieces)
+
+
+def _ignored(rel: str, is_dir: bool, rules: tuple[_IgnoreRule, ...]) -> bool:
+    result = False
+    for rule in rules:
+        if rule.dir_only and not is_dir:
+            continue
+        if rule.regex.search(rel):
+            result = not rule.negated
+    return result
 
 
 def _literal_prefix(glob_text: str) -> str:
@@ -617,7 +770,7 @@ def _verify_one(
 ) -> dict[str, Any]:
     mode = row["mode"]
     try:
-        if mode == "cmd":
+        if mode in ("cmd", "environment"):
             payload = _cmd_payload(ctx, row, worktree)
         elif mode == "exists":
             payload = _exists_payload(row, worktree)
@@ -641,7 +794,7 @@ def _verify_one(
             "freshness": "unknown",
             "reason": f"the declared inputs are not valid globs: {error}",
         }
-    if mode == "cmd" and not payload["input_blobs"]:
+    if mode in ("cmd", "environment") and not payload["input_blobs"]:
         # A cmd verdict is only valid bound to its input blobs; a run that could
         # not name a committed input is reported as no proof and never recorded.
         return {
@@ -661,6 +814,7 @@ def _cmd_payload(
     globs = [str(value) for value in spec.get("inputs") or ()]
     command = [str(value) for value in spec.get("cmd") or ()]
     timeout = float(spec.get("timeout_s") or DEFAULT_TIMEOUT_S)
+    exclude = _exclude_globs(row)
     root = _git_worktree(worktree)
     if root is None:
         return _payload(
@@ -671,14 +825,14 @@ def _cmd_payload(
             exit=-1,
         )
     staged = git_runner.ls_files_staged(root, root)
-    matched = _match(staged, globs)
+    matched = _without_excluded(_match(staged, globs), exclude)
     untracked, dirty = _status_paths(root)
     uncommitted = sorted(set(matched) & dirty)
-    if uncommitted or _match(untracked, globs):
+    if uncommitted or _without_excluded(_match(untracked, globs), exclude):
         return _payload(
             row,
             input_globs=globs,
-            reason=_inputs_reason(matched, untracked, uncommitted, globs),
+            reason=_inputs_reason(matched, untracked, uncommitted, globs, exclude),
             runner_digest=EMPTY_DIGEST,
             exit=-1,
         )
@@ -711,10 +865,11 @@ def _cmd_payload(
         {
             *[path for path in matched if after.get(path) != blobs[path]],
             *(set(matched) & after_dirty),
-            *_match(after_untracked, globs),
+            *_without_excluded(_match(after_untracked, globs), exclude),
         }
     )
     exit_code = ran["exit"] if ran["exit"] is not None else -1
+    output = None
     if changed:
         reason: str | None = (
             "the declared inputs changed while the check ran: " + ", ".join(changed)
@@ -725,6 +880,10 @@ def _cmd_payload(
         reason = f"the command exited {exit_code}"
     else:
         reason = None
+    if reason is not None:
+        output = _failure_output(ran)
+        if output is None:
+            reason += " (no output was captured)"
     return _payload(
         row,
         passed=reason is None,
@@ -733,6 +892,7 @@ def _cmd_payload(
         runner_digest=ran["digest"],
         exit=exit_code,
         reason=reason,
+        output=output,
         candidate_commit=git_runner.rev_parse_head(root, root),
     )
 
@@ -759,7 +919,7 @@ def _exists_payload(row: Mapping[str, Any], worktree: Path | None) -> dict[str, 
     staged = (
         git_runner.ls_files_staged(root, root) if _git_worktree(worktree) else {}
     )
-    matched = _match(staged, globs)
+    matched = _without_excluded(_match(staged, globs), _exclude_globs(row))
     blobs = {path: staged[path] for path in matched}
     reason = None if not missing else "missing path(s): " + ", ".join(sorted(missing))
     return _payload(
@@ -895,6 +1055,7 @@ def _commit_verdict(
         "passed": bool(payload["passed"]),
         "freshness": freshness_of(ctx, current),
         "reason": payload["reason"],
+        "output": payload.get("output"),
     }
 
 
@@ -911,6 +1072,7 @@ def _payload(row: Mapping[str, Any], **values: Any) -> dict[str, Any]:
         "exit": None,
         "evidence": [],
         "reason": None,
+        "output": None,
         "candidate_commit": None,
     }
     data.update(values)
@@ -928,12 +1090,16 @@ def _frontmatter(preset: Preset, spec: Check, item: str | None) -> dict[str, Any
         "mode": spec.mode,
         "acceptance": spec.acceptance,
     }
-    if spec.mode == "cmd":
+    if spec.mode in ("cmd", "environment"):
         front["cmd"] = list(spec.cmd)
         front["inputs"] = list(spec.inputs)
+        if spec.exclude:
+            front["exclude"] = list(spec.exclude)
     elif spec.mode == "exists":
         front["exists"] = list(spec.exists)
         front["inputs"] = list(spec.inputs)
+        if spec.exclude:
+            front["exclude"] = list(spec.exclude)
     elif spec.mode == "evidence":
         front["evidence"] = list(spec.evidence)
     elif spec.mode == "store":
@@ -964,7 +1130,7 @@ def _validate_definition(spec: Check) -> None:
                     f"{record_id!r} is not a Record id",
                     {"evidence": record_id},
                 )
-    for glob in spec.inputs:
+    for glob in (*spec.inputs, *spec.exclude):
         problem = invalid_glob(glob)
         if problem is not None:
             raise WriteRefused(
@@ -1110,6 +1276,32 @@ def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 # ── proof helpers ─────────────────────────────────────────────────────────
 
 
+def _failure_output(ran: Mapping[str, Any]) -> str | None:
+    """The tail of a failed command's output, bounded for the verdict record."""
+    parts = [
+        str(stream)
+        for stream in (ran.get("stdout"), ran.get("stderr"))
+        if isinstance(stream, str) and stream.strip()
+    ]
+    if not parts:
+        return None
+    return "\n".join(parts)[-VERDICT_OUTPUT_MAX:]
+
+
+def _exclude_globs(row: Mapping[str, Any]) -> tuple[str, ...]:
+    spec = row.get("spec") or {}
+    return tuple(str(value) for value in spec.get("exclude") or ())
+
+
+def _without_excluded(
+    paths: Sequence[str], exclude: Sequence[str]
+) -> tuple[str, ...]:
+    if not exclude or not paths:
+        return tuple(paths)
+    omitted = set(_match(paths, exclude))
+    return tuple(path for path in paths if path not in omitted)
+
+
 def _match(paths: Iterable[str], globs: Sequence[str]) -> tuple[str, ...]:
     entries = {
         path: IndexEntry(
@@ -1147,11 +1339,12 @@ def _inputs_reason(
     untracked: Sequence[str],
     uncommitted: Sequence[str],
     globs: Sequence[str],
+    exclude: Sequence[str] = (),
 ) -> str:
     parts: list[str] = []
     if uncommitted:
         parts.append("declared inputs have uncommitted changes: " + ", ".join(uncommitted))
-    missing = _match(untracked, globs)
+    missing = _without_excluded(_match(untracked, globs), exclude)
     if missing:
         parts.append("declared inputs are untracked: " + ", ".join(missing))
     if not matched and not missing:

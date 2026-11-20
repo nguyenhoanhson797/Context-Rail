@@ -999,16 +999,27 @@ def _require_gate(ctx: Context, doc: Doc, target: str, actor: str) -> None:
             "candidate": facts.candidate,
             "missing": [*facts.missing, *facts.stale],
             "reasons": reasons,
-            "command": _gate_command(doc.slug, list(facts.missing)),
+            "command": _gate_command(
+                doc.slug,
+                list(facts.missing),
+                none_declared=not facts.checks and not facts.missing,
+            ),
         },
     )
 
 
-def _gate_command(slug: str, missing: list[str]) -> str:
+def _gate_command(
+    slug: str, missing: list[str], *, none_declared: bool = False
+) -> str:
     """The one command that produces the proof a gate named as missing."""
     if missing:
         return (
             f"rail check declare {missing[0]} --target {slug} "
+            f"--spec-file <file> --expect absent"
+        )
+    if none_declared:
+        return (
+            f"rail check declare {slug}-check --target {slug} "
             f"--spec-file <file> --expect absent"
         )
     return f"rail check run {slug}"

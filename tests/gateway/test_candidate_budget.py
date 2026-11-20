@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from helpers import records_of, run_git
 
+from context_rail.context.budget import item_caps
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 
@@ -54,6 +55,14 @@ def test_candidate_over_budget_is_recorded_and_flagged(leaf_item: SimpleNamespac
     assert budget["state"] == "exceeded"
     assert any("attempts" in reason for reason in budget["reasons"])
     assert len(records_of(leaf_item.store, "candidate.recorded")) == 2
+
+
+def test_profile_attempts_does_not_tighten_the_item_attempt_budget() -> None:
+    policy = SimpleNamespace(budgets={"item": {"attempts": 4}})
+
+    caps = item_caps(policy, {"attempts": 1})
+
+    assert caps.caps["attempts"] == 4
 
 
 def test_candidate_usage_counts_against_a_named_counter(leaf_item: SimpleNamespace) -> None:

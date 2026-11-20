@@ -3,9 +3,9 @@ version: 2
 statuses: {todo: not_started, doing: active, blocked: blocked, done: done, dropped: dropped}
 initial: todo
 transitions:
-  todo: [doing, dropped]
+  todo: [doing, blocked, dropped]
   doing: [blocked, done, dropped, todo]
-  blocked: [doing, dropped]
+  blocked: [todo, doing, dropped]
   done: [doing]
   dropped: [todo]
 presets:

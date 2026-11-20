@@ -47,6 +47,16 @@ def record(
     return invoke("candidate", arguments, store=leaf_item.store, actor=actor)
 
 
+def test_a_store_only_commit_is_not_a_candidate(leaf_item: SimpleNamespace) -> None:
+    store_rel = leaf_item.store.relative_to(leaf_item.root).as_posix()
+    commit_file(leaf_item.root, f"{store_rel}/notes/note/only-store.md", "store\n")
+
+    result = record(leaf_item)
+
+    assert not is_ok(result), result
+    assert result["error"]["details"]["reason"] == "store_only_commit"
+
+
 def test_candidate_records_commit_base_and_files(leaf_item: SimpleNamespace) -> None:
     before = head(leaf_item.root)
     tip = commit_file(leaf_item.root, "src/app.py", "VALUE = 2\n")
