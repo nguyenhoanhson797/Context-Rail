@@ -30,6 +30,7 @@ export function ItemSheet({
   openDoc,
   loading = false,
   error = '',
+  retry,
 }: {
   id: string;
   snapshot: PageProps['snapshot'];
@@ -37,6 +38,7 @@ export function ItemSheet({
   openDoc: (id: string) => void;
   loading?: boolean;
   error?: string;
+  retry?: () => void;
 }) {
   const item = allItems(snapshot).find((entry) => text(entry.id) === id);
   const doc = object(document.doc);
@@ -243,7 +245,7 @@ export function ItemSheet({
       ) : null}
 
       <section className="ri-section ri-body">
-        <DocumentContent id={id} data={document} loading={loading} error={error} openDoc={openDoc} />
+        <DocumentContent id={id} data={document} loading={loading} error={error} retry={retry} openDoc={openDoc} />
       </section>
 
       {item ? <footer className="ri-foot">

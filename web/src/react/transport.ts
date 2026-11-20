@@ -3,6 +3,16 @@ import { object, rows, text, type Data, type Snapshot, type RailDoc, type Health
 export const projectValid = (id: string) => id === '' || /^[a-z0-9][a-z0-9-]{0,78}$/.test(id);
 export const docValid = (id: string) => id.length > 0 && id.length < 200 && !/[\p{Cc}"'<>&`\\/]/u.test(id);
 const envelope = z.record(z.string(), z.unknown());
+/* A fetch rejection is the browser's own "Failed to fetch", which says nothing
+   a person can act on. The local server is the only origin this page talks to,
+   so a network-level failure means it stopped answering: name the command that
+   brings it back. The cause is kept for the console. */
+const OFFLINE = 'Could not reach the UI server. Check that rail serve ui is still running, then try again.';
+class NetworkError extends Error {
+  constructor(cause: unknown) { super(OFFLINE, { cause }); this.name = 'NetworkError'; }
+}
+/** Whether a failed read is the server being absent rather than a refusal. */
+export const isNetworkError = (error: unknown): boolean => error instanceof NetworkError;
 export class RailClient {
   constructor(readonly project: string) { if (!projectValid(project)) throw new Error('Invalid project identifier'); }
   /** The one fetch: the HTTP status is kept so a caller can tell an absent
@@ -17,7 +27,13 @@ export class RailClient {
     const headers = new Headers(init.headers);
     const launchToken = typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name="ctx-rail-token"]')?.content || '';
     if (launchToken && !headers.has('X-Rail-Token') && !headers.has('X-Context-Rail-Token')) headers.set('X-Rail-Token', launchToken);
-    const response = await fetch(address, { credentials: 'same-origin', cache: 'no-store', ...init, headers });
+    let response: Response;
+    try {
+      response = await fetch(address, { credentials: 'same-origin', cache: 'no-store', ...init, headers });
+    } catch (error) {
+      if (error instanceof TypeError) throw new NetworkError(error);
+      throw error;
+    }
     if ([401, 403].includes(response.status)) throw new Error('Access refused. Reopen the link printed by ctx-rail ui.');
     let value: unknown;
     try { value = await response.json(); } catch { throw new Error(`Unexpected response (${response.status})`); }
@@ -56,7 +72,7 @@ export class RailClient {
     try {
       result = await this.fetchJson('/api/context', { signal });
     } catch (error) {
-      if (error instanceof TypeError) return this.snapshot(false, signal); // network failure
+      if (isNetworkError(error)) return this.snapshot(false, signal); // network failure
       throw error;
     }
     if (result.status === 404) return this.snapshot(false, signal); // route genuinely absent
