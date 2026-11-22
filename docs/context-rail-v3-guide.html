@@ -725,6 +725,23 @@ the work needs; the brief reads only what it must.</code></pre>
         </p>
       </div>
       <div class="card">
+        <h3>Consent is the human's words</h3>
+        <p class="small">
+          A pack can gate one item on a human's explicit go-ahead. The agent
+          asks; when the human answers, it records exactly what they said,
+          bound to that version:
+        </p>
+        <pre><code>rail consent &lt;item&gt; --on-behalf-of "Ada" \
+  --text "Yes, rotate the key after the backup." \
+  --expect &lt;etag&gt;</code></pre>
+        <p class="small" style="margin-top: 10px;">
+          The record names the agent that recorded it and the human it came
+          from. An action declaring <code>requires: {consent: true}</code>
+          refuses without a matching record, and an edit needs a new answer.
+          The local web view records the same consent from the Item sheet.
+        </p>
+      </div>
+      <div class="card">
         <h3>Until approval, nothing executes</h3>
         <p class="small">
           Anyone can plan, read and draft. A candidate, a check run, a review
@@ -1142,6 +1159,7 @@ rail ops doctor</code></pre>
           <tr><td><code>rail check declare</code> / <code>rail check run</code></td><td>Declare what proves an item, then run it and record verdicts.</td></tr>
           <tr><td><code>rail loop report</code></td><td>File the structured report a finished item owes.</td></tr>
           <tr><td><code>rail --actor human approve &lt;target&gt;</code></td><td>The human gate: a typed phrase and a protected-file hash.</td></tr>
+          <tr><td><code>rail consent &lt;item&gt;</code></td><td>Record the human's exact words for one item version; a gated action waits for it.</td></tr>
         </tbody>
       </table>
     </div>

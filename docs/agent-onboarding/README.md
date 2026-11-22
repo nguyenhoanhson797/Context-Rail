@@ -53,6 +53,7 @@ Everything else is a consequence.
 | A project has no `context-rail/` store | `rail init --pack basic`, then `references/playbooks.md` |
 | A store exists but the agent is new | `rail overview`, `rail types`, `rail next`, `rail model` |
 | The store exists but approval is missing | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"` (a named lead signs; add `--actor human` for a human signature) |
+| Critical work waits for your consent | `rail consent <item> --on-behalf-of "<you>" --text "<your exact words>" --expect <etag>`; a named lead may record it, or use the Item sheet in `rail serve ui` |
 | You are wiring a harness | `references/harnesses.md` |
 | You need a specific command or flag | `references/commands.md` |
 | A command refused | `references/refusals.md` |
@@ -158,10 +159,12 @@ In role mode:
   the first grant when no seat exists need the human on a terminal or through the
   UI. A session caller can never satisfy those human-only actions. Approval is
   different: it records the actor that signed it, and the charter's
-  `approval.agents` says whether an agent may sign. A charter may also delegate
-  named operational actions to one lead; the lead runs only those, only while the
-  approval is current, and every use is recorded. A non-human seat may grant only
-  inside its `can.grant` and write reach.
+  `approval.agents` says whether an agent may sign. A pack action may also need a
+  per-item consent: the human's exact words, bound to the item version they saw.
+  A charter may also delegate named operational actions to one lead; the lead
+  runs only those, only while the approval is current, and every use is
+  recorded. A non-human seat may grant only inside its `can.grant` and write
+  reach.
 - **Anonymous is empty.** With no session and no terminal, the caller has read
   tools and no documents; open a session to work.
 - **Revocation cascades.** Revoking a seat closes its sessions and every seat it

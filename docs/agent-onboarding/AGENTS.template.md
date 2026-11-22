@@ -105,6 +105,18 @@ Never claim a human signature you did not receive. Name the human in
 `--confirmer`, and do not lower a gate or switch a pack on the human's behalf.
 The actor name is a workflow claim, not authentication.
 
+Some pack actions also need a per-item consent: the human's explicit go-ahead
+in their own words, recorded for that item version. Ask first, then record
+exactly what they said:
+
+```bash
+rail consent <item> --on-behalf-of "Name" --text "<their exact words>" --expect <etag>
+```
+
+Never infer or paraphrase the answer. The action refuses without a matching
+record, and an edit needs a new one. The Item sheet in the local web view
+records the same consent.
+
 ## The agent loop
 
 The rail does not run agents. Your tool does, with its own sub-agents. Once the

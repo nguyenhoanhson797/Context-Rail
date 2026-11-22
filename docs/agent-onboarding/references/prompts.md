@@ -21,7 +21,9 @@ Protocol:
    the charter allows it (`approval.agents: true`, the default); name the human
    in `--confirmer`. If the charter sets `approval.agents: false`, print the
    exact human command and wait. Never claim a human signature you did not
-   receive.
+   receive. Some packs also gate one item on a per-item consent: ask the human,
+   then record their exact words with `rail consent <item> --on-behalf-of
+   "Name" --text "<their words>" --expect <etag>`.
 5. Seed one goal and one executable task. Read `rail types`, `rail next` and
    `rail read show` before you add anything.
 6. Render the agent files with `rail ops adapters render` and name the harness
@@ -160,10 +162,11 @@ If a command refuses, read `error.details` and follow the named fix.
 You have the Context Rail MCP server. Use the canonical tools: `status`,
 `next`, `show`, `why`, `model`, `types`, `explain`, `add`, `update`, `move`,
 `link`, `check`, `verify`, `brief`, `result`, `candidate`, `review`,
-`measure usage`.
+`measure usage`, `consent`.
 Start with `status` and `next`. Use `show` before any write. Every write needs
 the current etag and an idempotency key. Record reported effort on `candidate`
 and read `measure usage`; never report money. Never call `migrate` or `pack use`
 unless the session is explicitly human; call `approve` only as the named lead
-when the charter allows it, naming the human in `confirmer`.
+when the charter allows it, naming the human in `confirmer`, and call `consent`
+only with words the human actually gave.
 ```

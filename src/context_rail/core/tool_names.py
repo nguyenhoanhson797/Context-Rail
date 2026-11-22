@@ -94,6 +94,7 @@ ALIASES: dict[str, str] = {**VISIBLE_ALIASES, **COMPAT_ALIASES}
 VISIBLE_PATHS: frozenset[str] = frozenset(VISIBLE_ALIASES) | {
     "init",
     "approve",
+    "consent",
     "check list",
     "sync driver",
     "types",

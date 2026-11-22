@@ -49,6 +49,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | A check reports `stale` | declared inputs changed since the verdict | `rail check run <target>` again; a stale pass is not a pass |
 | `the charter is not approved` | approval missing or drifted | `rail approve charter --confirm "APPROVE charter" --confirmer "Name"` (add `--actor human` when the charter requires a human signature) |
 | `approval_mismatch` | a semantic change moved the digest | Inspect `rail ops pack show --name <pack>`, then reapprove `pack:<pack>` and the charter |
+| `the item has no consent for its current version` | a gated action needs the human's own words for this version | `rail consent <item> --on-behalf-of "Name" --text "…" --expect <etag>`, or approve from the Item sheet in the local web view |
 | `doctor` reports `placement_mismatch` | a path is not what the placement renders | `rail change repath --dry-run`, then `rail change repath` |
 | `placement_unresolved` / `placement_ambiguous` | the relation the placement walks has no single target | Fix the relation, or choose a different parent |
 | `duplicate_slug` | two documents share identity | `rail change rename` the newer one |

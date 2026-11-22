@@ -270,3 +270,21 @@ To steer, put the measurement or comparison in `rail loop report` and let the
 human decide. `rail ops rollback` restores an earlier version as a new one when
 the target and delegation allow; a protected target needs the human. Nothing is
 applied or rolled back automatically.
+
+## 16. Critical work that needs a human's consent
+
+Some packs gate one action on the human's explicit go-ahead, in their own
+words. Ask first; never infer or paraphrase the answer.
+
+```bash
+rail read show <item>                                  # the version the human will see
+rail consent <item> --on-behalf-of "Ada" \
+  --text "Yes, rotate the key after the backup lands." --expect <etag>
+rail do approve-critical --item <item> --etag <etag>
+```
+
+The consent record names the agent that recorded it and the human it came
+from, and is bound to that item version: an edit needs a new answer. The Item
+sheet in `rail serve ui` records the same consent and can run the action; the
+Health page signs the charter. A charter with `approval.agents: false` keeps
+consent human-only.

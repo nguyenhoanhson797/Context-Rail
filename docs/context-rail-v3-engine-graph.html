@@ -1439,6 +1439,7 @@ rail gate</code></pre>
       <div class="refusals">
         <div class="refusal"><b>NOT_FOUND: no store found</b><span>Run <code>rail init</code>, or put <code>--store path</code> before the command.</span></div>
         <div class="refusal"><b>approval_mismatch</b><span>The protected picture changed since it was approved. Run <code>rail approve charter ...</code> again (a named lead may sign when the charter allows it); planning and reads stay open, and no candidate, check or review is recorded.</span></div>
+        <div class="refusal"><b>the item has no consent for its current version</b><span>A gated action needs the human's own words for this version. Record them with <code>rail consent &lt;item&gt; --on-behalf-of "Name" --text "…" --expect &lt;etag&gt;</code>, or approve from the Item sheet in the local web view.</span></div>
         <div class="refusal"><b>CONFLICT: 'x' is at etag a, not b</b><span>Re-read the document, then retry with the etag you now hold. Never reuse an old one, and never guess.</span></div>
         <div class="refusal"><b>check is stale</b><span>Re-run <code>rail check run</code>. A stale pass is not a pass.</span></div>
         <div class="refusal"><b>'x' cannot take a candidate: depends_on:y</b><span>Finish or drop the dependency; only an executable leaf can take a candidate. The reason is also <code>container</code>, <code>finished</code> or <code>not_executable</code>.</span></div>

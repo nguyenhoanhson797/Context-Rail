@@ -48,6 +48,7 @@ def test_surface_hides_the_flat_names_but_keeps_them_visible_to_the_parser() -> 
     assert "status" not in visible
     assert "sync driver" not in visible
     assert "init" in visible and "approve" in visible
+    assert "consent" in visible
 
 
 def test_seat_list_is_a_visible_surface_leaf() -> None:

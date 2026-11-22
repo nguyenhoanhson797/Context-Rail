@@ -144,9 +144,15 @@ put the evidence in `rail loop report` and let the human decide.
 |---|---|
 | Read | `overview`, `read status\|digest\|find\|show\|ledger` |
 | Change | `change add\|update\|link\|move\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` |
-| Gate | `approve`, `ops pack use`, `gate` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
+| Gate | `approve`, `consent`, `ops pack use`, `gate` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
 | Loop | `loop brief\|result\|candidate\|review\|report\|triage\|execution` |
 | Operate | `ops doctor\|reindex\|migrate\|rollback`, `ops pack`, `ops sync`, `ops adapters`, `ops measure`, `serve mcp\|ui\|daemon` |
+
+`consent` records a human's explicit go-ahead for one item, in their own words,
+bound to the version they saw. Ask first; never infer it. A pack action may
+declare `requires: {consent: true}` and refuses without a matching record; an
+edit needs a new answer. The Item sheet in `rail serve ui` records it, and
+Health signs the charter.
 
 Exact flags: `references/commands.md` in this skill.
 
@@ -169,6 +175,7 @@ Exact flags: `references/commands.md` in this skill.
 | `NOT_FOUND: no store found` | `rail init`, or put `--store` before the command |
 | `VALIDATION_FAILED: unrecognized arguments` | Global options belong before the command; `add` is positional |
 | “the charter is not approved; nothing executes yet” | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"`; add `--actor human` when the charter requires a human signature |
+| “the item has no consent for its current version” | Ask the human, then record their exact words: `rail consent <item> --on-behalf-of "<you>" --text "<their words>" --expect <etag>`; an edit needs a new answer |
 | `actor_required` on a write | Name yourself: `--actor <name>` or `RAIL_ACTOR`; an unnamed caller can only read |
 | `profile key 'model' was removed; run rail ops upgrade` | The store predates the runtime-neutral engine; a human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |
 | `AMBIGUOUS_FOCUS` | Two containers match the focus; pass `--into <id>` or finish one |
