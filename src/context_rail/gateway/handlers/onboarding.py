@@ -26,6 +26,7 @@ from context_rail.gateway.handlers.common import (
     compose_doc,
     prepare_document_fields,
     record_data,
+    signing_channel,
 )
 from context_rail.gateway.identity import name_is_cto, name_is_human
 from context_rail.gateway.handlers.init import (
@@ -345,7 +346,7 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 {"confirm": confirmation_phrase("approve", target)},
             )
         signer_kind = "human" if ctx.identity.human else "agent"
-        channel = _signing_channel()
+        channel = signing_channel()
         on_behalf_of = confirmer if signer_kind == "agent" else None
         pack_name = _approval_target(ctx, target)
         hashes = protected_snapshot(ctx, pack_name=pack_name)
@@ -430,17 +431,6 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
 
         summary["code_graph"] = readiness(store, ctx.manifest.code_graph)["line"]
     return summary
-
-
-def _signing_channel() -> str:
-    """How the signing call arrived: a person's terminal, the UI, or an agent."""
-    from context_rail.gateway.execution import HAS_TTY, HUMAN_CHANNEL
-
-    if HUMAN_CHANNEL.get():
-        return "ui"
-    if HAS_TTY.get():
-        return "terminal"
-    return "agent"
 
 
 def _approval_target(ctx: Context, target: str) -> str | None:

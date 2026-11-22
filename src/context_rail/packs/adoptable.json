@@ -369,7 +369,8 @@
     "workspace/cto/skills/portfolio-lead.md": [
       "c4e10a014d5f7a1db04d87a542b916dbfc4227aa3de6ff28c88d92d00d7149cd",
       "52ecb404ab57c7d6517a930792036a5686a8588507038cf2537bbb6cbef94695",
-      "a878eb74672130c903b523158b87529fd38e1ee6c1fe592be66fa58156fedd2e"
+      "a878eb74672130c903b523158b87529fd38e1ee6c1fe592be66fa58156fedd2e",
+      "d42005919233f606d6d418b80c6988010aae31664658cde90542e6a6e179dc1b"
     ],
     "workspace/cto/skills/rail-coordinate.md": [
       "a6f1aca2158d9182d001e7f1b35c7e1a2146f4979281152b263ee4a7455f723c",
@@ -411,10 +412,12 @@
   },
   "adaptive-contract": {
     "workspace/cto/profile.md": [
-      "7cdd4417275fb8f9d0dd9f5d19cb1eef19a9b1d5d480bdf4ee6c7668c02c061f"
+      "7cdd4417275fb8f9d0dd9f5d19cb1eef19a9b1d5d480bdf4ee6c7668c02c061f",
+      "2a8661474a3bfab309e322849748b928dab86b0a9aca74b66255e45e901464d9"
     ],
     "workspace/cto/skills/adaptive-intake.md": [
-      "c308481e21e383f85c7fe678aab7072613978a034816a3022115660919cdaed3"
+      "c308481e21e383f85c7fe678aab7072613978a034816a3022115660919cdaed3",
+      "a9b01a756ccfd40777a49304e8d1405f00c5329e145ea9787fa8acf3be25d86c"
     ],
     "workspace/cto/skills/adaptive-evolution.md": [
       "fe65e0f8f82eaba31715918a8870a256a33b4af3b6dd5bf405542f3af7614840"
@@ -429,16 +432,19 @@
       "419685a27eb36f2679f4336133de566c668a5fb2a57301d608acd57965a754c0"
     ],
     "workspace/profiles/implementer/profile.md": [
-      "15706a612280b7370a3180794d0971344f247098c81144405ea46aec25b06c42"
+      "15706a612280b7370a3180794d0971344f247098c81144405ea46aec25b06c42",
+      "7db6f0c3d26447a09af7ad7c26301087994b0161f91be83001a1d2b9d5785ee1"
     ],
     "workspace/profiles/implementer/skills/proportionate-verification.md": [
-      "f05a1168187219c99db4492d4c209879cccb248fe0a045d1fd9a5236cf999f14"
+      "f05a1168187219c99db4492d4c209879cccb248fe0a045d1fd9a5236cf999f14",
+      "41ff70e5115b2432eb9a92d40f8a68bc3b83f64aadee9700a7f807e172545948"
     ],
     "workspace/profiles/reviewer/profile.md": [
       "adaee697be09d0e647712df3443dba735d90482244528b76dc6a7f8149550d67"
     ],
     "workspace/profiles/reviewer/skills/review-checklist.md": [
-      "d93c63f6c1ee1684ca867b26c88f77b4a9e4c0ea7eb93bdc4ed6ac057b7a6d40"
+      "d93c63f6c1ee1684ca867b26c88f77b4a9e4c0ea7eb93bdc4ed6ac057b7a6d40",
+      "f77b62b644f320f8bac6d0a17c190a2d5a4fdd15dccc450523cc279b7922b798"
     ]
   }
 }

@@ -31,12 +31,16 @@ Before building:
    `rail do contract-standard --item <change> --etag <etag>`.
 2. For a critical change, write the `contract` note and run
    `rail do contract-critical --item <change> --etag <etag>`. Then stop.
-3. A human reads the contract and records approval with
-   `rail change update <change> --set approval=approved --expect <etag>`.
-   Do not record it yourself and do not infer it from a conversation.
+3. Ask the human to read the contract and answer in their own words. When their
+   reply is an explicit yes, record exactly what they said:
+   `rail consent <change> --on-behalf-of "<name>" --text "<their exact words>" --expect <etag>`
+   Record only words the human actually gave; never infer consent, paraphrase
+   it, or record it before they answer. The human may instead approve from the
+   Item sheet in `rail serve ui`, which records the same consent. If the
+   charter sets `approval.agents: false`, the human records the consent.
 4. Run `rail do approve-critical --item <change> --etag <etag>`. The action
-   refuses until the `approval` field is present, then starts the critical
-   verification path.
+   refuses until a consent record covers the change's current version, then
+   starts the critical verification path.
 
 Build and verification:
 

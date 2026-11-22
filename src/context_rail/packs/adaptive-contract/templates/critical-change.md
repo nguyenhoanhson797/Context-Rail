@@ -19,8 +19,10 @@ payments, destructive commands or a force push.
 
 ## Human approval
 
-Who approved the work, when, and what they approved. The `approval` field is
-written by the human before `rail do approve-critical` may run.
+Who approved the work, when, and what they approved. Ask the human to read this
+contract and answer in their own words; record exactly what they said with
+`rail consent` before `rail do approve-critical` may run. The consent is bound
+to this version, so an edit needs a new one.
 
 ## Verification plan
 

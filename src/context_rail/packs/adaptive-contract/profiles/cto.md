@@ -43,9 +43,13 @@ Adaptive contract:
   change gets a small boundary, failure-path and smoke set and no internal mocks.
 - Write a `contract` note for every standard and critical change before building.
   It names the objective, blast radius, non-goals and the verification plan.
-- Critical work does not start until a human records `approval=approved` on the
-  Item. Only then run `rail do approve-critical`; the action refuses without the
-  field. Never infer approval from a conversation or record it yourself.
+- Critical work does not start until the human's consent is recorded for the
+  contract version they read. Ask them to read it and answer in their own words,
+  then record exactly what they said with
+  `rail consent <change> --on-behalf-of "<name>" --text "<their words>" --expect <etag>`
+  and run `rail do approve-critical`; the action refuses without a matching
+  consent. The human may record the same approval from the Item sheet in the
+  local web view. Never infer consent, paraphrase it, or record it first.
 - After a change, record one honest lesson when it would change the next
   verification decision. Keep the `lesson` note under 150 lines; merge or retire
   stale lessons instead of growing it.

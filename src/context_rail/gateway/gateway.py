@@ -578,6 +578,8 @@ def _authorize(
     """The refusal a call earns before its handler runs, if it earns one."""
     if tool.name == "approve":
         return _authorize_approval(context, actor, actor_named)
+    if tool.name == "consent":
+        return _authorize_consent(context, actor, actor_named)
     if tool.name == "adapters sync" and params.get("force"):
         # Replacing a hand-edited generated file is a human action even under a
         # delegation, so it is checked before the delegation is considered.
@@ -788,6 +790,53 @@ def _authorize_approval(
             "PERMISSION_DENIED",
             "the charter requires a human signature for approvals",
             {"tool": "approve", "reason": "human_signature_required", "actor": actor},
+        )
+    return None
+
+
+def _authorize_consent(
+    context: Context | None, actor: str, actor_named: bool
+) -> dict[str, Any] | None:
+    """The refusal a consent call earns before its handler runs.
+
+    A consent is evidence of a governance decision, so it is authorized like an
+    approval: a named lead records it, and the record names the human it came
+    from. A charter that requires a human signature for approvals keeps consent
+    human too, so an agent cannot route around that floor.
+    """
+    if context is None:
+        return fail(
+            "INVALID_STATE",
+            "a consent needs a store with a picture",
+            {"tool": "consent", "reason": "store_missing"},
+        )
+    identity = context.identity
+    if identity.human:
+        return None
+    if identity.kind == ANONYMOUS:
+        return fail(
+            "PERMISSION_DENIED",
+            "a consent needs a named signer",
+            {"tool": "consent", "reason": "actor_required"},
+        )
+    if not actor_named:
+        return fail(
+            "PERMISSION_DENIED",
+            "a consent needs an explicitly named signer; pass --actor <name>",
+            {"tool": "consent", "actor": actor, "reason": "actor_not_named"},
+        )
+    if not identity.lead:
+        return fail(
+            "PERMISSION_DENIED",
+            "a consent needs the CTO or the human",
+            {"tool": "consent", "reason": "not_lead", "actor": actor},
+        )
+    policy = context.policy
+    if policy is not None and not policy.approval.agents:
+        return fail(
+            "PERMISSION_DENIED",
+            "the charter requires a human to record consent",
+            {"tool": "consent", "reason": "human_signature_required", "actor": actor},
         )
     return None
 

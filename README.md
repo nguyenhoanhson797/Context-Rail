@@ -112,6 +112,9 @@ named lead may sign on the human's behalf; the record names both:
 rail approve charter --confirm "APPROVE charter" --confirmer "Your Name"
 ```
 
+The local web view (`rail serve ui`) can sign the same approval from Health,
+and an Item that needs consent asks for your own words on its sheet.
+
 > [!NOTE]
 > Working alone? `rail init --solo` binds one human as the project owner and
 > skips the approval ceremony. The quality gates still apply.

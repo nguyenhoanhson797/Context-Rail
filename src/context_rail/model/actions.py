@@ -18,7 +18,7 @@ __all__ = [
 ]
 
 ACTIONS_KEYS = ("name", "on", "from", "requires", "tool", "args", "use_when", "version")
-REQUIRES_KEYS = ("children", "check", "review", "field")
+REQUIRES_KEYS = ("children", "check", "review", "field", "consent")
 WRITE_ALLOWLIST = frozenset(
     {"add", "update", "link", "move", "rename", "check", "triage", "report"}
 )
@@ -42,6 +42,7 @@ class Requires:
     check: str | None = None
     review: bool = False
     field: str | None = None
+    consent: bool = False
 
 
 @dataclass(frozen=True)
@@ -152,10 +153,17 @@ def _requires(raw: Any, action: str) -> Requires:
         _refuse(f"action {action!r} requires has unknown key(s): " + ", ".join(unknown))
     children = raw.get("children", False)
     review = raw.get("review", False)
+    consent = raw.get("consent", False)
     check = raw.get("check")
     field_name = raw.get("field")
-    if not isinstance(children, bool) or not isinstance(review, bool):
-        _refuse(f"action {action!r} children and review must be true or false")
+    if (
+        not isinstance(children, bool)
+        or not isinstance(review, bool)
+        or not isinstance(consent, bool)
+    ):
+        _refuse(
+            f"action {action!r} children, review and consent must be true or false"
+        )
     if check is not None and (not isinstance(check, str) or not check):
         _refuse(f"action {action!r} check must be a check name")
     if field_name is not None and (
@@ -163,7 +171,11 @@ def _requires(raw: Any, action: str) -> Requires:
     ):
         _refuse(f"action {action!r} field must be a safe field name")
     return Requires(
-        children=children, check=check, review=review, field=field_name
+        children=children,
+        check=check,
+        review=review,
+        field=field_name,
+        consent=consent,
     )
 
 

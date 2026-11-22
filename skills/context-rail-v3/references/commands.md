@@ -153,6 +153,7 @@ allowed for an unreported counter, money is not a counter, and
 
 ```text
 rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
+rail consent <item> --on-behalf-of NAME --text "WORDS" --expect ETAG
 ```
 
 `target` is `charter`, a protected slug, or `pack:<name>`. A named lead signs by
@@ -160,6 +161,12 @@ default; add `--actor human` for a human signature. The record carries `signer`,
 `signer_kind`, `channel` and `on_behalf_of`, and `--confirmer` names the human
 the approval is for. A charter with `approval.agents: false` accepts only a
 human signature.
+
+`consent` records a human's explicit go-ahead for one item version, in their
+own words, bound to the etag they saw. A named lead may record it and the
+record names both the agent (`signer`) and the human (`on_behalf_of`); an edit
+to the item makes it stale. A pack action may declare `requires: {consent:
+true}`, and `approval.agents: false` keeps consent human-only too.
 
 `rail ops pack show` reports `operating` (or `"neutral"`), `semantic_digest`,
 `presentation_digest`, `full_digest` and the approval state. Approval binds to

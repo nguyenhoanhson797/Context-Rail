@@ -265,7 +265,7 @@ export const declaredActions = (snapshot: Snapshot | Data): Data[] => rows(opera
 export const hasActionPreconditions = (snapshot: Snapshot | Data): boolean =>
   declaredActions(snapshot).some((action) => {
     const requires = object(action.requires);
-    return requires.children === true || Boolean(requires.check) || requires.review === true || Boolean(requires.field);
+    return requires.children === true || Boolean(requires.check) || requires.review === true || requires.consent === true || Boolean(requires.field);
   });
 
 export function actionsFor(snapshot: Snapshot | Data, preset: string, status: string): Data[] {

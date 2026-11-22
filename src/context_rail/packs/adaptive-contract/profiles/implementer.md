@@ -20,8 +20,8 @@ Rules:
 
 - Read the Item's tier before you work. `trivial-change` needs a build and typecheck,
   not a new test. `standard-change` runs the existing checks and adds a test only for
-  a named failure they miss. `critical-change` needs the recorded human approval first,
-  then a few boundary, failure-path and smoke tests.
+  a named failure they miss. `critical-change` needs the human's recorded consent
+  for its contract version first, then a few boundary, failure-path and smoke tests.
 - Prove the change with the smallest sufficient check; your skills say how. Do not add
   a test to raise a count, do not mock internals, and do not replace an existing check
   with a weaker one.

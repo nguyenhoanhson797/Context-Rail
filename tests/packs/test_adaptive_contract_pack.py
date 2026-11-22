@@ -39,7 +39,9 @@ def test_the_pack_recognizes_three_tiers_with_proportionate_checks(
     assert pack.workflow("critical").gate_for("done") == "item_done"
 
 
-def test_critical_work_needs_a_recorded_human_approval(tmp_path: Path) -> None:
+def test_critical_work_needs_recorded_consent_for_its_version(
+    tmp_path: Path,
+) -> None:
     store = init_store(tmp_path, pack="adaptive-contract")
     created = invoke(
         "add",
@@ -76,18 +78,23 @@ def test_critical_work_needs_a_recorded_human_approval(tmp_path: Path) -> None:
     )
     assert not is_ok(refused), refused
     assert refused["error"]["code"] == "BUSINESS_RULE_VIOLATED"
+    assert refused["error"]["details"]["condition"] == "consent"
 
-    approved = invoke(
-        "update",
+    consent = invoke(
+        "consent",
         {
-            "slug": slug,
-            "set": ["approval=approved"],
+            "item": slug,
+            "on_behalf_of": "Ada",
+            "text": "Yes, rotate it after the backup lands.",
             "expect": _etag(store, slug),
         },
         store=store,
-        actor="human",
+        actor="cto",
     )
-    assert is_ok(approved), approved
+    assert is_ok(consent), consent
+    assert consent["value"]["signer_kind"] == "agent"
+    assert consent["value"]["on_behalf_of"] == "Ada"
+
     started = invoke(
         "do",
         {
@@ -101,6 +108,8 @@ def test_critical_work_needs_a_recorded_human_approval(tmp_path: Path) -> None:
     )
     assert is_ok(started), started
     assert started["value"]["result"]["status"] == "approved"
+    shown = invoke("show", {"slug": slug}, store=store, actor="cto")["value"]
+    assert shown["consent"]["current"] is True
 
 
 def test_the_queue_offers_every_tier(tmp_path: Path) -> None:

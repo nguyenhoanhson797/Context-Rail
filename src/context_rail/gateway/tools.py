@@ -157,6 +157,36 @@ TOOLS: tuple[Tool, ...] = (
         decision="cto-alone",
     ),
     Tool(
+        name="consent",
+        summary="Record the human's explicit consent for one item, in their own words.",
+        permission="write",
+        params=(
+            Param(
+                "item",
+                "str",
+                required=True,
+                positional=True,
+                help="the item the human approved",
+            ),
+            Param(
+                "on_behalf_of",
+                "str",
+                required=True,
+                help="the human who gave the consent",
+            ),
+            Param("text", "str", required=True, help="the human's exact words"),
+            Param(
+                "expect",
+                "str",
+                required=True,
+                help="the item etag the human saw",
+            ),
+            Param("key", "str", help="idempotency key"),
+        ),
+        handler="context_rail.gateway.handlers.consent:consent",
+        decision="cto-alone",
+    ),
+    Tool(
         name="delegate",
         summary="Set or remove the charter's delegation of named operational actions.",
         permission="human",

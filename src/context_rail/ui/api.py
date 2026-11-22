@@ -146,6 +146,7 @@ def doc_document(store: Path, slug: str) -> dict[str, Any]:
         },
         "card": value.get("card"),
         "checks": value.get("checks") or [],
+        "consent": value.get("consent"),
         "out": value.get("out") or {},
         "in": value.get("in") or {},
     }

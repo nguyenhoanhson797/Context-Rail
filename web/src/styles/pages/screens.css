@@ -598,6 +598,52 @@
 .rh-approval.warn { border-left-color: var(--amber); }
 .rh-approval b { display: block; color: var(--text); font-size: var(--fs-sm); }
 .rh-approval span { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
+
+.rh-approve-form { display: grid; gap: 8px; margin-top: 10px; }
+.rh-approve-form label { display: grid; gap: 4px; color: var(--text-2); font-size: var(--fs-2xs); }
+.rh-approve-form input {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.rh-approve-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.rh-approve-error { margin: 0; color: var(--red); font-size: var(--fs-2xs); }
+
+/* ---------- human approval on the Item sheet ---------- */
+.ri-approval-box {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--green);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+.ri-approval-box h4 { margin: 0; color: var(--text); font-size: var(--fs-sm); }
+.ri-consent p { margin: 0 0 4px; color: var(--text); font-size: var(--fs-sm); line-height: 1.5; }
+.ri-consent-meta { display: block; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
+.ri-approval-form { display: grid; gap: 8px; }
+.ri-approval-form label { display: grid; gap: 4px; color: var(--text-2); font-size: var(--fs-2xs); }
+.ri-approval-form input, .ri-approval-form textarea {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.ri-approval-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ri-approval-actions .ri-muted { flex: 1; min-width: 180px; margin: 0; }
+.ri-approve-error { margin: 0; color: var(--red); font-size: var(--fs-2xs); }
+.ri-approve-note { margin: 0; color: var(--green); font-size: var(--fs-2xs); }
 .rh-digests { margin: 11px 0 0; }
 .rh-digest {
   display: grid;

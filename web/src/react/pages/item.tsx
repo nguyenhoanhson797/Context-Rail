@@ -1,9 +1,10 @@
 /* The Item sheet: the one place a person sees the gate, the legal moves, the
    declared actions and the relations together. It opens beside the work and
    keeps the canvas's selection. */
+import { useState, type FormEvent } from 'react';
 import { Check, Circle, CircleDashed, Lock } from '../icons';
 import { object, rows, text, type Data, type PageProps } from '../contracts';
-import { cn } from '../ui';
+import { Button, cn } from '../ui';
 import { DocumentContent } from '../DocumentContent';
 import { StatusGlyph } from '../overlays';
 import {
@@ -28,6 +29,8 @@ export function ItemSheet({
   snapshot,
   document,
   openDoc,
+  mutate,
+  busy = false,
   loading = false,
   error = '',
   retry,
@@ -36,10 +39,18 @@ export function ItemSheet({
   snapshot: PageProps['snapshot'];
   document: Data;
   openDoc: (id: string) => void;
+  mutate: PageProps['mutate'];
+  busy?: boolean;
   loading?: boolean;
   error?: string;
   retry?: () => void;
 }) {
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [approver, setApprover] = useState('');
+  const [words, setWords] = useState('');
+  const [approvalError, setApprovalError] = useState('');
+  const [approvalNote, setApprovalNote] = useState('');
+  const [approving, setApproving] = useState(false);
   const item = allItems(snapshot).find((entry) => text(entry.id) === id);
   const doc = object(document.doc);
   const card = object(document.card);
@@ -115,6 +126,44 @@ export function ItemSheet({
     if (text(requires.check)) return `check ${text(requires.check)} must pass`;
     if (text(requires.field)) return `field ${text(requires.field)} must be set`;
     return '';
+  };
+
+  const consentAction = actions.find((action) => object(action.requires).consent === true) ?? null;
+  const consent = object(document.consent);
+  const approvalBlocked = consentAction ? blockedAction(consentAction) : '';
+
+  const recordApproval = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!consentAction || approving) return;
+    const name = approver.trim();
+    const said = words.trim();
+    if (!name) {
+      setApprovalError('Name the person giving the approval.');
+      return;
+    }
+    if (!said) {
+      setApprovalError('Type what that person actually said.');
+      return;
+    }
+    const etag = text(doc.etag);
+    if (!etag) {
+      setApprovalError('The item has no etag; reload it before approving.');
+      return;
+    }
+    setApproving(true);
+    setApprovalError('');
+    setApprovalNote('');
+    try {
+      await mutate('consent', { item: id, on_behalf_of: name, text: said, expect: etag });
+      await mutate('do', { action: text(consentAction.name), item: id, etag });
+      setApprovalOpen(false);
+      setWords('');
+      setApprovalNote('Approval recorded and the workflow moved.');
+    } catch (problem) {
+      setApprovalError(problem instanceof Error ? problem.message : String(problem));
+    } finally {
+      setApproving(false);
+    }
   };
 
   return (
@@ -196,7 +245,7 @@ export function ItemSheet({
                 </div>
               );
             })}
-            <p className="ri-agent-note">The sheet reports the compiled moves and actions. An agent runs them through the gateway; the UI never changes work state.</p>
+            <p className="ri-agent-note">The sheet reports the compiled moves and actions. Work moves stay agent-driven; an action that requires consent can be approved here.</p>
           </details>
         ) : null}
         {actions.map((action) => {
@@ -210,6 +259,49 @@ export function ItemSheet({
             </div>
           );
         })}
+        {consentAction || consent.record ? (
+          <div className="ri-approval-box">
+            <h4>{consentAction ? 'Needs your approval' : 'Approval recorded'}</h4>
+            {consent.record ? (
+              <div className="ri-consent">
+                <p>“{text(consent.text)}”</p>
+                <span className="ri-consent-meta">
+                  {text(consent.on_behalf_of, 'A human')} · {text(consent.at)}
+                  {' · recorded by '}{text(consent.signer)} ({text(consent.signer_kind)})
+                  {consent.current === false ? ' · a later edit needs a new approval' : ''}
+                </span>
+              </div>
+            ) : null}
+            {consentAction ? approvalOpen ? (
+              <form className="ri-approval-form" onSubmit={recordApproval}>
+                <label>
+                  Your name
+                  <input value={approver} onChange={(event) => setApprover(event.target.value)} autoComplete="name" required />
+                </label>
+                <label>
+                  What you said
+                  <textarea rows={3} value={words} onChange={(event) => setWords(event.target.value)} placeholder="Type the words you actually said, not a summary." required />
+                </label>
+                {approvalBlocked ? <p className="ri-reason">{approvalBlocked}</p> : null}
+                {approvalError ? <p role="alert" className="ri-approve-error">{approvalError}</p> : null}
+                <div className="ri-approval-actions">
+                  <Button type="submit" variant="primary" disabled={busy || approving || Boolean(approvalBlocked)}>
+                    {approving ? 'Recording…' : 'Approve and start'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => { setApprovalOpen(false); setApprovalError(''); }}>Cancel</Button>
+                </div>
+              </form>
+            ) : (
+              <div className="ri-approval-actions">
+                <p className="ri-muted">The workflow waits for your words before it can start.</p>
+                <Button variant="primary" disabled={busy} onClick={() => { setApprovalOpen(true); setApprovalNote(''); }}>
+                  Approve this change
+                </Button>
+              </div>
+            ) : null}
+            {approvalNote ? <p role="status" className="ri-approve-note">{approvalNote}</p> : null}
+          </div>
+        ) : null}
       </section> : null}
 
       {relations.length ? (
@@ -252,7 +344,7 @@ export function ItemSheet({
         <StatusGlyph status={status} statuses={workflow ? workflowStatuses(snapshot, workflow) : []} category={category} size={12} />
         <span>{workflow ? `workflow ${workflow}` : 'no workflow'}</span>
         <span className="sp" />
-        <span className="faint">Read-only here: agents move work; the UI reports it.</span>
+        <span className="faint">Agents do the work. Approvals are recorded here.</span>
       </footer> : null}
     </div>
   );

@@ -18,7 +18,7 @@ The tier selects the evidence. More tests are not automatically better evidence.
 - **Standard**: run the existing checks through `rail check run <item>`. Add a
   test only when an existing check cannot catch a named failure this change can
   introduce. One focused test at the boundary is enough.
-- **Critical**: after the recorded human approval, use at most a small set:
+- **Critical**: after the human's recorded consent, use at most a small set:
   one boundary or compatibility test, one failure path, and one smoke test. No
   internal mocks, no assertion on private call order, no fixture that only
   restates the implementation.

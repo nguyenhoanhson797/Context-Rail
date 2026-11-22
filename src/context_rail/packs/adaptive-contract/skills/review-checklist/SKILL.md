@@ -17,8 +17,8 @@ tags: []
 - Every declared Check passed with recorded inputs; freshness is fresh, not unknown.
 - Check the tier against the diff. A change that touches data, security, a public
   interface or an irreversible action cannot stay trivial or standard.
-- For a critical change, confirm the human approval exists before the build and
-  that the contract names the rollback.
+- For a critical change, confirm the human's consent covers the built contract
+  version and that the contract names the rollback.
 - New tests are justified: each guards a named failure; no new test is fine when
   existing checks prove the change. Reject tests that only pin implementation or
   mock internals.

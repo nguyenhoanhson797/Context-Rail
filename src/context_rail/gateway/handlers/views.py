@@ -168,6 +168,15 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         for row in history[:HISTORY_CAP]
     ]
     shown["history_omitted"] = max(len(history) - HISTORY_CAP, 0)
+    if doc["primitive"] == "item":
+        latest = query.latest_consent(index, doc["slug"])
+        if latest is not None:
+            digest = approval.semantic_hash(
+                (ctx.store / doc["path"]).read_bytes(), format="markdown"
+            )
+            latest = {key: value for key, value in latest.items() if key != "path"}
+            latest["current"] = latest.get("item_digest") == digest
+            shown["consent"] = latest
     if doc["primitive"] == "policy" and doc["preset"] == CHARTER_TARGET:
         shown["approval"] = approval.approval_state(ctx, CHARTER_TARGET)
         shown["phrase"] = confirmation_phrase("approve", CHARTER_TARGET)

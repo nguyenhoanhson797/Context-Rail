@@ -23,6 +23,7 @@ from typing import Any
 
 from context_rail.core.util import canonical_iso, sha256_hex
 from context_rail.model.candidate import CANDIDATE_KIND, parse_candidate
+from context_rail.model.consent import CONSENT_KIND, parse_consent
 from context_rail.model.cto import parse_check, parse_report, parse_verdict
 from context_rail.model.errors import ModelError
 from context_rail.model.execution import EXECUTION_KIND, parse_execution
@@ -65,7 +66,7 @@ __all__ = [
     "pack_hash",
 ]
 
-INDEX_SCHEMA = 13
+INDEX_SCHEMA = 14
 #: Reported on the document row when a typed payload cannot be projected.
 INVALID_PAYLOAD = "invalid_payload"
 #: The Record kind that carries reports into triage.
@@ -218,6 +219,23 @@ _SCHEMA = (
     """,
     "CREATE INDEX approvals_target_at ON approvals(target, at DESC)",
     """
+    CREATE TABLE consents(
+        path TEXT PRIMARY KEY,
+        record_id TEXT NOT NULL,
+        item TEXT NOT NULL,
+        item_etag TEXT NOT NULL,
+        item_digest TEXT NOT NULL,
+        at TEXT,
+        on_behalf_of TEXT NOT NULL,
+        signer TEXT NOT NULL,
+        signer_kind TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        text TEXT NOT NULL,
+        data_json TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX consents_item_at ON consents(item, at DESC)",
+    """
     CREATE TABLE reviews(
         path TEXT PRIMARY KEY,
         record_id TEXT NOT NULL,
@@ -343,6 +361,7 @@ _PATH_TABLES = (
     "verdicts",
     "reports",
     "approvals",
+    "consents",
     "reviews",
     "results",
     "result_adoptions",
@@ -398,6 +417,20 @@ _PROJECTION_COLUMNS = {
         "at",
         "protected_hashes_json",
         "confirmer",
+    ),
+    "consents": (
+        "path",
+        "record_id",
+        "item",
+        "item_etag",
+        "item_digest",
+        "at",
+        "on_behalf_of",
+        "signer",
+        "signer_kind",
+        "channel",
+        "text",
+        "data_json",
     ),
     "reviews": (
         "path",
@@ -505,6 +538,7 @@ _PROJECTED_KINDS = frozenset(
         _VERDICT_KIND,
         _REPORT_KIND,
         _APPROVAL_KIND,
+        CONSENT_KIND,
         _REVIEW_KIND,
         RESULT_KIND,
         RESULT_ADOPTION_KIND,
@@ -963,6 +997,8 @@ def _projection(doc: Doc) -> list[tuple[str, tuple[Any, ...]]]:
         return _triage_rows(record_id, data)
     if kind == _APPROVAL_KIND:
         return _approval_rows(doc, record_id, data)
+    if kind == CONSENT_KIND:
+        return _consent_rows(doc, record_id, data)
     if kind == EXECUTION_KIND:
         return _execution_rows(doc, record_id, data)
     if kind == CANDIDATE_KIND:
@@ -1077,6 +1113,27 @@ def _approval_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple
     string(payload["confirmation"], "approval.confirmation")
     row = (doc.path, record_id, target, _at(doc), _json(hashes), confirmer)
     return [("approvals", row)]
+
+
+def _consent_rows(
+    doc: Doc, record_id: str, data: dict[str, Any]
+) -> list[tuple[str, tuple[Any, ...]]]:
+    payload = parse_consent(data)
+    row = (
+        doc.path,
+        record_id,
+        payload["item"],
+        payload["item_etag"],
+        payload["item_digest"],
+        _at(doc),
+        payload["on_behalf_of"],
+        payload["signer"],
+        payload["signer_kind"],
+        payload["channel"],
+        payload["text"],
+        _json(data),
+    )
+    return [("consents", row)]
 
 
 def _review_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple[str, tuple[Any, ...]]]:

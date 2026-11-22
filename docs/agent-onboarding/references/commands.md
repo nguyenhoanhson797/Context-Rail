@@ -69,6 +69,7 @@ rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run] [--cod
           [--interview | --answers-file FILE | --draft-file FILE]
           [--solo] [--key KEY]
 rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
+rail consent <item> --on-behalf-of NAME --text "WORDS" --expect ETAG
 rail overview [--max-chars N] [--item-limit N]
 rail read status
 rail read digest [--since ISO] [--limit N] [--max-chars N]
@@ -89,6 +90,14 @@ binds to the semantic digest. A named lead signs by default; add `--actor human`
 for a human signature. The record carries `signer`, `signer_kind`, `channel` and
 `on_behalf_of`; `--confirmer` names the human the approval is for. A charter with
 `approval.agents: false` accepts only a human signature.
+
+`consent` records a human's explicit go-ahead for one item version, in their
+own words: `--text` is what they said, `--on-behalf-of` names them, and
+`--expect` is the item etag they saw. A named lead records it; the record names
+the agent that called as `signer` and the human as `on_behalf_of`. An edit to
+the item makes the consent stale, so a pack action that requires consent (such
+as `approve-critical`) waits for a new one. `approval.agents: false` keeps
+consent human-only too.
 
 `init --answers-file` runs the same stages as the resumable pipeline: it writes
 the picture and workspace, renders the selected agent harnesses, installs the

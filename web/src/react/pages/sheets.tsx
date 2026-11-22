@@ -356,6 +356,7 @@ export function RulesSheet({ snapshot, onClose }: { snapshot: PageProps['snapsho
             const preconditions = [
               requires.children === true ? 'every child finished' : '',
               requires.review === true ? 'review required' : '',
+              requires.consent === true ? 'recorded consent' : '',
               text(requires.check) ? `check ${text(requires.check)}` : '',
               text(requires.field) ? `field ${text(requires.field)}` : '',
             ].filter(Boolean);

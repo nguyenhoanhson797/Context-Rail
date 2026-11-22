@@ -424,6 +424,17 @@ never an agent session. Approval is different: a project-anchored lead seat may
 sign it with its own session when the charter allows it, and the record names
 the signer and the human it was made for.
 
+A pack can also ask for a per-item consent before a specific action. The agent
+asks the human in chat; when the human answers in their own words, the lead
+records exactly that answer with
+`rail consent <item> --on-behalf-of "<name>" --text "<their words>" --expect <etag>`.
+The record is bound to the version the human saw, so an edit needs a new answer.
+An action declares `requires: {consent: true}` and refuses without a matching
+record. The engine can prove who recorded the consent, not who spoke; the text
+is kept verbatim and attributed instead of being reduced to a boolean. The
+local web view records the same consent from the Item sheet and signs the
+charter from Health.
+
 An approved charter authorizes its live project-anchored lead to run the
 operational actions: `ops upgrade`, `ops adapters render` and `ops rollback`. No
 extra block is required; each use writes a `delegation.used` record naming the

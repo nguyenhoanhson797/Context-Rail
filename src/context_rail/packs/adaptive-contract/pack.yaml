@@ -59,7 +59,7 @@ presets:
   scope:         {primitive: item,   tags: [scope], container: true, fields: {priority: [must, should, could, wont]}}
   trivial-change: {primitive: item,  tags: [change], container: false, workflow: trivial, fields: {kind: [docs, format, dependency, config, small-fix]}, template: templates/trivial-change.md}
   standard-change: {primitive: item, tags: [change], container: false, workflow: standard, fields: {kind: [feature, fix, refactor, dependency, config]}, template: templates/standard-change.md}
-  critical-change: {primitive: item, tags: [change], container: false, workflow: critical, fields: {kind: [security, data, api, dependency, config], approval: [approved], risk: [high, critical]}, template: templates/critical-change.md}
+  critical-change: {primitive: item, tags: [change], container: false, workflow: critical, fields: {kind: [security, data, api, dependency, config], risk: [high, critical]}, template: templates/critical-change.md}
   task:          {primitive: item,   tags: [task], container: false, workflow: standard}
   bug:           {primitive: item,   tags: [bug], container: false, workflow: standard}
   fix:           {primitive: item,   tags: [], container: false, workflow: standard}
@@ -133,8 +133,8 @@ actions:
     from: [contracted]
     tool: change move
     args: {slug: "{item}", status: approved, expect: "{etag}"}
-    requires: {field: approval}
-    use_when: "a human has recorded approval before critical work starts"
+    requires: {consent: true}
+    use_when: "the human's consent is recorded for this contract version"
   start-critical:
     "on": critical-change
     from: [approved]

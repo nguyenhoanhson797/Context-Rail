@@ -2,17 +2,17 @@
    facts with a severity and a remedy; the digests are the approval contract, so
    a reader can see which change would need reapproval. Nothing here resolves a
    finding by hand: the remedy is shown, and the store stays the truth. */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Check, CircleCheck, FileText, GitBranch, Lock, RotateCcw, ShieldAlert, ShieldCheck, Terminal, TriangleAlert } from '../icons';
 import { object, rows, text, type PageProps } from '../contracts';
-import { cn } from '../ui';
+import { Button, cn } from '../ui';
 import { titleCase } from './operating';
 
 const SEVERITIES = ['error', 'warning', 'info'] as const;
 
 const SEVERITY_TONE: Record<string, string> = { error: 'bad', warning: 'warn', info: 'info' };
 
-export function HealthPage({ snapshot, health, healthError, openDoc, busy, refresh }: PageProps) {
+export function HealthPage({ snapshot, health, healthError, openDoc, busy, refresh, mutate }: PageProps) {
   const snap = object(snapshot);
   const digests = object(snap.digests);
   const project = object(snap.project);
@@ -26,6 +26,11 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
   const [severity, setSeverity] = useState('all');
   const [copied, setCopied] = useState('');
   const [reveal, setReveal] = useState('');
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [confirmer, setConfirmer] = useState('');
+  const [phrase, setPhrase] = useState('');
+  const [approvalError, setApprovalError] = useState('');
+  const [approving, setApproving] = useState(false);
 
   const tallies = useMemo(() => {
     const out: Record<string, number> = { error: 0, warning: 0, info: 0 };
@@ -42,6 +47,7 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
   const totalFindings = doctor.total !== undefined ? Number(doctor.total) || 0 : issues.length;
   const shown = severity === 'all' ? issues : issues.filter((issue) => text(issue.severity, 'info') === severity);
   const approval = text(charter.state, text(project.state, 'unknown'));
+  const approvalDigest = text(object(project.approval).snapshot_digest);
   const projectDoc = text(project.goal_slug, text(charter.id));
   const asOf = text(health?.as_of);
   const apiError = text(health?.error);
@@ -182,6 +188,33 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
                 : 'Nothing executes until the picture is approved.'}
             </span>
           </div>
+          {approval !== 'approved' ? (
+            approvalOpen ? (
+              <form className="rh-approve-form" onSubmit={approveCharter}>
+                <label>
+                  Your name
+                  <input value={confirmer} onChange={(event) => setConfirmer(event.target.value)} autoComplete="name" required />
+                </label>
+                <label>
+                  Type the confirmation phrase
+                  <input value={phrase} onChange={(event) => setPhrase(event.target.value)} placeholder="APPROVE charter" required />
+                </label>
+                {approvalError ? <p role="alert" className="rh-approve-error">{approvalError}</p> : null}
+                <div className="rh-approve-actions">
+                  <Button type="submit" variant="primary" disabled={busy || approving}>
+                    {approving ? 'Signing…' : 'Sign the approval'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => { setApprovalOpen(false); setApprovalError(''); }}>Cancel</Button>
+                </div>
+              </form>
+            ) : (
+              <div className="rh-approve-actions">
+                <Button variant="primary" disabled={busy} onClick={() => setApprovalOpen(true)}>
+                  {approval === 'missing' ? 'Approve the charter' : 'Reapprove the charter'}
+                </Button>
+              </div>
+            )
+          ) : null}
           <dl className="rh-digests">
             {(['semantic', 'presentation', 'full'] as const).map((name) => {
               const value = text(digests[name]);
@@ -243,6 +276,33 @@ export function HealthPage({ snapshot, health, healthError, openDoc, busy, refre
       </div>
     </div>
   );
+
+  async function approveCharter(event: FormEvent) {
+    event.preventDefault();
+    const name = confirmer.trim();
+    const typed = phrase.trim();
+    if (!name) {
+      setApprovalError('Name the person signing the approval.');
+      return;
+    }
+    if (!typed) {
+      setApprovalError('Type the confirmation phrase.');
+      return;
+    }
+    setApproving(true);
+    setApprovalError('');
+    const args: Record<string, unknown> = { target: 'charter', confirm: typed, confirmer: name };
+    if (approvalDigest) args.expect = approvalDigest;
+    try {
+      await mutate('approve', args);
+      setApprovalOpen(false);
+      setPhrase('');
+    } catch (problem) {
+      setApprovalError(problem instanceof Error ? problem.message : String(problem));
+    } finally {
+      setApproving(false);
+    }
+  }
 
   async function copy(name: string, value: string) {
     try {

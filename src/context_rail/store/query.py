@@ -34,6 +34,8 @@ __all__ = [
     "check_state",
     "check_states",
     "code_touches",
+    "consent_for_item",
+    "latest_consent",
     "digest_rows",
     "execution_count",
     "execution_latest",
@@ -1123,6 +1125,63 @@ def approval_for(ix: Index, target: str) -> dict[str, Any] | None:
         "on_behalf_of": payload.get("on_behalf_of"),
         "confirmation": payload.get("confirmation"),
         "data": payload,
+        "path": path,
+    }
+
+
+def latest_consent(ix: Index, item: str) -> dict[str, Any] | None:
+    """The newest consent recorded for ``item``, whatever version it covered."""
+    item = _text(item, "item")
+    row = ix.conn.execute(
+        "SELECT record_id, item, item_etag, item_digest, at, on_behalf_of, signer, "
+        "signer_kind, channel, text, path FROM consents WHERE item = ? "
+        "ORDER BY at DESC, record_id DESC LIMIT 1",
+        (item,),
+    ).fetchone()
+    return _consent_row(row)
+
+
+def consent_for_item(ix: Index, item: str, digest: str) -> dict[str, Any] | None:
+    """The newest consent whose semantic digest covers ``item``, or None."""
+    item = _text(item, "item")
+    digest = _text(digest, "digest")
+    row = ix.conn.execute(
+        "SELECT record_id, item, item_etag, item_digest, at, on_behalf_of, signer, "
+        "signer_kind, channel, text, path FROM consents "
+        "WHERE item = ? AND item_digest = ? "
+        "ORDER BY at DESC, record_id DESC LIMIT 1",
+        (item, digest),
+    ).fetchone()
+    return _consent_row(row)
+
+
+def _consent_row(row: tuple[Any, ...] | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    (
+        record_id,
+        item,
+        item_etag,
+        item_digest,
+        at,
+        on_behalf_of,
+        signer,
+        signer_kind,
+        channel,
+        text,
+        path,
+    ) = row
+    return {
+        "record": record_id,
+        "item": item,
+        "item_etag": item_etag,
+        "item_digest": item_digest,
+        "at": at,
+        "on_behalf_of": on_behalf_of,
+        "signer": signer,
+        "signer_kind": signer_kind,
+        "channel": channel,
+        "text": text,
         "path": path,
     }
 

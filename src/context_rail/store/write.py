@@ -36,6 +36,7 @@ from context_rail.core.util import (
     write_bytes_atomic,
 )
 from context_rail.kernel.relations import endpoint_problem
+from context_rail.model.consent import CONSENT_KIND
 from context_rail.model.delegation import DELEGATION_USED
 from context_rail.model.errors import ModelError
 from context_rail.model.manifest import Manifest
@@ -108,7 +109,8 @@ _RECORD_PAYLOAD_ORDER = (
 _PROTOCOL_FILES = frozenset({"rail.yaml", ".gitignore"})
 _ETAG_RE = re.compile(r"^[0-9a-f]{16}$")
 _RESERVED_RECORD_KINDS = (
-    frozenset(SEAT_KINDS) | frozenset({RESULT_ADOPTION_KIND, DELEGATION_USED})
+    frozenset(SEAT_KINDS)
+    | frozenset({RESULT_ADOPTION_KIND, DELEGATION_USED, CONSENT_KIND})
 )
 _REPLACE_RETRIES = 5
 

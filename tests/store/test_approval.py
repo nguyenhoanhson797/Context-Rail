@@ -533,8 +533,8 @@ def test_a_scoped_pack_approval_covers_only_the_pack(approved_store: Path) -> No
     store = approved_store
     source = resources.files("context_rail").joinpath("packs", "basic", "pack.yaml")
     text = source.read_text(encoding="utf-8").replace(
-        "todo: [doing, dropped]",
         "todo: [doing, blocked, dropped]",
+        "todo: [doing, dropped]",
     )
     local = store / "packs" / "basic" / "pack.yaml"
     local.parent.mkdir(parents=True, exist_ok=True)
@@ -590,8 +590,8 @@ def test_a_pack_change_flips_the_charter_approval(approved_store: Path) -> None:
     store = approved_store
     source = resources.files("context_rail").joinpath("packs", "basic", "pack.yaml")
     text = source.read_text(encoding="utf-8").replace(
-        "todo: [doing, dropped]",
         "todo: [doing, blocked, dropped]",
+        "todo: [doing, dropped]",
     )
     local = store / "packs" / "basic" / "pack.yaml"
     local.parent.mkdir(parents=True, exist_ok=True)
@@ -636,8 +636,8 @@ def test_a_scoped_approval_does_not_witness_unreviewed_charter_drift(
     store = approved_store
     source = resources.files("context_rail").joinpath("packs", "basic", "pack.yaml")
     text = source.read_text(encoding="utf-8").replace(
-        "todo: [doing, dropped]",
         "todo: [doing, blocked, dropped]",
+        "todo: [doing, dropped]",
     )
     local = store / "packs" / "basic" / "pack.yaml"
     local.parent.mkdir(parents=True, exist_ok=True)

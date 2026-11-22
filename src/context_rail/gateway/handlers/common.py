@@ -802,6 +802,17 @@ def gate_candidate(
     return next((state.candidate for state in states if state.candidate), None)
 
 
+def signing_channel() -> str:
+    """How a signing call arrived: a person's terminal, the UI, or an agent."""
+    from context_rail.gateway.execution import HAS_TTY, HUMAN_CHANNEL
+
+    if HUMAN_CHANNEL.get():
+        return "ui"
+    if HAS_TTY.get():
+        return "terminal"
+    return "agent"
+
+
 def record_path_for(index: Index, record_id: str | None) -> str | None:
     """The path of a JSON record whose slug is its id."""
     if not isinstance(record_id, str) or not record_id:

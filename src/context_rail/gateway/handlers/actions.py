@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from context_rail.core.util import sha256_hex
 from context_rail.gateway.handlers.common import record_data
 from context_rail.store import query
+from context_rail.store.approval import semantic_hash
 from context_rail.store.write import WriteRefused, commit, replay
 
 if TYPE_CHECKING:
@@ -122,12 +124,19 @@ def _item(ctx: Context, item: str) -> dict[str, Any]:
             "VALIDATION_FAILED", "this action needs --item", {"argument": "item"}
         )
     row = ctx.index.conn.execute(
-        "SELECT slug, preset, status FROM docs WHERE slug = ? ORDER BY path LIMIT 1",
+        "SELECT slug, preset, status, etag, path FROM docs WHERE slug = ? "
+        "ORDER BY path LIMIT 1",
         (item,),
     ).fetchone()
     if row is None:
         raise WriteRefused("NOT_FOUND", f"no item {item!r}", {"item": item})
-    return {"slug": row[0], "preset": row[1], "status": row[2]}
+    return {
+        "slug": row[0],
+        "preset": row[1],
+        "status": row[2],
+        "etag": row[3],
+        "path": row[4],
+    }
 
 
 def _params(entries: list[str], *, item: str, etag: str | None) -> dict[str, str]:
@@ -241,6 +250,25 @@ def _check_requires(ctx: Context, action: Any, item: str) -> None:
                     "action": action.name,
                     "condition": "review",
                     "command": f"rail review {item} --run <run-id> --key <key>",
+                },
+            )
+    if requires.consent:
+        doc = _item(ctx, item)
+        digest = semantic_hash(
+            (Path(ctx.store) / doc["path"]).read_bytes(), format="markdown"
+        )
+        granted = query.consent_for_item(ctx.index, item, digest)
+        if granted is None:
+            raise WriteRefused(
+                "BUSINESS_RULE_VIOLATED",
+                "the item has no consent for its current version",
+                {
+                    "action": action.name,
+                    "condition": "consent",
+                    "command": (
+                        f'rail consent {item} --on-behalf-of "<human>" '
+                        f'--text "<their words>" --expect {doc["etag"]}'
+                    ),
                 },
             )
     if requires.field:
