@@ -151,3 +151,37 @@ def test_do_action_outside_can_actions_is_refused(
 
     assert refusal(acted) == ("PERMISSION_DENIED", "action_not_in_can_actions")
 
+
+
+def test_replace_needs_write_reach_on_every_previous_parent(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        shared = invoke(
+            "link",
+            {
+                "src": role_store.o1,
+                "rel": "part_of",
+                "dst": role_store.billing,
+                "expect": etag_of(role_store.store, role_store.orders_seat, role_store.o1),
+            },
+            store=role_store.store,
+            actor=None,
+        )
+    assert is_ok(shared), shared
+    token = open_test_session(role_store.store, role_store.orders_seat)
+    with caller_identity(None, None, session=token):
+        moved = invoke(
+            "link",
+            {
+                "src": role_store.o1,
+                "rel": "part_of",
+                "dst": role_store.orders,
+                "expect": etag_of(role_store.store, role_store.orders_seat, role_store.o1),
+                "replace": True,
+                "reason": "role guard test",
+            },
+            store=role_store.store,
+        )
+
+    assert refusal(moved) == ("PERMISSION_DENIED", "write_out_of_reach")

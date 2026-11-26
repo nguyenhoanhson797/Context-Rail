@@ -649,7 +649,10 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="link",
-        summary="Add or remove one relation on a mutable document; Records are immutable.",
+        summary=(
+            "Add, remove or replace one relation on a mutable document; "
+            "Records are immutable."
+        ),
         permission="write",
         params=(
             Param("src", "str", required=True, positional=True, help="source slug"),
@@ -657,6 +660,11 @@ TOOLS: tuple[Tool, ...] = (
             Param("dst", "str", required=True, positional=True, help="target slug"),
             Param("expect", "str", required=True, help="current source etag"),
             Param("remove", "bool", help="remove the relation instead of adding it"),
+            Param(
+                "replace",
+                "bool",
+                help="make dst the only target: part_of moves the whole branch",
+            ),
             Param("reason", "str", help="why this reversible decision was made"),
             Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),

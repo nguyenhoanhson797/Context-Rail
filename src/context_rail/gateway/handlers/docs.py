@@ -290,7 +290,9 @@ def planned_placement_moves(
         if not isinstance(name, str) or not isinstance(dst, str) or not dst.strip():
             return []
         targets = list(relations.get(name, ()))
-        if params.get("remove"):
+        if params.get("replace"):
+            targets = [dst]
+        elif params.get("remove"):
             if dst in targets:
                 targets.remove(dst)
         elif dst not in targets:
@@ -695,6 +697,13 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         )
     dst = args["dst"]
     remove = bool(args["remove"])
+    replace = bool(args.get("replace"))
+    if replace and remove:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "--replace and --remove cannot be combined",
+            {"rel": name, "dst": dst},
+        )
     expect = args["expect"]
     key = args["key"]
     store = ctx.store
@@ -720,16 +729,25 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 {"path": rel, "expected": expect, "actual": actual},
             )
         resolve_unique(index, dst)
+        before = list(doc.relations.get(name, ()))
         if not remove:
             validate_relation_targets(
                 index,
                 doc.slug,
                 doc.primitive,
-                {name: [*doc.relations.get(name, ()), dst]},
+                {name: [dst] if replace else [*before, dst]},
             )
-        before = list(doc.relations.get(name, ()))
         targets = list(before)
-        if remove:
+        replaced = [target for target in before if target != dst] if replace else []
+        if replace:
+            if before == [dst]:
+                raise WriteRefused(
+                    "VALIDATION_FAILED",
+                    f"{dst!r} is already the only {name!r} target",
+                    {"path": rel, "rel": name, "dst": dst},
+                )
+            targets = [dst]
+        elif remove:
             if dst not in targets:
                 raise WriteRefused(
                     "VALIDATION_FAILED",
@@ -813,7 +831,12 @@ def link(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {
                 "kind": "relation.changed",
                 "about": [doc.slug],
-                "data": {"rel": name, "dst": dst, "removed": remove},
+                "data": {
+                    "rel": name,
+                    "dst": dst,
+                    "removed": remove,
+                    **({"replaced": replaced} if replace else {}),
+                },
             },
             actor=actor,
             key=key,

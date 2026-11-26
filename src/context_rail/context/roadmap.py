@@ -288,7 +288,7 @@ def resolve_map(
         "changed": [],
     }
     if center_slug is not None:
-        payload["center"] = tree.node(center_slug)
+        payload["center"] = {**tree.node(center_slug), "etag": tree.rows[center_slug].etag}
         payload["breadcrumb"] = [_ref(tree, slug) for slug in tree.ancestors(center_slug)]
         payload["attachments"] = _attachments(ctx, center_slug)
         payload["dependencies"] = _dependencies(ctx, tree, center_slug)
@@ -478,6 +478,7 @@ def _center_lines(tree: MapTree, slug: str, payload: dict[str, Any]) -> list[str
     trail = _trail(tree, slug)
     lines.append(f"Path: {trail or '(root)'}")
     lines.append("Node: " + _describe(tree, slug))
+    lines.append(f"Etag: {payload['center']['etag']} (pass it as --expect to change this node)")
     deps = payload["dependencies"]
     if deps["needs"]:
         lines.append(
