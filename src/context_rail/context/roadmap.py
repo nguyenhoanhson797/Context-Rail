@@ -30,6 +30,7 @@ __all__ = [
     "build_tree",
     "resolve_map",
     "tree_payload",
+    "where_lines",
 ]
 
 MAP_CHARS = 6000
@@ -326,6 +327,21 @@ def resolve_map(
     payload["estimated_tokens"] = math.ceil(len(text) / 4)
     payload["total"] = len(tree.rows)
     return payload
+
+
+def where_lines(
+    ctx: Context, model: ProjectModel, actor: str, *, limit: int
+) -> tuple[list[str], list[str], int]:
+    """The overview's "Where we are": focus path and progress, then each root."""
+    tree = build_tree(ctx, model, actor)
+    fixed = [
+        line.replace("Where we are: ", "Focus: ", 1)
+        for line in _header(tree)[1:-1]
+        if not line.startswith("Next: ")
+    ]
+    fixed.append("Open the tree with `rail read map`, one branch with `rail read map <slug>`.")
+    roots = [_describe(tree, slug, hidden=tree.below.get(slug, 0)) for slug in tree.roots]
+    return fixed, roots[:limit], max(len(roots) - limit, 0)
 
 
 def tree_payload(tree: MapTree) -> dict[str, Any]:

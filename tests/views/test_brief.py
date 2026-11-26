@@ -18,6 +18,7 @@ from helpers import init_pack_store, run_cli, workflow_pack_document
 
 SECTIONS = (
     "Approval",
+    "Where we are",
     "Goal",
     "Charter",
     "Workflows",

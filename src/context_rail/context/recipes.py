@@ -38,6 +38,7 @@ CHARTER_TARGET = "charter"
 EXCERPT_CHARS = 160
 SECTION_KEYS = (
     "approval",
+    "where",
     "goal",
     "charter",
     "workflows",
@@ -50,6 +51,7 @@ SECTION_KEYS = (
 )
 _SECTION_TITLES = {
     "approval": "Approval and human waits",
+    "where": "Where we are",
     "goal": "Goal and scope",
     "charter": "Charter gates, rights and budgets",
     "workflows": "Workflows and their next actions",
@@ -557,6 +559,20 @@ def _brief_sections(
     approval_section.entries.extend(_wait_line(row) for row in waits)
     omitted["approval"] = waits_omitted
 
+    model = getattr(context, "model", None)
+    if model is None:
+        sections.remove(by_key["where"])
+    else:
+        from context_rail.context import roadmap
+
+        where_section = by_key["where"]
+        fixed, roots, roots_omitted = roadmap.where_lines(
+            context, model, context.actor, limit=limit
+        )
+        where_section.fixed.extend(fixed)
+        where_section.entries.extend(roots)
+        omitted["where"] = roots_omitted
+
     goal_section = by_key["goal"]
     goal, scope, wont = picture(context.index)
     for title in goal[:limit]:
@@ -1055,6 +1071,8 @@ _TRIM_ORDER = (
     ("reports", "fixed"),
     ("goal", "entries"),
     ("goal", "fixed"),
+    ("where", "entries"),
+    ("where", "fixed"),
     ("approval", "entries"),
     ("charter", "entries"),
     ("charter", "fixed"),
@@ -1070,6 +1088,7 @@ _DROP_ORDER = (
     "executable",
     "reports",
     "goal",
+    "where",
     "charter",
 )
 
