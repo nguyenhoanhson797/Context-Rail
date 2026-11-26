@@ -33,6 +33,7 @@ refuses.
 
 ```powershell
 rail overview                                   # bounded starting page
+rail read map [<item>]                          # where this item sits in the whole picture
 
 rail loop brief <item> [--role implementer|reviewer] [--commit <sha>] [--max-chars N]
 rail loop result <item> --body-file <md> [--commit <sha>] [--outcome completed|partial|blocked|failed]

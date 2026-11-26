@@ -123,12 +123,58 @@ rail seat close sprint-1
 
 | Command | Answers |
 |---|---|
-| `rail overview` | The daily starting page: approval, goal, gates, executable work, waits |
+| `rail overview` | The daily starting page: approval, goal, gates, where we are, executable work, waits |
+| `rail read map` | The whole picture: focus path, progress, next, and the work tree with markers and rollups |
 | `rail read status` | Counts, executable items, blockers with reasons, stuck items, focus, groups, progress |
 | `rail read digest` | Activity, human waits, reversible decisions, quality, usage |
 | `rail ops measure usage --group-by item` | Recorded effort by item, model, harness, role, profile or skill; unknown stays apart |
 | `rail model` | The compiled operating model, focus, unit, hierarchy and digests |
 | `rail types` | Pack document types, workflows and the operating role of each |
+
+## The project map: where am I in the whole picture
+
+`rail read map` is the tree a person sees on the Map screen, as bounded text
+plus JSON. Nodes are items placed with `part_of`; notes, checks and titled
+records attached to an item are counted on it. Each node carries its kind,
+status, a done/total rollup and markers: `FOCUS`, `PATH` (leads to the focus),
+`NEXT`, `BLOCKED`, `CHANGED`. The pack decides the levels and the progress
+rule; the map only reads the compiled model.
+
+| Question | Command |
+|---|---|
+| Where are we and what is next? | `rail read map` (also the "Where we are" section of `rail overview`) |
+| What is inside this branch? | `rail read map <slug>`: its path, `Etag:`, needs and needed-by, attachments, siblings and subtree |
+| Where is X? | `rail read map --find "<words>"`: every hit, with the branch it sits in |
+| What moved since I last looked? | `rail read map --since <utc>`: changed nodes marked and listed |
+| More or less detail | `--depth N` (0-12) and `--max-chars N` |
+
+Daily ritual:
+
+1. `rail overview`: approval, waits and where we are.
+2. `rail read map`: the whole tree; pick the branch that holds your work.
+3. `rail read map <branch>`: read the branch before you change anything in it.
+4. Do the work through the loop (`context-rail-v3-loop`).
+5. Next session: `rail read map --since <the UTC time you last read it>`.
+
+Update the roadmap through the normal write path:
+
+- Add under a branch: `rail change add <preset> "<title>" --rel part_of=<parent>`.
+- Change a status: `rail change move <slug> <status> --expect <etag>`.
+- Record an order: `rail change link <slug> depends_on <other> --expect <etag>`.
+- Move a whole branch to a new parent:
+  1. `rail read map`: read the top of the tree.
+  2. `rail read map <candidate>`: descend into the branch that should hold it,
+     and repeat on its children until you reach the right parent.
+  3. `rail read map <branch>`: read the branch you will move; note its `Etag:`
+     line and what sits below it.
+  4. `rail change link <branch> part_of <new-parent> --replace --expect <etag> --reason "<why>"`.
+  5. `rail read map <new-parent>`: confirm it landed.
+
+`--replace` makes the new parent the only parent. Every descendant moves with
+the branch in one write, with one `doc.relocated` record. The engine refuses a
+cycle (`CYCLE_DETECTED`), a parent the pack does not accept, a stale etag
+(`CONFLICT`) and, in role mode, a parent you cannot write
+(`write_out_of_reach`). Never move files by hand to restructure work.
 
 ## Track and steer
 
@@ -142,7 +188,7 @@ put the evidence in `rail loop report` and let the human decide.
 
 | Family | Commands |
 |---|---|
-| Read | `overview`, `read status\|digest\|find\|show\|ledger` |
+| Read | `overview`, `read status\|map\|digest\|find\|show\|ledger` |
 | Change | `change add\|update\|link\|move\|rename\|repath`, `check declare\|run`, `loop report\|triage\|execution` |
 | Gate | `approve`, `consent`, `ops pack use`, `gate` (typed phrase: `APPROVE <target>`, `USE PACK <name>`) |
 | Loop | `loop brief\|result\|candidate\|review\|report\|triage\|execution` |
