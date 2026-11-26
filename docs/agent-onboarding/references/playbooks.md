@@ -5,7 +5,10 @@ state. Commands are the documented surface; flat aliases also work.
 
 Approval commands name their signer: run them as the named lead, or add
 `--actor human` for a human signature. A charter with `approval.agents: false`
-accepts only the human form.
+accepts only the human form. For `ops upgrade`, `ops adapters render` and
+`approve`, an agent may instead pass the human's exact chat words as
+`--user-approval` (and `--approved-by <human>` for the two operational
+actions); the record marks the claim unverified.
 
 ## 1. Greenfield code project
 
@@ -303,11 +306,23 @@ rail ops adapters render
 ```
 
 A name-mode store runs the write as `rail --actor human ops upgrade ...`. A
-role-mode store acts by seat: the human runs `rail ops upgrade` in a terminal or
-the local UI, with no `--actor`, or delegates `ops upgrade` to the live lead in
-the charter. An agent cannot upgrade a role-mode store on its own. `rail ops
-pack show --name <pack>` tells the two apart: a non-empty `operating.roles`
-means role mode.
+role-mode store acts by seat. The human can run `rail ops upgrade` in a terminal
+or the local UI with no `--actor`; an approved charter can delegate `ops upgrade`
+to the live lead; or the agent can carry the human's chat approval:
+
+```bash
+rail ops upgrade --confirm "UPGRADE store" \
+  --approved-by "<you>" --user-approval "<your exact words from chat>"
+```
+
+Ask the human in chat first and quote their answer. The upgrade record names the
+human, the words and the agent that relayed them, and marks the claim
+unverified: it is evidence, not proof that the human typed the command. The same
+path works for `rail approve charter ... --user-approval "<words>"` and
+`rail ops adapters render --approved-by "<you>" --user-approval "<words>"`. A
+charter with `approval.agents: false` still requires a human signature for
+`approve`. `rail ops pack show --name <pack>` tells the two modes apart: a
+non-empty `operating.roles` means role mode.
 
 The upgrade may rewrite a local `packs/<name>/pack.yaml`, which is part of the
 protected picture. That makes the old approval a mismatch even when the charter

@@ -37,6 +37,10 @@ from context_rail.core.tool_names import (
     canonical_tool,
     removed_message,
 )
+from context_rail.gateway.attestation import (
+    ATTESTED_TOOLS,
+    attestation as attestation_for,
+)
 from context_rail.gateway.confirmation import confirmation_phrase, validate_confirmation
 from context_rail.gateway.daemon import NO_DAEMON_ENV
 from context_rail.gateway.delegation import DELEGATED_TOOLS as _DELEGATED_TOOLS
@@ -166,6 +170,7 @@ class Context:
     actor_named: bool = True
     delegated_action: str | None = None
     delegated_by: str | None = None
+    attestation: dict[str, Any] | None = None
     _index: Index | None = field(default=None, repr=False)
     _identity: Identity | None = field(default=None, repr=False)
 
@@ -254,7 +259,7 @@ class Context:
         """
         seat = self.identity.seat
         if seat is None:
-            if self.identity.kind == "anonymous" and self.role_mode:
+            if self.identity.kind in ("anonymous", "attested") and self.role_mode:
                 return ReachSet(seat=None, unrestricted=False)
             return None
         reach = self._seat_reach(seat)
@@ -281,7 +286,8 @@ class Context:
     @cached_property
     def role_mode(self) -> bool:
         """Whether this store's pack declares roles, so seats rather than names act."""
-        return bool(getattr(self.pack.operating, "roles", None))
+        operating = getattr(self.pack, "operating", None)
+        return bool(getattr(operating, "roles", None))
 
     def profile_document(self, name: str) -> Doc | None:
         """The store document of the Actor profile called ``name``, or None."""
@@ -358,6 +364,14 @@ def invoke(
             params = _parameters(tool, {**defaults, **(args or {})})
         else:
             params = _parameters(tool, args)
+        named = resolved_actor
+        if named == ANONYMOUS or (
+            name_is_human(named) and not (HAS_TTY.get() or HUMAN_CHANNEL.get())
+        ):
+            named = None
+        claimed = attestation_for(tool.name, params, attested_by=named)
+        attested = claimed is not None
+        attested_name = claimed["recorded_by"] if claimed is not None else None
         if tool.name == "upgrade":
             if context is None:
                 # A human upgrade keeps the manifest-only repair path, so a
@@ -379,8 +393,10 @@ def invoke(
                     tty=HAS_TTY.get(),
                     lens=LENS_SEAT.get(),
                     human_channel=HUMAN_CHANNEL.get(),
+                    attested=attested,
+                    attested_name=attested_name,
                 )
-                if context.role_mode:
+                if context.role_mode or attested:
                     resolved_actor = context.identity.name
                     actor_named = context.identity.kind != "anonymous"
                     context.actor = resolved_actor
@@ -390,10 +406,23 @@ def invoke(
                 context,
                 actor,
                 require_terminal=params.get("dry_run") is not True,
+                attested=attested,
             ):
-                resolved_actor, actor_named = "human", True
+                resolved_actor = (
+                    attested_name if attested else "human"
+                )
+                actor_named = True
                 context.actor, context.actor_named = resolved_actor, actor_named
                 ACTOR_NAMED.set(actor_named)
+                if attested:
+                    context.identity = Identity(kind="attested", name=resolved_actor)
+            elif attested:
+                resolved_actor = attested_name
+                actor_named = True
+                context.actor, context.actor_named = resolved_actor, actor_named
+                ACTOR_NAMED.set(actor_named)
+                context.identity = Identity(kind="attested", name=resolved_actor)
+            context.attestation = claimed
         elif tool.name not in {"init", "migrate"}:
             if context is None:
                 context = _open_context(store, resolved_actor, actor_named)
@@ -404,13 +433,23 @@ def invoke(
                 tty=HAS_TTY.get(),
                 lens=LENS_SEAT.get(),
                 human_channel=HUMAN_CHANNEL.get(),
+                attested=attested,
+                attested_name=attested_name,
             )
-            if context.role_mode:
+            if context.role_mode or attested:
                 resolved_actor = context.identity.name
                 actor_named = context.identity.kind != "anonymous"
                 context.actor = resolved_actor
                 context.actor_named = actor_named
                 ACTOR_NAMED.set(actor_named)
+            context.attestation = claimed
+        if (
+            context is not None
+            and context.attestation is not None
+            and context.pack is not None
+            and context.identity.name != ANONYMOUS
+        ):
+            context.attestation["recorded_by"] = context.identity.name
         if context is not None:
             # A reused context must not inherit a previous call's delegation.
             context.delegated_action = None
@@ -576,6 +615,21 @@ def _authorize(
     actor_named: bool = True,
 ) -> dict[str, Any] | None:
     """The refusal a call earns before its handler runs, if it earns one."""
+    if (
+        context is not None
+        and context.attestation is not None
+        and tool.permission != "read"
+        and tool.name not in ATTESTED_TOOLS
+    ):
+        return fail(
+            "PERMISSION_DENIED",
+            "an attested caller may only read, upgrade, render or approve",
+            {
+                "reason": "attestation_scope",
+                "tool": tool.name,
+                "allowed": sorted(ATTESTED_TOOLS),
+            },
+        )
     if tool.name == "approve":
         return _authorize_approval(context, actor, actor_named)
     if tool.name == "consent":
@@ -600,6 +654,14 @@ def _authorize(
                 },
             )
         return None
+    if (
+        context is not None
+        and context.attestation is not None
+        and tool.name in ATTESTED_TOOLS
+    ):
+        # The caller carries the human's chat words; the handler keeps the
+        # phrase and records the claim as unverified.
+        return None
     verdict = _delegated_verdict(tool, context, actor, actor_named)
     if verdict is True:
         return None
@@ -619,7 +681,8 @@ def _authorize(
         return fail(
             "PERMISSION_DENIED",
             "upgrading a store with roles needs the human on a terminal, "
-            "or a charter delegation to this seat",
+            "a charter delegation to this seat, or the human's chat approval "
+            "passed as --approved-by and --user-approval",
             {"tool": tool.name, "reason": "human_channel_required"},
         )
     if tool.permission == "human" and not actor_named:
@@ -766,10 +829,25 @@ def _authorize_approval(
     identity = context.identity
     if identity.human:
         return None
+    if context.attestation is not None:
+        policy = context.policy
+        if policy is None or not policy.approval.agents:
+            return fail(
+                "PERMISSION_DENIED",
+                "the charter requires a human signature for approvals",
+                {
+                    "tool": "approve",
+                    "reason": "human_signature_required",
+                    "actor": actor,
+                },
+            )
+        return None
     if identity.kind == ANONYMOUS:
         return fail(
             "PERMISSION_DENIED",
-            "an approval needs a named signer",
+            "an approval needs a named signer: pass the human's chat approval "
+            'as --user-approval "<their words>", or record it on a terminal or '
+            "in the local UI",
             {"tool": "approve", "reason": "actor_required"},
         )
     if not actor_named:
@@ -1015,20 +1093,27 @@ def _open_context(store: Path | str | None, actor: str, actor_named: bool = True
 
 
 def _require_terminal_human_in_role_store(
-    context: Context, actor: str | None, *, require_terminal: bool = True
+    context: Context,
+    actor: str | None,
+    *,
+    require_terminal: bool = True,
+    attested: bool = False,
 ) -> bool:
     """In a store with roles only the human on a terminal or the UI channel upgrades it.
 
     Returns whether the store has roles, in which case that channel is the human.
     An explicit ``--actor human`` is accepted on a person's channel because the
     channel already proves the human; any other name, or the same name without
-    that proof, is refused with the path that can actually finish the upgrade. A
-    dry run needs no terminal because it writes nothing.
+    that proof, is refused with the path that can actually finish the upgrade. An
+    ``attested`` call carries the human's chat words instead of a channel. A dry
+    run needs no terminal because it writes nothing.
     """
     from context_rail.store.upgrade import declares_roles
 
     if not declares_roles(context.store, context.manifest):
         return False
+    if attested:
+        return True
     human = bool(HAS_TTY.get() or HUMAN_CHANNEL.get())
     if isinstance(actor, str) and actor.strip():
         if not (human and name_is_human(actor)):

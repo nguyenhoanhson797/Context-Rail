@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping
 
 from context_rail.core.result import fail
+from context_rail.gateway.attestation import ATTESTED_TOOLS
 from context_rail.gateway.delegation import DELEGATED_TOOLS
 from context_rail.gateway.tools import TOOLS
 from context_rail.model.roles import role_tools
@@ -202,6 +203,8 @@ def tools_for(context: Context) -> frozenset[str]:
     if not context.role_mode or identity.kind in ("legacy", "human"):
         return names
     reads = frozenset(tool.name for tool in TOOLS if tool.permission == "read")
+    if identity.kind == "attested":
+        return reads | frozenset(ATTESTED_TOOLS)
     if identity.kind == "seat" and identity.role is not None:
         tools = reads | role_tools(identity.role)
         if identity.lead:
@@ -222,6 +225,11 @@ def _human_operation(tool_name: str, *, seat: bool = False) -> str:
     )
     if tool_name in DELEGATED_TOOLS:
         text += ", or an approved charter delegates it to the live lead"
+    if tool_name in ATTESTED_TOOLS:
+        text += (
+            ", or the agent passes the owner's chat approval with "
+            "--approved-by and --user-approval"
+        )
     return text
 
 

@@ -318,7 +318,7 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         saved = replay(store, args["key"])
         if saved is not None:
             data = record_data(index, saved.get("record"))
-            return {
+            value = {
                 "approval": saved.get("record"),
                 "target": data.get("target"),
                 "scope": data.get("scope") or "charter",
@@ -330,6 +330,9 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "channel": data.get("channel") or "unknown",
                 "on_behalf_of": data.get("on_behalf_of"),
             }
+            if isinstance(data.get("attestation"), dict):
+                value["attestation"] = data["attestation"]
+            return value
         target = (args["target"] or "").strip()
         confirmer = (args["confirmer"] or "").strip()
         if not confirmer:
@@ -404,6 +407,11 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                     "channel": channel,
                     "on_behalf_of": on_behalf_of,
                     "confirmation": confirmation_phrase("approve", target),
+                    **(
+                        {"attestation": ctx.attestation}
+                        if ctx.attestation is not None
+                        else {}
+                    ),
                 },
             },
             actor=actor,
@@ -424,6 +432,8 @@ def approve(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "channel": channel,
         "on_behalf_of": on_behalf_of,
     }
+    if ctx.attestation is not None:
+        summary["attestation"] = ctx.attestation
     if ctx.manifest.code_graph is not None and any(
         entry["path"] == "rail.yaml" for entry in diff
     ):

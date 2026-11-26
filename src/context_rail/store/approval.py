@@ -294,6 +294,7 @@ def _signer_fields(record: Mapping[str, Any] | None) -> dict[str, Any]:
             "signer_kind": None,
             "channel": None,
             "on_behalf_of": None,
+            "attestation": None,
         }
     data = record.get("data") if isinstance(record.get("data"), dict) else {}
     confirmer = data.get("confirmer")
@@ -304,6 +305,7 @@ def _signer_fields(record: Mapping[str, Any] | None) -> dict[str, Any]:
         "signer_kind": _signer_kind(record),
         "channel": data.get("channel") or "unknown",
         "on_behalf_of": data.get("on_behalf_of"),
+        "attestation": data.get("attestation"),
     }
 
 

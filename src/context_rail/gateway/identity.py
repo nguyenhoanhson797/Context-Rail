@@ -91,7 +91,8 @@ class Identity:
     """The acting identity of one call.
 
     ``kind`` is ``legacy`` (a named actor in a store without roles), ``human``
-    (the person on a terminal or the UI), ``seat`` (a session's seat) or
+    (the person on a terminal or the UI), ``seat`` (a session's seat),
+    ``attested`` (an agent carrying a human's unverified chat approval) or
     ``anonymous`` (no proof at all). ``view_as`` is the seat a read-only lens
     shows. ``lead`` marks the caller that may run the project's loop.
     """
@@ -122,24 +123,20 @@ def resolve_identity(
     tty: bool = False,
     lens: str | None = None,
     human_channel: bool = False,
+    attested: bool = False,
+    attested_name: str | None = None,
 ) -> Identity:
     """The identity a call acts as; refuses a caller it cannot place.
 
     ``actor`` is the name the caller passed (flag or parameter), if any. In role
     mode it is refused, and ``RAIL_ACTOR`` is never read. A terminal or the UI's
-    per-run channel is the human only when no token is present. ``lens`` names a
-    live seat the caller views the store as; a seat caller may only lens a seat
-    whose anchor lies in its read reach.
+    per-run channel is the human only when no token is present. An ``attested``
+    call carries a human's chat approval and acts only for the attested tools;
+    a real session or human channel still wins. ``lens`` names a live seat the
+    caller views the store as; a seat caller may only lens a seat whose anchor
+    lies in its read reach.
     """
-    if not context.role_mode:
-        if lens is not None:
-            raise IdentityRefused(
-                "VALIDATION_FAILED",
-                "this pack declares no roles; a seat lens needs a store with roles",
-                {"reason": "no_roles", "command": "rail pack use <pack>"},
-            )
-        return _legacy(context, actor, terminal=tty, human_channel=human_channel)
-    if isinstance(actor, str) and actor.strip():
+    if context.role_mode and isinstance(actor, str) and actor.strip():
         if tty or human_channel:
             message = (
                 "this store acts by seat: drop --actor, because this terminal "
@@ -156,6 +153,16 @@ def resolve_identity(
             message,
             {"reason": "actor_flag_refused", "command": _OPEN_COMMAND},
         )
+    if attested and session is None and not (human_channel or tty):
+        return Identity(kind="attested", name=attested_name or "agent")
+    if not context.role_mode:
+        if lens is not None:
+            raise IdentityRefused(
+                "VALIDATION_FAILED",
+                "this pack declares no roles; a seat lens needs a store with roles",
+                {"reason": "no_roles", "command": "rail pack use <pack>"},
+            )
+        return _legacy(context, actor, terminal=tty, human_channel=human_channel)
     if session is not None:
         identity = _seat(context, session)
     elif human_channel or tty:

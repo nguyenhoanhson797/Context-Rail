@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from context_rail.core.util import canonical_iso, sha256_hex
+from context_rail.model.attestation import parse_attestation
 from context_rail.model.candidate import CANDIDATE_KIND, parse_candidate
 from context_rail.model.consent import CONSENT_KIND, parse_consent
 from context_rail.model.cto import parse_check, parse_report, parse_verdict
@@ -566,6 +567,7 @@ _APPROVAL_KEYS = (
     "snapshot",
     "diff",
     "diff_omitted",
+    "attestation",
 )
 _APPROVAL_REQUIRED = ("target", "protected_hashes", "confirmer", "confirmation")
 
@@ -1110,6 +1112,8 @@ def _approval_rows(doc: Doc, record_id: str, data: dict[str, Any]) -> list[tuple
     if channel is not None and channel not in ("terminal", "ui", "agent", "unknown"):
         refuse("approval.channel must be 'terminal', 'ui', 'agent' or 'unknown'")
     _optional_text(payload.get("on_behalf_of"), "approval.on_behalf_of")
+    if payload.get("attestation") is not None:
+        parse_attestation(payload["attestation"])
     string(payload["confirmation"], "approval.confirmation")
     row = (doc.path, record_id, target, _at(doc), _json(hashes), confirmer)
     return [("approvals", row)]

@@ -159,14 +159,19 @@ In role mode:
   the first grant when no seat exists need the human on a terminal or through the
   UI. A session caller can never satisfy those human-only actions. Approval is
   different: it records the actor that signed it, and the charter's
-  `approval.agents` says whether an agent may sign. A pack action may also need a
+  `approval.agents` says whether an agent may sign. `ops upgrade`, `ops adapters
+  render` and `approve` may also carry the human's exact chat words as
+  `--user-approval` (plus `--approved-by` for the two operational actions); the
+  record marks that claim `verified: false`. A pack action may also need a
   per-item consent: the human's exact words, bound to the item version they saw.
   A charter may also delegate named operational actions to one lead; the lead
   runs only those, only while the approval is current, and every use is
   recorded. A non-human seat may grant only inside its `can.grant` and write
   reach.
 - **Anonymous is empty.** With no session and no terminal, the caller has read
-  tools and no documents; open a session to work.
+  tools and no documents; open a session to work. A tokenless chat-attested
+  caller has no reach either: it may only run `ops upgrade`, `ops adapters
+  render` and `approve`.
 - **Revocation cascades.** Revoking a seat closes its sessions and every seat it
   granted. A re-granted seat cannot reuse an old session.
 - **Compat is unchanged.** A pack without `roles` keeps the name-based
@@ -213,7 +218,10 @@ across `basic`, `flow`, `scrum`, `waterfall`, `video`, `portfolio`,
   The lead then runs them and each use is recorded. `approve`
   records its signer: a named lead may sign when the charter allows it
   (`approval.agents: true`, the default), and the record names the human it was
-  made for.
+  made for. `ops upgrade`, `ops adapters render` and `approve` also accept the
+  human's exact chat words as `--user-approval` (plus `--approved-by` for the
+  two operational actions); the record marks the claim `verified: false`, and
+  `approval.agents: false` still requires a human signature for `approve`.
 - **A gate is not a suggestion.** `rail why` names the missing proof and the
   command that produces it.
 

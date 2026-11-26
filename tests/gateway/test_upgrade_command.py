@@ -12,6 +12,7 @@ from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 from helpers import (
     as_human,
+    as_seat,
     latest_record,
     refusal,
     tree_bytes,
@@ -219,6 +220,70 @@ def test_role_mode_upgrade_write_still_needs_the_human_terminal(
     result = invoke("upgrade", {"confirm": PHRASE}, store=role_store.store)
 
     assert refusal(result)[0] == "PERMISSION_DENIED"
+
+
+def test_role_mode_upgrade_accepts_the_humans_chat_words(
+    role_store: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("RAIL_ACTOR", raising=False)
+    write_legacy_runtime_files(role_store.store)
+
+    result = invoke(
+        "upgrade",
+        {
+            "confirm": PHRASE,
+            "approved_by": "Ada",
+            "user_approval": "Yes, upgrade this store.",
+        },
+        store=role_store.store,
+    )
+
+    assert is_ok(result), result
+    evidence = result["value"]["attestation"]
+    assert evidence["approved_by"] == "Ada"
+    assert evidence["text"] == "Yes, upgrade this store."
+    assert evidence["verified"] is False
+    assert evidence["channel"] == "chat"
+    record = latest_record(role_store.store, "upgrade.completed")
+    assert record["data"]["attestation"] == evidence
+
+
+def test_a_chat_attestation_needs_both_halves(
+    role_store: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("RAIL_ACTOR", raising=False)
+
+    result = invoke(
+        "upgrade",
+        {"confirm": PHRASE, "approved_by": "Ada"},
+        store=role_store.store,
+    )
+
+    assert refusal(result) == ("VALIDATION_FAILED", "attestation_incomplete")
+    assert result["error"]["details"]["missing"] == "user_approval"
+
+
+def test_a_seated_agent_may_upgrade_with_the_humans_chat_words(
+    role_store: SimpleNamespace,
+) -> None:
+    write_legacy_runtime_files(role_store.store)
+
+    result = as_seat(
+        role_store.store,
+        role_store.lead,
+        "upgrade",
+        {
+            "confirm": PHRASE,
+            "approved_by": "Ada",
+            "user_approval": "Yes, upgrade this store.",
+        },
+    )
+
+    assert is_ok(result), result
+    assert result["value"]["attestation"]["recorded_by"] == role_store.lead
+    record = latest_record(role_store.store, "upgrade.completed")
+    assert record["actor"] == role_store.lead
+    assert record["data"]["attestation"]["approved_by"] == "Ada"
 
 
 def test_role_mode_upgrade_runs_for_the_human_on_a_terminal(

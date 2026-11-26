@@ -40,8 +40,9 @@ _SHIPPED_REASON = "upgrade shipped guidance"
 def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Rewrite profiles, local packs and the charter, then bring shipped guidance up to date."""
     delegated = is_delegated(ctx, "ops upgrade")
+    attested = ctx.attestation is not None
     dry_run = bool(args.get("dry_run"))
-    if not dry_run and not delegated and (
+    if not dry_run and not delegated and not attested and (
         not name_is_human(actor) or caller_session() is not None
     ):
         raise WriteRefused(
@@ -103,6 +104,7 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
                 "changed": changed,
                 "reasons": reasons,
                 "shipped": plan.report(),
+                **({"attestation": ctx.attestation} if attested else {}),
             },
         }
         # Records are placed by the pack, which only loads once the files above
@@ -124,6 +126,13 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         ctx, [*changed, *plan.touched()], force_reapprove=needs_reapprove
     )
     summary["summary"] = _plain_summary(changed, plan, summary["next"], False)
+    if attested:
+        assert ctx.attestation is not None
+        summary["attestation"] = ctx.attestation
+        summary["summary"] += (
+            f" Recorded {ctx.attestation['approved_by']}'s chat approval "
+            "as unverified evidence."
+        )
     if delegated:
         summary["delegation"] = delegation_summary(ctx, "ops upgrade")
     return summary

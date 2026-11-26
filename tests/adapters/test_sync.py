@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from context_rail.core.result import is_ok
@@ -168,3 +169,27 @@ def test_a_no_op_sync_appends_no_record(skill_store: Path) -> None:
     count = len(_records(skill_store))
     invoke("adapters sync", {}, store=skill_store, actor="cto")
     assert len(_records(skill_store)) == count
+
+
+def test_an_unnamed_agent_may_render_with_the_humans_chat_words(
+    skill_store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("RAIL_ACTOR", raising=False)
+    monkeypatch.delenv("RAIL_SESSION", raising=False)
+
+    result = invoke(
+        "adapters sync",
+        {
+            "approved_by": "Ada",
+            "user_approval": "Yes, render the agent files.",
+        },
+        store=skill_store,
+    )
+
+    assert is_ok(result), result
+    evidence = result["value"]["attestation"]
+    assert evidence["approved_by"] == "Ada"
+    assert evidence["verified"] is False
+    assert _agents(skill_store).is_file()
+    record = latest_record(skill_store, "adapters.synced")
+    assert record["data"]["attestation"] == evidence

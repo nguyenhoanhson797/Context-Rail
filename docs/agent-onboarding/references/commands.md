@@ -48,6 +48,13 @@ rail --version
 
   Repeat `--action` to narrow; remove the block with `--remove` to restore the
   live lead's default.
+- `ops upgrade`, `ops adapters render` and `approve` also accept a chat
+  attestation: the agent passes the human's exact words as
+  `--user-approval "<their words>"` (plus `--approved-by <human>` for the two
+  operational actions). The record names the human, the verbatim text and the
+  agent, and marks the claim `verified: false`. It is evidence, not a
+  signature; a charter with `approval.agents: false` still requires a human
+  signature for `approve`.
 - `--session-env NAME` reads the call's session token from environment variable
   `NAME` instead of `RAIL_SESSION`; invalid variable names or unset/empty
   values are refused without falling back.
@@ -72,7 +79,7 @@ rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run] [--cod
           [--no-approve] [--no-git-drivers] [--harness ID]... [--confirmer NAME]
           [--interview | --answers-file FILE | --draft-file FILE]
           [--solo] [--key KEY]
-rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DIGEST]
+rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--user-approval "WORDS"] [--expect DIGEST]
 rail consent <item> --on-behalf-of NAME --text "WORDS" --expect ETAG
 rail overview [--max-chars N] [--item-limit N]
 rail read status
@@ -94,7 +101,10 @@ rail gate [--warnings-as-errors]
 binds to the semantic digest. A named lead signs by default; add `--actor human`
 for a human signature. The record carries `signer`, `signer_kind`, `channel` and
 `on_behalf_of`; `--confirmer` names the human the approval is for. A charter with
-`approval.agents: false` accepts only a human signature.
+`approval.agents: false` accepts only a human signature. When an agent records
+the approval from the human's chat answer, add `--user-approval "<their exact
+words>"`: the record keeps that text and `verified: false`, and still refuses
+when `approval.agents` is false.
 
 `consent` records a human's explicit go-ahead for one item version, in their
 own words: `--text` is what they said, `--on-behalf-of` names them, and
@@ -162,7 +172,10 @@ rail <seat> [command ...]
   block may narrow or pin them. The lead runs them and a `delegation.used`
   record names the delegate and the human. `approve` is different: a
   project-anchored lead seat may sign it with its own session when the charter
-  allows it (`approval.agents: true`, the default).
+  allows it (`approval.agents: true`, the default). For `ops upgrade`, `ops
+  adapters render` and `approve`, an agent may instead pass the human's chat
+  words as `--user-approval` (and `--approved-by`); the record marks the claim
+  unverified and still refuses `approve` when `approval.agents: false`.
 - A pack without `roles` stays in compat mode: the name-based `--actor`
   behaviour is unchanged and `rail seat ...` / the lens refuse with "this pack
   declares no roles", pointing at `rail ops pack use`.
@@ -242,6 +255,8 @@ merge in git yourself.
 ```text
 rail ops doctor [--repair] [--fix] [--dry-run]
 rail ops reindex [--full]
+rail ops upgrade [--dry-run] [--confirm "UPGRADE store"]
+                 [--approved-by NAME --user-approval "WORDS"]
 rail --actor human ops migrate --source LEGACY --dir DIR [--root DIR] [--pack NAME] [--dry-run]
 rail ops rollback --target-class skill|profile --target PATH --version N
                   --expect ETAG [--confirm "APPROVE <slug>"]
@@ -255,6 +270,7 @@ rail --actor human ops codegraph adopt [--dry-run]
 rail ops sync [--remote NAME] [--branch NAME] [--key KEY]
 rail ops sync install
 rail ops adapters render [--harness agents|claude|cursor|gemini]... [--dry-run]
+                         [--approved-by NAME --user-approval "WORDS"]
                          [--force --confirm "FORCE ADAPTERS adapters"]
 rail ops pack list
 rail ops pack show --name NAME

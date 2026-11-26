@@ -153,12 +153,12 @@ record a result, candidate or review for an item outside its write reach, and
 independence compares the acting seat and its profile with the seat and
 profile that produced the candidate or result.
 
-Existing stores adopt shipped result contracts explicitly when a human runs
-`rail ops upgrade --confirm "UPGRADE store"` (name mode: `--actor human`; a
-role-mode store acts by seat, so a terminal or the local UI, with no
-`--actor`), followed by `approve`;
-unchanged historical done items stay preserved without fabricating retroactive
-results.
+Existing stores adopt shipped result contracts explicitly when an agent runs
+`rail ops upgrade --confirm "UPGRADE store"` with the human's chat approval
+(`--approved-by <human> --user-approval "<their exact words>"`), or when a human
+runs it in a terminal or the UI; name mode may instead use `--actor human`.
+Then `approve`, and unchanged historical done items stay preserved without
+fabricating retroactive results.
 
 ## Focus and the queue
 

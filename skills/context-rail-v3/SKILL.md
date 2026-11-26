@@ -78,7 +78,10 @@ rail seat close sprint-1
 - Human-only actions need the human on a terminal or the UI channel, never an
   agent session — unless the approved charter names the caller's lead seat in
   `delegation` and lists that exact action. Then the lead may run it, and a
-  `delegation.used` record names the delegate and the human. The first seat grant
+  `delegation.used` record names the delegate and the human. `ops upgrade`, `ops
+  adapters render` and `approve` also accept the human's exact chat words as
+  `--user-approval` (plus `--approved-by` for the two operational actions); the
+  record marks the claim `verified: false`. The first seat grant
   when no seat exists is human-only; after that a seat grants only inside its
   `can.grant` and write reach. The human sets the block with `rail ops delegate
   <seat> --action <id> --expect <charter-etag> --confirm "DELEGATE <seat>"`.
@@ -114,10 +117,10 @@ rail seat close sprint-1
 - Every agent session starts with `rail overview` (coordinator) or
   `rail loop brief <item> --role <role>`. The brief's role section names the role
   ("You are acting as: <role>"), its profile rules and its skills.
-- An existing store keeps its copies of the shipped profiles and skills until a
-  human runs `rail ops upgrade`: unedited copies are refreshed, new skills are
-  seeded, retired copies are removed, and customised copies are reported, not
-  overwritten.
+- An existing store keeps its copies of the shipped profiles and skills until an
+  agent runs `rail ops upgrade` with the human's chat approval (or a human runs
+  it): unedited copies are refreshed, new skills are seeded, retired copies are
+  removed, and customised copies are reported, not overwritten.
 
 ## Read the project in three commands
 
@@ -223,7 +226,7 @@ Exact flags: `references/commands.md` in this skill.
 | “the charter is not approved; nothing executes yet” | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"`; add `--actor human` when the charter requires a human signature |
 | “the item has no consent for its current version” | Ask the human, then record their exact words: `rail consent <item> --on-behalf-of "<you>" --text "<their words>" --expect <etag>`; an edit needs a new answer |
 | `actor_required` on a write | Name yourself: `--actor <name>` or `RAIL_ACTOR`; an unnamed caller can only read |
-| `profile key 'model' was removed; run rail ops upgrade` | The store predates the runtime-neutral engine; a human runs it (`--actor human ops upgrade --confirm "UPGRADE store"` in a name-mode store; `ops upgrade --confirm "UPGRADE store"` with no `--actor`, in a terminal or the local UI, in a role-mode store) |
+| `profile key 'model' was removed; run rail ops upgrade` | The store predates the runtime-neutral engine; run it with the human's chat approval (`--approved-by <human> --user-approval "<their exact words>"`), or a human runs `--actor human ops upgrade --confirm "UPGRADE store"` in a name-mode store / `ops upgrade --confirm "UPGRADE store"` in a terminal or the local UI in a role-mode store |
 | `AMBIGUOUS_FOCUS` | Two containers match the focus; pass `--into <id>` or finish one |
 | `NO_FOCUS` on `add` | The pack needs a parent; start the container or pass `--rel part_of=<container>` |
 | `approval_mismatch` after a pack upgrade | The semantic digest changed; reapprove `pack:<name>` then the charter |

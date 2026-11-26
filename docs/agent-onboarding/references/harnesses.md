@@ -81,11 +81,14 @@ envelope as the CLI: `{"ok": true, "value": ...}` or `{"ok": false, "error":
 | Read-only exploration | no actor, or `--actor cto` | MCP defaults to `cto` |
 | Normal agent work | `--actor cto` or a worker name | writes are attributed |
 | Human approval session | `--actor human` in a name-mode store; in a role-mode store run on a terminal or the UI channel with no `--actor` | a real human signature for `approve`; `ops migrate` and `ops pack use` are human-only |
+| Chat-approved operational action | the agent keeps its own name; asks in chat, then passes `--approved-by <human> --user-approval "<their exact words>"` | an unverified chat-attestation record for `ops upgrade`, `ops adapters render` or `approve` |
 | Separate reviewer | `--actor reviewer` | separation from the implementer |
 
 The actor is a **workflow claim**, not authentication. It records who acted and
-enforces the charter's rights. Anyone with shell access as your OS user can act
-as you; use OS-level isolation for a real boundary.
+enforces the charter's rights. A chat attestation is evidence too: the record
+marks it `verified: false`, because the engine never saw the human type.
+Anyone with shell access as your OS user can act as you; use OS-level isolation
+for a real boundary.
 
 ## Per-harness notes
 

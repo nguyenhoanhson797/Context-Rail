@@ -19,6 +19,7 @@ published.
 
 - Project map design (active next move): `docs/superpowers/specs/2026-11-26-project-map-design.md`
 - Project map plan (active next move): `docs/superpowers/plans/2026-11-26-project-map.md`
+- Chat-attested operations design: `docs/superpowers/specs/2026-11-26-chat-attested-operations.md`
 - Agent-signed approval design: `docs/superpowers/specs/2026-11-17-agent-signed-approval.md`
 - Runtime-neutral engine design: `docs/superpowers/specs/2026-11-12-runtime-neutral-engine-design.md`
 - Runtime-neutral engine plan: `docs/superpowers/plans/2026-11-12-runtime-neutral-engine.md`
@@ -116,7 +117,10 @@ repository.
   create`, `pack use`, `ops delegate`, `sync` and a `--force` render stay human:
   they create, replace or install the boundary that authorizes the delegate.
   Every delegated use writes a `delegation.used` record naming the delegate and
-  the human.
+  the human. `ops upgrade`, `ops adapters render` and `approve` also accept the
+  human's exact chat words (`--approved-by`, `--user-approval`); the record marks
+  the claim unverified, and `approval.agents: false` still requires a human
+  signature for `approve`.
 - Agents read the compiled surface (`model`, `types`, `next`, `show`, `explain`,
   `why`),
   never `pack.yaml`. Pack actions are declarative and run as the caller through

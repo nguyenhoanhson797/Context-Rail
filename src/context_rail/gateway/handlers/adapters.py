@@ -276,6 +276,11 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "source_etags": sources,
         "harnesses": list(harnesses) if requested else [],
         "binding": binding,
+        **(
+            {"attestation": ctx.attestation}
+            if ctx.attestation is not None
+            else {}
+        ),
     }
     delegated = is_delegated(ctx, "ops adapters render")
     result = commit(
@@ -298,6 +303,11 @@ def sync(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         record=result["record"],
         dry_run=False,
     )
+    if ctx.attestation is not None:
+        value["attestation"] = ctx.attestation
+        value["warnings"].append(
+            "The chat approval is unverified evidence, not a human signature."
+        )
     if delegated:
         value["delegation"] = delegation_summary(ctx, "ops adapters render")
     return value
@@ -547,7 +557,7 @@ def _agents_payload(
         "`rail read digest`, `rail read ledger`, `rail gate`.",
         "## Write, Human-only & Refusals",
         "- Read first and pass `--expect <etag>`, `--key <idempotency-key>`, `--rel part_of=<slug>`, `--set <field>=<value>` (no path/parent/title); change status only via `rail change move` or `rail do <action>`; run `rail ops reindex` after hand edits.",
-        "- Human-only: `ops migrate`, `ops pack use`, `ops delegate`, and every `--force` render. Operational actions (`ops upgrade`, `ops adapters render`, `ops rollback`) are available to the live project lead while the charter approval is current; a `delegation` block may narrow or pin these to one named lead. A name-based store takes `--actor human` (or `RAIL_ACTOR=human`) plus the printed phrase; a role-mode store needs the human on a terminal or through the UI. `approve` records its signer; the charter's `approval.agents` says whether an agent may sign. Never widen a delegation, never claim a human signature you did not receive, and never lower a gate.",
+        "- Human-only: `ops migrate`, `ops pack use`, `ops delegate`, and every `--force` render. Operational actions (`ops upgrade`, `ops adapters render`, `ops rollback`) are available to the live project lead while the charter approval is current; a `delegation` block may narrow or pin these to one named lead. A name-based store takes `--actor human` (or `RAIL_ACTOR=human`) plus the printed phrase; a role-mode store needs the human on a terminal or through the UI, or the agent passes `--approved-by <human> --user-approval \"<their exact words from chat>\"` and the record keeps that claim as unverified evidence. `approve` records its signer; the charter's `approval.agents` says whether an agent may sign. Never widen a delegation, never claim a human signature you did not receive, and never lower a gate.",
         "- Refusals: read `error.code`/`error.details` — `CONFLICT` re-read; `AMBIGUOUS_FOCUS` pass `--into`; `NO_FOCUS` pass `--rel part_of=` or start container; `stale` re-run `rail check run`; `approval_mismatch` reapprove `pack:<name>` then the charter (a named lead may sign when the charter allows it).",
         "## Start here",
         "- CTO owns design within charter and requires one registered item + Markdown result record per assignment (incl. discovery).",

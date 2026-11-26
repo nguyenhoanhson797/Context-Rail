@@ -77,14 +77,16 @@ approval ceremony is skipped, the quality gates still apply). The approval
 record names its signer and the human it was made for. In a name-mode store
 `--actor human` records that signature but does not prove a person typed it; a
 role-mode store proves the human through a terminal, the UI channel or a live
-seat, and refuses `--actor`.
+seat, and refuses `--actor`. For `ops upgrade`, `ops adapters render` and
+`approve`, an agent may instead pass the human's exact chat words as
+`--user-approval` (plus `--approved-by` for the two operational actions); the
+record names the agent that relayed them and marks the claim unverified.
 Every registered assignment leaves one workflow-shaped Markdown result record
 (up to 256 KiB / 262,144 bytes, ordered nonempty `##` sections, 4000-char brief
 contribution cap, `--key` idempotency, nullable `candidate_commit` so discovery
-never fabricates a commit); `rail ops upgrade` as the human (name mode:
-`--actor human`; role mode: a terminal or the local UI, with no `--actor`) plus
-`approve` adopts shipped result contracts on older stores without rewriting
-historical done items.
+never fabricates a commit); a `rail ops upgrade` (run by the human or by an
+agent carrying the human's chat approval) plus `approve` adopts shipped result
+contracts on older stores without rewriting historical done items.
 
 ## Shape any kind of project
 
@@ -438,6 +440,25 @@ grant when no seat exists yet - need the human on a terminal or through the UI,
 never an agent session. Approval is different: a project-anchored lead seat may
 sign it with its own session when the charter allows it, and the record names
 the signer and the human it was made for.
+
+`ops upgrade`, `ops adapters render` and `approve` also accept a chat
+attestation, so a human does not have to run the CLI for these three actions:
+
+```bash
+rail ops upgrade --confirm "UPGRADE store" \
+  --approved-by "Ada" --user-approval "Yes, upgrade the store."
+rail approve charter --confirmer "Ada" \
+  --user-approval "Yes, approve the charter." \
+  --confirm "APPROVE charter"
+```
+
+The agent must have asked in chat first; it passes the human's exact words. The
+record keeps `approved_by`, the verbatim text, the agent that relayed it and
+`verified: false`. This is evidence, not a signature: an agent that invents the
+words can still pass the gate. A charter with `approval.agents: false` still
+requires a human signature for `approve`, so chat words cannot open that floor.
+The same command without `--user-approval` keeps the older human-channel and
+delegation behaviour.
 
 A pack can also ask for a per-item consent before a specific action. The agent
 asks the human in chat; when the human answers in their own words, the lead

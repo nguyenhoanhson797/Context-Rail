@@ -30,12 +30,17 @@ context-rail/.rail-local/    index, locks, sync progress
 ## Actor identity
 
 `--actor` and `RAIL_ACTOR` are workflow claims, not authentication. Human-only
-tools (`ops migrate`, `ops upgrade`, `ops pack use`, `ops delegate`) require an
-explicitly named human: `--actor human` or `RAIL_ACTOR=human`. In a store whose
-pack declares roles, `--actor` is refused: the human proves themselves with a
+tools (`ops migrate`, `ops pack use`, `ops delegate`) require an explicitly
+named human: `--actor human` or `RAIL_ACTOR=human`. In a store whose pack
+declares roles, `--actor` is refused: the human proves themselves with a
 terminal or the UI channel, or the charter delegates the action. `approve`
 records its signer: a named lead may sign when the charter allows it
-(`approval.agents: true`, the default), naming the human in `--confirmer`. A
+(`approval.agents: true`, the default), naming the human in `--confirmer`.
+`ops upgrade`, `ops adapters render` and `approve` also accept the human's exact
+chat words as `--user-approval "<their words>"` (plus `--approved-by <human>`
+for the two operational actions). The record names the human, the verbatim text
+and the agent, and marks the claim unverified; a charter with
+`approval.agents: false` still requires a human signature for `approve`. A
 charter may also delegate named operational actions to one lead:
 
 ```yaml
@@ -161,7 +166,7 @@ Never hand-edit the SQLite index and never delete the store to fix a view.
 | A check reports `stale` | Declared inputs changed since the verdict | `rail check run` again |
 | `doctor` flags approval drift | A protected file changed after approval | Re-approve the target |
 | The index is corrupt or missing | Cache only | `rail ops reindex --full` |
-| An old store refuses a command with `rail ops upgrade` in the message | It predates the runtime-neutral engine or result contracts | A human runs `rail ops upgrade --dry-run`, then `--confirm "UPGRADE store"` (name mode: `--actor human`; a role-mode store acts by seat, so a terminal or the local UI, with no `--actor`); re-approve if told to (preserving historical done items and custom guidance); `rail ops adapters render` |
+| An old store refuses a command with `rail ops upgrade` in the message | It predates the runtime-neutral engine or result contracts | Ask the human in chat; then run `rail ops upgrade --dry-run`, then `--confirm "UPGRADE store"` with `--approved-by <human> --user-approval "<their exact words>"` (name mode may instead use `--actor human`; role mode may use a terminal/UI or charter delegation); re-approve if told to (preserving historical done items and custom guidance); `rail ops adapters render` |
 | A command seems to act on old data | None expected: every daemon call reads the files afresh | Run it as `rail --no-daemon <command>`; if the answer differs, report it |
 | A write says `outcome unknown` | The daemon did not answer after the request may have reached it | Re-read the item to see whether it applied; repeat only a command that carries a `--key` |
 | Every command waits about 2 s | A warm daemon is stuck inside a call and `serve daemon --stop` gets no answer | End that `serve daemon` process by hand; commands run direct meanwhile and the next one starts a fresh daemon |

@@ -93,6 +93,12 @@ are available to the live project lead while the charter approval is current; a
 `delegation` block may narrow or pin them to one named lead. Run only what the
 approved charter allows and report the `delegation` facts.
 
+`ops upgrade`, `ops adapters render` and `approve` also accept the human's exact
+chat words: ask in chat first, then pass `--approved-by "<human>"` (the two
+operational actions) and `--user-approval "<their exact words>"`. The record
+marks the claim `verified: false`; it is evidence, not a signature. A charter
+with `approval.agents: false` still requires a human signature for `approve`.
+
 `approve` records who signed it. By default a named lead may sign; the record
 carries `signer`, `signer_kind`, `channel` and the human it names (`--confirmer`).
 A charter that sets `approval.agents: false` accepts only a human signature:
@@ -223,7 +229,8 @@ MCP keeps the canonical tool names (`status`, `next`, `show`, `add`, `move`,
 `candidate`, `result`, `review`, `brief`, `measure usage`, …), not the grouped CLI aliases. The serving actor
 is `--actor`, then `RAIL_ACTOR`, then `cto`; a name-based store can pass
 `--actor human` for a human-only tool, while a role-mode store needs the human
-on a terminal or through the UI.
+on a terminal or through the UI, or the chat-attested flags for `ops upgrade`,
+`ops adapters render` and `approve`.
 
 ## Next
 
