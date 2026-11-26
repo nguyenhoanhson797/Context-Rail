@@ -1,6 +1,6 @@
 """The legacy read envelopes, composed from the current engine.
 
-The React pages ask for named reads (`next`, `scope_score`, `understanding`,
+The React pages ask for named reads (`next`, `map`, `scope_score`, `understanding`,
 `doctor`) and expect ``{status: 'ok' | 'error', ...}``. Only the reads a phase
 one screen uses are implemented; every other name is an explicit refusal, never
 an empty success.
@@ -23,6 +23,7 @@ def read(context: Any, view: str) -> dict[str, Any]:
         "understanding": _understanding,
         "doctor": _doctor,
         "config_options": _config_options,
+        "map": _map,
     }
     handler = handlers.get(view)
     if handler is None:
@@ -34,6 +35,13 @@ def read(context: Any, view: str) -> dict[str, Any]:
         return handler(context)
     except Exception as error:  # a read failure is an envelope, not a crash
         return {"status": "error", "error": str(error) or error.__class__.__name__}
+
+
+def _map(context: Any) -> dict[str, Any]:
+    from context_rail.context import roadmap
+
+    tree = roadmap.build_tree(context, context.model, context.actor)
+    return {"status": "ok", **roadmap.tree_payload(context, tree)}
 
 
 def _next(context: Any) -> dict[str, Any]:

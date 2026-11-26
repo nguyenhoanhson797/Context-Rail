@@ -50,6 +50,7 @@ def test_the_map_reads_the_declared_hierarchy_and_progress() -> None:
     assert "hierarchyLevels" in body or "hierarchy" in body
     assert "progressOf" in body, "the map invents its own completion"
     assert "container" in body, "the map does not use the declared containers"
+    assert "read('map')" in body, "the map builds its own tree instead of the engine's"
 
 
 def test_the_queue_reads_the_engine_queue_and_its_reasons() -> None:

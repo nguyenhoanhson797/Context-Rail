@@ -344,12 +344,23 @@ def where_lines(
     return fixed, roots[:limit], max(len(roots) - limit, 0)
 
 
-def tree_payload(tree: MapTree) -> dict[str, Any]:
+def tree_payload(ctx: Context, tree: MapTree) -> dict[str, Any]:
     """The whole tree for a screen that folds and unfolds it itself."""
+    depends_on = [
+        [src, dst]
+        for src, dst in ctx.index.conn.execute(
+            "SELECT src, dst FROM relations WHERE rel = 'depends_on' ORDER BY src, dst"
+        )
+        if src in tree.rows and dst in tree.rows
+    ]
     return {
         "where": _where(tree),
         "roots": list(tree.roots),
-        "nodes": [tree.node(slug) for slug in sorted(tree.rows, key=tree.order.__getitem__)],
+        "nodes": [
+            {**tree.node(slug), "etag": tree.rows[slug].etag}
+            for slug in sorted(tree.rows, key=tree.order.__getitem__)
+        ],
+        "depends_on": depends_on,
         "total": len(tree.rows),
     }
 
