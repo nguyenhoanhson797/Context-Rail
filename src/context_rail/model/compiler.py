@@ -270,6 +270,12 @@ def semantic_payload(pack: Pack) -> dict[str, Any]:
                 wf_payload.pop("results", None)
             else:
                 wf_payload["results"] = workflow_results_as_dict(workflow.results)
+    # Default consent is left out so packs that never declare it keep the
+    # digest they were approved under before consent existed.
+    for action in payload.get("actions", {}).values():
+        requires = action.get("requires")
+        if isinstance(requires, dict) and requires.get("consent") is False:
+            requires.pop("consent")
     return payload
 
 

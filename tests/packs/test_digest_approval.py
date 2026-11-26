@@ -147,6 +147,9 @@ def test_a_v1_pack_hashes_exactly_as_it_did_before_operating(tmp_path: Path) -> 
     payload.pop("_template_packs", None)
     for wf in payload.get("workflows", {}).values():
         wf.pop("results", None)
+    for action in payload.get("actions", {}).values():
+        if action["requires"]["consent"] is False:
+            action["requires"].pop("consent")
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     expected = sha256_hex(body.encode("utf-8"))
 
