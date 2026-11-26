@@ -4,4 +4,4 @@
 release. Public skill IDs keep their stable ``context-rail-v3`` prefix.
 """
 
-__version__ = "4.6.1"
+__version__ = "4.7.0"
