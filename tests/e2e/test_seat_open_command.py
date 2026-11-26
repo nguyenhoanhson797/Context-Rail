@@ -25,7 +25,10 @@ def test_print_env_returns_a_token_that_acts_as_the_seat(
     )
 
     assert opened.returncode == 0, opened.stderr or opened.stdout
-    token = json.loads(opened.stdout)["value"]["token"]
+    value = json.loads(opened.stdout)["value"]
+    token = value["token"]
+    assert "RAIL_SESSION" in value["note"]
+    assert "never paste it into a conversation" in value["note"]
     acting = run_cli(
         role_store.store.parent,
         "seat",

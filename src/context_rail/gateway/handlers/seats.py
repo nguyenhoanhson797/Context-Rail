@@ -314,6 +314,10 @@ def seat_open(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     value: dict[str, Any] = {"seat": seat, "expires": expires}
     if args.get("print_env"):
         value["token"] = token
+        value["note"] = (
+            "put this token in RAIL_SESSION for the process that should act as "
+            "the seat; never paste it into a conversation"
+        )
     return value
 
 
@@ -366,7 +370,9 @@ def _check_opener(
     if identity.kind != "seat":
         raise WriteRefused(
             "PERMISSION_DENIED",
-            "only the human or a live seat may open a session",
+            "only the human or a live seat may open a session; the project "
+            "owner opens it in a terminal or in the local UI with "
+            "`rail seat open <seat> --print-env`",
             {"reason": "open_denied"},
         )
     role = ctx.pack.operating.roles.get(target.role)

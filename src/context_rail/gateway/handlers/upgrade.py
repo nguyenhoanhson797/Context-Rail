@@ -86,6 +86,7 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         summary["next"] = _next(
             ctx, [*changed, *touched], force_reapprove=needs_reapprove
         )
+        summary["summary"] = _plain_summary(changed, plan, summary["next"], True)
         if delegated:
             summary["delegation"] = delegation_summary(ctx, "ops upgrade")
         return summary
@@ -122,9 +123,37 @@ def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     summary["next"] = _next(
         ctx, [*changed, *plan.touched()], force_reapprove=needs_reapprove
     )
+    summary["summary"] = _plain_summary(changed, plan, summary["next"], False)
     if delegated:
         summary["delegation"] = delegation_summary(ctx, "ops upgrade")
     return summary
+
+
+def _plain_summary(
+    changed: list[str],
+    plan: ShippedPlan | None,
+    next_steps: list[str],
+    dry_run: bool,
+) -> str:
+    """One sentence a reader can relay without reading the JSON lists."""
+    writes = len(changed) + (len(plan.ops) if plan is not None else 0)
+    edited = len(plan.customized) if plan is not None else 0
+    if writes == 0 and edited == 0 and not next_steps:
+        return "This store is already up to date."
+    if writes == 0:
+        text = (
+            "No shipped files would change."
+            if dry_run
+            else "No shipped files changed."
+        )
+    else:
+        verb = "would change" if dry_run else "changed"
+        text = f"{writes} file{'' if writes == 1 else 's'} {verb}."
+    if edited:
+        text += f" {edited} edited file{'' if edited == 1 else 's'} left alone."
+    if next_steps:
+        text += " Next: " + "; ".join(next_steps) + "."
+    return text
 
 
 def _preview_shipped(store: Path, actor: str) -> ShippedPlan | None:

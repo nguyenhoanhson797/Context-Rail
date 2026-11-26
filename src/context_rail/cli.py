@@ -90,7 +90,8 @@ def _parser(tools: tuple[Tool, ...] = SURFACE_TOOLS) -> argparse.ArgumentParser:
         "--actor",
         help=(
             "acting actor (default: RAIL_ACTOR; a terminal is the human, "
-            "anything else only reads; human-only tools need an explicit human)"
+            "anything else only reads; human-only tools need an explicit human; "
+            "a store with roles refuses it and acts by RAIL_SESSION)"
         ),
     )
     parser.add_argument(

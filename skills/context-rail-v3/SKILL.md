@@ -223,7 +223,7 @@ Exact flags: `references/commands.md` in this skill.
 | “the charter is not approved; nothing executes yet” | `rail approve charter --confirm "APPROVE charter" --confirmer "<you>"`; add `--actor human` when the charter requires a human signature |
 | “the item has no consent for its current version” | Ask the human, then record their exact words: `rail consent <item> --on-behalf-of "<you>" --text "<their words>" --expect <etag>`; an edit needs a new answer |
 | `actor_required` on a write | Name yourself: `--actor <name>` or `RAIL_ACTOR`; an unnamed caller can only read |
-| `profile key 'model' was removed; run rail ops upgrade` | The store predates the runtime-neutral engine; a human runs `rail --actor human ops upgrade --confirm "UPGRADE store"` |
+| `profile key 'model' was removed; run rail ops upgrade` | The store predates the runtime-neutral engine; a human runs it (`--actor human ops upgrade --confirm "UPGRADE store"` in a name-mode store; `ops upgrade --confirm "UPGRADE store"` with no `--actor`, in a terminal or the local UI, in a role-mode store) |
 | `AMBIGUOUS_FOCUS` | Two containers match the focus; pass `--into <id>` or finish one |
 | `NO_FOCUS` on `add` | The pack needs a parent; start the container or pass `--rel part_of=<container>` |
 | `approval_mismatch` after a pack upgrade | The semantic digest changed; reapprove `pack:<name>` then the charter |

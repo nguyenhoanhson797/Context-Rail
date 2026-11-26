@@ -288,3 +288,29 @@ from, and is bound to that item version: an edit needs a new answer. The Item
 sheet in `rail serve ui` records the same consent and can run the action; the
 Health page signs the charter. A charter with `approval.agents: false` keeps
 consent human-only.
+
+## 17. Upgrading an existing store
+
+`rail ops upgrade` rewrites an older store in place, then refreshes shipped
+profiles and skills the store never edited. Check the plan first; the dry run
+writes nothing and needs no identity.
+
+```bash
+rail ops upgrade --dry-run
+rail ops upgrade --confirm "UPGRADE store"
+rail approve charter --confirm "APPROVE charter" --confirmer "<you>"
+rail ops adapters render
+```
+
+A name-mode store runs the write as `rail --actor human ops upgrade ...`. A
+role-mode store acts by seat: the human runs `rail ops upgrade` in a terminal or
+the local UI, with no `--actor`, or delegates `ops upgrade` to the live lead in
+the charter. An agent cannot upgrade a role-mode store on its own. `rail ops
+pack show --name <pack>` tells the two apart: a non-empty `operating.roles`
+means role mode.
+
+The upgrade may rewrite a local `packs/<name>/pack.yaml`, which is part of the
+protected picture. That makes the old approval a mismatch even when the charter
+text itself did not change; `rail overview` names the changed paths under
+"changed since approval". Reapprove the charter, render the agent files, and
+only then run the stale `rail check run` commands the doctor reports.

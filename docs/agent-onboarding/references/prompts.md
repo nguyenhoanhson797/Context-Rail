@@ -152,7 +152,7 @@ Never read `pack.yaml`.
 For a write: read the etag, then `rail change ... --expect <etag> --key <key>`.
 Pass `--rel` and `--set`, never a path.
 Change status only with `rail change move`.
-Approval records its signer; name the human in `--confirmer`, and use `--actor human` only for a real human signature.
+Approval records its signer; name the human in `--confirmer`, and use `--actor human` only for a real human signature. A role-mode store refuses an actor name, so the human runs it on a terminal or through the UI.
 If a command refuses, read `error.details` and follow the named fix.
 ```
 

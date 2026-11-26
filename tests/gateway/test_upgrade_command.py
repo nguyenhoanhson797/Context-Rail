@@ -95,6 +95,7 @@ def test_upgrade_is_idempotent(approved_store: Path) -> None:
 
     assert is_ok(again), again
     assert again["value"]["changed"] == [] and again["value"]["next"] == []
+    assert "No shipped files changed." in again["value"]["summary"]
     assert tree_bytes(approved_store) == settled
 
 
@@ -134,6 +135,8 @@ def test_upgrade_reports_reapproval_next_step(approved_store: Path) -> None:
     steps = result["value"]["next"]
     assert any(step.startswith("rail approve charter") for step in steps)
     assert "rail ops adapters render" in steps
+    assert "changed" in result["value"]["summary"]
+    assert "Next:" in result["value"]["summary"]
     record = latest_record(approved_store, "upgrade.completed")
     assert PROFILE in record["data"]["changed"]
 
@@ -185,6 +188,7 @@ def test_role_mode_upgrade_refuses_an_actor_flag(role_store: SimpleNamespace) ->
     result = invoke("upgrade", {"dry_run": True}, store=role_store.store, actor="human")
 
     assert refusal(result) == ("PERMISSION_DENIED", "actor_flag_refused")
+    assert "re-run the dry run without it" in result["error"]["message"]
 
 
 def test_a_name_mode_dry_run_needs_no_actor(approved_store: Path) -> None:
@@ -222,5 +226,19 @@ def test_role_mode_upgrade_runs_for_the_human_on_a_terminal(
 ) -> None:
     with as_human():
         result = invoke("upgrade", {"dry_run": True}, store=role_store.store, actor=None)
+
+    assert is_ok(result), result
+
+
+def test_role_mode_upgrade_accepts_the_documented_human_actor_on_a_human_channel(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        result = invoke(
+            "upgrade",
+            {"confirm": PHRASE},
+            store=role_store.store,
+            actor="human",
+        )
 
     assert is_ok(result), result

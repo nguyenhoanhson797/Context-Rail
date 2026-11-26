@@ -546,6 +546,9 @@ def _brief_sections(
         approval_section.fixed.append(
             "blocked: nothing executes until the charter is approved"
         )
+        changed = _changed_protected(approval.get("changed"))
+        if changed:
+            approval_section.fixed.append(f"changed since approval: {changed}")
     if approval.get("confirmer"):
         if approval.get("signer_kind") == "agent":
             approval_section.fixed.append(
@@ -897,6 +900,27 @@ def approval_state(context: Context) -> dict[str, Any]:
     from context_rail.store.approval import approval_state as current_state
 
     return current_state(context, CHARTER_TARGET)
+
+
+def _changed_protected(changed: Any, limit: int = 5) -> str:
+    """The protected paths an approval no longer covers, as one readable line."""
+    if not isinstance(changed, dict):
+        return ""
+    paths = sorted(
+        {
+            path
+            for group in changed.values()
+            if isinstance(group, list)
+            for path in group
+            if isinstance(path, str)
+        }
+    )
+    if not paths:
+        return ""
+    shown = ", ".join(paths[:limit])
+    if len(paths) > limit:
+        shown += f" (+{len(paths) - limit} more)"
+    return shown
 
 
 def _memory_rows(

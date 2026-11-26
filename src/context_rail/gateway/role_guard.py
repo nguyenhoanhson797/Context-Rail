@@ -211,6 +211,20 @@ def tools_for(context: Context) -> frozenset[str]:
     return reads
 
 
+def _human_operation(tool_name: str, *, seat: bool = False) -> str:
+    """The human path for an operational tool, including delegation when it applies."""
+    text = (
+        f"{tool_name!r} is a human operation, not a seat's; the human runs it "
+        "in a terminal or in the local UI"
+        if seat
+        else f"{tool_name!r} is a human operation; the project owner runs it "
+        "in a terminal or in the local UI"
+    )
+    if tool_name in DELEGATED_TOOLS:
+        text += ", or an approved charter delegates it to the live lead"
+    return text
+
+
 def _delegated_tool_names(context: Context) -> frozenset[str]:
     """The operational tools this lead may see under the current charter."""
     if context.approval["state"] != "approved":
@@ -234,12 +248,22 @@ def authorize_role(
     if identity.kind == "anonymous":
         if tool.permission == "read":
             return None
+        if tool.name in OPS_HUMAN_ONLY:
+            return fail(
+                "SESSION_REQUIRED",
+                _human_operation(tool.name),
+                {"reason": "session_required", "tool": tool.name},
+            )
         return fail(
             "SESSION_REQUIRED",
-            "a tokenless caller may only read; the project owner opens a seat "
-            "session with 'rail seat open <seat> --print-env' and shares "
-            "RAIL_SESSION",
-            {"reason": "session_required", "command": SESSION_COMMAND},
+            f"{tool.name!r} needs a seat session; the project owner opens one "
+            "with 'rail seat open <seat> --print-env' and sets RAIL_SESSION in "
+            "the environment that should act as the seat",
+            {
+                "reason": "session_required",
+                "tool": tool.name,
+                "command": SESSION_COMMAND,
+            },
         )
     if identity.view_as is not None and tool.permission != "read":
         return fail(
@@ -260,7 +284,7 @@ def authorize_role(
     if tool.name in OPS_HUMAN_ONLY:
         return fail(
             "PERMISSION_DENIED",
-            f"{tool.name!r} is a human operation, not a seat's",
+            _human_operation(tool.name, seat=True),
             {"reason": "ops_human_only", "tool": tool.name},
         )
     if tool.permission == "read":

@@ -194,9 +194,11 @@ again. Do this instead:
 3. `rail ops doctor` — placement, metadata and index integrity.
 4. `rail ops upgrade` — adopt missing result templates/placements and update
    unedited workspace files while preserving historical done items and custom
-   guidance. The charter may delegate this to your lead seat; otherwise run it
-   as the human (`rail --actor human ops upgrade --confirm "UPGRADE store"`).
-   Run `approve` when prompted.
+   guidance. The charter may delegate this to your lead seat. Otherwise the
+   human runs it: in a name-mode store `rail --actor human ops upgrade
+   --confirm "UPGRADE store"`; in a role-mode store `rail ops upgrade --confirm
+   "UPGRADE store"` in a terminal or the local UI, with no `--actor` (a
+   role-mode store acts by seat). Run `approve` when prompted.
 5. `rail ops adapters render` — refresh the agent files if a skill moved.
 6. `rail next` — take work, or `rail why <slug>` — explain the block.
 

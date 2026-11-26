@@ -1,7 +1,10 @@
 # Command reference
 
 Global options, before the command: `[--store PATH] [--actor NAME] [--session-env NAME] [--no-daemon]`.
-`rail --version` prints the package version.
+`rail --version` prints the version of the code it ran. `pip show context-rail`
+reports the metadata for pip's interpreter; if the two differ, two installs
+exist, so compare `py -m pip show context-rail` with the launcher you use for
+`rail`.
 Human-only tools (`ops migrate`, `ops upgrade`, `ops pack use`, `ops delegate`)
 need an explicitly named human: `--actor human` or `RAIL_ACTOR=human`.
 `approve` records its signer: a named lead may sign when the charter allows it
@@ -88,7 +91,8 @@ role to one anchor (`project` or a container).
   `can.grant` and write reach. `seat revoke` closes the target's sessions and
   every seat it granted.
 - `seat open` writes a session. `--print-env` includes its one-time token in the
-  JSON result; export it as `RAIL_SESSION` for the agent. Sessions expire after
+  JSON result; export it as `RAIL_SESSION` in the environment that runs the
+  agent, never by pasting it into a conversation. Sessions expire after
   `--ttl-hours` (default 12).
 - `rail <seat> ...` is a lens. The seat's own session may read and write; another
   seat's session gives a read-only view only when the target anchor is inside

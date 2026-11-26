@@ -1190,7 +1190,7 @@ rail ops doctor</code></pre>
           <tr><td><code>rail ops pack list | show | validate | use | create</code></td><td>Inspect or switch the workflow pack.</td></tr>
           <tr><td><code>rail ops sync install</code></td><td>Install the git drivers for store-only clones.</td></tr>
           <tr><td><code>rail --actor human migrate</code></td><td>Import a v1/v2 store into a fresh v3 store.</td></tr>
-          <tr><td><code>rail --actor human ops upgrade</code></td><td>Rewrite an older v3 store: <code>dispatch</code> becomes <code>queue</code>, and <code>merge</code> and <code>policy.retries</code> are dropped with a hint.</td></tr>
+          <tr><td><code>rail --actor human ops upgrade</code></td><td>Rewrite an older v3 store: <code>dispatch</code> becomes <code>queue</code>, and <code>merge</code> and <code>policy.retries</code> are dropped with a hint. A role-mode store acts by seat: the human runs <code>rail ops upgrade</code> in a terminal or the local UI, or the charter delegates it.</td></tr>
           <tr><td><code>rail serve mcp</code> · <code>rail serve ui</code> · <code>rail serve daemon</code></td><td>Same tool table over MCP, a loopback web UI or the store's warm daemon.</td></tr>
         </tbody>
       </table>

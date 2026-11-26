@@ -74,12 +74,17 @@ code:     rail overview → approve → rail loop brief → work/commit → rail
 `rail gate` is a read-only governance check. Nothing executes until the charter
 is approved, or the charter binds `mode: solo` (one human owns the project;
 approval ceremony is skipped, the quality gates still apply). The approval
-record names its signer and the human it was made for.
+record names its signer and the human it was made for. In a name-mode store
+`--actor human` records that signature but does not prove a person typed it; a
+role-mode store proves the human through a terminal, the UI channel or a live
+seat, and refuses `--actor`.
 Every registered assignment leaves one workflow-shaped Markdown result record
 (up to 256 KiB / 262,144 bytes, ordered nonempty `##` sections, 4000-char brief
 contribution cap, `--key` idempotency, nullable `candidate_commit` so discovery
-never fabricates a commit); `rail --actor human ops upgrade` + `approve` adopts
-shipped result contracts on older stores without rewriting historical done items.
+never fabricates a commit); `rail ops upgrade` as the human (name mode:
+`--actor human`; role mode: a terminal or the local UI, with no `--actor`) plus
+`approve` adopts shipped result contracts on older stores without rewriting
+historical done items.
 
 ## Shape any kind of project
 
@@ -422,11 +427,11 @@ rail seat close impl-1
 In role mode the session token is the identity: `--actor` is refused. A
 tokenless caller that is not on a terminal has no seat and an empty reach, so
 open a session before reading or writing. `rail seat open <seat> --print-env`
-prints the one-time token in its JSON result; export it as `RAIL_SESSION` for
-the agent your tool starts. A seat sees only its anchor's
-subtree, the ancestors and shared notes its role declares, and every write is
-checked against the same reach. `rail <seat> ...` is a read-only lens when the
-session belongs to another seat.
+prints the one-time token in its JSON result; export it as `RAIL_SESSION` in
+the environment that runs the agent, never by pasting it into a conversation.
+A seat sees only its anchor's subtree, the ancestors and shared notes its role
+declares, and every write is checked against the same reach. `rail <seat> ...`
+is a read-only lens when the session belongs to another seat.
 
 Human-only actions - using a pack, granting a `human: true` role, and the first
 grant when no seat exists yet - need the human on a terminal or through the UI,

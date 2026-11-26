@@ -19,7 +19,11 @@ rail --version
 ```
 
 - Global options go **before** the command.
-- `rail --version` prints the package version and exits.
+- `rail --version` prints the version of the code it actually ran and exits.
+  `pip show context-rail` reports the metadata for the interpreter pip runs
+  in; if the two differ, two installs exist. Compare `py -m pip show
+  context-rail` with the same launcher you use for `rail`, and remove the stale
+  one rather than guessing which number is real.
 - Without `--store`, the nearest `context-rail` folder above the current
   directory is used.
 - `--actor` defaults to `RAIL_ACTOR`, then `human`; human-only tools require an
@@ -141,8 +145,9 @@ rail <seat> [command ...]
   own `can.grant` lists and only inside its write reach. Revoking a seat closes
   its sessions and every seat it granted.
 - `rail seat open` writes a session. `--print-env` includes its one-time token
-  in the JSON result; export it as `RAIL_SESSION` for the agent. Sessions
-  expire after `--ttl-hours` (default 12).
+  in the JSON result; export it as `RAIL_SESSION` in the environment that runs
+  the agent, never by pasting it into a conversation. Sessions expire after
+  `--ttl-hours` (default 12).
 - `rail <seat> ...` is a lens. With that seat's own session it reads and writes
   as the seat; with another seat's session it is read-only and allowed only when
   the target anchor is in the caller's read reach; with no session on a terminal

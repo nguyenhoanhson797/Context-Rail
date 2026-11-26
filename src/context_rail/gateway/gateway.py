@@ -1020,29 +1020,54 @@ def _require_terminal_human_in_role_store(
     """In a store with roles only the human on a terminal or the UI channel upgrades it.
 
     Returns whether the store has roles, in which case that channel is the human.
-    A read-only dry run still refuses an explicit ``--actor`` flag, but it does
-    not need a terminal because it writes nothing.
+    An explicit ``--actor human`` is accepted on a person's channel because the
+    channel already proves the human; any other name, or the same name without
+    that proof, is refused with the path that can actually finish the upgrade. A
+    dry run needs no terminal because it writes nothing.
     """
     from context_rail.store.upgrade import declares_roles
 
     if not declares_roles(context.store, context.manifest):
         return False
+    human = bool(HAS_TTY.get() or HUMAN_CHANNEL.get())
     if isinstance(actor, str) and actor.strip():
-        raise WriteRefused(
-            "PERMISSION_DENIED",
-            "this store acts by seat: --actor is not accepted; "
-            "run the upgrade yourself in a terminal",
-            {"tool": "upgrade", "reason": "actor_flag_refused"},
-        )
+        if not (human and name_is_human(actor)):
+            raise WriteRefused(
+                "PERMISSION_DENIED",
+                _actor_refusal(human, require_terminal),
+                {"tool": "upgrade", "reason": "actor_flag_refused"},
+            )
     if not require_terminal:
         return True
-    if not (HAS_TTY.get() or HUMAN_CHANNEL.get()):
+    if not human:
         raise WriteRefused(
             "PERMISSION_DENIED",
-            "upgrading a store with roles needs the human on a terminal",
+            "upgrading a store with roles needs the human on a terminal or in "
+            "the local UI, or a charter delegation to the live lead",
             {"tool": "upgrade", "reason": "human_channel_required"},
         )
     return True
+
+
+def _actor_refusal(human: bool, require_terminal: bool) -> str:
+    """The next step for an ``--actor`` call on a role-mode upgrade."""
+    if human:
+        return (
+            "this store acts by seat: an agent name is not accepted; drop "
+            "--actor and re-run, because this terminal or UI already acts as "
+            "the human"
+        )
+    if require_terminal:
+        return (
+            "this store acts by seat, so --actor is not accepted and an agent "
+            "cannot upgrade it; the human runs `rail ops upgrade --confirm "
+            '"UPGRADE store"` in a terminal or the local UI, or the charter '
+            "delegates `ops upgrade` to the live lead"
+        )
+    return (
+        "this store acts by seat: --actor is not accepted; re-run the dry run "
+        "without it, because a dry run needs no identity"
+    )
 
 
 def _open_manifest_only(

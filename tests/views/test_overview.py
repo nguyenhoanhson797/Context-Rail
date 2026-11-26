@@ -112,3 +112,20 @@ def test_conventions_skip_skills_listed_in_the_role(approved_store: Path) -> Non
     for line in section.splitlines():
         assert not line.startswith("- Rail coordinate — ")
 
+
+def test_overview_names_what_changed_since_the_approval(approved_store: Path) -> None:
+    charter = approved_store / "charter.md"
+    charter.write_text(
+        charter.read_text(encoding="utf-8") + "\nA later, unapproved edit.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = invoke(
+        "overview", {"max_chars": 20000}, store=approved_store, actor="cto"
+    )
+
+    assert is_ok(result), result
+    section = _section(result["value"]["text"], "## Approval and human waits")
+    assert "changed since approval: charter.md" in section
+

@@ -140,10 +140,20 @@ def resolve_identity(
             )
         return _legacy(context, actor, terminal=tty, human_channel=human_channel)
     if isinstance(actor, str) and actor.strip():
+        if tty or human_channel:
+            message = (
+                "this store acts by seat: drop --actor, because this terminal "
+                "or UI already acts as the human"
+            )
+        else:
+            message = (
+                "this store acts by seat: --actor is not accepted; the project "
+                "owner opens a seat session with 'rail seat open <seat> "
+                "--print-env', or runs this in a terminal or the local UI"
+            )
         raise IdentityRefused(
             "PERMISSION_DENIED",
-            "this store acts by seat: --actor is not accepted; "
-            "open a session with 'rail seat open'",
+            message,
             {"reason": "actor_flag_refused", "command": _OPEN_COMMAND},
         )
     if session is not None:
