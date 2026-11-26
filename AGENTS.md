@@ -17,6 +17,8 @@ nothing here needs it.
 These records are working material: they stay on disk, untracked, and are never
 published.
 
+- Project map design (active next move): `docs/superpowers/specs/2026-11-26-project-map-design.md`
+- Project map plan (active next move): `docs/superpowers/plans/2026-11-26-project-map.md`
 - Agent-signed approval design: `docs/superpowers/specs/2026-11-17-agent-signed-approval.md`
 - Runtime-neutral engine design: `docs/superpowers/specs/2026-11-12-runtime-neutral-engine-design.md`
 - Runtime-neutral engine plan: `docs/superpowers/plans/2026-11-12-runtime-neutral-engine.md`

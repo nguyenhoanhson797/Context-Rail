@@ -172,3 +172,19 @@ def test_a_read_does_not_write_the_store(role_store: SimpleNamespace) -> None:
     as_seat(role_store.store, role_store.orders_seat, "show", {"slug": role_store.o1})
 
     assert store_files() == before
+
+
+def test_map_shows_only_reachable_nodes_and_refuses_an_outside_center(
+    role_store: SimpleNamespace,
+) -> None:
+    whole = as_seat(role_store.store, role_store.orders_seat, "map", {})
+    outside = as_seat(
+        role_store.store, role_store.orders_seat, "map", {"item": role_store.b1}
+    )
+
+    assert is_ok(whole), whole
+    shown = {node["slug"] for node in whole["value"]["nodes"]}
+    assert {role_store.orders, role_store.o1} <= shown
+    assert not shown & {role_store.billing, role_store.b1}
+    assert role_store.b1 not in whole["value"]["text"]
+    assert refusal(outside) == ("PERMISSION_DENIED", "out_of_reach")

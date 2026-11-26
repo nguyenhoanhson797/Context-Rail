@@ -329,20 +329,28 @@ def _check_link(
                 f"the parent {dst or '?'!r} is outside the seat's write reach",
                 reach_hint(reach, context.identity.name),
             )
-        previous = _current_parent(context.index, src)
-        if previous is not None and previous != dst and not _writes(context, reach, previous):
+        parents = _current_targets(context.index, src, "part_of")
+        previous = parents if params.get("replace") is True else parents[:1]
+        for parent in previous:
+            if parent != dst and not _writes(context, reach, parent):
+                return _refuse(
+                    "write_out_of_reach",
+                    f"the previous parent {parent!r} is outside the seat's write reach",
+                    reach_hint(reach, context.identity.name),
+                )
+        return None
+    dropped = (
+        _current_targets(context.index, src, relation)
+        if params.get("replace") is True and relation is not None
+        else []
+    )
+    for target in [dst, *dropped]:
+        if target is None or not _reads(context, reach, target):
             return _refuse(
-                "write_out_of_reach",
-                f"the previous parent {previous!r} is outside the seat's write reach",
+                "read_out_of_reach",
+                f"{target or 'the destination'!r} is outside the seat's read reach",
                 reach_hint(reach, context.identity.name),
             )
-        return None
-    if dst is None or not _reads(context, reach, dst):
-        return _refuse(
-            "read_out_of_reach",
-            f"{dst or 'the destination'!r} is outside the seat's read reach",
-            reach_hint(reach, context.identity.name),
-        )
     return None
 
 
@@ -496,12 +504,14 @@ def _item_slug(tool_name: str, params: Mapping[str, Any]) -> str | None:
     return _text(params.get("item"))
 
 
-def _current_parent(index: Index, slug: str) -> str | None:
-    row = index.conn.execute(
-        "SELECT dst FROM relations WHERE src = ? AND rel = 'part_of' LIMIT 1",
-        (slug,),
-    ).fetchone()
-    return None if row is None else row[0]
+def _current_targets(index: Index, slug: str, relation: str) -> list[str]:
+    return [
+        row[0]
+        for row in index.conn.execute(
+            "SELECT dst FROM relations WHERE src = ? AND rel = ? ORDER BY rowid",
+            (slug, relation),
+        )
+    ]
 
 
 def _doc(index: Index, slug: str | None) -> tuple[str, str] | None:

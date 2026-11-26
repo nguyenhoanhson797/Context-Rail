@@ -649,7 +649,10 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="link",
-        summary="Add or remove one relation on a mutable document; Records are immutable.",
+        summary=(
+            "Add, remove or replace one relation on a mutable document; "
+            "Records are immutable."
+        ),
         permission="write",
         params=(
             Param("src", "str", required=True, positional=True, help="source slug"),
@@ -657,6 +660,11 @@ TOOLS: tuple[Tool, ...] = (
             Param("dst", "str", required=True, positional=True, help="target slug"),
             Param("expect", "str", required=True, help="current source etag"),
             Param("remove", "bool", help="remove the relation instead of adding it"),
+            Param(
+                "replace",
+                "bool",
+                help="make dst the only target: part_of moves the whole branch",
+            ),
             Param("reason", "str", help="why this reversible decision was made"),
             Param("confirm", "str", help="the typed phrase APPROVE <slug>"),
             Param("key", "str", help="idempotency key"),
@@ -768,6 +776,20 @@ TOOLS: tuple[Tool, ...] = (
             Param("slug", "str", required=True, positional=True, help="item slug"),
         ),
         handler="context_rail.gateway.handlers.surface:why",
+        daemon=True,
+    ),
+    Tool(
+        name="map",
+        summary="The project map: where we are, the work tree, one branch, a search or what moved.",
+        permission="read",
+        params=(
+            Param("item", "str", positional=True, help="center the map on this item's branch"),
+            Param("depth", "int", help="levels to unfold below the root or the item (0-12)"),
+            Param("find", "str", help="words every matching title or slug holds"),
+            Param("since", "str", help="UTC timestamp: mark and list what changed from then on"),
+            Param("max_chars", "int", default=6000, help="character budget (200-32000)"),
+        ),
+        handler="context_rail.gateway.handlers.surface:map",
         daemon=True,
     ),
     Tool(

@@ -1,6 +1,6 @@
 ---
 schema: 1
-version: 5
+version: 6
 name: rail-coordinate
 description: Run the CTO loop on the rail - read the queue, plan Items, hand off work, read Markdown result records, judge candidates, and leave human-only decisions to people.
 primitive: note
@@ -12,7 +12,7 @@ tags: []
 
 Read the state before you act. Each step below uses a rail command, not a launcher.
 
-1. Read the project with `rail overview`, then the executable queue with `rail next`.
+1. Read the project with `rail overview`, the whole picture with `rail read map`, then the executable queue with `rail next`. Read a branch with `rail read map <slug>` before you change it; to restructure, move a whole branch with `rail change link <slug> part_of <new-parent> --replace --expect <etag>`.
 2. If the focus is ambiguous, choose a container on purpose: `rail next --into <container>`, or `rail next --all` for every one. Neither escape skips a gate or a claim.
 3. Plan one registered Item per assignment (individual shell reads are not separate assignments; the rail never claims to detect unregistered agent work). State each Item's acceptance and declared Checks. Use the `task` preset for research, and record a conclusion only when it will be reused or changes a decision; navigation is not recorded.
 4. Hand an Item to a worker with `rail loop brief <item> --role implementer`. The rail does not run agents. For research, discovery, design or other commitless work, the worker records `rail loop result <item> --body-file <md>` in the compiled shape without fabricating a commit. For code work, the worker commits, records `rail loop candidate <item> --commit <sha>`, and then records `rail loop result <item> --body-file <md> --commit <sha>`. The result body may open with a `---` effort block (`duration_s`, `usage: {tokens: ..., requests: ...}`, `model`, `harness`); state `unknown` for a counter the harness does not report, never guess, and never report money.

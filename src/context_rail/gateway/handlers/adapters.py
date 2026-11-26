@@ -543,7 +543,7 @@ def _agents_payload(
         "Store (`context-rail/`) is the truth; SQLite is a cache; Records in `records/` are immutable; JSON envelope exits 0/1/2.",
         "## Read before you act",
         "Never parse `pack.yaml`, `rail.yaml` or the charter. Ask: `rail types`, `rail next` (`--all`/`--into`/`--focus-only`), "
-        "`rail read show <slug>`, `rail why <slug>`, `rail explain <name>`, `rail model`, `rail overview`, `rail read status`, "
+        "`rail read show <slug>`, `rail why <slug>`, `rail explain <name>`, `rail model`, `rail overview`, `rail read map`, `rail read status`, "
         "`rail read digest`, `rail read ledger`, `rail gate`.",
         "## Write, Human-only & Refusals",
         "- Read first and pass `--expect <etag>`, `--key <idempotency-key>`, `--rel part_of=<slug>`, `--set <field>=<value>` (no path/parent/title); change status only via `rail change move` or `rail do <action>`; run `rail ops reindex` after hand edits.",

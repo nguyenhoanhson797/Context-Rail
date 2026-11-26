@@ -12,7 +12,7 @@ from context_rail.store.write import WriteRefused
 if TYPE_CHECKING:
     from context_rail.gateway.gateway import Context
 
-__all__ = ["explain", "model", "next", "types", "why"]
+__all__ = ["explain", "map", "model", "next", "types", "why"]
 
 _QUEUE_CARDS = 10
 _QUEUE_CAP = 50
@@ -165,6 +165,30 @@ def _seat_next(
 
 def _readable(ctx: Context, slug: str) -> bool:
     return read_refusal(ctx, slug) is None
+
+
+def map(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
+    """The project map, bounded, read through the caller's reach."""
+    from context_rail.context import roadmap
+
+    item = args.get("item")
+    if item:
+        refused = read_refusal(ctx, item)
+        if refused is not None:
+            raise refused
+    try:
+        return roadmap.resolve_map(
+            ctx,
+            ctx.model,
+            ctx.actor,
+            center=item or None,
+            depth=args.get("depth"),
+            find=args.get("find"),
+            since=args.get("since"),
+            max_chars=args["max_chars"],
+        )
+    except operating.OperatingError as error:
+        raise WriteRefused(error.code, error.message, error.details) from None
 
 
 def model(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:

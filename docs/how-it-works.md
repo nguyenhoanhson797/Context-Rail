@@ -202,9 +202,11 @@ and exits `0` / `1` / `2`. Global flags: `rail --store <path> --actor <who> --se
 | I want to… | Command |
 |---|---|
 | See where things stand | `rail overview` |
+| See the whole picture | `rail read map` (one branch: `rail read map <slug>`) |
 | Get my next card | `rail next` |
 | Add work | `rail change add <preset> "<title>"` |
 | Move work | `rail change move <slug> <status>` |
+| Move a branch to a new parent | `rail change link <slug> part_of <parent> --replace --expect <etag>` |
 | Inspect one item | `rail read show <slug>` |
 | Find broken references | `rail ops doctor` |
 | Check gates | `rail gate` |
@@ -303,6 +305,14 @@ time.
 The UI carries the pack's labels and titles, renders the pinned populations,
 and an empty screen says so instead of showing a blank page. No React module
 branches on a pack name.
+
+The Map screen draws the same tree as `rail read map` on a pannable canvas:
+cards carry kind, status, markers and rollups; `part_of` edges form the spine
+and `depends_on` edges can be shown on top. Find highlights and frames the
+hits, a minimap shows where you are, and an Outline view lists the same tree.
+Dragging a card onto another card proposes moving that whole branch; nothing
+changes until you confirm, and the move runs as the same
+`change link --replace --expect` call an agent would make.
 
 ## Code graph
 

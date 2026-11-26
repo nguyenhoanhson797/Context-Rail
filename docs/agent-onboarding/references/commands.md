@@ -72,6 +72,7 @@ rail approve <target> --confirm "APPROVE <target>" --confirmer NAME [--expect DI
 rail consent <item> --on-behalf-of NAME --text "WORDS" --expect ETAG
 rail overview [--max-chars N] [--item-limit N]
 rail read status
+rail read map [<item>] [--depth N] [--find WORDS] [--since ISO] [--max-chars N]
 rail read digest [--since ISO] [--limit N] [--max-chars N]
 rail read find [--primitive P] [--preset P] [--tag T] [--status S]
                [--category C] [--text Q] [--rel REL=SLUG] [--limit N]
@@ -106,6 +107,9 @@ with the `--confirm` phrase to record the charter approval in the same call;
 without it, approval stays missing and `rail approve ...` does it later.
 
 `overview` is the bounded daily page. `read status` is the machine view.
+`read map` is the project map: the focus path, progress, next and the work
+tree with markers and rollups; `<item>` reads one branch with its etag,
+`--find` locates words with their branch, `--since` marks what changed.
 `read show --path PATH` selects one document when several share a slug, such as
 a skill copied into each profile. `types` is role-aware with `--item`. `next` is
 focus-aware: `--all` ignores the queue scope but never a gate, claim or
@@ -175,7 +179,7 @@ rail change update <slug> --expect ETAG [--set KEY=VALUE]... [--tag TAG]...
                     [--body-file FILE] [--confirm PHRASE] [--key KEY]
 rail change move <slug> <status> --expect ETAG [--resolution TEXT]
                  [--confirm PHRASE] [--key KEY]
-rail change link <src> <rel> <dst> --expect ETAG [--remove] [--reason TEXT]
+rail change link <src> <rel> <dst> --expect ETAG [--remove | --replace] [--reason TEXT]
                  [--confirm PHRASE] [--key KEY]
 rail change rename <old> <new> [--confirm "APPROVE <slug>"] [--key KEY]
 rail change repath [--dry-run] [--confirm "APPROVE <slug>"] [--key KEY]
@@ -187,7 +191,8 @@ rail do <action> [--item SLUG] [--etag ETAG] [--set NAME=VALUE]... [--key KEY]
 - `change move` enforces the item's workflow; a move into a `done` category
   runs the charter's done gate.
 - `change link` adds or removes one relation; `--reason` records a reversible
-  decision.
+  decision. `--replace` makes `dst` the only target: with `part_of` it moves the
+  whole branch, descendants included, to a new parent in one write.
 - `change repath` lists and applies every move the current placement implies.
 - `do` runs one declarative pack verb through the gateway as the caller.
 

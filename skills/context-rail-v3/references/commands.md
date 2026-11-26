@@ -25,6 +25,7 @@ rail init [--dir DIR] [--pack NAME] [--root DIR] [--scaffold] [--dry-run] [--cod
           [--interview | --answers-file FILE | --draft-file FILE]
 rail overview [--max-chars N] [--item-limit N]
 rail read status
+rail read map [<item>] [--depth N] [--find WORDS] [--since ISO] [--max-chars N]
 rail read digest [--since ISO] [--limit N] [--max-chars N]
 rail read find [--primitive P] [--preset P] [--tag T] [--status S]
                [--category C] [--text Q] [--rel REL=SLUG] [--limit N]
@@ -41,7 +42,7 @@ rail change update <slug> --expect ETAG [--set KEY=VALUE]... [--tag TAG]...
                     [--body-file FILE] [--confirm PHRASE]
 rail change move <slug> <status> --expect ETAG [--resolution TEXT]
                  [--confirm PHRASE]
-rail change link <src> <rel> <dst> --expect ETAG [--remove] [--reason TEXT]
+rail change link <src> <rel> <dst> --expect ETAG [--remove | --replace] [--reason TEXT]
 rail change rename <old> <new> [--confirm "APPROVE <slug>"]
 rail change repath [--dry-run] [--confirm "APPROVE <slug>"]
 ```
@@ -55,6 +56,11 @@ item preset (still respecting transitions, gates and actor rights), `--into`
 overrides the focus for one call, and `--focus-only` filters. `add` gives a unit
 its focus container as `part_of` unless `--rel part_of=...` is explicit.
 `model` prints the compiled operating model and its three digests.
+`read map` is the project map: bare, the focus path, progress, next and the work
+tree; with `<item>`, that branch with its path, etag, dependencies, attachments,
+siblings and subtree; `--find` lists every hit with its branch; `--since` marks
+and lists what changed. `change link --replace` makes `dst` the only target;
+with `part_of` it moves the whole branch and its files in one write.
 `read show --path PATH` selects one document when several share a slug, such as
 a skill copied into each profile.
 
