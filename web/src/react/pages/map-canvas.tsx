@@ -283,10 +283,28 @@ function Canvas({
     (dragged: CardNode): string => {
       const own = subtree(dragged.id);
       const current = bySlug.get(dragged.id)?.parent;
-      const over = flow
-        .getIntersectingNodes(dragged)
-        .map((node) => node.id)
-        .find((id) => !own.has(id));
+      const width = dragged.measured?.width ?? WIDTH;
+      const height = dragged.measured?.height ?? ROW;
+      const overlap = (node: CardNode) =>
+        Math.max(
+          0,
+          Math.min(dragged.position.x + width, node.position.x + (node.measured?.width ?? WIDTH)) -
+            Math.max(dragged.position.x, node.position.x),
+        ) *
+        Math.max(
+          0,
+          Math.min(dragged.position.y + height, node.position.y + (node.measured?.height ?? ROW)) -
+            Math.max(dragged.position.y, node.position.y),
+        );
+      let over = '';
+      let best = 0;
+      for (const node of flow.getIntersectingNodes(dragged) as CardNode[]) {
+        const area = overlap(node);
+        if (!own.has(node.id) && area > best) {
+          best = area;
+          over = node.id;
+        }
+      }
       return over && over !== current ? over : '';
     },
     [flow, subtree, bySlug],
