@@ -130,7 +130,7 @@ def test_an_operating_change_changes_the_semantic_digest(tmp_path: Path) -> None
 
 #: Pinned semantic digests for shipped packs including their declared result contracts.
 _SHIPPED_DIGESTS = {
-    "basic": "076d046827609ccf79ceed71e3bcc41600a53e1b5545604c79f44065ad614dc7",
+    "basic": "ea82ae4054c089f1e19d5e2df1b73e1778cf26f91b7b2860bd00ebf862a8f011",
     "flow": "5eccecb3dcce8ac2800c97b366b32a41c368c41ac6456c581d54d560d9be3b58",
     "scrum": "5986641260bdedbfc7ef3369e9097e92d5fed931ef5336f290e77ec1d4c1a8cb",
     "video": "65f5e196067b3473e17c3ef2461fba55c810244847a6ba676fdb85bbcbf3484c",
