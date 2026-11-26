@@ -149,7 +149,7 @@ _CONFIRM_SLUG = {
     "check": "slug",
 }
 _COMPILED_SURFACE = frozenset(
-    {"types", "next", "model", "explain", "why", "seat list", "brief"}
+    {"types", "next", "model", "explain", "why", "map", "seat list", "brief"}
 )
 #: Tools whose dry_run is a read-only preview, so it needs no actor.
 _PREVIEW_TOOLS = frozenset({"upgrade"})

@@ -30,6 +30,7 @@ __all__ = [
 VISIBLE_ALIASES: dict[str, str] = {
     "overview": "cto brief",
     "read status": "status",
+    "read map": "map",
     "read digest": "digest",
     "read find": "find",
     "read show": "show",
@@ -114,6 +115,7 @@ VISIBLE_PATHS: frozenset[str] = frozenset(VISIBLE_ALIASES) | {
 #: Flat names accepted for continuity and where they move in the grouped surface.
 LEGACY_TO_SURFACE: dict[str, str] = {
     "status": "read status",
+    "map": "read map",
     "digest": "read digest",
     "find": "read find",
     "show": "read show",
@@ -208,7 +210,7 @@ ALIAS_DEFAULTS: dict[str, dict[str, object]] = {
 
 #: One sentence for a group head that has no single canonical tool.
 GROUP_SUMMARIES: dict[str, str] = {
-    "read": "Inspect the picture, items, activity and candidates.",
+    "read": "Inspect the map, the picture, items, activity and candidates.",
     "change": "Add, update, link, move, rename and repath documents.",
     "check": "List, declare or run Checks.",
     "loop": "Record results, candidates and reports, and triage work.",
@@ -224,6 +226,7 @@ GROUP_SUMMARIES: dict[str, str] = {
 #: Aliases whose surface wording differs from their canonical tool.
 ALIAS_SUMMARIES: dict[str, str] = {
     "overview": "The daily starting page: approval, executable work, waits and quality.",
+    "read map": "The project map: where we are, the whole tree, one branch, a search or what moved.",
     "gate": "Gate the store: doctor issues, approval and done gates; never runs Checks.",
     "change repath": "Move every document to the path its placement renders now.",
     "ops adapters render": "Render the managed AGENTS.md block and one skill file per skill Note.",

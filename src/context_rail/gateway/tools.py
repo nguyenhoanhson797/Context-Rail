@@ -771,6 +771,20 @@ TOOLS: tuple[Tool, ...] = (
         daemon=True,
     ),
     Tool(
+        name="map",
+        summary="The project map: where we are, the work tree, one branch, a search or what moved.",
+        permission="read",
+        params=(
+            Param("item", "str", positional=True, help="center the map on this item's branch"),
+            Param("depth", "int", help="levels to unfold below the root or the item (0-12)"),
+            Param("find", "str", help="words every matching title or slug holds"),
+            Param("since", "str", help="UTC timestamp: mark and list what changed from then on"),
+            Param("max_chars", "int", default=6000, help="character budget (200-32000)"),
+        ),
+        handler="context_rail.gateway.handlers.surface:map",
+        daemon=True,
+    ),
+    Tool(
         name="status",
         summary="Counts, executable items, blockers and stuck items.",
         permission="read",
