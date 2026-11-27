@@ -554,14 +554,19 @@ def caller_session(env_name: str | None = None, store: str | Path | None = None)
 
 def _local_agent_session(store: str | Path | None) -> str | None:
     """The credential ``agent enable`` wrote, or None when it is absent."""
-    from context_rail.core.locate import AGENT_TOKEN, find_store, local_dir
+    from context_rail.core.locate import (
+        AGENT_TOKEN,
+        StoreLocationError,
+        find_store,
+        local_dir,
+    )
 
     found = find_store(Path(store) if store is not None else Path.cwd())
     if found is None:
         return None
     try:
         token = (local_dir(found) / AGENT_TOKEN).read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, StoreLocationError):
         return None
     return token or None
 
