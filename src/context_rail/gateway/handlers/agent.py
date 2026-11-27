@@ -43,15 +43,19 @@ def enable(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
             {"reason": "no_roles", "command": "rail pack use <pack>"},
         )
     _human(ctx)
-    seat = _text(args.get("seat"), "seat")
-    role_name = _text(args.get("role"), "role")
-    anchor = _text(args.get("anchor") or _PROJECT, "anchor")
+    live = query.live_seats(ctx.index)
+    seat = _seat_name(ctx, live, args.get("seat"))
+    target = live.get(seat)
+    if target is not None:
+        role_name = target.role if args.get("role") is None else _text(args.get("role"), "role")
+        anchor = target.anchor if args.get("anchor") is None else _text(args.get("anchor"), "anchor")
+    else:
+        role_name = _role_name(ctx, args.get("role"))
+        anchor = _text(args.get("anchor") or _PROJECT, "anchor")
     profile_name = args.get("profile")
     if profile_name is not None:
         profile_name = _text(profile_name, "profile")
 
-    live = query.live_seats(ctx.index)
-    target = live.get(seat)
     if target is None:
         seat_grant(
             ctx,
@@ -142,6 +146,37 @@ def show(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
         "expires": _stamp(found.expires),
         "live": target is not None,
     }
+
+
+def _seat_name(ctx: Context, live: dict[str, Any], value: Any) -> str:
+    """The named seat, or the only one this store can mean."""
+    if value is not None:
+        return _text(value, "seat")
+    if len(live) == 1:
+        return next(iter(live))
+    roles = sorted(ctx.pack.operating.roles)
+    if not live and len(roles) == 1:
+        return roles[0]
+    candidates = sorted(live) or roles
+    raise WriteRefused(
+        "VALIDATION_FAILED",
+        "seat is required; candidates: " + ", ".join(candidates),
+        {"reason": "seat_required", "seats": sorted(live), "roles": roles},
+    )
+
+
+def _role_name(ctx: Context, value: Any) -> str:
+    """The named role, or the only role the pack declares."""
+    if value is not None:
+        return _text(value, "role")
+    roles = sorted(ctx.pack.operating.roles)
+    if len(roles) == 1:
+        return roles[0]
+    raise WriteRefused(
+        "VALIDATION_FAILED",
+        "role is required; this store declares: " + ", ".join(roles),
+        {"reason": "role_required", "roles": roles},
+    )
 
 
 def _human(ctx: Context) -> None:

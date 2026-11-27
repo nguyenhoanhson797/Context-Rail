@@ -8,6 +8,7 @@ from helpers import as_human, open_test_session, refusal
 
 from context_rail import cli
 from context_rail.core.locate import AGENT_TOKEN, local_dir
+from context_rail.core.result import is_ok
 from context_rail.gateway.execution import caller_identity
 from context_rail.gateway.gateway import invoke
 
@@ -49,6 +50,40 @@ def test_agent_enable_writes_a_credential_that_reads_and_writes(
     assert mapped["ok"] is True, mapped
     assert mapped["value"]["total"] >= 3
     assert added["ok"] is True, added
+
+
+def test_agent_enable_defaults_to_the_only_live_seat(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        for seat in (role_store.orders_seat, role_store.billing_seat):
+            revoked = invoke("seat revoke", {"seat": seat}, store=role_store.store, actor=None)
+            assert is_ok(revoked), revoked
+        enabled = invoke("agent enable", {}, store=role_store.store, actor=None)
+
+    assert is_ok(enabled), enabled
+    assert enabled["value"]["seat"] == role_store.lead
+    assert enabled["value"]["role"] == "lead"
+    assert enabled["value"]["anchor"] == "project"
+
+
+def test_agent_enable_refuses_ambiguous_defaults(role_store: SimpleNamespace) -> None:
+    with as_human():
+        refused = invoke("agent enable", {}, store=role_store.store, actor=None)
+
+    assert refusal(refused) == ("VALIDATION_FAILED", "seat_required")
+
+
+def test_agent_enable_defaults_the_role_from_a_named_live_seat(
+    role_store: SimpleNamespace,
+) -> None:
+    with as_human():
+        enabled = invoke(
+            "agent enable", {"seat": role_store.lead}, store=role_store.store, actor=None
+        )
+
+    assert is_ok(enabled), enabled
+    assert enabled["value"]["role"] == "lead"
 
 
 def test_agent_show_names_the_seat_without_revealing_the_token(

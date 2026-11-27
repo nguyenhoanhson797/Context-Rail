@@ -15,7 +15,7 @@ import pytest
 from context_rail import cli
 from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
-from helpers import approve_store, run_cli
+from helpers import approve_store, run_cli, write_legacy_runtime_files
 
 SRC_DIR = Path(cli.__file__).resolve().parent.parent
 
@@ -243,6 +243,28 @@ def test_cli_main_maps_results_to_exit_codes(tmp_path, capsys, args, code):
     else:
         assert exit_code == 1
         assert payload["error"]["code"] == code
+
+
+def test_cli_upgrade_text_keeps_json_and_adds_a_plain_summary(tmp_path: Path) -> None:
+    store = _init(tmp_path)
+    write_legacy_runtime_files(store)
+
+    proc = run_cli(
+        tmp_path,
+        "--actor",
+        "human",
+        "ops",
+        "upgrade",
+        "--text",
+        "--confirm",
+        "UPGRADE store",
+        store=store,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["ok"] is True
+    assert payload["value"]["summary"] in proc.stderr
 
 
 def _cli(

@@ -267,7 +267,10 @@ merge in git yourself.
 ```text
 rail ops doctor [--repair] [--fix] [--dry-run]
 rail ops reindex [--full]
-rail ops upgrade [--dry-run] [--confirm "UPGRADE store"]
+rail ops upgrade [--dry-run] [--text] [--confirm "UPGRADE store"]
+                 [--approved-by NAME --user-approval "WORDS"]
+rail ops upgrade --all [--root DIR] [--dry-run] [--text]
+                 [--confirm "UPGRADE store"]
                  [--approved-by NAME --user-approval "WORDS"]
 rail --actor human ops migrate --source LEGACY --dir DIR [--root DIR] [--pack NAME] [--dry-run]
 rail ops rollback --target-class skill|profile --target PATH --version N
@@ -294,6 +297,12 @@ rail --actor human ops pack use --name NAME --expect RAIL_YAML_ETAG [--map OLD=N
 
 `doctor` is read-only unless `--repair`/`--fix`. `reindex` is a read-permission
 tool that may write the index. `migrate` and `pack use` are human-only.
+`upgrade --text` keeps the JSON on stdout and prints the plain summary on
+stderr. `upgrade --all` scans one root (the current project by default) for
+`rail.yaml`, prints a table with one row per store, and upgrades only the stores
+that need no human decision; it also renders each safe store's adapters. A store
+whose plan needs a charter approval or a conflict repair is reported and left
+untouched. `--dry-run` plans the whole batch without writing.
 `adapters render` writes the managed `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and
 `.cursor/rules/context-rail.mdc` blocks plus one `.agents/skills/<name>/SKILL.md`
 per workspace skill. The `AGENTS.md` block holds a read-first table, the write

@@ -39,6 +39,18 @@ _SHIPPED_REASON = "upgrade shipped guidance"
 
 def upgrade(ctx: Context, args: dict[str, Any], actor: str) -> dict[str, Any]:
     """Rewrite profiles, local packs and the charter, then bring shipped guidance up to date."""
+    if args.get("all"):
+        raise WriteRefused(
+            "INVALID_STATE",
+            "upgrading every store is the CLI batch; run `rail ops upgrade --all`",
+            {"reason": "batch_is_cli", "command": "rail ops upgrade --all"},
+        )
+    if args.get("root") is not None:
+        raise WriteRefused(
+            "VALIDATION_FAILED",
+            "--root is only valid with --all",
+            {"reason": "root_needs_all"},
+        )
     delegated = is_delegated(ctx, "ops upgrade")
     attested = ctx.attestation is not None
     dry_run = bool(args.get("dry_run"))

@@ -260,15 +260,32 @@ def _emit(result: dict, *, stderr: bool = False) -> None:
     A redirected stream can be any legacy code page (cp1252 here); JSON is UTF-8,
     so the bytes go to the binary buffer instead of through a lossy codec.
     """
-    payload = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
-    stream = sys.stderr if stderr else sys.stdout
+    _write(
+        sys.stderr if stderr else sys.stdout,
+        json.dumps(result, indent=2, ensure_ascii=False),
+    )
+
+
+def _emit_text(result: dict) -> None:
+    """Write the human summary beside the JSON, never into the JSON stream."""
+    value = result.get("value") or {}
+    text = value.get("text") or value.get("summary")
+    if not isinstance(text, str) or not text.strip():
+        text = (result.get("error") or {}).get("message")
+    if isinstance(text, str) and text.strip():
+        _write(sys.stderr, text.rstrip())
+
+
+def _write(stream: Any, payload: str) -> None:
+    """Write UTF-8 bytes to a stream that may declare a legacy code page."""
+    data = (payload + "\n").encode("utf-8")
     buffer = getattr(stream, "buffer", None)
     if buffer is None:
-        stream.write(payload)
+        stream.write(payload + "\n")
         stream.flush()
         return
     stream.flush()
-    buffer.write(payload.encode("utf-8"))
+    buffer.write(data)
     buffer.flush()
 
 
@@ -403,10 +420,20 @@ def main(argv: list[str] | None = None) -> int:
         for name, value in vars(namespace).items()
         if name not in reserved and name in names
     }
+    text_output = _text_output(declared, params)
+    if canonical_tool(tool) == "upgrade" and params.get("all"):
+        text_output = True
     served = _fast_path(namespace, tool, params, declared, lens)
     if served is not None:
-        return _finish(tool, served)
-    return _finish(tool, _direct_invoke(namespace, tool, params, lens))
+        return _finish(tool, served, text_output=text_output)
+    return _finish(tool, _direct_invoke(namespace, tool, params, lens), text_output=text_output)
+
+
+def _text_output(declared: Tool | None, params: dict[str, Any]) -> bool:
+    """Whether a boolean ``text`` option asks for the plain summary beside the JSON."""
+    if declared is None or not params.get("text"):
+        return False
+    return any(param.name == "text" and param.type == "bool" for param in declared.params)
 
 
 def _split_seat_lens(argv: list[str]) -> tuple[list[str], str | None]:
@@ -439,6 +466,10 @@ def _direct_invoke(
         tty=_terminal(),
         lens=lens,
     ):
+        if canonical_tool(tool) == "upgrade" and params.get("all"):
+            from context_rail.gateway.upgrade_all import invoke_all
+
+            return invoke_all(params, store=namespace.store, actor=namespace.actor)
         return invoke(tool, params, store=namespace.store, actor=namespace.actor)
 
 
@@ -560,7 +591,7 @@ def _daemon_store(option: str | None) -> Path | None:
         return None
 
 
-def _finish(tool: str, result: dict[str, Any]) -> int:
+def _finish(tool: str, result: dict[str, Any], *, text_output: bool = False) -> int:
     """Print one result and return its exit code."""
     from context_rail.core.result import INFRA_CODES
 
@@ -572,6 +603,8 @@ def _finish(tool: str, result: dict[str, Any]) -> int:
         code = (result.get("error") or {}).get("code")
         return 2 if code in INFRA_CODES else 1
     _emit(result)
+    if text_output:
+        _emit_text(result)
     if result.get("ok") is True:
         return 0
     code = (result.get("error") or {}).get("code")

@@ -135,6 +135,18 @@ TOOLS: tuple[Tool, ...] = (
         permission="human",
         params=(
             Param("dry_run", "bool", default=False, help="list the rewrites without writing"),
+            Param(
+                "all",
+                "bool",
+                help="upgrade every store under --root, or the current project",
+            ),
+            Param(
+                "root",
+                "str",
+                help="the folder --all scans (default: the current project)",
+                path=True,
+            ),
+            Param("text", "bool", help="also print the plain summary to stderr"),
             Param("confirm", "str", help="the typed phrase UPGRADE store"),
             Param("approved_by", "str", help="the human whose chat approval this carries"),
             Param("user_approval", "str", help="the human's exact approval words from chat"),
@@ -977,9 +989,18 @@ TOOLS: tuple[Tool, ...] = (
         summary="Bind this store to one local agent seat and its credential.",
         permission="write",
         params=(
-            Param("seat", "str", required=True, positional=True, help="the handle of the seat"),
-            Param("role", "str", required=True, help="a role the pack declares"),
-            Param("anchor", "str", default="project", help="an item slug, or 'project'"),
+            Param(
+                "seat",
+                "str",
+                positional=True,
+                help="the handle of the seat; defaults from the only live seat or role",
+            ),
+            Param("role", "str", help="a role the pack declares; defaults from the seat or the only role"),
+            Param(
+                "anchor",
+                "str",
+                help="an item slug, or 'project' (default: the seat's anchor, else project)",
+            ),
             Param("profile", "str", help="an Actor profile in the store"),
         ),
         handler="context_rail.gateway.handlers.agent:enable",

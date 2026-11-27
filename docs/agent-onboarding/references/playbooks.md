@@ -315,6 +315,20 @@ rail ops upgrade --confirm "UPGRADE store" \
   --approved-by "<you>" --user-approval "<your exact words from chat>"
 ```
 
+To upgrade every store under the current project, or under an explicit root,
+plan the batch first:
+
+```bash
+rail ops upgrade --all --dry-run
+rail ops upgrade --all --root <folder> --confirm "UPGRADE store"
+```
+
+The table has one row per store. A store whose plan needs a charter approval or
+a conflict repair is reported and left untouched; the other stores are upgraded
+and their adapters rendered in the same run. The same `--confirm` phrase and
+chat words apply to the whole batch. `rail ops upgrade ... --text` keeps the
+JSON on stdout and prints the plain summary on stderr.
+
 Ask the human in chat first and quote their answer. The upgrade record names the
 human, the words and the agent that relayed them, and marks the claim
 unverified: it is evidence, not proof that the human typed the command. The same
