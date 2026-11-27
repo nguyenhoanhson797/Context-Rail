@@ -36,6 +36,14 @@ Use `rail next --all` when the focus is not what you need, `rail next --into
 stay inside it. Never infer the focus from item names or from a container's
 children.
 
+## Role mode
+
+Run `rail agent show` first. If it reports enabled, the CLI uses the store's
+local agent credential: run commands directly, with no `RAIL_SESSION` and no
+seat-open step. If it reports disabled, ask the owner once to run `rail agent
+enable <seat> --role <role> --anchor <anchor>` in a terminal or the local UI.
+Never ask for a token in chat. `--actor` is refused in role mode.
+
 ## The protocol for every change
 
 1. **Read the current state.** `rail read show <slug>` returns the document, its
@@ -220,7 +228,8 @@ Read `error.code` and `error.details`; a refusal names the reason and the fix.
 ## Transports
 
 ```bash
-rail --actor cto serve mcp      # the same tool table over MCP stdio
+rail serve mcp                  # role mode: the local agent credential is used automatically
+rail --actor cto serve mcp      # name mode: the serving actor
 rail serve ui                   # loopback, token-gated UI
 rail serve daemon --stop        # the CLI starts its warm daemon itself; this ends it
 ```
@@ -228,22 +237,24 @@ rail serve daemon --stop        # the CLI starts its warm daemon itself; this en
 MCP keeps the canonical tool names (`status`, `next`, `show`, `add`, `move`,
 `candidate`, `result`, `review`, `brief`, `measure usage`, …), not the grouped CLI aliases. The serving actor
 is `--actor`, then `RAIL_ACTOR`, then `cto`; a name-based store can pass
-`--actor human` for a human-only tool, while a role-mode store needs the human
-on a terminal or through the UI, or the chat-attested flags for `ops upgrade`,
-`ops adapters render` and `approve`.
+`--actor human` for a human-only tool. A role-mode store uses the same local
+agent credential as the CLI, so start `serve mcp` from the non-terminal process
+that has the store; it needs no `RAIL_SESSION`. Human-only actions still need the
+human on a terminal or through the UI, or the chat-attested flags for `ops
+upgrade`, `ops adapters render` and `approve`.
 
 ## Next
 
 Read the harness's own instructions, then load the matching operator skill if
 one is installed:
 
-- `context-rail-v3-onboarding` — adopt the rail in a new project
-- `context-rail-v3` — the map and the command families
-- `context-rail-v3-workflows` — custom types, statuses, transitions, BA/PO
-- `context-rail-v3-pack-authoring` — create or change a pack
-- `context-rail-v3-surface` — work from the compiled surface only
-- `context-rail-v3-loop` — brief, candidate, result, review, report
-- `context-rail-v3-ops` — doctor, reindex, recover, ship
+- `context-rail-onboarding` — adopt the rail in a new project
+- `context-rail` — the map and the command families
+- `context-rail-workflows` — custom types, statuses, transitions, BA/PO
+- `context-rail-pack-authoring` — create or change a pack
+- `context-rail-surface` — work from the compiled surface only
+- `context-rail-loop` — brief, candidate, result, review, report
+- `context-rail-ops` — doctor, reindex, recover, ship
 
 If no skill is installed, `rail --help`, `rail types`, `rail model`, `rail
 explain <name>` and `rail why <slug>` answer most questions without reading the

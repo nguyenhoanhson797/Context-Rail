@@ -158,14 +158,19 @@ Identity resolution in role mode:
 1. A `RAIL_SESSION` token (or the variable named by `--session-env NAME`, with
    no fallback to `RAIL_SESSION`) resolves to its seat. The token is stored only
    as a SHA-256 hash under the local directory (never in the store tree).
-2. A terminal human with no token is the human. `ui serve` is human-only; the
+2. With no explicit session variable, a non-terminal caller uses the store's
+   local agent credential written by `rail agent enable`. It is a normal session
+   for one live seat, so the role and reach rules apply. `rail agent show` reports
+   whether it is enabled; `rail agent disable` closes and removes it.
+3. A terminal human with no token is the human. `ui serve` is human-only; the
    UI's per-run channel is the other human proof.
-3. An agent carrying the human's exact chat words for `ops upgrade`, `ops
+4. An agent carrying the human's exact chat words for `ops upgrade`, `ops
    adapters render` or `approve` is attested: it may use only those actions plus
-   reads, and its record says `verified: false`. A session or human channel, if
-   present, still decides the identity; the chat words are evidence, not a
-   substitute for a human signature when `approval.agents: false`.
-4. Anything else is anonymous: read tools only, with an empty reach.
+   reads, and its record says `verified: false`. A session, local credential or
+   human channel, if present, still decides the identity; the chat words are
+   evidence, not a substitute for a human signature when `approval.agents:
+   false`.
+5. Anything else is anonymous: read tools only, with an empty reach.
 
 `--actor` is refused. Human-only actions (`ops migrate`, `ops pack use`, `ops
 delegate`, `init`, `pack create`, a `human: true` grant, the first grant) need
@@ -181,7 +186,8 @@ session when the charter allows it (`approval.agents: true`, the default). The
 first grant when no seat exists is human-only; after that a seat grants only
 inside its `can.grant` and write reach.
 
-Commands: `seat list|grant|revoke|open|close|show` and the `rail <seat>` lens.
+Commands: `agent enable|disable|show`, `seat list|grant|revoke|open|close|show`
+and the `rail <seat>` lens.
 The lens is read-only unless the session belongs to that seat, and it never
 widens the caller's reach. MCP lists read tools plus the role's write tools; a
 legacy store and the human see the whole table.

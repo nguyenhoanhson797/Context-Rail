@@ -1,9 +1,9 @@
 ---
-name: context-rail-v3-surface
+name: context-rail-surface
 description: 'Work a Context Rail project from the compiled surface alone: types, next, show, explain and why. Use when an agent needs to know which workflow applies, its current state and the exact proof, without reading pack.yaml or the engine source.'
 ---
 
-# Context Rail v3 — read the surface, not the pack
+# Context Rail — read the surface, not the pack
 
 One print answers three questions: **which workflow applies**, **where the item
 is**, and **what proof is required**. Never read `pack.yaml`, the charter or the

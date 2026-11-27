@@ -72,6 +72,11 @@ repository.
   tree.
 - Every store change goes through `context_rail.store.write.commit`. Nothing
   else writes store files.
+- A role-mode store may bind one local agent seat with `rail agent enable`. The
+  CLI and MCP server use that local credential for non-terminal callers when no
+  explicit session is set. It is local bearer proof, not a human signature; the
+  raw token lives only under the store's local directory and `agent disable`
+  removes it.
 - Reads never run store commands and never hash source trees. The CLI transport
   may start the store's background daemon.
 - `context_rail.kernel` is pure: no file, git, process or index access, and no

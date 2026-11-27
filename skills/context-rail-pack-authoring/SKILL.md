@@ -1,9 +1,9 @@
 ---
-name: context-rail-v3-pack-authoring
+name: context-rail-pack-authoring
 description: 'Author or adjust a Context Rail pack: presets, required metadata, defaults, declarative placement, records under records/, validation with pack validate, doctor and repath. Load when creating a new pack, adding document types, or changing where documents live.'
 ---
 
-# Context Rail v3 — authoring a pack
+# Context Rail — authoring a pack
 
 A pack is the **project type**: it names the document types, the statuses and
 the policy. `rail.yaml` then says **where** those documents live. You edit the

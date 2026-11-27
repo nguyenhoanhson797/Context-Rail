@@ -54,17 +54,17 @@ def test_the_portable_agents_file_teaches_the_safe_protocol() -> None:
 
 
 def test_the_onboarding_skill_is_discoverable_and_complete() -> None:
-    text = _read("skills/context-rail-v3-onboarding/SKILL.md")
+    text = _read("skills/context-rail-onboarding/SKILL.md")
 
     assert text.startswith("---\n")
-    assert "name: context-rail-v3-onboarding" in text
+    assert "name: context-rail-onboarding" in text
     assert "description:" in text
     for phrase in (
         "rail init",
         "approve charter",
         "rail overview",
         "rail ops doctor",
-        "context-rail-v3",
+        "context-rail",
     ):
         assert phrase in text, phrase
 

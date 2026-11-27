@@ -972,6 +972,32 @@ TOOLS: tuple[Tool, ...] = (
         ),
         handler="context_rail.gateway.handlers.seats:seat_show",
     ),
+    Tool(
+        name="agent enable",
+        summary="Bind this store to one local agent seat and its credential.",
+        permission="write",
+        params=(
+            Param("seat", "str", required=True, positional=True, help="the handle of the seat"),
+            Param("role", "str", required=True, help="a role the pack declares"),
+            Param("anchor", "str", default="project", help="an item slug, or 'project'"),
+            Param("profile", "str", help="an Actor profile in the store"),
+        ),
+        handler="context_rail.gateway.handlers.agent:enable",
+    ),
+    Tool(
+        name="agent disable",
+        summary="Close and remove the local agent credential.",
+        permission="write",
+        params=(),
+        handler="context_rail.gateway.handlers.agent:disable",
+    ),
+    Tool(
+        name="agent show",
+        summary="Show the local agent credential's seat, role, anchor and expiry.",
+        permission="read",
+        params=(),
+        handler="context_rail.gateway.handlers.agent:show",
+    ),
 )
 
 
@@ -994,7 +1020,7 @@ for _tool in TOOLS:
 del _tool, _param
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
-_SURFACE_LEAVES = {"init", "approve", "consent", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon", "seat list", "seat grant", "seat revoke", "seat open", "seat close", "seat show"}
+_SURFACE_LEAVES = {"init", "approve", "consent", "types", "check list", "next", "model", "explain", "why", "do", "serve daemon", "seat list", "seat grant", "seat revoke", "seat open", "seat close", "seat show", "agent enable", "agent disable", "agent show"}
 
 
 def _alias_tool(alias: str, canonical: str, *, hidden: bool) -> Tool:

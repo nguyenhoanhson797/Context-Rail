@@ -11,7 +11,9 @@ tags: []
 ### Portfolio report
 
 Act as `component-cto` against the master portfolio store while keeping your child repo's
-own workflow in `RAIL_SESSION`. The human opens your master seat session and places the
+own workflow in `RAIL_SESSION`. If `rail --store <master> agent show` reports enabled, the
+CLI uses the master store's local credential for non-terminal calls: run the commands below
+without `--session-env`. Otherwise the human opens your master seat session and places the
 token in `RAIL_SESSION_PORTFOLIO`.
 
 1. Read your queue in the master store with `rail --store <master> --session-env RAIL_SESSION_PORTFOLIO next` and inspect your component brief with `rail --store <master> --session-env RAIL_SESSION_PORTFOLIO cto brief`.

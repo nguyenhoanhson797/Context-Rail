@@ -372,7 +372,8 @@ def _check_opener(
             "PERMISSION_DENIED",
             "only the human or a live seat may open a session; the project "
             "owner opens it in a terminal or in the local UI with "
-            "`rail seat open <seat> --print-env`",
+            "`rail seat open <seat> --print-env`, or binds the store once with "
+            "`rail agent enable <seat> --role <role> --anchor <anchor>`",
             {"reason": "open_denied"},
         )
     role = ctx.pack.operating.roles.get(target.role)

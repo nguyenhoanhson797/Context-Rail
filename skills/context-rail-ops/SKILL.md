@@ -1,9 +1,9 @@
 ---
-name: context-rail-v3-ops
-description: 'Operate a Context Rail v3 store: where state lives, ops doctor/reindex/gate/sync/migrate, recovery order after a refusal, cost, steering, speed budgets and the test lanes. Load when something looks wrong or before shipping.'
+name: context-rail-ops
+description: 'Operate a Context Rail store: where state lives, ops doctor/reindex/gate/sync/migrate, recovery order after a refusal, cost, steering, speed budgets and the test lanes. Load when something looks wrong or before shipping.'
 ---
 
-# Context Rail v3 — operations
+# Context Rail — operations
 
 ## Where state lives
 

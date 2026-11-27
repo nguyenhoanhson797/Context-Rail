@@ -12,7 +12,7 @@ from context_rail.core.result import is_ok
 from context_rail.gateway.gateway import invoke
 
 REPO = Path(__file__).resolve().parents[2]
-EXAMPLE = REPO / "skills" / "context-rail-v3-workflows" / "references" / "ba-po-pack.yaml"
+EXAMPLE = REPO / "skills" / "context-rail-workflows" / "references" / "ba-po-pack.yaml"
 
 
 def _document() -> dict:

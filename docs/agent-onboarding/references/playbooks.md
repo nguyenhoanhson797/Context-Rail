@@ -26,7 +26,7 @@ rail overview
 Done when `rail read status` lists an executable task and `rail next` returns
 it.
 
-Next: `context-rail-v3-loop` for brief → result → candidate (when code changed) → review → report.
+Next: `context-rail-loop` for brief → result → candidate (when code changed) → review → report.
 
 ## 2. Existing codebase, no store
 
@@ -82,7 +82,7 @@ rail read status
 
 When the sign-off item reaches done, the delivery story becomes executable. For
 a full tested three-workflow pack with a dedicated `ba_pack` preset, see
-`skills/context-rail-v3-workflows/references/ba-po-pack.yaml`.
+`skills/context-rail-workflows/references/ba-po-pack.yaml`.
 
 ## 5. Parallel agents with review separation
 
@@ -235,13 +235,13 @@ execution screen counts render records separately from workflow completion.
 ## 14. Multi-project portfolio
 
 Coordinate independent repositories from one `portfolio` store while each child
-repository keeps its own store and pack (`scrum`, `flow`, `basic`, ...). Use
-`--session-env` so an agent working in a child repo can hold both tokens without
-collision.
+repository keeps its own store and pack (`scrum`, `flow`, `basic`, ...). For one
+local lead, `agent enable` replaces the grant/open/export steps. Use
+`--session-env` when several agents or remote environments hold separate tokens.
 
 ```bash
 rail init --dir portfolio --pack portfolio
-rail --store portfolio/context-rail seat grant lead-1 --role portfolio-lead --anchor project
+rail --store portfolio/context-rail agent enable lead-1 --role portfolio-lead --anchor project
 rail --store portfolio/context-rail change add component "Billing API" --set store=../billing/context-rail
 rail --store portfolio/context-rail do start-component --item billing-api --etag <etag>
 rail --store portfolio/context-rail change add slice "Invoice webhook" --rel part_of=billing-api

@@ -13,6 +13,7 @@ tags: []
 Read the refusal before you retry. The error has a `code` and `details`. Act on them, not on a guess.
 
 - `CONFLICT`: the document changed after you read it. Read it again with `rail show <slug>`, then retry with the new etag as `--expect`. Never overwrite a change you have not read.
+- `SESSION_REQUIRED`: you have no seat session. Check `rail agent show`; if it is enabled the CLI should already be using the local credential, so run from the non-terminal process that has the store. If it is disabled, ask the owner once to run `rail agent enable <seat> --role <role> --anchor <anchor>` in a terminal or the local UI, then retry. Never ask for the token in chat.
 - `AMBIGUOUS_FOCUS` or `NO_FOCUS`: pick the container on purpose with `rail next --into <container>`, or see the candidates with `rail overview`. The escapes never skip a gate or a permission.
 - Store integrity: run `rail ops doctor` to list the issues, then `rail ops reindex` to rebuild the index.
 - Rollback restores an earlier version of an unprotected skill or profile as a new version: `rail ops rollback --target-class <skill|profile> --target <workspace path> --version <n> --expect <etag>`. Read the current `version` and `etag` with `rail show <slug>`. It is refused if that version's text was not kept; do not guess another number.

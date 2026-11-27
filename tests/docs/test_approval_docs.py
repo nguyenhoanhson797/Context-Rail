@@ -61,9 +61,9 @@ def test_the_key_docs_teach_the_signer_policy() -> None:
         "docs/agent-onboarding/AGENTS.template.md",
         "docs/agent-onboarding/references/commands.md",
         "docs/agent-onboarding/references/refusals.md",
-        "skills/context-rail-v3-onboarding/SKILL.md",
-        "skills/context-rail-v3/references/commands.md",
-        "skills/context-rail-v3-ops/SKILL.md",
+        "skills/context-rail-onboarding/SKILL.md",
+        "skills/context-rail/references/commands.md",
+        "skills/context-rail-ops/SKILL.md",
     ):
         assert "approval.agents" in _read(rel), rel
 

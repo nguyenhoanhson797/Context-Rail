@@ -435,7 +435,7 @@ def _direct_invoke(
     with caller_identity(
         namespace.actor,
         os.environ.get("RAIL_ACTOR"),
-        session=caller_session(namespace.session_env),
+        session=caller_session(namespace.session_env, namespace.store),
         tty=_terminal(),
         lens=lens,
     ):
@@ -458,7 +458,7 @@ def _fast_path(
     """
     if namespace.no_daemon or os.environ.get("RAIL_NO_DAEMON") or declared is None:
         return None
-    session = caller_session(namespace.session_env)
+    session = caller_session(namespace.session_env, namespace.store)
     if _terminal() and session is None:
         # A real terminal proves the human only in this process, never over the
         # socket; a human call therefore runs direct instead of through a daemon.
@@ -507,10 +507,32 @@ def session_env_refusal(env_name: str | None) -> dict[str, Any] | None:
     return None
 
 
-def caller_session(env_name: str | None = None) -> str | None:
-    """The session token this call carries, from ``env_name`` or ``RAIL_SESSION``."""
+def caller_session(env_name: str | None = None, store: str | Path | None = None) -> str | None:
+    """The session token this call carries.
+
+    An explicit environment variable wins. A non-terminal caller with no token
+    falls back to the store's local agent credential, so one human setup step is
+    enough for every later command. A terminal stays the human.
+    """
     target = "RAIL_SESSION" if env_name is None else env_name
-    return (os.environ.get(target) or "").strip() or None
+    token = (os.environ.get(target) or "").strip() or None
+    if token is not None or env_name is not None or _terminal():
+        return token
+    return _local_agent_session(store)
+
+
+def _local_agent_session(store: str | Path | None) -> str | None:
+    """The credential ``agent enable`` wrote, or None when it is absent."""
+    from context_rail.core.locate import AGENT_TOKEN, find_store, local_dir
+
+    found = find_store(Path(store) if store is not None else Path.cwd())
+    if found is None:
+        return None
+    try:
+        token = (local_dir(found) / AGENT_TOKEN).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return token or None
 
 
 def _terminal() -> bool:

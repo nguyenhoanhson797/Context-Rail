@@ -53,7 +53,7 @@ def test_command_check_flags_removed_and_unknown_commands() -> None:
 
 
 def test_the_loop_skill_states_one_loop_and_the_recording_rule() -> None:
-    text = (ROOT / "skills" / "context-rail-v3-loop" / "SKILL.md").read_text(encoding="utf-8")
+    text = (ROOT / "skills" / "context-rail-loop" / "SKILL.md").read_text(encoding="utf-8")
     flat = " ".join(text.split())
     for line in (
         "plan rail change add task",

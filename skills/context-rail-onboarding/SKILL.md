@@ -1,9 +1,9 @@
 ---
-name: context-rail-v3-onboarding
+name: context-rail-onboarding
 description: 'Adopt Context Rail in any project, with any agent harness: probe, install, init, approve, seed first work, verify and hand off. Load when a project has no context-rail/ store, when asked to set up or onboard Context Rail, or when an agent needs a safe zero-to-work path.'
 ---
 
-# Context Rail v3 — onboarding any project
+# Context Rail — onboarding any project
 
 This skill is the adoption path. It assumes no prior rail knowledge and no
 specific harness. The product itself is one binary, one JSON envelope and one
@@ -120,6 +120,11 @@ rail read status
 rail overview
 ```
 
+On a role-mode store, run `rail agent show` first. If it is enabled, these
+commands run as the local agent with no token. If it is disabled, ask the owner
+once to run `rail agent enable <seat> --role <role> --anchor <anchor>` in a
+terminal or the local UI, then continue.
+
 Read the compiled surface, never `pack.yaml`:
 
 ```powershell
@@ -151,7 +156,8 @@ files for the requested harnesses.
 For any harness that does not read those files, copy
 `docs/agent-onboarding/AGENTS.template.md` into the project root as `AGENTS.md`,
 or paste `docs/agent-onboarding/references/prompts.md` into the session. The
-transport is the same: `rail --actor cto serve mcp` for MCP, or the CLI.
+transport is the same: `rail serve mcp` for MCP (a role-mode store uses the
+local agent credential; a name-based store may pass `--actor cto`), or the CLI.
 
 ## Prove the onboarding worked
 
@@ -176,12 +182,12 @@ The store is ready when:
 
 | You need | Load |
 |---|---|
-| The map and command families | `context-rail-v3` |
-| Custom types, statuses, transitions, BA/PO | `context-rail-v3-workflows` |
-| Create or change a pack | `context-rail-v3-pack-authoring` |
-| Work from `types`, `next`, `show`, `explain`, `why` | `context-rail-v3-surface` |
-| Brief, record candidates, verify, review, report | `context-rail-v3-loop` |
-| Doctor, reindex, recovery, budgets, cost and steering | `context-rail-v3-ops` |
+| The map and command families | `context-rail` |
+| Custom types, statuses, transitions, BA/PO | `context-rail-workflows` |
+| Create or change a pack | `context-rail-pack-authoring` |
+| Work from `types`, `next`, `show`, `explain`, `why` | `context-rail-surface` |
+| Brief, record candidates, verify, review, report | `context-rail-loop` |
+| Doctor, reindex, recovery, budgets, cost and steering | `context-rail-ops` |
 
 ## Onboarding an existing project (no picture rewrite)
 

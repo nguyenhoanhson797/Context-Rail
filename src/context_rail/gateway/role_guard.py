@@ -47,6 +47,8 @@ OPS_HUMAN_ONLY = frozenset(
         "codegraph adopt",
         "pack create",
         "pack use",
+        "agent enable",
+        "agent disable",
     }
 )
 
@@ -264,13 +266,16 @@ def authorize_role(
             )
         return fail(
             "SESSION_REQUIRED",
-            f"{tool.name!r} needs a seat session; the project owner opens one "
-            "with 'rail seat open <seat> --print-env' and sets RAIL_SESSION in "
-            "the environment that should act as the seat",
+            f"{tool.name!r} needs a seat session; the project owner can bind "
+            "this store to a local agent once with 'rail agent enable <seat> "
+            "--role <role> --anchor <anchor>', or open one session with "
+            "'rail seat open <seat> --print-env' and set RAIL_SESSION in the "
+            "environment that should act as the seat",
             {
                 "reason": "session_required",
                 "tool": tool.name,
                 "command": SESSION_COMMAND,
+                "agent_command": "rail agent enable <seat> --role <role> --anchor <anchor>",
             },
         )
     if identity.view_as is not None and tool.permission != "read":

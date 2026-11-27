@@ -1,9 +1,9 @@
 ---
-name: context-rail-v3-workflows
-description: 'Customize Context Rail v3 without touching the engine: pack statuses, transitions, presets, document types, profiles and charter gates, including a tested BA/PO sign-off workflow and how to switch packs. Load when asked whether a team can define its own docs system or process.'
+name: context-rail-workflows
+description: 'Customize Context Rail without touching the engine: pack statuses, transitions, presets, document types, profiles and charter gates, including a tested BA/PO sign-off workflow and how to switch packs. Load when asked whether a team can define its own docs system or process.'
 ---
 
-# Context Rail v3 — custom workflows
+# Context Rail — custom workflows
 
 Teams define the **vocabulary and the workflow**. The engine keeps a fixed
 **core**. That split is what lets a light team and a gated team run the same
@@ -188,7 +188,7 @@ give it a default, or file fix items for the existing documents. Engine-written
 presets (`event`, `check`, `note`, `goal`, `charter`, …) need a default for every
 required field; `pack validate` reports one that does not.
 
-For the full authoring guide, load `context-rail-v3-pack-authoring`.
+For the full authoring guide, load `context-rail-pack-authoring`.
 
 ## Validate and repair
 
@@ -309,10 +309,14 @@ master `context-rail/` store without merging their stores:
   committed `HEAD` and the child item's etag. It works both for git submodules
   inside the master checkout and for sibling repos under the master worktree's
   parent folder.
-- **Per-store session variables.** Pass `--session-env NAME` (such as
-  `--session-env RAIL_SESSION_PORTFOLIO`) before the command when calling the
-  master store from a child CTO session so the child's `RAIL_SESSION` token and
-  the master's token stay separate.
+- **One local lead.** If the master store is local, run `rail --store <master>
+  agent enable lead-1 --role portfolio-lead --anchor project` once. The lead then
+  runs master commands directly; the CLI uses that store's local credential, so
+  no `--session-env` is needed.
+- **Per-store session variables.** For several agents or a remote master, pass
+  `--session-env NAME` (such as `--session-env RAIL_SESSION_PORTFOLIO`) before
+  the command when calling the master store from a child CTO session so the
+  child's `RAIL_SESSION` token and the master's token stay separate.
 - **Child-side skill note.** Add a short `skill` note to each child store with
   `rail change add skill` and render it with `rail ops adapters render` so the
   child CTO knows the master store path, its `component` slug, and
@@ -341,7 +345,7 @@ name but need different targets, qualify the map entry with the source workflow:
 `--map sprint:todo=doing --map bugfix:todo=fixing`; a plain entry still applies
 to every item. Switching does **not** rewrite history. For the full authoring
 loop — presets, required metadata, placement recipes and pitfalls — load
-`context-rail-v3-pack-authoring`.
+`context-rail-pack-authoring`.
 
 ## Gotchas
 

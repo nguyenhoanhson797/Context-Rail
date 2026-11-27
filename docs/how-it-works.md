@@ -418,28 +418,48 @@ chooses. A **seat** binds one agent to one role on one anchor - the whole
 project or one container. Roles live in the approved pack, so widening a role
 changes the semantic digest and needs re-approval.
 
+For one local agent, bind its seat once and drop the token ceremony:
+
+```bash
+rail agent enable impl-1 --role implementer --anchor send-invoice
+rail read map                           # the agent runs this directly
+rail change move <item> <status> --expect <etag>
+rail agent show
+rail agent disable
+```
+
+`agent enable` grants the seat if needed, resets that seat's sessions and
+writes a local credential under the store's local directory. The CLI and MCP
+server use it for non-terminal callers when no `RAIL_SESSION` is set, so every
+later command acts as that seat without an environment variable. The credential is a local bearer token: any
+process that can read the store's local directory can act as the seat. Use an
+explicit session for a shared or remote store.
+
+For several agents, or a remote environment, use explicit sessions:
+
 ```bash
 rail seat grant impl-1 --role implementer --anchor send-invoice
 rail seat list
-rail seat open impl-1 -- rail next      # the child gets RAIL_SESSION
+rail seat open impl-1 --print-env       # set RAIL_SESSION for that seat's process
 rail impl-1 next                        # read the store as that seat
 rail seat close impl-1
 ```
 
 In role mode the session token is the identity: `--actor` is refused. A
-tokenless caller that is not on a terminal has no seat and an empty reach, so
-open a session before reading or writing. `rail seat open <seat> --print-env`
-prints the one-time token in its JSON result; export it as `RAIL_SESSION` in
-the environment that runs the agent, never by pasting it into a conversation.
+tokenless caller that is not on a terminal and has no local agent credential
+has no seat and an empty reach. `rail seat open <seat> --print-env` prints the
+one-time token in its JSON result; export it as `RAIL_SESSION` in the
+environment that runs the agent, never by pasting it into a conversation.
 A seat sees only its anchor's subtree, the ancestors and shared notes its role
 declares, and every write is checked against the same reach. `rail <seat> ...`
 is a read-only lens when the session belongs to another seat.
 
 Human-only actions - using a pack, granting a `human: true` role, and the first
 grant when no seat exists yet - need the human on a terminal or through the UI,
-never an agent session. Approval is different: a project-anchored lead seat may
-sign it with its own session when the charter allows it, and the record names
-the signer and the human it was made for.
+never an agent session. The local agent credential is a seat session, not the
+human, so it does not satisfy these. Approval is different: a project-anchored
+lead seat may sign it with its own session when the charter allows it, and the
+record names the signer and the human it was made for.
 
 `ops upgrade`, `ops adapters render` and `approve` also accept a chat
 attestation, so a human does not have to run the CLI for these three actions:
@@ -542,9 +562,19 @@ declares and runs `store` checks bound to the child's committed items, and files
 reports; `portfolio-lead` verifies slices through `item_done` and ships each
 `release` through `release`.
 
-Give each store its own session variable with `--session-env NAME` so a child
-CTO keeps its child token in `RAIL_SESSION` and its master token in a named
-variable such as `RAIL_SESSION_PORTFOLIO`:
+For one local agent working in both stores, bind each store once and skip the
+environment variables:
+
+```powershell
+rail --store child/context-rail agent enable cto-1 --role lead --anchor project
+rail --store master/context-rail agent enable auth-cto --role component-cto --anchor auth
+rail --store ../master/context-rail next
+```
+
+Each store's CLI call uses that store's local credential. For several agents or
+a remote environment, give each store its own session variable with
+`--session-env NAME` so a child CTO keeps its child token in `RAIL_SESSION` and
+its master token in a named variable such as `RAIL_SESSION_PORTFOLIO`:
 
 ```powershell
 $env:RAIL_SESSION = (rail --store child/context-rail seat open cto-1 --print-env | ConvertFrom-Json).value.token
@@ -563,7 +593,7 @@ rail --store ../master/context-rail --session-env RAIL_SESSION_PORTFOLIO next
 | `src/context_rail/packs/` | `basic`, `flow`, `scrum`, `waterfall`, `video`, `portfolio`, `adaptive-contract` |
 | `web/` | React shell; built into `ui/static` and served by `rail serve ui` |
 | `docs/agent-onboarding/` | portable onboarding kit for any harness |
-| `skills/` | operator skills (`context-rail-v3*`) for agent skill directories |
+| `skills/` | operator skills (`context-rail*`) for agent skill directories |
 
 ## Engine invariants
 

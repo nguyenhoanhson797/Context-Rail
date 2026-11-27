@@ -31,7 +31,7 @@ def test_how_it_works_documents_the_gitnexus_mirror() -> None:
 
 
 def test_the_ops_skill_names_the_external_providers() -> None:
-    text = (ROOT / "skills" / "context-rail-v3-ops" / "SKILL.md").read_text(
+    text = (ROOT / "skills" / "context-rail-ops" / "SKILL.md").read_text(
         encoding="utf-8"
     )
 

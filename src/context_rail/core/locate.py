@@ -17,6 +17,7 @@ from pathlib import Path
 from context_rail.core.slug import sha256_hex, slugify
 
 __all__ = [
+    "AGENT_TOKEN",
     "GIT_SUBDIR",
     "LOCAL_DIR",
     "ROOT_KEY",
@@ -29,6 +30,7 @@ __all__ = [
 ]
 
 LOCAL_DIR = ".rail-local"
+AGENT_TOKEN = "agent.token"
 GIT_SUBDIR = "context-rail"
 ROOT_KEY = "_root"
 

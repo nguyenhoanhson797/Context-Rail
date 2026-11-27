@@ -1,10 +1,11 @@
 """Hashed session files: who a caller is, kept only as a token hash.
 
 A session lives in the store's local directory beside the index, never in the
-store itself. The token is handed back once and never written; the file name
-and the ``id`` field are its SHA-256, so reading the folder reveals no
-credential. A file that cannot be read back exactly, or whose ``id`` is not its
-own name, resolves to nothing.
+store itself. The token is handed back once and is never written by this module;
+the file name and the ``id`` field are its SHA-256, so reading the folder reveals
+no credential. (``agent enable`` may write the raw token to a separate local
+credential file for one local agent.) A file that cannot be read back exactly,
+or whose ``id`` is not its own name, resolves to nothing.
 """
 
 from __future__ import annotations

@@ -9,7 +9,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 _COMMAND_FILES = (
     "docs/how-it-works.md",
     "docs/agent-onboarding/references/commands.md",
-    "skills/context-rail-v3/references/commands.md",
+    "skills/context-rail/references/commands.md",
 )
 
 
@@ -74,9 +74,9 @@ def test_how_it_works_describes_steering_without_automation() -> None:
 
 def test_the_public_skills_name_the_usage_rollup() -> None:
     for rel in (
-        "skills/context-rail-v3/SKILL.md",
-        "skills/context-rail-v3-loop/SKILL.md",
-        "skills/context-rail-v3-ops/SKILL.md",
+        "skills/context-rail/SKILL.md",
+        "skills/context-rail-loop/SKILL.md",
+        "skills/context-rail-ops/SKILL.md",
     ):
         assert "measure usage" in _read(rel), rel
 
@@ -84,7 +84,7 @@ def test_the_public_skills_name_the_usage_rollup() -> None:
 def test_the_command_references_note_the_effort_block_on_result() -> None:
     for rel in (
         "docs/agent-onboarding/references/commands.md",
-        "skills/context-rail-v3/references/commands.md",
+        "skills/context-rail/references/commands.md",
     ):
         flat = " ".join(_read(rel).split())
         assert "effort block" in flat, rel

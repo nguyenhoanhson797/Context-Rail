@@ -77,7 +77,7 @@ def test_building_blocks_page_shows_the_primitives_graph_and_two_projects() -> N
 
 
 def test_the_surface_skill_is_model_first() -> None:
-    text = _read("skills/context-rail-v3-surface/SKILL.md")
+    text = _read("skills/context-rail-surface/SKILL.md")
 
     for phrase in (
         "rail model",
@@ -91,7 +91,7 @@ def test_the_surface_skill_is_model_first() -> None:
 
 
 def test_the_pack_authoring_skill_documents_operating_and_surface() -> None:
-    text = _read("skills/context-rail-v3-pack-authoring/SKILL.md")
+    text = _read("skills/context-rail-pack-authoring/SKILL.md")
 
     for phrase in (
         "operating",
@@ -105,14 +105,14 @@ def test_the_pack_authoring_skill_documents_operating_and_surface() -> None:
 
 
 def test_the_loop_skill_documents_focus_and_the_escapes() -> None:
-    text = _read("skills/context-rail-v3-loop/SKILL.md")
+    text = _read("skills/context-rail-loop/SKILL.md")
 
     for phrase in ("Focus and the queue", "--all", "AMBIGUOUS_FOCUS", "--into"):
         assert phrase in text, phrase
 
 
 def test_the_ops_skill_documents_digests_and_doctor_codes() -> None:
-    text = _read("skills/context-rail-v3-ops/SKILL.md")
+    text = _read("skills/context-rail-ops/SKILL.md")
 
     for phrase in (
         "semantic_digest",
@@ -126,14 +126,14 @@ def test_the_ops_skill_documents_digests_and_doctor_codes() -> None:
 
 
 def test_the_workflows_skill_keeps_operating_beside_workflows() -> None:
-    text = _read("skills/context-rail-v3-workflows/SKILL.md")
+    text = _read("skills/context-rail-workflows/SKILL.md")
 
     assert "The operating model sits beside the workflow" in text
     assert "never changes a transition" in text
 
 
 def test_the_command_reference_documents_the_new_flags() -> None:
-    text = _read("skills/context-rail-v3/references/commands.md")
+    text = _read("skills/context-rail/references/commands.md")
 
     for phrase in ("rail model", "--focus-only", "NO_FOCUS", "semantic_digest"):
         assert phrase in text, phrase

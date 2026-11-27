@@ -8,8 +8,8 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 SKILLS = REPO / "skills"
-SKILL = SKILLS / "context-rail-v3-pack-authoring" / "SKILL.md"
-NAME = "context-rail-v3-pack-authoring"
+SKILL = SKILLS / "context-rail-pack-authoring" / "SKILL.md"
+NAME = "context-rail-pack-authoring"
 
 
 def _frontmatter(path: Path) -> dict[str, object]:
@@ -53,16 +53,16 @@ def test_the_body_names_every_placement_and_metadata_feature() -> None:
 def test_the_skills_readme_and_the_router_point_at_it() -> None:
     readme = (SKILLS / "README.md").read_text(encoding="utf-8")
     assert NAME in readme
-    router = (SKILLS / "context-rail-v3" / "SKILL.md").read_text(encoding="utf-8")
+    router = (SKILLS / "context-rail" / "SKILL.md").read_text(encoding="utf-8")
     assert NAME in router
-    workflows = (SKILLS / "context-rail-v3-workflows" / "SKILL.md").read_text(
+    workflows = (SKILLS / "context-rail-workflows" / "SKILL.md").read_text(
         encoding="utf-8"
     )
     assert NAME in workflows
 
 
-SURFACE = SKILLS / "context-rail-v3-surface" / "SKILL.md"
-SURFACE_NAME = "context-rail-v3-surface"
+SURFACE = SKILLS / "context-rail-surface" / "SKILL.md"
+SURFACE_NAME = "context-rail-surface"
 
 
 def test_the_surface_skill_exists_with_a_surface_description() -> None:
@@ -93,5 +93,5 @@ def test_the_surface_skill_names_every_command_and_recovery_step() -> None:
 def test_the_surface_skill_is_listed_in_the_readme_and_router() -> None:
     readme = (SKILLS / "README.md").read_text(encoding="utf-8")
     assert SURFACE_NAME in readme
-    router = (SKILLS / "context-rail-v3" / "SKILL.md").read_text(encoding="utf-8")
+    router = (SKILLS / "context-rail" / "SKILL.md").read_text(encoding="utf-8")
     assert SURFACE_NAME in router

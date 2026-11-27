@@ -132,7 +132,7 @@ for a real boundary.
 - MCP: add the descriptor to the OpenCode config (`opencode.json`) under its MCP
   section.
 - Skills under `skills/` can be installed by copying
-  `skills/context-rail-v3*` into the agent's skill directory.
+  `skills/context-rail*` into the agent's skill directory.
 
 ### Codex
 

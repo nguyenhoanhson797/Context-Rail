@@ -74,6 +74,10 @@ record the charter approval in the same call; otherwise approve separately.
 ## Roles and seats
 
 ```text
+rail agent enable <seat> --role ROLE --anchor SLUG|project [--profile NAME]
+rail agent show
+rail agent disable
+
 rail seat list [--all]
 rail seat grant <seat> --role ROLE --anchor SLUG|project [--profile NAME] [--key KEY]
 rail seat revoke <seat> [--key KEY]
@@ -86,6 +90,12 @@ rail <seat> [command ...]
 A role is declared in a pack's version-2 `operating.roles`; a seat binds one
 role to one anchor (`project` or a container).
 
+- `agent enable` is the one-step local path: it grants the seat if needed, resets
+  its sessions and writes a local credential. The CLI and MCP server use it for
+  non-terminal callers; the agent runs commands directly with no `RAIL_SESSION`.
+  It is human-only; `agent show` reports it and `agent disable` removes it. The
+  credential is a local bearer token, not a human signature; use explicit
+  sessions for a shared or remote store.
 - `seat grant` is human-only for a `human: true` role and for the first grant
   when no granting seat exists. A live seat may grant only inside its
   `can.grant` and write reach. `seat revoke` closes the target's sessions and
@@ -97,8 +107,8 @@ role to one anchor (`project` or a container).
 - `rail <seat> ...` is a lens. The seat's own session may read and write; another
   seat's session gives a read-only view only when the target anchor is inside
   the caller's read reach; a terminal with no session gets a read-only view.
-- A tokenless caller with no terminal has read tools and an empty reach. In role
-  mode `--actor` is refused.
+- A caller with no session, no local agent credential and no terminal has read
+  tools and an empty reach. In role mode `--actor` is refused.
 - Human-only actions (`ops migrate`, `ops upgrade`, `ops pack use`, `ops
   delegate`, a `human: true` grant, the first grant) need a terminal human or the
   UI channel; a session caller is never human. Two exceptions are recorded with
@@ -238,7 +248,7 @@ roles; a legacy store keeps the name-based behaviour and refuses them with the
 | `INVALID_STATE` | A candidate or brief for a non-leaf item, immutable record, unapproved charter |
 | `BUSINESS_RULE_VIOLATED` | A charter gate is not satisfied |
 | `PERMISSION_DENIED` | The role, reach or identity does not allow the call |
-| `SESSION_REQUIRED` | A tokenless role-mode caller tried to write |
+| `SESSION_REQUIRED` | A role-mode caller has no session; enable the local agent or open a seat session |
 | `NO_FOCUS` | The pack needs a parent container and none matches; pass `--into` or `--rel part_of=...` |
 | `AMBIGUOUS_FOCUS` | Several containers match; `error.details.candidates` names them, pass `--into <id>` |
 | `INVALID_FOCUS` | The `--into` slug is not a declared hierarchy container |

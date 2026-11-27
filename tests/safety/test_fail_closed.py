@@ -78,9 +78,15 @@ _REFUSED_TOOLS = (
     "seat open",
     "seat close",
     "seat show",
+    "agent enable",
+    "agent disable",
+    "agent show",
 )
 _ARGS: dict[str, dict[str, Any]] = {
     "approve": {"target": "charter", "confirm": "APPROVE charter", "confirmer": "v"},
+    "agent enable": {"seat": "local-agent", "role": "lead", "anchor": "project"},
+    "agent disable": {},
+    "agent show": {},
     "consent": {
         "item": "t0",
         "on_behalf_of": "v",

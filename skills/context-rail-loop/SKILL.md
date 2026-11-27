@@ -1,9 +1,9 @@
 ---
-name: context-rail-v3-loop
-description: 'Use when handing out, recording, verifying, or reviewing agent work through Context Rail v3: brief, workflow-shaped Markdown result records (commitless research or commit-bound code), candidate, review, report, digest, and refusals.'
+name: context-rail-loop
+description: 'Use when handing out, recording, verifying, or reviewing agent work through Context Rail: brief, workflow-shaped Markdown result records (commitless research or commit-bound code), candidate, review, report, digest, and refusals.'
 ---
 
-# Context Rail v3 — the record loop
+# Context Rail — the record loop
 
 The rail does not run agents. Your coding tool does, with its own sub-agents,
 models and sandboxes (Claude Code, Codex, opencode, Droid, Cursor, Gemini CLI,
@@ -145,10 +145,13 @@ Record proportionately:
 
 ## Role mode and adoption
 
-When the pack declares roles, every caller acts through a seat. Open one with
-`rail seat open <seat> --print-env` and export the printed `RAIL_SESSION`; the
-seat's role decides which commands it may call and which items and paths it may
-reach (`can.result` and `sees.parts` `results` are role-scoped). A seat cannot
+When the pack declares roles, every caller acts through a seat. For one local
+agent, the owner runs `rail agent enable <seat> --role <role> --anchor <anchor>`
+once and the CLI uses that credential automatically; no token is exported. For
+several agents or a remote store, open one with `rail seat open <seat>
+--print-env` and export the printed `RAIL_SESSION`. The seat's role decides
+which commands it may call and which items and paths it may reach (`can.result`
+and `sees.parts` `results` are role-scoped). A seat cannot
 record a result, candidate or review for an item outside its write reach, and
 independence compares the acting seat and its profile with the seat and
 profile that produced the candidate or result.
@@ -229,6 +232,10 @@ active scene). The queue is focus-first and the brief's headline names it.
   is the one reported.
 
 ## Human touchpoints
+
+In a role-mode store, `rail agent show` enabled means these commands act as the
+local agent directly; if it is disabled, ask the owner once to run
+`rail agent enable <seat> --role <role> --anchor <anchor>`.
 
 | When | Command | What to look for |
 |---|---|---|

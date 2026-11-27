@@ -10,7 +10,7 @@ tags: []
 ---
 ### Coordinate the rail
 
-Read the state before you act. Each step below uses a rail command, not a launcher.
+Read the state before you act. Each step below uses a rail command, not a launcher. Run them directly: a role-mode store with `rail agent show` enabled uses the local agent credential, so no `RAIL_SESSION` or seat-open step is needed. If it is disabled, ask the owner once to run `rail agent enable <seat> --role <role> --anchor <anchor>`.
 
 1. Read the project with `rail overview`, the whole picture with `rail read map`, then the executable queue with `rail next`. Read a branch with `rail read map <slug>` before you change it; to restructure, move a whole branch with `rail change link <slug> part_of <new-parent> --replace --expect <etag>`.
 2. If the focus is ambiguous, choose a container on purpose: `rail next --into <container>`, or `rail next --all` for every one. Neither escape skips a gate or a claim.

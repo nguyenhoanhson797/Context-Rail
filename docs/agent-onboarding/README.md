@@ -15,7 +15,7 @@ CLI, Codex, OpenCode, Windsurf, a custom MCP client, or plain shell.
 | File | Use it for |
 |---|---|
 | `AGENTS.template.md` | Copy it into a project root as `AGENTS.md` (or merge its sections). Any harness that reads `AGENTS.md` gets the safe protocol. |
-| `../../skills/context-rail-v3-onboarding/SKILL.md` | Install as a skill. Skill-aware harnesses discover it and load it on first contact. |
+| `../../skills/context-rail-onboarding/SKILL.md` | Install as a skill. Skill-aware harnesses discover it and load it on first contact. |
 | `references/harnesses.md` | Per-harness instruction files, MCP wiring and actor choice. |
 | `references/capabilities.md` | The full power map: primitives, packs, workflows, operating model, checks, loop, transports. |
 | `references/commands.md` | CLI aliases, canonical MCP tool names, flags and the JSON envelope. |
@@ -126,11 +126,11 @@ Roles are compiled into the approved pack, so changing one needs re-approval.
 rail ops pack create --name mine --from scrum --roles   # draft with starter roles
 rail ops pack use --name mine --expect <etag> --confirm "USE PACK mine"
 
-rail seat grant lead-1 --role lead --anchor project     # the human's first seat
+rail agent enable lead-1 --role lead --anchor project  # one local agent, no token
 rail seat grant sprint-1 --role sprint-lead --anchor sprint-3 --profile manager
 rail seat list
 rail seat show sprint-1
-rail seat open sprint-1 --print-env                    # one-time token for RAIL_SESSION
+rail seat open sprint-1 --print-env                    # explicit session for a second agent
 rail sprint-1 next                                     # read as that seat
 rail seat close sprint-1                               # or --all (human)
 ```
@@ -141,6 +141,14 @@ after that, a lead may grant inside its `can.grant` and write reach.
 
 In role mode:
 
+- **One local agent is one setup step.** `rail agent enable <seat> --role <role>
+  --anchor <anchor>` (run once by the owner in a terminal or the local UI)
+  grants the seat if needed and writes a local credential. The CLI and MCP
+  server use it automatically for non-terminal callers; the agent then runs
+  `rail read map`, `rail change ...` and `rail do ...` directly. Check it with
+  `rail agent show`; remove it with `rail agent disable`. The credential is a
+  local bearer token: any process that can read the store's local directory can
+  act as that seat. For a shared or remote store, use an explicit session.
 - **The session is the identity.** `RAIL_SESSION` carries the token;
   `--actor` is refused. Open a session with `rail seat open <seat> --print-env`; the
   token appears once in the JSON result. Export it as `RAIL_SESSION` for the
@@ -168,10 +176,10 @@ In role mode:
   runs only those, only while the approval is current, and every use is
   recorded. A non-human seat may grant only inside its `can.grant` and write
   reach.
-- **Anonymous is empty.** With no session and no terminal, the caller has read
-  tools and no documents; open a session to work. A tokenless chat-attested
-  caller has no reach either: it may only run `ops upgrade`, `ops adapters
-  render` and `approve`.
+- **Anonymous is empty.** With no session, no local agent credential and no
+  terminal, the caller has read tools and no documents; enable the local agent
+  or open a session to work. A tokenless chat-attested caller has no reach
+  either: it may only run `ops upgrade`, `ops adapters render` and `approve`.
 - **Revocation cascades.** Revoking a seat closes its sessions and every seat it
   granted. A re-granted seat cannot reuse an old session.
 - **Compat is unchanged.** A pack without `roles` keeps the name-based
@@ -244,13 +252,13 @@ This kit is the front door. The detailed operator skills live under `skills/`:
 
 | Skill | Load when |
 |---|---|
-| `context-rail-v3` | You need the map and the command families |
-| `context-rail-v3-workflows` | You need custom types, statuses, transitions or BA/PO |
-| `context-rail-v3-pack-authoring` | You are creating or changing a pack |
-| `context-rail-v3-surface` | You work from `types`, `next`, `show`, `explain`, `why` |
-| `context-rail-v3-loop` | You hand out, record, verify or review agent work |
-| `context-rail-v3-ops` | You doctor, reindex, recover or ship |
-| `context-rail-v3-onboarding` | You are adopting the rail in a new project |
+| `context-rail` | You need the map and the command families |
+| `context-rail-workflows` | You need custom types, statuses, transitions or BA/PO |
+| `context-rail-pack-authoring` | You are creating or changing a pack |
+| `context-rail-surface` | You work from `types`, `next`, `show`, `explain`, `why` |
+| `context-rail-loop` | You hand out, record, verify or review agent work |
+| `context-rail-ops` | You doctor, reindex, recover or ship |
+| `context-rail-onboarding` | You are adopting the rail in a new project |
 
 Do not confuse these with the skills a store carries. `rail init` seeds the
 engine skills and the pack skills into the store's workspace (`lean-testing`,

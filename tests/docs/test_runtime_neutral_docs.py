@@ -45,7 +45,7 @@ def test_harnesses_doc_allows_native_subagents() -> None:
 
 
 def test_loop_skill_teaches_the_record_loop() -> None:
-    text = (ROOT / "skills/context-rail-v3-loop/SKILL.md").read_text(encoding="utf-8")
+    text = (ROOT / "skills/context-rail-loop/SKILL.md").read_text(encoding="utf-8")
 
     for phrase in ("rail loop brief", "rail loop candidate", "rail loop review", "rail loop report"):
         assert phrase in text, phrase
@@ -60,8 +60,8 @@ def test_agents_md_states_the_runtime_neutral_rule() -> None:
 
 def test_pack_authoring_skill_uses_the_queue_flag() -> None:
     for rel in (
-        "skills/context-rail-v3-pack-authoring/SKILL.md",
-        "skills/context-rail-v3-workflows/SKILL.md",
+        "skills/context-rail-pack-authoring/SKILL.md",
+        "skills/context-rail-workflows/SKILL.md",
         "docs/agent-onboarding/references/capabilities.md",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")

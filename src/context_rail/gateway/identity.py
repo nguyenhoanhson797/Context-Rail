@@ -145,8 +145,9 @@ def resolve_identity(
         else:
             message = (
                 "this store acts by seat: --actor is not accepted; the project "
-                "owner opens a seat session with 'rail seat open <seat> "
-                "--print-env', or runs this in a terminal or the local UI"
+                "owner binds it once with 'rail agent enable <seat> --role "
+                "<role> --anchor <anchor>', opens a session with 'rail seat open "
+                "<seat> --print-env', or runs this in a terminal or the local UI"
             )
         raise IdentityRefused(
             "PERMISSION_DENIED",

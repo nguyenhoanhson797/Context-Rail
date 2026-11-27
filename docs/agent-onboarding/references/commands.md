@@ -138,6 +138,10 @@ threshold, writes a `report.triaged` record and clears the doctor warning.
 ## Roles and seats
 
 ```text
+rail agent enable <seat> --role ROLE --anchor SLUG|project [--profile NAME]
+rail agent show
+rail agent disable
+
 rail seat list [--all]
 rail seat grant <seat> --role ROLE --anchor SLUG|project [--profile NAME] [--key KEY]
 rail seat revoke <seat> [--key KEY]
@@ -148,8 +152,15 @@ rail <seat> [command ...]
 ```
 
 - A **role** comes from the pack's `operating.roles` (version 2). A **seat** is
-  one role on one anchor: `project` or one container slug. The rail opens no
-  session for you: your tool opens one per agent.
+  one role on one anchor: `project` or one container slug.
+- `rail agent enable` is the one-step path for one local agent: it grants the
+  seat if needed, resets its sessions and writes a local credential. The CLI and
+  MCP server use that credential for non-terminal callers; the agent then runs
+  commands directly, with no `RAIL_SESSION` and no `seat open`. It is human-only
+  because it binds the store's authority. `rail agent show` reports the seat;
+  `rail agent disable` closes and removes the credential. The credential is a
+  local bearer token: any process that can read the store's local directory can
+  act as the seat, so use explicit sessions for a shared machine or remote store.
 - `rail seat grant` is human-only for a `human: true` role and for the first
   grant when no granting seat exists. After that a seat may grant only a role its
   own `can.grant` lists and only inside its write reach. Revoking a seat closes
@@ -162,8 +173,9 @@ rail <seat> [command ...]
   as the seat; with another seat's session it is read-only and allowed only when
   the target anchor is in the caller's read reach; with no session on a terminal
   it is a read-only view. A lens never widens the caller's reach.
-- In role mode a tokenless caller with no terminal has read tools and an empty
-  reach; open a session to read or write. `--actor` is refused.
+- In role mode a caller with no session, no local agent credential and no
+  terminal has read tools and an empty reach; enable the local agent or open a
+  session to read or write. `--actor` is refused.
 - Human-only actions need the human on a terminal or the UI channel; a session
   caller is never human. This covers `ops migrate`, `ops pack use`, `init`,
   `pack create`, a `human: true` grant and the first bootstrap grant. `ops
@@ -297,6 +309,10 @@ rail serve daemon [--port N] [--idle SECONDS] [--stop]
 rail sync driver <kind> <base> <ours> <theirs> <path>   # internal Git driver
 ```
 
+A role-mode store's MCP server uses the same local agent credential as the CLI,
+so start it from the non-terminal process that has the store; it needs no
+`RAIL_SESSION`. A name-based store may pass `--actor cto`.
+
 The CLI starts `serve daemon` on its own after the first eligible command, so
 running it by hand is rarely needed. It serves the everyday reads (`overview`,
 `read`, `next`, `types`, `model`, `explain`, `why`, `gate`) and `change
@@ -321,6 +337,7 @@ MCP clients see the canonical table, generated from the same source as the CLI:
 | Proof | `check`, `verify` |
 | Loop | `brief`, `result`, `candidate`, `review`, `report`, `triage` |
 | Ops | `doctor`, `ci`, `reindex`, `rollback`, `pack list`, `pack show`, `pack validate`, `pack create`, `pack use`, `measure versions`, `measure fix`, `measure usage`, `codegraph setup`, `codegraph refresh`, `codegraph status`, `codegraph adopt`, `sync`, `sync driver`, `adapters sync` |
+| Agent | `agent enable`, `agent show`, `agent disable` |
 | Seats | `seat list`, `seat grant`, `seat revoke`, `seat open`, `seat close`, `seat show` |
 | Transports | `mcp serve`, `ui serve`, `serve daemon` |
 
@@ -353,7 +370,7 @@ Hidden compatibility spellings: `inbox`, `read brief`, `repath`,
 | `INVALID_STATE` | non-executable item, immutable record, wrong recipe |
 | `BUSINESS_RULE_VIOLATED` | a charter gate is not satisfied |
 | `PERMISSION_DENIED` | the caller's role, reach or identity does not allow it |
-| `SESSION_REQUIRED` | a tokenless role-mode caller tried to write; open a seat session |
+| `SESSION_REQUIRED` | a role-mode caller has no session; enable the local agent or open a seat session |
 | `NO_FOCUS` | the pack needs a parent container and none matches |
 | `AMBIGUOUS_FOCUS` | several containers match; `details.candidates` names them |
 | `INVALID_FOCUS` | `--into` is not a declared hierarchy container |

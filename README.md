@@ -74,8 +74,9 @@ rebuilds it from the files.
   tests, and a human records approval before the build starts. Lessons are short
   and structural changes are proposed, never auto-applied.
 - **Separated builder and reviewer.** A role binds an agent to one project or
-  container, with a declared reach and workspace. Role mode uses a session seat,
-  refuses `--actor`, and checks every write against that reach. The reviewer is
+  container, with a declared reach and workspace. Role mode uses a session seat
+  (or one local agent credential bound with `rail agent enable`), refuses
+  `--actor`, and checks every write against that reach. The reviewer is
   a different actor; the gate refuses self-review and a same-model review when
   the charter requires another model. The code area is review evidence, not a
   sandbox: a diff outside it is a review question the reviewer must see.
@@ -135,7 +136,7 @@ For research or discovery, skip `candidate` and leave the commit out of
 `rail loop result`; never fabricate a commit. The result body is capped at
 256 KiB, needs its ordered `##` sections, and can open with a small effort block
 naming `duration_s`, `usage`, `model` and `harness`. See the
-[loop skill](skills/context-rail-v3-loop/SKILL.md) for the exact contract.
+[loop skill](skills/context-rail-loop/SKILL.md) for the exact contract.
 
 ## Connect your tools
 

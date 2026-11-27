@@ -149,13 +149,13 @@ def test_public_docs_and_skills_document_result_records_and_limits() -> None:
         "docs/agent-onboarding/README.md",
         "docs/agent-onboarding/references/capabilities.md",
         "docs/agent-onboarding/references/commands.md",
-        "skills/context-rail-v3-loop/SKILL.md",
-        "skills/context-rail-v3/references/commands.md",
+        "skills/context-rail-loop/SKILL.md",
+        "skills/context-rail/references/commands.md",
     ):
         text = _read(rel)
         assert "rail loop result" in text or "loop result" in text, rel
 
-    loop_skill = _read("skills/context-rail-v3-loop/SKILL.md")
+    loop_skill = _read("skills/context-rail-loop/SKILL.md")
     for phrase in (
         *expected_common,
         "262,144",
@@ -186,14 +186,14 @@ def test_public_docs_and_skills_document_result_records_and_limits() -> None:
 
     # Public operator skills (except pack-authoring) use compiled reads, never pack.yaml.
     for path in sorted((_ROOT / "skills").rglob("SKILL.md")):
-        if path.parent.name == "context-rail-v3-pack-authoring":
+        if path.parent.name == "context-rail-pack-authoring":
             continue
         text = path.read_text(encoding="utf-8")
         assert "edit `pack.yaml`" not in text.lower(), path
         assert "parse `pack.yaml`" not in text.lower() or "never" in text.lower(), path
 
     # Pack-authoring alone explains declaring results contracts in pack.yaml.
-    authoring = _read("skills/context-rail-v3-pack-authoring/SKILL.md")
+    authoring = _read("skills/context-rail-pack-authoring/SKILL.md")
     assert "results:" in authoring and "produce:" in authoring and "review:" in authoring
     assert "pack.yaml" in authoring
 

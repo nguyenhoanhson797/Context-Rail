@@ -1,9 +1,9 @@
 ---
-name: context-rail-v3
-description: 'Context Rail v3 in one page: the store/index model, quick start, command families and which follow-up skill to load for workflows, the agent loop or operations. Load this first when a project has a context-rail/ store or when asked what the rail can do.'
+name: context-rail
+description: 'Context Rail in one page: the store/index model, quick start, command families and which follow-up skill to load for workflows, the agent loop or operations. Load this first when a project has a context-rail/ store or when asked what the rail can do.'
 ---
 
-# Context Rail v3 — start here
+# Context Rail — start here
 
 Three sentences explain most of the product:
 
@@ -39,8 +39,8 @@ own words into these; the engine never reads a status name or a tag.
 
 ```powershell
 rail init --pack basic --scaffold      # skeleton only for this quick tour
-rail change add goal "Ship v3"
-rail change add task "Write the first task" --rel part_of=ship-v3
+rail change add goal "Ship the first slice"
+rail change add task "Write the first task" --rel part_of=ship-the-first-slice
 rail read status                       # executable: write-the-first-task
 rail overview                          # the CTO's bounded starting page
 ```
@@ -59,6 +59,19 @@ a level lead per sprint/scene/phase, an implementer and a reviewer. A seat binds
 one agent to one role on one anchor. Roles live in the approved pack, so
 changing one needs re-approval.
 
+For one local agent, bind the store to its seat once; every later command runs
+as that seat without a token or an environment variable:
+
+```powershell
+rail agent enable sprint-1 --role sprint-lead --anchor sprint-3
+rail read map
+rail change move <item> <status> --expect <etag>
+rail agent show
+rail agent disable
+```
+
+For several agents or a shared/remote store, use explicit sessions:
+
 ```powershell
 rail seat list
 rail seat grant sprint-1 --role sprint-lead --anchor sprint-3
@@ -67,9 +80,14 @@ rail sprint-1 next                      # read the store as that seat
 rail seat close sprint-1
 ```
 
-- In role mode the session token is the identity and `--actor` is refused.
-  `rail seat open <seat> --print-env` prints the one-time token; export it as
-  `RAIL_SESSION` in the agent's environment.
+- `rail agent enable` is the one human step. It grants the seat if needed and
+  writes a local credential; the CLI and MCP server use it for non-terminal
+  callers. `rail agent show` tells you whether it is enabled. The credential is
+  local to the store, so any process that can read the store's local directory
+  can act as the seat; use explicit sessions when that is not acceptable.
+- In role mode the session token is the identity and `--actor` is refused. If
+  no local credential is enabled, `rail seat open <seat> --print-env` prints the
+  one-time token; export it as `RAIL_SESSION` in the agent's environment.
 - A seat sees its anchor's subtree, the ancestors and shared notes its role
   declares. Reads and writes outside that reach are refused; lists and digests
   report `omitted_outside_reach`.
@@ -156,7 +174,7 @@ Daily ritual:
 1. `rail overview`: approval, waits and where we are.
 2. `rail read map`: the whole tree; pick the branch that holds your work.
 3. `rail read map <branch>`: read the branch before you change anything in it.
-4. Do the work through the loop (`context-rail-v3-loop`).
+4. Do the work through the loop (`context-rail-loop`).
 5. Next session: `rail read map --since <the UTC time you last read it>`.
 
 Update the roadmap through the normal write path:
@@ -209,12 +227,12 @@ Exact flags: `references/commands.md` in this skill.
 
 | You need | Load |
 |---|---|
-| Adopt the rail in a new project, or wire a harness | `context-rail-v3-onboarding` |
-| Custom document types, statuses, transitions, BA/PO steps, pack switching | `context-rail-v3-workflows` |
-| Create a pack, add document types, require metadata, change placement | `context-rail-v3-pack-authoring` |
-| Work from the compiled surface: types, next, show, explain, why | `context-rail-v3-surface` |
-| Hand out and record agent work: brief → result → candidate (code) → verify → review → report | `context-rail-v3-loop` |
-| Doctor, reindex, recovery, git sync, budgets, cost and steering | `context-rail-v3-ops` |
+| Adopt the rail in a new project, or wire a harness | `context-rail-onboarding` |
+| Custom document types, statuses, transitions, BA/PO steps, pack switching | `context-rail-workflows` |
+| Create a pack, add document types, require metadata, change placement | `context-rail-pack-authoring` |
+| Work from the compiled surface: types, next, show, explain, why | `context-rail-surface` |
+| Hand out and record agent work: brief → result → candidate (code) → verify → review → report | `context-rail-loop` |
+| Doctor, reindex, recovery, git sync, budgets, cost and steering | `context-rail-ops` |
 | Every flag for every command | `references/commands.md` |
 
 ## First-run refusals
@@ -230,8 +248,8 @@ Exact flags: `references/commands.md` in this skill.
 | `AMBIGUOUS_FOCUS` | Two containers match the focus; pass `--into <id>` or finish one |
 | `NO_FOCUS` on `add` | The pack needs a parent; start the container or pass `--rel part_of=<container>` |
 | `approval_mismatch` after a pack upgrade | The semantic digest changed; reapprove `pack:<name>` then the charter |
-| `SESSION_REQUIRED` in a role-mode store | Open a session: `rail seat open <seat> --print-env`, then export `RAIL_SESSION` |
-| `--actor` is refused in a role-mode store | The seat is the identity; use `RAIL_SESSION` or a terminal |
+| `SESSION_REQUIRED` in a role-mode store | Ask the owner once for `rail agent enable <seat> --role <role> --anchor <anchor>`, or open a session with `rail seat open <seat> --print-env` and export `RAIL_SESSION` |
+| `--actor` is refused in a role-mode store | The seat is the identity; enable the local agent, use `RAIL_SESSION`, or run on a terminal |
 | A check is `stale` | Re-run `rail check run`; a stale pass is not a pass |
 
 ## Invariants worth knowing before changing anything
